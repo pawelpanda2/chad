@@ -1,0 +1,15 @@
+<!--<Project>
+    <PropertyGroup>
+        <MSBUildProjectExtensionsPath>$(MSBuildProjectDirectory)/../../Binaries/obj</MSBUildProjectExtensionsPath>
+        <BaseOutputPath>$(MSBuildProjectDirectory)/../../Binaries/bin</BaseOutputPath>
+        <BaseIntermediateOutputPath>$(MSBuildProjectDirectory)/../../Binaries/obj</BaseIntermediateOutputPath>
+    </PropertyGroup>
+</Project>-->
+
+<Project>
+  <PropertyGroup>
+    <MSBUildProjectExtensionsPath>$(MSBuildProjectDirectory)/../../Binaries/$(MSBuildProjectName)/obj</MSBUildProjectExtensionsPath>
+    <BaseOutputPath>$(MSBuildProjectDirectory)/../../Binaries/$(MSBuildProjectName)/bin</BaseOutputPath>
+    <BaseIntermediateOutputPath>$(MSBuildProjectDirectory)/../../Binaries/$(MSBuildProjectName)/int</BaseIntermediateOutputPath>
+  </PropertyGroup>
+</Project>

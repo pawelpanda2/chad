@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Remove="OpenFolder.applescript" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="OsaScripts\OpenFolder.scpt"></EmbeddedResource>
+    <EmbeddedResource Include="OsaScripts\OpenFile.scpt"></EmbeddedResource>
+    <EmbeddedResource Include="OsaScripts\OpenFile2.scpt"></EmbeddedResource>
+    <EmbeddedResource Include="OsaScripts\OpenFile3.scpt"></EmbeddedResource>
+    <EmbeddedResource Include="OsaScripts\OpenFile4.scpt"></EmbeddedResource>
+    <EmbeddedResource Include="OsaScripts\OpenTerminal.scpt"></EmbeddedResource>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\SharpFileService\SharpFileServiceProg\SharpFileServiceProg.csproj" />
+    <ProjectReference Include="..\..\SharpOperations\SharpOperationsProg\SharpOperationsProg.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="OsaScripts\OpenFile.applescript">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="OsaScripts\OpenFile.sh">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="OsaScripts\OpenFolder.sh">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>

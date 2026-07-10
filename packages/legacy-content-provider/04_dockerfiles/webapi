@@ -1,0 +1,58 @@
+# ==========================================
+# STAGE 1 — BUILD (with cache)
+# ==========================================
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+WORKDIR /src
+
+# COPY ONLY .csproj FILES (for cacheable restore)
+COPY api_charp/SharpContainerApi/SharpContainerApi.csproj api_charp/SharpContainerApi/
+
+# Restore using cache mount — HUGE SPEEDUP
+RUN --mount=type=cache,id=nuget,target=/root/.nuget/packages \
+    dotnet restore "api_charp/SharpContainerApi/SharpContainerApi.csproj"
+
+# Copy full source NOW (after we cached restore)
+COPY api_charp/ api_charp/
+
+# Build
+WORKDIR /src/api_charp/SharpContainerApi
+RUN --mount=type=cache,id=nuget,target=/root/.nuget/packages \
+    dotnet build -c Release -o /app/build SharpContainerApi.csproj
+
+
+# ==========================================
+# STAGE 2 — PUBLISH
+# ==========================================
+FROM build AS publish
+WORKDIR /src/api_charp/SharpContainerApi
+
+RUN --mount=type=cache,id=nuget,target=/root/.nuget/packages \
+    dotnet publish -c Release -o /app/publish SharpContainerApi.csproj
+
+
+# ==========================================
+# STAGE 3 — RUNTIME
+# ==========================================
+FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS run
+
+# Git build arguments
+ARG GIT_COMMIT=unknown
+ARG GIT_COMMIT_SHORT=unknown
+ARG BUILD_DATE=unknown
+ARG GIT_REMOTE_URL=unknown
+
+# OCI labels
+LABEL org.opencontainers.image.revision=$GIT_COMMIT
+LABEL org.opencontainers.image.created=$BUILD_DATE
+LABEL org.opencontainers.image.source=$GIT_REMOTE_URL
+LABEL content-provider.git.short=$GIT_COMMIT_SHORT
+
+WORKDIR /app
+
+ENV ASPNETCORE_HTTP_PORTS=12024
+EXPOSE 12024
+
+# Copy published output
+COPY --from=publish /app/publish .
+
+ENTRYPOINT ["dotnet", "SharpContainerApi.dll"]
