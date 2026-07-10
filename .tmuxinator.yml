@@ -1,0 +1,30 @@
+# Tmuxinator configuration for chad monorepo (Single Window Layout)
+# Start it using: ./bash-scripts/dev.sh  (handles locale + correct flag for you)
+# or directly:    tmuxinator start -p .tmuxinator.yml
+# or copy/symlink to ~/.config/tmuxinator/chad.yml and run: tmuxinator start chad
+#
+# NOTE: verified against tmuxinator 3.4.1 — the project-config flag is -p, not
+# -c (some older docs/comments, incl. in hiddengarden.events, reference -c).
+#
+# Wzorowane na .tmuxinator.yml z hiddengarden.events (repo kolegi) — adaptowane do
+# ekosystemu chad / Content Provider. QNAP NIE używa tmuxinator jako runtime —
+# to jest wyłącznie lokalny workflow developerski. Na QNAP: docker-compose.
+
+name: chad
+root: ./
+
+# Włącza wyświetlanie obramowań z tytułami paneli na górze
+pre_window: tmux set -g pane-border-status top
+
+windows:
+  - services:
+      layout: tiled
+      panes:
+        # 1. Infrastruktura lokalna (na razie: MongoDB w Dockerze)
+        - tmux select-pane -t "$TMUX_PANE" -T "Docker Infrastructure (Mongo)" && pnpm mongo:up && docker compose logs -f mongodb
+        # 2. dba — watch build (dashboard/console zależą od zbudowanego dist/)
+        - tmux select-pane -t "$TMUX_PANE" -T "DBA (tsc --watch)" && pnpm dba
+        # 3. Dashboard (Next.js)
+        - tmux select-pane -t "$TMUX_PANE" -T "Dashboard" && pnpm dashboard
+        # 4. Console (CLI, content-finder) — interaktywny, wejdź w panel żeby używać
+        - tmux select-pane -t "$TMUX_PANE" -T "Console (CLI)" && pnpm console

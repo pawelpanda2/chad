@@ -1,0 +1,66 @@
+Nazwa skryptu: copy-env.sh
+Środowisko: Wszystkie (uniwersalny helper)
+Pierwszy krok env: N/A (to jest helper env)
+Source env: .env.02_local_mac, .env.04_docker_mac, .env.05_docker_qnap_test, .env.06_docker_qnap_prod
+Target env: .env
+Główne zadanie: Przygotowanie pliku .env dla konkretnego środowiska
+Czego NIE robi: Nie pobiera sekretów z zewnętrznego repo (w trybie lokalnym), nie modyfikuje source env files
+Bezpieczeństwo: Robi backup istniejącego .env przed nadpisaniem
+Powiązane skrypty: Wszystkie skrypty środowiskowe w 03_scripts/nodejs/
+
+========================================
+STANDARD OBSŁUGI .ENV
+========================================
+
+1. .env NIE jest źródłem prawdy
+   .env jest plikiem roboczym, który jest kopiowany przed uruchomieniem środowiska
+
+2. Source env files SĄ źródłem prawdy:
+   - .env.02_local_mac        (lokalny development na Mac)
+   - .env.04_docker_mac       (Docker na Mac)
+   - .env.05_docker_qnap_test (QNAP test environment)
+   - .env.06_docker_qnap_prod (QNAP production environment)
+
+3. Każdy env-specific script najpierw wywołuje:
+   bash 03_scripts/nodejs/01_envs/copy-env.sh <env_name>
+
+4. Helper robi backup starego .env:
+   .env.backup_before_get_env_YYMMDD_HHMMSS
+
+5. Helper nie wypisuje sekretów z .env
+
+========================================
+OBSŁUGIWANE ENV NAMES
+========================================
+
+local_mac   -> .env.02_local_mac        -> .env
+docker_mac  -> .env.04_docker_mac       -> .env
+qnap_test   -> .env.05_docker_qnap_test -> .env
+qnap_prod   -> .env.06_docker_qnap_prod -> .env
+
+========================================
+PRZYKŁADY UŻYCIA
+========================================
+
+# Local development on Mac
+bash 03_scripts/nodejs/01_envs/copy-env.sh local_mac
+
+# Docker on Mac
+bash 03_scripts/nodejs/01_envs/copy-env.sh docker_mac
+
+# QNAP test environment
+bash 03_scripts/nodejs/01_envs/copy-env.sh qnap_test
+
+# QNAP production environment
+bash 03_scripts/nodejs/01_envs/copy-env.sh qnap_prod
+
+========================================
+TRYB LEGACY (zewnętrzne repo env)
+========================================
+
+Jeśli pierwszy argument NIE jest znaną nazwą env (local_mac, docker_mac,
+qnap_test, qnap_prod), skrypt traktuje go jako nazwę projektu do pobrania
+z zewnętrznego repo env (git@github.com:pawelpanda2/env.git).
+
+Przykład:
+  bash 03_scripts/nodejs/01_envs/copy-env.sh chat-ai-game_26-06-01

@@ -1,0 +1,80 @@
+Nazwa błędu: start_docker_image.sh builds image during start
+
+Severity: CRITICAL
+
+Data: 2026-06-10
+
+========================================
+OBJAWY
+========================================
+
+Użytkownik odpala deploy/start, a w logu pojawia się build Docker:
+
+  => [personal-dashboard-test builder 8/8] RUN npm run build
+  => Next.js Creating an optimized production build ...
+
+Inne objawy:
+- start trwa bardzo długo
+- w logu widać docker build lub docker compose build
+- w logu widać npm run build
+- w logu widać "Creating an optimized production build"
+
+========================================
+PRZYCZYNA
+========================================
+
+1. docker-compose.qnap.test.yml ma `build:` directive dla usług
+2. content-provider-api service nie ma `image:` directive
+3. Nawet z --no-build, Docker Compose może próbować buildować jeśli:
+   - service ma `build:` ale nie ma `image:`
+   - lub IMAGE_TAG nie istnieje
+
+========================================
+POPRAWKA
+========================================
+
+1. start_docker_image.sh używa --no-build (już jest w linii 265 i 270)
+2. Przed startem sprawdza czy image istnieje (display_image_info)
+3. Jeśli image nie istnieje, skrypt przerywa z błędem
+
+========================================
+POPRAWNE ZACHOWANIE
+========================================
+
+- start script ma tylko uruchamiać istniejący image
+- jeśli image nie istnieje, ma przerwać z błędem i powiedzieć, żeby odpalić build script
+- build jest tylko w build_docker_image.sh
+
+CZEGO NIE ROBIĆ:
+- nie budować w start_docker_image.sh
+- nie używać docker compose up --build
+- nie używać docker compose build
+- nie używać docker build
+- nie odpalać npm run build
+- nie robić fallbacku do builda
+- nie naprawiać tego przez dodanie automatycznego builda do startu
+
+========================================
+JAK ROZPOZNAĆ BUG
+========================================
+
+Jeśli w logu start_docker_image.sh pojawia się:
+- RUN npm run build
+- Creating an optimized production build
+- docker build
+- docker compose build
+
+...to jest ten bug.
+
+========================================
+ROZWIĄZANIE
+========================================
+
+1. Upewnij się, że build został wykonany:
+   bash 03_scripts/nodejs/05_docker_qnap_test/build_docker_image.sh
+
+2. Sprawdź dostępne tagi:
+   bash 03_scripts/nodejs/05_docker_qnap_test/start_docker_image.sh --list-tags
+
+3. Uruchom z konkretnym tagiem:
+   bash 03_scripts/nodejs/05_docker_qnap_test/start_docker_image.sh --tag 26-06-10__18-00-00

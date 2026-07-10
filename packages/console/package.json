@@ -1,0 +1,27 @@
+{
+  "name": "console",
+  "version": "1.0.0",
+  "description": "TypeScript client for Content Provider API",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx src/main.ts",
+    "test:write": "tsx src/writeTests.ts",
+    "typecheck": "tsc --noEmit",
+    "cli": "tsx src/cli.ts"
+  },
+  "dependencies": {
+    "@clack/prompts": "^1.5.1",
+    "@inquirer/input": "^5.1.2",
+    "@inquirer/select": "^5.2.1",
+    "dba": "workspace:*",
+    "dotenv": "^16.4.5",
+    "openai": "^6.43.0",
+    "prompts": "^2.4.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/prompts": "^2.4.9",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3"
+  }
+}

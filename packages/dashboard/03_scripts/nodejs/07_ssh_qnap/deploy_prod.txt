@@ -1,0 +1,61 @@
+Nazwa skryptu: deploy_prod.sh
+Środowisko: QNAP production (qnap_prod)
+Pierwszy krok env: Wywołuje copy-env.sh qnap_prod na QNAP przez SSH
+Source env: .env.06_docker_qnap_prod (na QNAP)
+Target env: .env (na QNAP)
+Główne zadanie: Deploy aplikacji na QNAP production environment przez SSH
+Czego NIE robi: NIE buduje obrazu Docker, nie dotyka test containers
+Bezpieczeństwo: Wymaga wpisania "PROD" aby kontynuować
+Powiązane skrypty: server_by_ssh_v3.sh, deploy_test.sh
+
+========================================
+OPIS DZIAŁANIA
+========================================
+
+deploy_prod.sh jest wrapperem, który wywołuje deploy_env prod z
+server_by_ssh_v3.sh.
+
+Flow:
+1. Łączy się przez SSH z QNAP (konfiguracja z lokalnego .env)
+2. Wymaga potwierdzenia: wpisanie "PROD"
+3. git pull --ff-only w repozytorium na QNAP
+4. Wywołuje copy-env.sh qnap_prod na QNAP (przygotowuje .env)
+5. cd 03_scripts/nodejs/06_docker_qnap_prod
+6. stop_docker_image.sh (zatrzymuje stare kontenery)
+7. start_docker_image.sh (uruchamia nowe kontenery z istniejącym obrazem)
+
+========================================
+PORTY
+========================================
+
+Frontend: 12030
+Backend API: 12033
+Content Provider API: 12034
+
+========================================
+WAŻNE
+========================================
+
+- Prod deploy NIE BUDUJE nowego obrazu Docker
+- Używa obrazu zbudowanego wcześniej przez test deploy
+- Wymaga wpisania "PROD" aby kontynuować (safety confirmation)
+- Nie dotyka kontenerów testowych
+- Nie ma fallbacku do folderu testowego
+- Nie używa run_docker_image.sh (tylko start_docker_image.sh)
+
+========================================
+BEZPIECZEŃSTWO
+========================================
+
+Przed deployem na produkcję:
+1. Upewnij się, że test deploy zakończył się sukcesem
+2. Sprawdź, czy obraz Docker został zbudowany
+3. Przygotuj się na wpisanie "PROD" w trakcie deployu
+
+========================================
+URUCHOMIENIE
+========================================
+
+bash 03_scripts/nodejs/07_ssh_qnap/deploy_prod.sh
+
+# Następnie wpisz "PROD" gdy zostaniesz poproszony

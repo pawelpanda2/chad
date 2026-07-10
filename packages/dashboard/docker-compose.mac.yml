@@ -1,0 +1,60 @@
+# Docker Compose for Local Development on Mac
+# Personal Dashboard - Next.js Application with Content Provider API
+
+services:
+  # Content Provider API - C# ASP.NET service
+  content-provider-api:
+    build:
+      context: .
+      dockerfile: Dockerfile.content-provider-api
+    container_name: content-provider-api
+    ports:
+      - "${CONTENT_PROVIDER_API_PORT:-12024}:12024"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:12024
+      - CONTENT_PROVIDER_ROOT=/app/cp-root
+      - CONTENT_PROVIDER_API_PORT=12024
+    volumes:
+      # Mount cp-root for Content Provider access (read-only)
+      - ./cp-root:/app/cp-root:ro
+    restart: unless-stopped
+    networks:
+      - personal-dashboard-network
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:12024/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Personal Dashboard - Next.js application
+  personal-dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runner
+    container_name: personal-dashboard-mac
+    ports:
+      - "${FRONTEND_PORT:-12020}:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_TELEMETRY_DISABLED=1
+      # Content Provider API URL (using Docker network DNS)
+      - CONTENT_PROVIDER_API_URL=http://content-provider-api:12024
+      # Database URL for Prisma (SQLite)
+      - DATABASE_URL=file:/app/dev.db
+    restart: unless-stopped
+    networks:
+      - personal-dashboard-network
+    depends_on:
+      content-provider-api:
+        condition: service_healthy
+    volumes:
+      # Mount data directory for SQLite database
+      - ./data:/app/data
+
+networks:
+  personal-dashboard-network:
+    driver: bridge
+    name: personal-dashboard-mac-network

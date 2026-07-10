@@ -1,0 +1,114 @@
+Nazwa skryptu: server_by_ssh_v3.sh
+Środowisko: QNAP (test i prod)
+Pierwszy krok env: Ładuje konfigurację SSH z lokalnego .env
+Source env: Lokalny .env (SSH config) + copy-env.sh na QNAP (app config)
+Target env: .env na QNAP
+Główne zadanie: Obsługa połączeń SSH i deploy na QNAP
+Czego NIE robi: Nie buduje obrazów dla prod, nie używa run_docker_image.sh
+Bezpieczeństwo: Waliduje konfigurację przed połączeniem, wymaga "PROD" dla prod
+Powiązane skrypty: deploy_test.sh, deploy_prod.sh, build_remote_test.sh
+
+========================================
+KONFIGURACJA SSH
+========================================
+
+Wymagane zmienne w lokalnym .env:
+
+QNAP_SSH_HOST=100.117.139.83
+QNAP_SSH_PORT=22
+QNAP_SSH_USERNAME=pawelfluder
+QNAP_SSH_PASSWORD=twoje_haslo
+QNAP_REPO_DIR=/share/qnap/03_files_programming/03_github/personal-dashboard
+ENV_PROJECT_NAME=personal-dashboard
+
+Priorytet czytania konfiguracji:
+1. Zmienne środowiskowe shell
+2. Lokalny .env
+3. .env.07_ssh_qnap (fallback)
+
+========================================
+OBSŁUGA HASŁA SSH
+========================================
+
+QNAP_SSH_PASSWORD może być ustawione na trzy sposoby:
+1. Zmienna środowiskowa: export QNAP_SSH_PASSWORD=haslo
+2. W pliku .env: QNAP_SSH_PASSWORD=haslo
+3. W pliku .env.07_ssh_qnap: QNAP_SSH_PASSWORD=haslo
+
+Backward compatibility:
+- qnap_password (snake_case)
+- qnap-password (dash)
+
+Metody autentykacji (w kolejności):
+1. sshpass (jeśli zainstalowane i hasło ustawione)
+2. expect (jeśli zainstalowane i hasło ustawione)
+3. Interaktywne wpisywanie hasła
+
+========================================
+FLOW DLA TEST
+========================================
+
+deploy_env test:
+1. Walidacja konfiguracji
+2. Pokazanie deployment summary
+3. Połączenie SSH
+4. git pull --ff-only
+5. copy-env.sh qnap_test (na QNAP)
+6. build_docker_image.sh (BUDUJE obraz)
+7. stop_docker_image.sh
+8. start_docker_image.sh
+
+Porty:
+- Frontend: 12020
+- Backend: 12023
+- Content Provider API: 12024
+
+========================================
+FLOW DLA PROD
+========================================
+
+deploy_env prod:
+1. Walidacja konfiguracji
+2. Pokazanie deployment summary
+3. Wymaganie potwierdzenia "PROD"
+4. Połączenie SSH
+5. git pull --ff-only
+6. copy-env.sh qnap_prod (na QNAP)
+7. stop_docker_image.sh
+8. start_docker_image.sh (NIE buduje!)
+
+Porty:
+- Frontend: 12030
+- Backend: 12033
+- Content Provider API: 12034
+
+========================================
+WAŻNE ZASADY
+========================================
+
+1. Test deploy BUDUJE obraz Docker
+2. Prod deploy NIE BUDUJE obrazu (używa z test)
+3. Brak fallbacku prod -> test
+4. Nie używa run_docker_image.sh (tylko start_docker_image.sh)
+5. Nie robi docker system prune ani docker volume prune
+6. Walidacja konfiguracji przed każdym połączeniem
+7. Backup .env przed nadpisaniem (przez copy-env.sh)
+
+========================================
+FUNKCJE
+========================================
+
+run_step(ssh_target, label, remote_cmd):
+  Wykonuje pojedynczy krok przez SSH z obsługą hasła
+
+copy_remote_env(ssh_target, environment):
+  Przygotowuje .env na QNAP (kopiuje lub generuje przez copy-env.sh)
+
+deploy_env(environment):
+  Główna funkcja deploy (test lub prod)
+
+get_config_value(key, default):
+  Czyta konfigurację z priority: env var > .env > .env.07_ssh_qnap
+
+get_qnap_password():
+  Pobiera hasło SSH z różnych źródeł

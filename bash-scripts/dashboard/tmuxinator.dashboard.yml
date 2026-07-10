@@ -1,0 +1,25 @@
+# Scoped tmuxinator profile for `bash-scripts/dashboard/begin.sh` — only what
+# the dashboard actually needs today (dba watch-build + dashboard dev server
+# + content-provider, started only if not already running), not the full
+# multi-service stack from the root .tmuxinator.yml.
+# Session name "chad-dashboard" is deliberately different from the root
+# profile's "chad" session so both can run side by side without colliding.
+#
+# Root (from repo root, not this file's directory — tmuxinator's `root:` is
+# resolved relative to where `-p` is invoked from... actually resolved
+# relative to the project file itself is NOT guaranteed across versions, so
+# start.sh always invokes this with an absolute `root:` override via `-p`
+# plus cwd already set to REPO_ROOT; see start.sh).
+
+name: chad-dashboard
+root: ./
+
+pre_window: tmux set -g pane-border-status top
+
+windows:
+  - dashboard:
+      layout: even-horizontal
+      panes:
+        - tmux select-pane -t "$TMUX_PANE" -T "DBA (tsc --watch)" && pnpm dba
+        - tmux select-pane -t "$TMUX_PANE" -T "Dashboard (next dev)" && pnpm dashboard
+        - tmux select-pane -t "$TMUX_PANE" -T "Content Provider" && ./bash-scripts/dashboard/run-content-provider-if-needed.sh

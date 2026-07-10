@@ -1,0 +1,45 @@
+# Content Provider API - C# ASP.NET Minimal API
+# Multi-stage build for the Content Provider service
+
+# ============================================
+# Stage 1: Build
+# ============================================
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+
+WORKDIR /src
+
+# Copy the C# source code
+COPY content-provider/charp ./content-provider/charp
+
+# Build and publish the Content Provider API
+WORKDIR /src/content-provider/charp/SharpContainerApi
+RUN dotnet restore
+RUN dotnet publish -c Release -o /app/publish
+
+# ============================================
+# Stage 2: Runtime
+# ============================================
+FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
+
+WORKDIR /app
+
+# Copy the published output from build stage
+COPY --from=build /app/publish .
+
+# Install additional dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libicu72 \
+    ca-certificates \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
+
+# Expose port (default 12024, can be overridden by ENV)
+EXPOSE 12024
+
+# Set environment variables (default port 12024, can be overridden)
+ENV ASPNETCORE_URLS=http://+:12024
+ENV ASPNETCORE_ENVIRONMENT=Production
+ENV CONTENT_PROVIDER_API_PORT=12024
+
+# Entry point
+ENTRYPOINT ["dotnet", "SharpContainerApi.dll"]

@@ -1,0 +1,29 @@
+users:
+  - id: "339e1f74-ec6e-46ef-835b-fea92e66a491"
+    username: "pawel_f"
+    email: "pawel@example.com"
+    passwordHash: "$2b$12$hROAOwBDdF1d/fYVZUu/4O4CJrVEw3HDq27Ll/Kf7ZuKqYupvJDTK"
+    createdAt: "2026-06-06T12:00:00+02:00"
+    updatedAt: "2026-06-06T12:00:00+02:00"
+
+  - id: "3c315f8e-6b14-46ab-9d5d-147efef6bde6"
+    username: "kamil_s"
+    email: "kamil@example.com"
+    passwordHash: "$2b$12$hROAOwBDdF1d/fYVZUu/4O4CJrVEw3HDq27Ll/Kf7ZuKqYupvJDTK"
+    createdAt: "2026-06-06T12:00:00+02:00"
+    updatedAt: "2026-06-06T12:00:00+02:00"
+
+  - id: "5a9c8b7d-6e5f-4a3b-2c1d-0e9f8a7b6c5d"
+    username: "test"
+    email: "test@example.com"
+    passwordHash: "$2b$12$hROAOwBDdF1d/fYVZUu/4O4CJrVEw3HDq27Ll/Kf7ZuKqYupvJDTK"
+    createdAt: "2026-06-06T12:00:00+02:00"
+    updatedAt: "2026-06-06T12:00:00+02:00"
+
+  - id: "5a9c8b7d-6e5f-4a3b-2c1d-0e9f8a7b6c5d"
+    username: "test2"
+    email: "test2@example.com"
+    passwordHash: "$2b$12$hROAOwBDdF1d/fYVZUu/4O4CJrVEw3HDq27Ll/Kf7ZuKqYupvJDTK"
+    createdAt: "2026-06-06T12:00:00+02:00"
+    updatedAt: "2026-06-06T12:00:00+02:00"
+    

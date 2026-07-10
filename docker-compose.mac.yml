@@ -1,0 +1,33 @@
+# Docker Compose — lokalna infrastruktura na Macu (dev)
+#
+# Uruchamia TYLKO MongoDB. Aplikacje (dashboard, console) w local dev są
+# odpalane przez pnpm/tmuxinator (patrz .tmuxinator.yml), nie przez Docker.
+# To jest zamierzone: tmuxinator ma być obsłużony lokalnie, Docker Compose
+# lokalnie służy wyłącznie do infrastruktury (analogicznie do wzorca
+# hiddengarden.events, gdzie lokalny docker-compose.yml uruchamia tylko
+# NATS/nats-ui/Caddy, a aplikacje idą przez pnpm w tmuxinator).
+#
+# Dane MongoDB w local dev NIE są na ścieżkach QNAP (/share/ContainerData/...)
+# — to lokalny named volume, bo Mac nie ma /share. Na QNAP patrz
+# docker-compose.qnap.test.yml / docker-compose.qnap.prod.yml.
+
+services:
+  mongodb:
+    image: mongo:7
+    container_name: chad-mongodb-mac
+    restart: unless-stopped
+    ports:
+      - "${MONGODB_PORT:-27017}:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: "${MONGO_ROOT_USERNAME:-change_me}"
+      MONGO_INITDB_ROOT_PASSWORD: "${MONGO_ROOT_PASSWORD:-change_me}"
+    volumes:
+      - chad-mongodb-mac-db:/data/db
+      - chad-mongodb-mac-configdb:/data/configdb
+      - ./bash-scripts/mongo/backups:/backups
+
+volumes:
+  chad-mongodb-mac-db:
+    name: chad-mongodb-mac-db
+  chad-mongodb-mac-configdb:
+    name: chad-mongodb-mac-configdb
