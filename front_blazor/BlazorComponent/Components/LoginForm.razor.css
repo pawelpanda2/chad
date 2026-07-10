@@ -1,0 +1,26 @@
+.login-box {
+    max-width: 400px;
+    padding: 1.5rem;
+    border: 1px solid #ccc;
+    border-radius: 0.5rem;
+}
+
+.login-box label {
+    display: block;
+    margin-top: 1rem;
+}
+
+.login-box input {
+    width: 100%;
+    padding: 0.5rem;
+}
+
+.login-box button {
+    margin-top: 1rem;
+    margin-right: 0.5rem;
+}
+
+.error {
+    color: red;
+    margin-top: 1rem;
+}

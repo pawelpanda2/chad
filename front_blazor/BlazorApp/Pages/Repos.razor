@@ -1,0 +1,307 @@
+﻿@* Route removed: Repos is rendered at / via Pages/Root.razor *@
+@* DEV MODE: [Authorize] attribute removed for local development without auth *@
+@using BackendAdapters.Models
+@using BackendAdapters.Names
+@using BackendAdapters.Operations
+@using BackendAdapters.Workers
+@using BlazorApp.Components
+@using BlazorApp.Components.ItemModels
+@using BlazorApp.Workers
+@using BlazorApp.Services
+@* @using Microsoft.AspNetCore.Authorization *@
+
+@* @attribute [Authorize] *@
+
+
+
+@inject AuthenticationStateProvider _authStateProvider
+@* @inject Blazored.LocalStorage.ILocalStorageService _localStorage *@
+
+
+<div class="rounded border p-3" style="width: 100%; max-width: 700px; margin: 0px;">
+    <div>
+        Repo::
+
+        <ComboBox02
+            @ref="_comboRef"
+            Items="AllRepoModels"
+            TextSelector="@GetItemName"
+            ValueSelector="@GetItemId"
+            SelectedItemChanged=@SelectedRepoNameChanged
+        />
+        @* @bind-SelectedItem=@SelectedRepoName/> *@
+        @* OnValueChanged=@HandleValueChanged *@
+    </div>
+    <div>
+        Loca::
+        <input type="text" @bind=@inputLocaName />
+    </div>
+
+    @* toolbar *@
+    <div class="menu-item">
+        <button class="btn btn-sm repos-btn" type="button" @onclick=@OnBackArrowBtnClicked>←</button>
+        <button class="btn btn-sm repos-btn" type="button" @onclick=@OnBackArrowBtnClicked>↶</button>
+        <button class="btn btn-sm repos-btn" type="button" @onclick=@OnGoBtnClicked>GO</button>
+        <button class="btn btn-sm repos-btn" type="button" @onclick=@OnBackArrowBtnClicked>→</button>
+        <button class="btn btn-sm repos-btn" type="button" @onclick="LogoutAsync">Logout</button>
+    </div>
+
+
+
+    @if (_item != null)
+    {
+        <div class="menu-item">
+            <div>Address: @ConvAddress(_item.Address)</div>
+            <div>Type: @_item.Type</div>
+            <div>Name: @_item.Name</div>
+        </div>
+        <div class="menu-item">
+        <TextView @ref="textView" @bind-Item=@_item ReloadItemAsync=@ReloadItemByModel></TextView>
+        <FolderView @ref="folderView" @bind-Item=@_item ReloadItemAsync=@ReloadItemByModel></FolderView>
+    </div>
+    }
+    else
+    {
+        <div class="menu-item">
+            Loading item...
+        </div>
+    }
+
+</div>
+
+@code {
+    [Inject]
+    private IJSRuntime JavaScript { get; set; }
+    
+    [Inject]
+    private BackendAdapter Backend { get; set; }
+    [Inject]
+    NavigationManager _navigationManager { get; set; }
+    
+    private ComboBox02 _comboRef;
+
+    [Inject]
+    private RepoAdapter RepoAdapter { get; set; }
+
+    private ItemModel _item;
+    private string inputLocaName = string.Empty;
+
+    private TextView textView;
+    private FolderView folderView;
+    private UrlAddressParser _urlParser;
+    private Guid _tabId;
+    private AddressStorageWorker _addressStorageWorker;
+    private string _storageAdr;
+
+    private AddressLoadDecision _addressLoadDecision;
+
+    [Parameter]
+    public string? UrlUniAddress { get; set; }
+
+    public List<ItemModel> AllRepoModels { get; set; } = new List<ItemModel>();
+
+    public string SelectedRepoName { get; set; } = string.Empty;
+
+    public Repos()
+    {
+        _addressStorageWorker = new AddressStorageWorker();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _addressLoadDecision = new AddressLoadDecision(
+            Backend,
+            RepoAdapter,
+            JavaScript,
+            AllRepoModels);
+        
+        var repos = (await RepoAdapter.GetAllReposNames()).ToList();
+        AllRepoModels.AddRange(repos.OrderBy(r => r.Name).ToList());
+        
+        await _addressLoadDecision
+            .OnInitializedAsync(
+                UrlUniAddress,
+                _item,
+                _navigationManager,
+                ReloadItemByAddress,
+                ReloadItemByModel,
+                AllRepoModels);
+        
+        // _tabId = await _tabIdStorageWorker.Get(_js);
+        //
+        //
+        // // await SetAllRepos();
+        // _urlParser = new UrlAddressParser(RepoAdapter);
+        //
+        // (bool s01, ItemModel newItem) =
+        //     await _urlParser.GetItem(UrlUniAddress);
+        //
+        // if(!s01)
+        // {
+        //     var firstModel = AllRepoModels.First();
+        //     var repoId = firstModel.AdrTuple.Repo;
+        //     _navigationManager.NavigateTo(repoId, false);
+        //    await ReloadItemByAddress(firstModel.AdrTuple);
+        //    return;
+        // }
+        //
+        // bool pageReloadNeeded = _urlParser
+        //     .IsPageReloadNeeded(newItem, UrlUniAddress, out string newUrl);
+        // if (pageReloadNeeded)
+        // {
+        //     _navigationManager.NavigateTo(newUrl);
+        // }
+        //
+        // bool itemReloadNeeded = _urlParser
+        //     .IsItemReloadNeeded(_item, newItem);
+        //
+        // (bool, string) r1 = await _addressStorageWorker.Get(_js, _tabId);
+        // if (r1.Item1)
+        // {
+        //     var adrTuple = IFrontendOperations.NoSqlAddress.CreateAdrTupleFromAddress(r1.Item2);
+        //     await ReloadItemByAddress(adrTuple);
+        //     return;
+        // }
+        // else
+        // {
+        //     await _addressStorageWorker.Put(_js, _tabId, UrlUniAddress);
+        // }
+        //
+        // if (itemReloadNeeded)
+        // {
+        //     await ReloadItemByModel(newItem);
+        // }
+        
+    }
+
+    protected async Task ReloadItemByAddress(
+        (string Repo, string Loca) address)
+    {
+        string itemJString = await GetItem(address);
+        ItemModel? itemObj = IFrontendOperations.Json
+        .TryDeserializeObject<ItemModel>(itemJString);
+        if (itemObj != null)
+        {
+            await ReloadItemByModel(itemObj);
+        }
+    }
+
+    protected async Task ReloadItemByModel(
+        ItemModel itemObj)
+    {
+         await _addressStorageWorker.Put(JavaScript, _tabId, itemObj.Address);
+        //_comboRef.SetSelectedItem(itemObj.AdrTuple.Repo);
+        // inputLocaName = itemObj.AdrTuple.Loca;
+        _item = itemObj;
+        // (string, string) adrTuple = IFrontendOperations
+        //     .NoSqlAddress
+        //     .CreateAdrTupleFromAddress(_item.Address);
+        inputLocaName = _item.AdrTuple.Item2;
+
+        if (folderView != null)
+        {
+            // folderView.Item = _item;
+            // folderView.Changed();
+        }
+        
+        if (textView != null)
+        {
+            textView.Item = _item;
+            textView.Changed();
+        }
+        
+        // Aktualizuj tytuł strony
+        // await _pageTitleWorker.SetTitle(_js, _item?.Name);
+        
+        StateHasChanged();
+    }
+
+    protected void ReloadItem(
+        ItemModel item,
+        bool reloadState)
+    {
+        if (item == null)
+        {
+            return;
+        }
+
+        _item = item;
+        (string, string) adrTuple = IFrontendOperations
+            .NoSqlAddress
+            .CreateAdrTupleFromAddress(item.Address);
+        inputLocaName = adrTuple.Item2;
+
+        if (folderView != null)
+        {
+            folderView.Item = item;
+        }
+
+        if (textView != null)
+        {
+            textView.Item = item;
+        }
+
+        StateHasChanged();
+    }
+
+    public async Task OnGoBtnClicked(MouseEventArgs e)
+    {
+        (string, string) address = (SelectedRepoName, inputLocaName);
+        await ReloadItemByAddress(address);
+    }
+
+    public async Task<string> GetItem(
+        (string Repo, string Loca) address)
+    {
+        string itemJson = await Backend.InvokeStringArgsApi(
+        [SNames.RepoService, SNames.ItemWorker, SNames.GetItem,
+            address.Repo,
+            address.Loca]);
+        return itemJson;
+    }
+
+    private async Task OnBackArrowBtnClicked(
+        MouseEventArgs e)
+    {
+        string newAddress = IFrontendOperations
+            .NoSqlAddress
+            .MoveOneLocaBack(_item.Address);
+        (string, string) newAdrTuple = IFrontendOperations
+            .NoSqlAddress
+            .CreateAdrTupleFromAddress(newAddress);
+        await ReloadItemByAddress(newAdrTuple);
+    }
+
+    private string ConvAddress(
+        string itemAddress)
+    {
+        string result = itemAddress
+            .Replace('/', '-');
+        return result;
+    }
+
+    private string GetItemName(ItemModel item) => item.Name;
+    private string GetItemId(ItemModel item) => item.Id;
+
+    private void SelectedRepoNameChanged(
+        string id)
+    {
+        SelectedRepoName = id;
+    }
+
+    private Task LogoutAsync()
+    {
+        if (_authStateProvider is CustomAuthStateProvider custom)
+        {
+            custom.Logout();
+        }
+
+        // wracamy na / (Root zdecyduje czy pokazać login)
+        _navigationManager.NavigateTo("/", forceLoad: false);
+        return Task.CompletedTask;
+    }
+}

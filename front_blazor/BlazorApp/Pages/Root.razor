@@ -1,0 +1,9 @@
+@page "/"
+@page "/{Address}"
+
+<Repos UrlUniAddress="@(Address ?? string.Empty)" />
+
+@code {
+    [Parameter]
+    public string? Address { get; set; }
+}

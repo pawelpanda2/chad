@@ -1,0 +1,48 @@
+﻿@* <Router AppAssembly="@typeof(App).Assembly">
+    <Found Context="routeData">
+        <RouteView RouteData="@routeData" DefaultLayout="@typeof(BlazorApp.Layout.MainLayout)" />
+    </Found>
+
+    <NotFound>
+        <LayoutView Layout="@typeof(BlazorApp.Layout.MainLayout)">
+            <PageTitle>Not found</PageTitle>
+            <p>Sorry, there's nothing at this address.</p>
+        </LayoutView>
+    </NotFound>
+</Router> *@
+
+@inject NavigationManager Navigation 
+@inject DevLogService DevLog
+<Router AppAssembly="@typeof(App).Assembly">
+     <Found Context="routeData">
+         <RouteView RouteData="@routeData" DefaultLayout="@typeof(BlazorApp.Layout.MainLayout)" />
+         </Found>
+    <NotFound>
+        <LayoutView Layout="@typeof(BlazorApp.Layout.MainLayout)">
+            <PageTitle>Not found</PageTitle>
+
+            @{
+                var currentUrl = Navigation.Uri;
+                var baseUri = Navigation.BaseUri;
+                var relativePath = currentUrl.StartsWith(baseUri)
+                    ? currentUrl.Substring(baseUri.Length)
+                    : currentUrl;
+
+                DevLog.LogFrontendError("Router/NotFound",
+                    $"NotFound route triggered: {relativePath}",
+                    new
+                    {
+                        CurrentUrl = currentUrl,
+                        BaseUri = baseUri,
+                        RelativePath = relativePath,
+                        Timestamp = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss.fff")
+                    });
+            }
+
+            <p>Sorry, there's nothing at this address.</p>
+            <p style="color: #666; font-size: 11px;">URL: @relativePath</p>
+        </LayoutView>
+    </NotFound>
+</Router>
+
+<DevErrorPanel />
