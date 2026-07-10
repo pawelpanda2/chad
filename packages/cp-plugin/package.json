@@ -1,0 +1,16 @@
+{
+  "name": "cp-plugin",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Locally-installed desktop helper for Content Provider GUIs (cp-gui). NOT part of the content-provider backend or GUI — a separate program the GUI calls over localhost HTTP to open files in an editor, open folders in Finder/Explorer, or open a terminal. If unreachable, the GUI must keep working — desktop-integration buttons simply disable or show a message, never block browsing/editing.",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "keywords": ["macos", "osa", "plugin", "swagger", "cp-gui"],
+  "license": "MIT",
+  "dependencies": {
+    "dotenv": "^16.4.5"
+  }
+}

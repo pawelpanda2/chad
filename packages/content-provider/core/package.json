@@ -1,8 +1,8 @@
 {
-  "name": "content-provider",
+  "name": "cp-core",
   "version": "0.0.0",
   "private": true,
-  "description": "Future TypeScript/Node.js implementation of Content Provider. NOT a production replacement yet — see README.md. Legacy, currently-running implementation lives in packages/legacy-content-provider.",
+  "description": "Content Provider compatibility models/interfaces/method names only — no storage selection logic. Consumed by cp-entry, cp-files, cp-mongo, cp-net-adapter.",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

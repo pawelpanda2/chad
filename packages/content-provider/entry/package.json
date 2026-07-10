@@ -1,0 +1,21 @@
+{
+  "name": "cp-entry",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Public entry point to Content Provider. Routes repo GUID -> storage config -> cp-net-adapter (Stage 1) / cp-files / cp-mongo (later), returns the unified CpItem model. dashboard, cp-gui, and any API layer must only ever import cp-entry, never cp-files/cp-mongo/cp-net-adapter directly.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "cp-core": "workspace:*",
+    "cp-net-adapter": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "typescript": "^5.3.3"
+  }
+}

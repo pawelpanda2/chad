@@ -1,0 +1,24 @@
+{
+  "name": "cp-gui",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Content Provider GUI — dual-purpose: (1) standalone browsing/editing app, analogous to legacy-content-provider/front_blazor, and (2) a component library reused inside packages/dashboard's Folders page. One implementation, not two. NOT implemented yet — see README.md for the Stage 1 scope (structure + integration contracts only).",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "cp-core": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/react": "^19",
+    "typescript": "^5.3.3"
+  }
+}

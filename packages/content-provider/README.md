@@ -1,28 +1,23 @@
-# content-provider (future implementation — NOT production yet)
+# packages/content-provider — new TypeScript/Node Content Provider (Stage 1)
 
-Status: **skeleton only, created 2026-07-10.** This is not a working Content Provider. Do not point any real dashboard/console traffic at it.
+Not one package — a group of separate pnpm packages (see `pnpm-workspace.yaml`: `packages/content-provider/*`). Gradual, staged replacement for [`packages/legacy-content-provider`](../legacy-content-provider) (currently running .NET/Blazor implementation, stays authoritative until fully replaced).
 
-## What this is
-
-The intended future TypeScript/Node.js implementation of Content Provider — a gradual, stage-by-stage replacement for [`packages/legacy-content-provider`](../legacy-content-provider), which is the current, actually running implementation (.NET API, Blazor frontend, Aspire, and several earlier experiments — see its own README/architecture).
-
-## What this is not (yet)
-
-- Not deployed anywhere, not started by any script.
-- Not wired into `begin.sh`/tmuxinator — `packages/legacy-content-provider` is what actually runs today.
-- Does not implement `GetItem`, `GetByNames`, `Put`, `PostParentItem`, or anything else from the real API surface.
-- Not copied from `legacy-content-provider/typescript` or `legacy-content-provider/typescript_runner` — those weren't reviewed for currency against today's architecture before this skeleton was created, per explicit instruction not to copy blindly.
-
-## What's here
-
-- `src/types.ts` — the compatibility model types already decided in `documentation/ai-docs/26-07-10_cline_prompt_mongodb_qnap_folders_v3.md` (`address + fileName` as the unique key, required `config.yaml` fields, everything else in `remaining_config`). Nothing else.
-
-## Intended migration direction
+| Package | Role | Stage |
+|---|---|---|
+| `cp-core` | Models, interfaces, compatible method names (`GetItem`, `GetByNames`, `GetManyByName`, `FindRecursively`, `Put`, `PostParentItem`). Never selects a storage implementation. | 1 |
+| `cp-entry` | **The only package dashboard/cp-gui/API should ever import.** Routes repo GUID → storage backend → unified `CpItem`. | 1 |
+| `cp-net-adapter` | Implements `cp-core`'s contract by calling the real, running .NET Content Provider over HTTP `/invoke`. Read-only in Stage 1. | 1 |
+| `cp-files` | Filesystem/Dropbox storage implementation. | 2 |
+| `cp-mongo` | MongoDB storage implementation. | 2 |
 
 ```txt
-legacy-content-provider (.NET, running today)
-        ↓ stage by stage, not a rewrite
-content-provider (this package)
+cp-entry
+   │
+   ├─► cp-net-adapter  (Stage 1, only one that exists)
+   ├─► cp-files         (Stage 2)
+   └─► cp-mongo          (Stage 2)
 ```
 
-Planned stages (not started): read items (`GetItem`), `GetByNames`, `Put`, `PostParentItem`, import/export to/from `legacy-content-provider`'s file format, MongoDB integration. Each stage must keep API/data-model compatibility with the legacy implementation until it's fully retired.
+Write operations (`Put`, `PostParentItem`) are Stage 3 — implemented in `cp-net-adapter` already (the `/invoke` shape is simple and already documented) but not exercised or relied on until then.
+
+Compatibility requirement: for the same item, `cp-net-adapter` and (later) `cp-files` must return identical `Body`/`Config`/`Address`/legacy-`Settings`/`id`/`name`/`type`/`created` — an adapter isn't considered compatible until that's verified.
