@@ -2,6 +2,8 @@
 
 Status: aktualne (2026-07-10). Katalog był wcześniej nazwany `03_scripts` — zmieniono nazwę i zaktualizowano wszystkie aktywne odwołania (root `package.json`, `.tmuxinator.yml`, `docker-compose*.yml`, własna dokumentacja). Pre-istniejące, historyczne odwołania do starego `03_scripts/nodejs/...` w `documentation/nodejs-style.md`, `packages/console/README.md` oraz w `packages/dashboard/03_scripts/` (osobny, wewnętrzny katalog skryptów odziedziczony z dawnego, samodzielnego repo `chad-dashbord` — opisuje inny, stary sposób deployu przez SSH/QNAP) zostały celowo pozostawione bez zmian — to dokumentacja historyczna dotycząca innej, starej struktury, nie części nowego `bash-scripts`.
 
+Główne skrypty dashboardu przemianowano (2026-07-10): `start.sh` → `begin.sh`, `stop.sh` → `end.sh` (żeby autouzupełnianie `bash b<TAB>` / `bash e<TAB>` / `bash s<TAB>` było jednoznaczne — wcześniej `start`/`status`/`stop` zaczynały się wszystkie na `s`).
+
 ## Struktura
 
 ```txt
@@ -15,17 +17,30 @@ bash-scripts/
 │   ├── rs-init.js           # idempotentna inicjalizacja replica set
 │   └── backups/             # lokalne backupy (gitignored poza .gitkeep)
 ├── dashboard/
-│   ├── start.sh              # główne wejście: uruchamia dashboard + wymagane usługi
-│   ├── stop.sh
-│   ├── restart.sh
+│   ├── begin.sh                            # główne wejście: uruchamia dashboard + dba watch + Content Provider
+│   ├── end.sh                               # zatrzymuje to, co begin.sh uruchomił
+│   ├── restart.sh                            # end.sh + begin.sh
 │   ├── status.sh
 │   ├── logs.sh
 │   ├── build.sh
-│   └── tmuxinator.dashboard.yml  # profil tmuxinator scoped tylko do dashboardu
+│   ├── run-content-provider-if-needed.sh      # idempotentny start/health-check Content Providera + ownership tracking
+│   └── tmuxinator.dashboard.yml               # profil tmuxinator scoped do dashboardu (3 panele)
 └── dev.sh                    # pełny stack (wszystkie packages) przez root .tmuxinator.yml
 ```
 
-Nie utworzono pustych folderów `beeper/`, `docker/`, `qnap/` sugerowanych jako opcja — nie ma tam jeszcze żadnej realnej zawartości (moduły beeper nie są zmigrowane, docker/qnap są już pokryte przez pliki `docker-compose.*.yml` w rootcie). Foldery zostaną dodane, gdy będzie w nich co trzymać.
+Nie utworzono pustych folderów `beeper/`, `docker/`, `qnap/` sugerowanych jako opcja — nie ma tam jeszcze żadnej realnej zawartości. Foldery zostaną dodane, gdy będzie w nich co trzymać.
+
+## Root-level wrappery
+
+Żeby nie trzeba było wchodzić do `bash-scripts/dashboard/`, w rootcie repo istnieją cienkie wrappery:
+
+```bash
+bash begin.sh     # = bash bash-scripts/dashboard/begin.sh
+bash end.sh       # = bash bash-scripts/dashboard/end.sh
+bash status.sh    # = bash bash-scripts/dashboard/status.sh
+```
+
+Każdy wrapper tylko wylicza swój własny katalog i wywołuje (`exec`) właściwy skrypt — żadna logika nie jest duplikowana. Działają z dowolnego katalogu.
 
 ## Konwencja pisania skryptów
 
@@ -36,7 +51,7 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel)"
 ```
 
-Dzięki temu każdy skrypt działa identycznie niezależnie od katalogu, z którego został wywołany (`bash bash-scripts/dashboard/start.sh` z roota, `bash /pełna/ścieżka/start.sh` z `/tmp`, itd. — obie formy przetestowane).
+Dzięki temu każdy skrypt działa identycznie niezależnie od katalogu, z którego został wywołany — przetestowane dla `begin.sh`/`status.sh`/`end.sh` zarówno z roota, jak i z `/tmp`.
 
 ## `bash-scripts/common/lib.sh`
 

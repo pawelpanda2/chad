@@ -1,0 +1,17 @@
+{
+  "name": "content-provider",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Future TypeScript/Node.js implementation of Content Provider. NOT a production replacement yet — see README.md. Legacy, currently-running implementation lives in packages/legacy-content-provider.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "typescript": "^5.3.3"
+  }
+}
