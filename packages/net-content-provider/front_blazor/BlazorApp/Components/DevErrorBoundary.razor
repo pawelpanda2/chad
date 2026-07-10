@@ -1,0 +1,137 @@
+@* 
+    Custom ErrorBoundary that exposes exception details for developer debugging.
+    This wraps the standard ErrorBoundary and captures exception information.
+*@
+
+@inherits ErrorBoundary
+
+@if (_hasError)
+{
+    <div class="blazor-error-boundary">
+        <h3>⚠️ An error occurred while rendering this component</h3>
+        <div class="error-details">
+            @if (CurrentException != null)
+            {
+                <div class="error-type">
+                    <strong>Exception Type:</strong> @CurrentException.GetType().FullName
+                </div>
+                <div class="error-message">
+                    <strong>Message:</strong> @CurrentException.Message
+                </div>
+                @if (!string.IsNullOrEmpty(CurrentException.StackTrace))
+                {
+                    <div class="error-stack">
+                        <strong>Stack Trace:</strong>
+                        <pre>@CurrentException.StackTrace</pre>
+                    </div>
+                }
+                @if (CurrentException.InnerException != null)
+                {
+                    <div class="error-inner">
+                        <strong>Inner Exception:</strong>
+                        <div>@CurrentException.InnerException.GetType().FullName</div>
+                        <div>@CurrentException.InnerException.Message</div>
+                    </div>
+                }
+            }
+        </div>
+        <div class="error-actions">
+            <button class="btn btn-primary" @onclick="HandleRecover">🔄 Try to recover</button>
+            <button class="btn btn-secondary" onclick="location.reload()">🔄 Reload page</button>
+        </div>
+    </div>
+}
+else
+{
+    @ChildContent
+}
+
+@code {
+    [Inject] private DevLogService? DevLogService { get; set; }
+    
+    private bool _hasError = false;
+
+    protected override void OnParametersSet()
+    {
+        base.OnParametersSet();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (CurrentException != null)
+        {
+            _hasError = true;
+            Console.WriteLine($"[DevErrorBoundary] Exception caught: {CurrentException.GetType().FullName}");
+            Console.WriteLine($"[DevErrorBoundary] Message: {CurrentException.Message}");
+            Console.WriteLine($"[DevErrorBoundary] StackTrace: {CurrentException.StackTrace}");
+            
+            // Log to DevLogService for the Exceptions tab
+            DevLogService?.LogException("ErrorBoundary", CurrentException, 
+                "Frontend rendering exception");
+            
+            await Task.CompletedTask;
+        }
+        else
+        {
+            _hasError = false;
+        }
+    }
+
+    private void HandleRecover()
+    {
+        _hasError = false;
+        Recover();
+    }
+}
+
+<style>
+    .blazor-error-boundary {
+        padding: 20px;
+        margin: 20px;
+        background: #fff5f5;
+        border: 1px solid #fca5a5;
+        border-radius: 8px;
+    }
+    
+    .blazor-error-boundary h3 {
+        color: #dc2626;
+        margin-top: 0;
+    }
+    
+    .error-details {
+        margin: 15px 0;
+        padding: 15px;
+        background: #fef2f2;
+        border-radius: 4px;
+        font-family: 'Consolas', 'Courier New', monospace;
+        font-size: 13px;
+    }
+    
+    .error-type, .error-message, .error-inner {
+        margin: 8px 0;
+        color: #1f2937;
+    }
+    
+    .error-stack {
+        margin-top: 10px;
+    }
+    
+    .error-stack pre {
+        background: #1e1e1e;
+        color: #d4d4d4;
+        padding: 10px;
+        border-radius: 4px;
+        overflow-x: auto;
+        white-space: pre-wrap;
+        word-break: break-all;
+        max-height: 200px;
+        overflow-y: auto;
+        font-size: 11px;
+    }
+    
+    .error-actions {
+        display: flex;
+        gap: 10px;
+        margin-top: 15px;
+    }
+</style>

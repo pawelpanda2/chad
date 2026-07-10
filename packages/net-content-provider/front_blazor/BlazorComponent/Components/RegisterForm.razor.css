@@ -1,0 +1,26 @@
+.register-box {;
+    max-width: 400px;
+    padding: 1.5rem;
+    border: 1px solid #ccc;
+    border-radius: 0.5rem;
+}
+
+.register-box label {
+    display: block;
+    margin-top: 1rem;
+}
+
+.register-box input {
+    width: 100%;
+    padding: 0.5rem;
+}
+
+.register-box button {
+    margin-top: 1rem;
+    margin-right: 0.5rem;
+}
+
+.error {
+    color: red;
+    margin-top: 1rem;
+}

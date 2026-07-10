@@ -1,0 +1,60 @@
+﻿@using BlazorApp.Services
+@* This page is intentionally left without a route. Login UI is rendered from Pages/Root.razor *@
+
+
+<div class="mx-auto rounded border p-4" id="login-box" style="width: 400px;margin: 60px;">
+    <h3 class="text-center mb-3">Login</h3>
+    <hr>
+
+    @if (error.Length > 0)
+    {
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            <strong>@error</strong>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    }
+
+    <div class="mb-3">
+        <label class="form-label">Email</label>
+        <input class="form-control" @bind="email">
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label">Password</label>
+        <input class="form-control" type="password" @bind="password">
+    </div>
+
+    <div class="row">
+        <div class="col d-grid">
+            <button class="btn btn-primary" @onclick="LoginAsync">Log in</button>
+        </div>
+        <div class="col d-grid">
+            <a class="btn btn-outline-primary" href="/" role="button">
+                Cancel
+            </a>
+        </div>
+    </div>
+</div>
+
+@inject AuthenticationStateProvider provider
+@inject NavigationManager navManager
+@code {
+    public string email = "";
+    public string password = "";
+    public string error = "";
+
+
+    private async Task LoginAsync()
+    {
+        var authStateProvider = (CustomAuthStateProvider) provider;
+        var formResult = await authStateProvider.LoginAsync(email, password);
+        if (formResult.Succeeded)
+        {
+            navManager.NavigateTo("/");
+        }
+        else
+        {
+            error = formResult.Errors[0];
+        }
+    }
+}

@@ -1,0 +1,15 @@
+{
+  "name": "chad",
+  "private": true,
+  "packageManager": "pnpm@9.15.4",
+  "scripts": {
+    "dba": "pnpm --filter dba dev",
+    "dba:build": "pnpm --filter dba build",
+    "dashboard": "pnpm --filter dashboard dev",
+    "console": "pnpm --filter console dev",
+    "mongo:up": "docker compose up -d mongodb",
+    "mongo:backup": "./bash-scripts/mongo/backup.sh",
+    "mongo:restore": "./bash-scripts/mongo/restore.sh",
+    "dev": "./bash-scripts/dev.sh"
+  }
+}

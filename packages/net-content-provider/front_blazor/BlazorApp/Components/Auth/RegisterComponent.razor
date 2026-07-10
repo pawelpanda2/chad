@@ -1,0 +1,126 @@
+@using BlazorApp.Models
+@using BackendAdapters.Models
+@using BlazorApp.Services
+
+<div class="rounded border p-3" style="width: 100%; max-width: 400px; margin: 0px;">
+    <h3 class="mb-3">Register</h3>
+    <hr>
+
+    @if (errors.Length > 0)
+    {
+        <div class="alert alert-danger" role="alert">
+            <ul>
+                @foreach (var error in errors)
+                {
+                    <li>@error</li>
+                }
+            </ul>
+        </div>
+    }
+
+    <div class="row mb-3">
+        <label class="col-md-4 col-form-label">First Name</label>
+        <div class="col-md-8">
+            <input class="form-control" @bind="registerDto.FirstName">
+        </div>
+    </div>
+
+    <div class="row mb-3">
+        <label class="col-md-4 col-form-label">Last Name</label>
+        <div class="col-md-8">
+            <input class="form-control" @bind="registerDto.LastName">
+        </div>
+    </div>
+
+    <div class="row mb-3">
+        <label class="col-md-4 col-form-label">Email</label>
+        <div class="col-md-8">
+            <input class="form-control" @bind="registerDto.Email">
+        </div>
+    </div>
+
+    <div class="row mb-3">
+        <label class="col-md-4 col-form-label">Phone</label>
+        <div class="col-md-8">
+            <input class="form-control" @bind="registerDto.PhoneNumber">
+        </div>
+    </div>
+
+    <div class="row mb-3">
+        <label class="col-md-4 col-form-label">Address</label>
+        <div class="col-md-8">
+            <input class="form-control" @bind="registerDto.Address">
+        </div>
+    </div>
+
+    <div class="row mb-3">
+        <label class="col-md-4 col-form-label">Password</label>
+        <div class="col-md-8">
+            <input class="form-control" type="password" @bind="registerDto.Password">
+        </div>
+    </div>
+
+    <div class="row mb-3">
+        <label class="col-md-4 col-form-label">Confirm Password</label>
+        <div class="col-md-8">
+            <input class="form-control" type="password" @bind="confirmPassword">
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="offset-md-4 col d-grid">
+            <button class="btn btn-primary" @onclick="RegisterAsync">Register</button>
+        </div>
+        <div class="col d-grid">
+            <button class="btn btn-outline-primary" @onclick="ShowCancel">Cancel</button>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Inject]
+    private AuthenticationStateProvider provider { get; set; }
+
+    [Parameter]
+    public EventCallback OnRegisterSucceeded { get; set; }
+
+    [Parameter]
+    public EventCallback OnCancel { get; set; }
+
+    public RegisterDto registerDto = new();
+    public string confirmPassword = "";
+    public string[] errors = [];
+
+
+    private async Task RegisterAsync()
+    {
+        if (registerDto.Password != confirmPassword)
+        {
+            errors = new[] { "Password and Confirm Password do not match!" };
+            return;
+        }
+
+        var authStateProvider = (CustomAuthStateProvider)provider;
+
+        var resp = await authStateProvider.RegisterAsync(registerDto);
+        if (resp.Succeeded)
+        {
+            if (OnRegisterSucceeded.HasDelegate)
+            {
+                await OnRegisterSucceeded.InvokeAsync(null);
+            }
+        }
+        else
+        {
+            errors = resp.Errors;
+        }
+    }
+
+    private async Task ShowCancel()
+    {
+        if (OnCancel.HasDelegate)
+        {
+            await OnCancel.InvokeAsync(null);
+        }
+    }
+}

@@ -1,0 +1,33 @@
+﻿<div class="register-box">
+    <h2>Register</h2>
+    <label>Email:</label>
+    <input @bind="Email" type="email" />
+
+    <label>Password:</label>
+    <input @bind="Password" type="password" />
+
+    <label>Confirm Password:</label>
+    <input @bind="ConfirmPassword" type="password" />
+
+    <button @onclick="Register">Register</button>
+    <button @onclick="OnSwitchToLogin">Go to Login</button>
+</div>
+
+@code {
+[Parameter] public EventCallback OnSwitchToLogin { get; set; }
+
+private string Email { get; set; }
+private string Password { get; set; }
+private string ConfirmPassword { get; set; }
+
+private async Task Register()
+{
+    if (Password != ConfirmPassword)
+    {
+        // Pokaz komunikat błędu
+        return;
+    }
+
+        // Wywołaj API rejestracji
+    }
+}

@@ -1,0 +1,189 @@
+﻿@* @using BlazorUniSystemCore.Repet.Models *@
+@* @using SharpOperationsProg.AAPublic.Operations *@
+@* @using SharpOperationsProg.Operations.UniAddress *@
+@* @using SharpRepoBackendProg.Services *@
+@* @inject IOperationsService operationsService *@
+@* @inject IBackendService backendService *@
+@* @rendermode InteractiveServer *@
+@* *@
+@* @if (Item?.Type == myType) *@
+@* { *@
+@*     <div> *@
+@*         <input type="button" value="Folder" @onclick="OnFolderClicked" /> *@
+@*         <input type="button" value="Content" @onclick="ContentClicked" /> *@
+@*         <input type="button" value="Config" @onclick="ConfigClicked" /> *@
+@*         <div style="vertical-align: middle;"> *@
+@*             <select @bind="@formGoogleDocType"> *@
+@*             <option value="Open">Open</option> *@
+@*             <option value="Recreate">Recreate</option> *@
+@*             </select> *@
+@*             <input type="button" value="GoogleDoc" @onclick="GoogleDocClicked" /> *@
+@*         </div> *@
+@*     </div> *@
+@* *@
+@*     <div> *@
+@*         <input type="button" value="Add" @onclick="OnAddClicked" /> *@
+@*         <select @bind="@formAddType"> *@
+@*             <option value="Text">Up</option> *@
+@*             <option value="Folder">Down</option> *@
+@*         </select> *@
+@*         <input type="text" @bind=@formAddValue> *@
+@*     </div> *@
+@* *@
+@*     <div> *@
+@*         <textarea readonly style="resize:none; width:800px; height: 1200px;">@item.Body</textarea> *@
+@*     </div> *@
+@* } *@
+@* *@
+@* @* *@
+@* <div>@item.Body</div> *@
+@* *@
+@* @if (Item?.Type == myType) *@
+@* { *@
+@*     <input type="button" value="Content" @onclick="ContentClicked" /> *@
+@*     <input type="button" value="Config" @onclick="ConfigClicked" /> *@
+@*     <input type="button" value="GoogleDoc" @onclick="GoogleDocClicked" /> *@
+@* *@
+@*    @foreach (var line in linesList) *@
+@*    { *@
+@*        <div>@line</div> *@
+@*    } *@
+@* } *@
+@* *@ 
+@* *@
+@* @code { *@
+@*     private string formAddType; *@
+@*     private string formGoogleDocType; *@
+@*     public ItemModel item; *@
+@* *@
+@*     [Parameter] *@
+@*     public ItemModel Item *@
+@*     { *@
+@*         get => item; *@
+@*         set *@
+@*         { *@
+@*             item = value; *@
+@*         } *@
+@*     } *@
+@* *@
+@*     [Parameter] *@
+@*     public Action<ItemModel, bool> ReloadItem { get; set; } *@
+@* *@
+@*     private string myType = "RefText"; *@
+@* *@
+@*     private List<string> linesList; *@
+@* *@
+@*     private string formAddValue; *@
+@* *@
+@*     private int rows; *@
+@* *@
+@*     protected override async Task OnInitializedAsync() *@
+@*     { *@
+@*         formGoogleDocType = "Open"; *@
+@*         formAddType = "Text"; *@
+@*         ReloadComponent(); *@
+@*     } *@
+@* *@
+@*     private EventCallback<ItemModel> itemChanged; *@
+@* *@
+@*     [Parameter] *@
+@*     public EventCallback<ItemModel> ItemChanged *@
+@*     { *@
+@*         get => itemChanged; *@
+@*         set *@
+@*         { *@
+@*             itemChanged = value; *@
+@*             ReloadComponent(); *@
+@*         } *@
+@*     } *@
+@* *@
+@*     private void ReloadComponent() *@
+@*     { *@
+@*         if (Item?.Body == null) *@
+@*         { *@
+@*             return; *@
+@*         } *@
+@* *@
+@*         var tmp = Item?.Body.ToString(); *@
+@*         var lines = tmp.Split("\n").ToList(); *@
+@*         linesList = lines; *@
+@*         rows = linesList.Count(); *@
+@*         //StateHasChanged(); *@
+@*     } *@
+@* *@
+@*     private void ContentClicked() *@
+@*     { *@
+@*         var adrTuple = IUniAddressOperations *@
+@*               .CreateAddressFromString(Item.Address); *@
+@*         var itemJson = backendService.CommandApi("OpenContent", adrTuple.Item1, adrTuple.Item2); *@
+@*     } *@
+@* *@
+@*     private void ConfigClicked() *@
+@*     { *@
+@*         var adrTuple = IUniAddressOperations *@
+@*               .CreateAddressFromString(Item.Address); *@
+@*         var itemJson = backendService.CommandApi("OpenConfig", adrTuple.Item1, adrTuple.Item2); *@
+@*     } *@
+@*      *@
+@*     private void GoogleDocClicked() *@
+@*     { *@
+@*         var adrTuple = IUniAddressOperations *@
+@*               .CreateAddressFromString(Item.Address); *@
+@*         if (formGoogleDocType == "Open") *@
+@*         { *@
+@*             var itemJson = backendService.CommandApi("OpenGoogleDoc", adrTuple.Item1, adrTuple.Item2); *@
+@*         } *@
+@*         if (formGoogleDocType == "Recreate") *@
+@*         { *@
+@*             var itemJson = backendService.CommandApi("RecreateGoogleDoc", adrTuple.Item1, adrTuple.Item2); *@
+@*         } *@
+@*     } *@
+@* *@
+@*     private void OnBtnClicked(string idxString) *@
+@*     { *@
+@*         var index = operationsService.Index.StringToIndex(idxString); *@
+@*         var adrTuple = IUniAddressOperations *@
+@*              .CreateAddressFromString(Item.Address); *@
+@*         var newAddress = operationsService.Index.JoinIndexWithLoca(adrTuple, index); *@
+@*         var itemJString = GetItem(newAddress); *@
+@*         var itemObj = operationsService.Json.TryDeserializeObject<ItemModel>(itemJString); *@
+@* *@
+@*         if (itemObj.Type != myType) *@
+@*         { *@
+@*             ReloadItem(itemObj, true); *@
+@*             return; *@
+@*         } *@
+@*          *@
+@*         ReloadItem(itemObj, false); *@
+@*         Item = itemObj; *@
+@*         ReloadComponent(); *@
+@*     } *@
+@* *@
+@*     private void OnAddClicked() *@
+@*     { *@
+@*         if (string.IsNullOrEmpty(formAddValue)) *@
+@*         { *@
+@*             return; *@
+@*         } *@
+@* *@
+@*         var adrTuple = IUniAddressOperations *@
+@*              .CreateAddressFromString(Item.Address); *@
+@*         // todo *@
+@*         // var itemJson = backendService *@
+@*         //     .CommandApi("CreateItem", adrTuple.Item1, adrTuple.Item2, formAddValue, "Folder"); *@
+@*     } *@
+@* *@
+@*     private void OnFolderClicked() *@
+@*     { *@
+@*         var adrTuple = IUniAddressOperations *@
+@*              .CreateAddressFromString(Item.Address); *@
+@*         var itemJson = backendService *@
+@*             .CommandApi("OpenFolder", adrTuple.Item1, adrTuple.Item2); *@
+@*     } *@
+@* *@
+@*     public string GetItem((string Repo, string Loca) address) *@
+@*     { *@
+@*         var itemJson = backendService.CommandApi("GetItem", address.Repo, address.Loca); *@
+@*         return itemJson; *@
+@*     } *@
+@* } *@

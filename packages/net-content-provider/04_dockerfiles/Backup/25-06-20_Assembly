@@ -1,0 +1,21 @@
+FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
+
+
+WORKDIR /app
+COPY ./08_projects/BlazorApp.sln ./
+COPY ./08_projects/BlazorApp/BlazorApp.csproj ./BlazorApp/
+COPY ./08_projects/BlazorComponent/BlazorComponent.csproj ./BlazorComponent/
+COPY ./08_projects/BackendAdapters/BackendAdapters.csproj ./BackendAdapters/
+RUN dotnet restore
+
+
+COPY ./08_projects ./
+RUN dotnet publish -c Release -o out ./BlazorApp/BlazorApp.csproj
+FROM nginx:1.23.0-alpine
+
+
+WORKDIR /app
+EXPOSE 5156 7262
+COPY ./08_projects/nginx.conf /etc/nginx/nginx.conf
+COPY --from=build /app/out/wwwroot /usr/share/nginx/html
+

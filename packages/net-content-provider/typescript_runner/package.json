@@ -1,0 +1,28 @@
+{
+  "name": "content-provider-typescript-runner",
+  "version": "1.0.0",
+  "description": "TypeScript adapter for calling C# Content Provider SimpleRun",
+  "main": "dist/sharp-runner.js",
+  "types": "dist/sharp-runner.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "demo": "ts-node src/demo.ts",
+    "demo:compiled": "node dist/demo.js",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist",
+    "prebuild": "npm run clean"
+  },
+  "keywords": [
+    "content-provider",
+    "csharp",
+    "typescript",
+    "adapter"
+  ],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "ts-node": "^10.9.0",
+    "typescript": "^5.0.0"
+  }
+}

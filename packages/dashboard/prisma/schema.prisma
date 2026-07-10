@@ -1,0 +1,56 @@
+
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-1.1.x", "debian-openssl-3.0.x", "linux-arm64-openssl-1.1.x", "linux-arm64-openssl-3.0.x", "linux-musl-arm64-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Outing {
+  id          Int       @id @default(autoincrement())
+  title       String
+  date        String
+  type        String
+  location    String?
+  description String
+  moodBefore  String?
+  moodAfter   String?
+  notes       String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  leads       Lead[]
+}
+
+model Lead {
+  id                 Int       @id @default(autoincrement())
+  name               String
+  age                Int?
+  source             String
+  phone              String?
+  instagram          String?
+  facebook           String?
+  whatsappName       String?
+  shortDescription   String?
+  status             String
+  notes              String?
+  outingId           Int?
+  outing             Outing?   @relation(fields: [outingId], references: [id])
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+}
+
+model User {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  passwordHash String
+  displayName  String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}

@@ -1,0 +1,21 @@
+﻿@page "/repo"
+@using BlazorComponent.Components
+
+<PageTitle>Login</PageTitle>
+
+<div class="auth-container">
+    @if (showRegister)
+    {
+    <RegisterForm OnSwitchToLogin="ShowLogin" />
+    }
+    else
+    {
+    <LoginForm OnSwitchToRegister="ShowRegister" />
+    }
+</div>
+@code {
+private bool showRegister = false;
+
+void ShowRegister() => showRegister = true;
+void ShowLogin() => showRegister = false;
+}
