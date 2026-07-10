@@ -1,10 +1,12 @@
 using System.Reflection;
+using SharpContainerApi.AA_public;
 using SharpApiArgsProg.AAPublic;
 using SharpConfigProg;
 using SharpConfigProg.AAPublic;
 using SharpContainerProg.AAPublic;
 using SharpFileServiceProg.AAPublic;
 using SharpOperationsProg.AAPublic;
+using SharpRepoServiceProg.AAPublic;
 using OutBorder01 = SharpFileServiceProg.AAPublic.OutBorder;
 using OutBorder02 = SharpOperationsProg.AAPublic.OutBorder;
 
@@ -175,16 +177,75 @@ public class DefaultPreparer : IPreparer
             var argsService = MyBorder.OutContainer.Resolve<IStringArgsResolverService>();
 
             // Health check endpoint
+            // Was checking CONTENT_PROVIDER_ROOT (nothing ever set that env var,
+            // so this always reported a false negative) — now checks the config
+            // key the backend actually uses to find repos, PreparerModule:NoSqlRepoSearchPaths
+            // (see ConfigNames.NoSqlRepoSearchPaths / DefaultRegistration.InitGroupsFromSearchPaths,
+            // which reads the same key the same way).
+            //
+            // repoCount comes from IRepoService.Methods.GetReposCount(), the same
+            // count InitGroupsFromSearchPaths() checks at startup (RepoService.cs
+            // throws if it's 0) — it walks search paths recursively for GUID-named
+            // repo folders (PathWorker._repoModelsList, built once at startup).
+            // A plain Directory.GetDirectories(path).Length was tried first but is
+            // wrong whenever a search path's immediate children aren't all repos
+            // (e.g. pointing at a Dropbox root that also has non-repo folders like
+            // "backup" alongside the real "repos" folder) — it undercounts/overcounts
+            // and doesn't match what the app itself considers a valid repo.
             webApp.MapGet("/health", () =>
             {
-                var contentProviderRoot = Environment.GetEnvironmentVariable("CONTENT_PROVIDER_ROOT") ?? "/app/cp-root";
-                var rootExists = Directory.Exists(contentProviderRoot);
+                string[] searchPaths;
+                try
+                {
+                    searchPaths = AppFasade.WebAppBuilder.Configuration
+                        .GetSection(ConfigNames.NoSqlRepoSearchPaths)
+                        .Get<string[]>() ?? Array.Empty<string>();
+                }
+                catch
+                {
+                    searchPaths = Array.Empty<string>();
+                }
+
+                var pathDiagnostics = searchPaths.Select(path =>
+                {
+                    bool exists = false;
+                    bool accessible = false;
+                    try
+                    {
+                        exists = Directory.Exists(path);
+                        accessible = exists;
+                    }
+                    catch
+                    {
+                        accessible = false;
+                    }
+
+                    return new { path, exists, accessible };
+                }).ToArray();
+
+                int repoCount = 0;
+                bool repoServiceAvailable = true;
+                try
+                {
+                    var repoService = MyBorder.OutContainer.Resolve<IRepoService>();
+                    repoCount = repoService.Methods.GetReposCount();
+                }
+                catch
+                {
+                    repoServiceAvailable = false;
+                }
+
+                bool anyRepoFound = repoServiceAvailable && repoCount > 0;
+                bool configured = searchPaths.Length > 0;
 
                 return Results.Json(new
                 {
                     status = "ok",
-                    contentProviderRoot = contentProviderRoot,
-                    rootExists = rootExists,
+                    configured,
+                    pathDiagnostics,
+                    repoServiceAvailable,
+                    repoCount,
+                    anyRepoFound,
                     timestamp = DateTime.UtcNow
                 });
             });

@@ -261,6 +261,7 @@ logs/
 .env.*
 !.env.example
 !.env.sample
+!.env.*.example
 *.local
 *.dev
 

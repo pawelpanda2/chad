@@ -11,6 +11,19 @@ COPY ./front_blazor ./
 # The test project was removed but the .sln still references it
 RUN sed -i '/BlazorAppTests/d' ./BlazorApp/BlazorApp.sln
 
+# Bake the correct backend API URL into wwwroot/appsettings.json for this
+# build's target environment. This is the ONLY mechanism that actually
+# works: BlazorApp/Program.cs also tries Environment.GetEnvironmentVariable
+# at runtime, but Blazor WebAssembly has no real OS environment in the
+# browser — that call is always null once deployed as static files behind
+# nginx (confirmed 2026-07-10, not assumed). builder.Configuration reads
+# wwwroot/appsettings.json at WASM startup, which is what actually resolves
+# ContentProviderApiUrl. Same sed-based file-edit pattern already used
+# above for the .sln fix, not a new mechanism.
+ARG CONTENT_PROVIDER_API_URL=http://localhost:12024
+RUN sed -i "s#\"ContentProviderApiUrl\": \".*\"#\"ContentProviderApiUrl\": \"${CONTENT_PROVIDER_API_URL}\"#" \
+    ./BlazorApp/wwwroot/appsettings.json
+
 # Use buildx cache mounts - massive speedup
 RUN --mount=type=cache,id=nuget,target=/root/.nuget/packages \
     dotnet restore ./BlazorApp/BlazorApp.sln
