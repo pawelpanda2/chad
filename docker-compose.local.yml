@@ -48,12 +48,13 @@ services:
       # runtime (confirmed by packages/dashboard/cp-root/.docstore existing
       # on disk from earlier local use).
       - "${CP_REPOS_HOST_PATH:-./packages/dashboard/cp-root}:/data/repos:rw"
-    healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:12024/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
+    # No Docker-level healthcheck: mcr.microsoft.com/dotnet/aspnet:8.0 has
+    # neither wget nor curl, so a CMD-based check can't run inside the
+    # container (confirmed: "exec: wget: executable file not found").
+    # packages/net-content-provider's own proven scripts don't use one
+    # either — they poll /health from the host after `docker run`. Do the
+    # same here: 03_begin.sh polls http://localhost:$CONTENT_PROVIDER_API_PORT/health
+    # after `up -d`, so depends_on below only needs the container started.
 
   dashboard:
     image: chad-dashboard:${IMAGE_TAG:-latest}
@@ -74,7 +75,7 @@ services:
       - DATABASE_URL=file:/app/data/dev.db
     depends_on:
       content-provider-api:
-        condition: service_healthy
+        condition: service_started
     volumes:
       - chad-dashboard-local-mac-docker-data:/app/data
     logging:

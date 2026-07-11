@@ -10,12 +10,18 @@ import { createTrace, emitTrace, parseWorkerMethod } from "./trace.js";
 
 dotenv.config();
 
-const CONTENT_PROVIDER_API_URL = process.env.CONTENT_PROVIDER_API_URL;
-
-if (!CONTENT_PROVIDER_API_URL) {
-  throw new Error(
-    "CONTENT_PROVIDER_API_URL environment variable is not set"
-  );
+// Read lazily inside each function rather than at module load — Next.js
+// imports this module during `next build`'s page-data collection, before
+// docker-compose has injected the runtime env var, so throwing here would
+// fail every build regardless of what's actually configured at runtime.
+function getContentProviderApiUrl(): string {
+  const url = process.env.CONTENT_PROVIDER_API_URL;
+  if (!url) {
+    throw new Error(
+      "CONTENT_PROVIDER_API_URL environment variable is not set"
+    );
+  }
+  return url;
 }
 
 /**
@@ -55,7 +61,7 @@ export interface ContentProviderResponse {
  * ```
  */
 export async function invokeContentProvider(args: string[]): Promise<any> {
-  const url = `${CONTENT_PROVIDER_API_URL}/invoke`;
+  const url = `${getContentProviderApiUrl()}/invoke`;
   const startTime = Date.now();
   const { worker, method } = parseWorkerMethod(args);
   const rawRequest = JSON.stringify(args);
@@ -210,9 +216,8 @@ export async function invokeContentProvider(args: string[]): Promise<any> {
  * @returns Promise resolving to true if the API is healthy
  */
 export async function checkHealth(): Promise<boolean> {
-  const url = `${CONTENT_PROVIDER_API_URL}/health`;
-
   try {
+    const url = `${getContentProviderApiUrl()}/health`;
     const response = await fetch(url, {
       method: "GET",
     });

@@ -20,7 +20,7 @@ echo ""
 
 cd "$REPO_ROOT"
 
-if docker compose -p "$COMPOSE_PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps --format json 2>/dev/null | grep -q '"Running":true'; then
+if docker compose -p "$COMPOSE_PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps --format json 2>/dev/null | grep -q '"State":"running"'; then
   log_warn "chad-local stack is already running — stopping it first, then starting fresh."
   bash "$SCRIPT_DIR/04_end.sh"
 fi
