@@ -1,6 +1,6 @@
 # cp-plugin
 
-Locally-installed desktop helper for Content Provider GUIs (`cp-gui`). Migrated 2026-07-10 from `packages/legacy-content-provider/plugin_nodejs` — same code, fixed package name, no `node_modules`/build output copied.
+Locally-installed desktop helper for Content Provider GUIs (`cp-gui`). Migrated 2026-07-10 from `packages/net-content-provider/plugin_nodejs` — same code, fixed package name, no `node_modules`/build output copied.
 
 ## What this is
 
@@ -30,7 +30,7 @@ PORT=12026
 PLUGIN_ROOT=/path/to/content-provider/repos
 ```
 
-`PLUGIN_ROOT` must point at the same root the running Content Provider serves data from (currently, for local dev: the `CONTENT_PROVIDER_STORAGE_HOST` used by `packages/legacy-content-provider`'s Docker setup).
+`PLUGIN_ROOT` must point at the same root the running Content Provider serves data from (currently, for local dev: the `CONTENT_PROVIDER_STORAGE_HOST` used by `packages/net-content-provider`'s Docker setup).
 
 ## Known note (2026-07-10)
 

@@ -18,7 +18,7 @@ bash begin.sh
 
 1. **`dba`** (`tsc --watch`) — dashboard importuje `dba` jako pakiet workspace; `begin.sh` robi jednorazowy build przed startem, jeśli `dist/` nie istnieje.
 2. **`dashboard`** (`next dev --turbopack`).
-3. **Content Provider API** — **realnie sprawdzane I uruchamiane, jeśli nie działa** (zmiana z poprzedniej wersji, która tylko ostrzegała). Używa **prawdziwego, istniejącego skryptu** z `packages/legacy-content-provider/03_scripts/03_local-mac_docker/02_run_api_charp.sh` (Docker) — nie wymyślonej alternatywy.
+3. **Content Provider API** — **realnie sprawdzane I uruchamiane, jeśli nie działa** (zmiana z poprzedniej wersji, która tylko ostrzegała). Używa **prawdziwego, istniejącego skryptu** z `packages/net-content-provider/03_scripts/03_local-mac_docker/02_run_api_charp.sh` (Docker) — nie wymyślonej alternatywy.
 
 ### Celowo NIE uruchamiane
 
@@ -29,24 +29,24 @@ bash begin.sh
 Do 2026-07-10 Content Provider był zewnętrznym sibling-repo (`../content-provider`, poza monorepo `chad`), wskazywanym opcjonalnym env `CONTENT_PROVIDER_REPO_PATH`. **To się zmieniło**: całe repo `content-provider` (nie tylko .NET — także Blazor, Aspire, próba Next.js, pluginy, eksperymenty TypeScript) zostało dołączone jako **Git subtree** pod:
 
 ```txt
-packages/legacy-content-provider
+packages/net-content-provider
 ```
 
 Komenda użyta (repo źródłowe: `git@github.com:pawelpanda2/contentprovider.git`, branch `main`, historia zaszłości nieistotna):
 
 ```bash
-git subtree add --prefix=packages/legacy-content-provider git@github.com:pawelpanda2/contentprovider.git main --squash
+git subtree add --prefix=packages/net-content-provider git@github.com:pawelpanda2/contentprovider.git main --squash
 ```
 
-Wewnętrzna struktura `legacy-content-provider` **nie została zreorganizowana** — `api_charp/`, `front_blazor/`, `aspire/`, `front_nextjs/`, `plugin_charp/`, `plugin_nodejs/`, `typescript/`, `typescript_runner/`, `03_scripts/`, `04_dockerfiles/`, `architecture/` zostały zachowane 1:1. **Nie jest** traktowane jako pojedynczy pakiet pnpm — `pnpm-workspace.yaml` (`packages/*`, jeden poziom) go nie łapie, bo nie ma własnego `package.json` w rootcie; zweryfikowane (`pnpm install` nadal pokazuje tylko 4 workspace projects: root + dba + console + dashboard).
+Wewnętrzna struktura `net-content-provider` **nie została zreorganizowana** — `api_charp/`, `front_blazor/`, `aspire/`, `front_nextjs/`, `plugin_charp/`, `plugin_nodejs/`, `typescript/`, `typescript_runner/`, `03_scripts/`, `04_dockerfiles/`, `architecture/` zostały zachowane 1:1. **Nie jest** traktowane jako pojedynczy pakiet pnpm — `pnpm-workspace.yaml` (`packages/*`, jeden poziom) go nie łapie, bo nie ma własnego `package.json` w rootcie; zweryfikowane (`pnpm install` nadal pokazuje tylko 4 workspace projects: root + dba + console + dashboard).
 
-Równolegle powstał **`packages/content-provider`** — minimalny szkielet TypeScript/Node (przyszły następca), **nie** kopiujący kodu z `legacy-content-provider/typescript`/`typescript_runner`/`front_nextjs` (celowo — nie sprawdzono, czy ten kod jest aktualny względem dzisiejszej architektury). Zawiera tylko `package.json`, `tsconfig.json`, `src/types.ts` (model kompatybilności już ustalony w `26-07-10_cline_prompt_mongodb_qnap_folders_v3.md`), README z jasnym zaznaczeniem, że to nie jest jeszcze produkcyjny zamiennik.
+Równolegle powstał **`packages/content-provider`** — minimalny szkielet TypeScript/Node (przyszły następca), **nie** kopiujący kodu z `net-content-provider/typescript`/`typescript_runner`/`front_nextjs` (celowo — nie sprawdzono, czy ten kod jest aktualny względem dzisiejszej architektury). Zawiera tylko `package.json`, `tsconfig.json`, `src/types.ts` (model kompatybilności już ustalony w `26-07-10_cline_prompt_mongodb_qnap_folders_v3.md`), README z jasnym zaznaczeniem, że to nie jest jeszcze produkcyjny zamiennik.
 
-`run-content-provider-if-needed.sh` domyślnie wskazuje na `$REPO_ROOT/packages/legacy-content-provider` (nie na hardcoded ścieżkę użytkownika) — override wciąż możliwy przez `CONTENT_PROVIDER_REPO_PATH` na wypadek wyjątków.
+`run-content-provider-if-needed.sh` domyślnie wskazuje na `$REPO_ROOT/packages/net-content-provider` (nie na hardcoded ścieżkę użytkownika) — override wciąż możliwy przez `CONTENT_PROVIDER_REPO_PATH` na wypadek wyjątków.
 
 ### Ważne odkrycie z testów: brakujący `.env`
 
-`legacy-content-provider/.env` był gitignored w oryginalnym repo, więc **nie** trafił do subtree (subtree operuje na trackowanej historii git, nie na plikach roboczych). Skrypt `02_run_api_charp.sh` daje czytelny błąd z dokładną komendą naprawczą (`cp .env.local-mac.docker.example .env`). Do testów skopiowano realny `.env` z oryginalnego, wciąż istniejącego standalone repo (ta sama konfiguracja lokalna, `CONTENT_PROVIDER_STORAGE_HOST=/tmp/cp_repos` — bezpieczna, testowa ścieżka, nie produkcyjny Dropbox).
+`net-content-provider/.env` był gitignored w oryginalnym repo, więc **nie** trafił do subtree (subtree operuje na trackowanej historii git, nie na plikach roboczych). Skrypt `02_run_api_charp.sh` daje czytelny błąd z dokładną komendą naprawczą (`cp .env.local-mac.docker.example .env`). Do testów skopiowano realny `.env` z oryginalnego, wciąż istniejącego standalone repo (ta sama konfiguracja lokalna, `CONTENT_PROVIDER_STORAGE_HOST=/tmp/cp_repos` — bezpieczna, testowa ścieżka, nie produkcyjny Dropbox).
 
 ## Ownership tracking (kluczowe dla `end.sh`)
 
@@ -111,6 +111,6 @@ Cienkie (kilka linii), tylko `exec` do właściwego skryptu w `bash-scripts/dash
 ## Troubleshooting
 
 - **"Port already in use" / "session already running"** → `bash status.sh`, potem `bash end.sh`.
-- **Content Provider nie startuje** → sprawdź `packages/legacy-content-provider/.env` istnieje (gitignored, nie ma go automatycznie po subtree — skopiuj z `.env.local-mac.docker.example` albo z działającej wcześniej konfiguracji lokalnej). Sprawdź `docker images | grep cp_webapi` — potrzebny wcześniej zbudowany obraz (`01_image_api_charp.sh`, jeśli brak).
+- **Content Provider nie startuje** → sprawdź `packages/net-content-provider/.env` istnieje (gitignored, nie ma go automatycznie po subtree — skopiuj z `.env.local-mac.docker.example` albo z działającej wcześniej konfiguracji lokalnej). Sprawdź `docker images | grep cp_webapi` — potrzebny wcześniej zbudowany obraz (`01_image_api_charp.sh`, jeśli brak).
 - **Nie wiem, czy `end.sh` zatrzyma mój ręcznie uruchomiony CP** → nie zatrzyma, chyba że `.tmp/dashboard/content-provider.owned` istnieje (sprawdź `bash status.sh` — pokaże "started by this session" albo "running independently").
 - **`tmuxinator: command not found`** → `brew install tmuxinator`.

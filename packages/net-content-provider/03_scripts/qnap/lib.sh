@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # Shared helpers + constants for the QNAP TEST scripts (build/begin/end/
-# status/deploy_qnap_test.sh). Self-contained on purpose — this repo is
-# meant to eventually become a standalone submodule (packages/net-content-provider),
-# so these scripts must not depend on anything outside
-# packages/legacy-content-provider itself.
+# status/deploy_qnap_test.sh). Self-contained on purpose — this directory
+# (packages/net-content-provider) is meant to eventually become a standalone
+# git submodule, so these scripts must not depend on anything outside it.
 #
 # Source this, don't execute it directly.
 
@@ -24,7 +23,7 @@ command_exists() { command -v "$1" >/dev/null 2>&1; }
 port_in_use() { lsof -i ":$1" -sTCP:LISTEN >/dev/null 2>&1; }
 
 # ---------------------------------------------------------------------------
-# Path resolution — REPO_ROOT here means packages/legacy-content-provider
+# Path resolution — REPO_ROOT here means packages/net-content-provider
 # itself (two levels up from 03_scripts/qnap), NOT the chad monorepo root.
 # ---------------------------------------------------------------------------
 qnap_script_dir() {

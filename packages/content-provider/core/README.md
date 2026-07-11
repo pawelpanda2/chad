@@ -4,14 +4,14 @@ Status: **skeleton only, created 2026-07-10.** This is not a working Content Pro
 
 ## What this is
 
-The intended future TypeScript/Node.js implementation of Content Provider — a gradual, stage-by-stage replacement for [`packages/legacy-content-provider`](../legacy-content-provider), which is the current, actually running implementation (.NET API, Blazor frontend, Aspire, and several earlier experiments — see its own README/architecture).
+The intended future TypeScript/Node.js implementation of Content Provider — a gradual, stage-by-stage replacement for [`packages/net-content-provider`](../net-content-provider), which is the current, actually running implementation (.NET API, Blazor frontend, Aspire, and several earlier experiments — see its own README/architecture).
 
 ## What this is not (yet)
 
 - Not deployed anywhere, not started by any script.
-- Not wired into `begin.sh`/tmuxinator — `packages/legacy-content-provider` is what actually runs today.
+- Not wired into `begin.sh`/tmuxinator — `packages/net-content-provider` is what actually runs today.
 - Does not implement `GetItem`, `GetByNames`, `Put`, `PostParentItem`, or anything else from the real API surface.
-- Not copied from `legacy-content-provider/typescript` or `legacy-content-provider/typescript_runner` — those weren't reviewed for currency against today's architecture before this skeleton was created, per explicit instruction not to copy blindly.
+- Not copied from `net-content-provider/typescript` or `net-content-provider/typescript_runner` — those weren't reviewed for currency against today's architecture before this skeleton was created, per explicit instruction not to copy blindly.
 
 ## What's here
 
@@ -20,9 +20,9 @@ The intended future TypeScript/Node.js implementation of Content Provider — a 
 ## Intended migration direction
 
 ```txt
-legacy-content-provider (.NET, running today)
+net-content-provider (.NET, running today)
         ↓ stage by stage, not a rewrite
 content-provider (this package)
 ```
 
-Planned stages (not started): read items (`GetItem`), `GetByNames`, `Put`, `PostParentItem`, import/export to/from `legacy-content-provider`'s file format, MongoDB integration. Each stage must keep API/data-model compatibility with the legacy implementation until it's fully retired.
+Planned stages (not started): read items (`GetItem`), `GetByNames`, `Put`, `PostParentItem`, import/export to/from `net-content-provider`'s file format, MongoDB integration. Each stage must keep API/data-model compatibility with the legacy implementation until it's fully retired.

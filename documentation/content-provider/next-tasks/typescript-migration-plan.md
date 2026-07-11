@@ -15,11 +15,11 @@ packages/
 │   ├── files/                 # cp-files    — NIEISTNIEJĄCE jeszcze (Etap 2)
 │   ├── mongo/                 # cp-mongo    — NIEISTNIEJĄCE jeszcze (Etap 2)
 │   └── README.md
-├── legacy-content-provider/   # OBECNY stan: Git subtree z całego repo content-provider (nie submodule)
+├── net-content-provider/   # OBECNY stan: Git subtree z całego repo content-provider (nie submodule)
 └── net-content-provider/      # NIEISTNIEJĄCE jeszcze — docelowa nazwa po oczyszczeniu źródłowego repo + zamianie subtree→submodule
 ```
 
-pnpm-workspace.yaml zaktualizowany o `packages/content-provider/*` (dodatkowy glob), żeby core/entry/net-adapter były osobnymi pakietami pnpm. Zweryfikowane: `pnpm install` poprawnie widzi tylko właściwe pakiety, nie łapie `legacy-content-provider` (brak tam root `package.json`).
+pnpm-workspace.yaml zaktualizowany o `packages/content-provider/*` (dodatkowy glob), żeby core/entry/net-adapter były osobnymi pakietami pnpm. Zweryfikowane: `pnpm install` poprawnie widzi tylko właściwe pakiety, nie łapie `net-content-provider` (brak tam root `package.json`).
 
 ## 2. Role poszczególnych pakietów
 
@@ -27,17 +27,17 @@ pnpm-workspace.yaml zaktualizowany o `packages/content-provider/*` (dodatkowy gl
 |---|---|---|
 | `cp-core` | Modele (`CpConfig`, `CpBody`, `CpItem`), interfejs `ContentProviderStorage` z kompatybilnymi nazwami metod (`GetItem`, `GetByNames`, `GetManyByName`, `FindRecursively`, `Put`, `PostParentItem`). **Nie wybiera** implementacji storage. | — |
 | `cp-entry` | **Jedyny pakiet, który dashboard/cp-gui/API mają importować.** Routing: repo GUID → backend (`repo-storage-config.ts`, na razie statyczna mapa, domyślnie `net-adapter`) → deleguje do wybranego backendu. | `cp-core`, `cp-net-adapter` |
-| `cp-net-adapter` | Implementuje `ContentProviderStorage` wołając realne, działające HTTP `/invoke` API .NET. Własny, minimalny klient HTTP (`invoke.ts`) — **nie** kopiuje `legacy-content-provider/typescript_runner` (patrz sekcja 5), wzorowany na sprawdzonym `packages/dba/src/client.ts`, ale niezależnie zaimplementowany (bez couplingu do tracingu dev-panelu). | `cp-core` |
+| `cp-net-adapter` | Implementuje `ContentProviderStorage` wołając realne, działające HTTP `/invoke` API .NET. Własny, minimalny klient HTTP (`invoke.ts`) — **nie** kopiuje `net-content-provider/typescript_runner` (patrz sekcja 5), wzorowany na sprawdzonym `packages/dba/src/client.ts`, ale niezależnie zaimplementowany (bez couplingu do tracingu dev-panelu). | `cp-core` |
 | `cp-files` | Storage: pliki/Dropbox. **Nie zaimplementowane.** | `cp-core` (planowane) |
 | `cp-mongo` | Storage: MongoDB. **Nie zaimplementowane.** | `cp-core` (planowane) |
 | `cp-gui` | UI dual-purpose: standalone app + komponenty w `packages/dashboard` zakładka Folders. **Na razie tylko: package.json, tsconfig, 3 kontrakty integracyjne (`BackendAdapter`, `PluginAdapter`, `RepoAdapter`), index.ts.** README.md NIE dopisane (błąd zapisu, patrz sekcja 9). | `cp-core` (dla typów) |
-| `cp-plugin` | Osobny program desktopowy (lokalne HTTP API do otwierania edytora/Findera/terminala). Zmigrowany z `legacy-content-provider/plugin_nodejs` — kod przeniesiony, przetestowany (`/health` odpowiada), package.json/README/`.env.example`/`.gitignore` gotowe. | brak (świadomie niezależny od content-provider) |
-| `legacy-content-provider` | Obecny, działający system .NET + Blazor + Aspire + eksperymenty, dodany jako **Git subtree** (nie submodule — to ma się zmienić, patrz sekcja 6). | — |
+| `cp-plugin` | Osobny program desktopowy (lokalne HTTP API do otwierania edytora/Findera/terminala). Zmigrowany z `net-content-provider/plugin_nodejs` — kod przeniesiony, przetestowany (`/health` odpowiada), package.json/README/`.env.example`/`.gitignore` gotowe. | brak (świadomie niezależny od content-provider) |
+| `net-content-provider` | Obecny, działający system .NET + Blazor + Aspire + eksperymenty, dodany jako **Git subtree** (nie submodule — to ma się zmienić, patrz sekcja 6). | — |
 | `net-content-provider` | Docelowa nazwa dla oczyszczonego (tylko .NET) źródłowego repo, dodanego jako **Git submodule**. **Nie utworzone.** | — |
 
 ## 3. Co zostało już wykonane
 
-- `git subtree add --prefix=packages/legacy-content-provider git@github.com:pawelpanda2/contentprovider.git main --squash` — wykonane, zweryfikowane (build, pnpm workspace, struktura wewnętrzna zachowana 1:1).
+- `git subtree add --prefix=packages/net-content-provider git@github.com:pawelpanda2/contentprovider.git main --squash` — wykonane, zweryfikowane (build, pnpm workspace, struktura wewnętrzna zachowana 1:1).
 - Analiza folderów `content-provider` (tabela technologia/stan/przeznaczenie) — `front_nextjs` (wczesna, nigdy nieuruchomiona próba — nie traktować jako wzorzec), `plugin_nodejs` (aktywny, zmigrowany), `typescript_runner` (aktywny ale **przestarzały** — spawnuje `dotnet run` do osobnego, starego `SimpleRun.csproj`, NIE woła realnego HTTP API), `typescript` (jawnie martwy/zarezerwowany wg własnego README).
 - `cp-core`: `types.ts` (CpConfig/CpBody), `contracts.ts` (ContentProviderStorage + CpItem) — zbudowane, kompiluje się.
 - `cp-entry`: `repo-storage-config.ts` (statyczna mapa repo→backend) + `index.ts` (facade delegujący) — zbudowane, kompiluje się.
@@ -56,7 +56,7 @@ pnpm-workspace.yaml zaktualizowany o `packages/content-provider/*` (dodatkowy gl
 - `cp-gui` — brak jakiejkolwiek implementacji komponentów (FolderView/TextView/nav/breadcrumb) — tylko kontrakty.
 - Rzeczywiste implementacje `createHttpBackendAdapter`/`createHttpPluginAdapter` w `cp-gui` — celowo rzucają błąd "not implemented yet".
 - Oczyszczenie źródłowego repo `content-provider` z folderów non-.NET (`front_nextjs`, `plugin_nodejs`, `typescript`, `typescript_runner`) — **nic nie usunięte, nic nie przeniesione między repozytoriami**.
-- Zamiana `legacy-content-provider` (subtree) na `net-content-provider` (submodule) — **nie wykonane**.
+- Zamiana `net-content-provider` (subtree) na `net-content-provider` (submodule) — **nie wykonane**.
 - `content-provider/documentation/reserved-typescript-attempt/` (docelowe miejsce dla martwego `typescript/`) — nieutworzone.
 
 ## 5. Otwarte decyzje (Decision Required)
@@ -71,8 +71,8 @@ pnpm-workspace.yaml zaktualizowany o `packages/content-provider/*` (dodatkowy gl
 1. Oczyszczenie źródłowego repo `content-provider`: usunięcie `front_nextjs`, `plugin_nodejs`, `typescript`, `typescript_runner` (po przeniesieniu ich zawartości — `plugin_nodejs` już przeniesiony do `cp-plugin` w `chad`, ale **nie usunięty ze źródłowego repo** — to osobne repo, nietknięte).
 2. Commit + push oczyszczonego repo `content-provider` (tylko .NET: `api_charp`, `front_blazor`, `aspire`, `plugin_charp`, `03_scripts`, `04_dockerfiles`, `architecture`).
 3. Dodanie oczyszczonego repo jako **Git submodule** pod `packages/net-content-provider` w `chad`.
-4. Usunięcie `packages/legacy-content-provider` (subtree) z `chad` po potwierdzeniu, że `net-content-provider` (submodule) go zastępuje.
-5. Aktualizacja wszystkich skryptów/tmuxinator/dokumentacji z `legacy-content-provider` na `net-content-provider`.
+4. Usunięcie `packages/net-content-provider` (subtree) z `chad` po potwierdzeniu, że `net-content-provider` (submodule) go zastępuje.
+5. Aktualizacja wszystkich skryptów/tmuxinator/dokumentacji z `net-content-provider` na `net-content-provider`.
 6. Dokończenie `cp-gui` (README + realna implementacja komponentów).
 7. `cp-files` (Etap 2), potem `cp-mongo` (Etap 2), test zgodności modeli.
 8. `Put`/`PostParentItem` (Etap 3).

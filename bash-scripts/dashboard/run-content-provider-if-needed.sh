@@ -17,8 +17,8 @@
 #                  it a no-op the second time.
 #
 # Path to Content Provider: as of 2026-07-10, the legacy .NET/Blazor/Aspire
-# implementation is a Git subtree at packages/legacy-content-provider (added
-# via `git subtree add --prefix=packages/legacy-content-provider
+# implementation is a Git subtree at packages/net-content-provider (added
+# via `git subtree add --prefix=packages/net-content-provider
 # git@github.com:pawelpanda2/contentprovider.git main --squash`) — it is
 # part of this monorepo now, not an external sibling repo. Overridable via
 # CONTENT_PROVIDER_REPO_PATH for exceptional cases, but the default is the
@@ -55,9 +55,9 @@ fi
 
 log_info "Content Provider API not reachable at $CP_API_URL — starting it via the existing local script..."
 
-CP_REPO_PATH="${CONTENT_PROVIDER_REPO_PATH:-$REPO_ROOT/packages/legacy-content-provider}"
+CP_REPO_PATH="${CONTENT_PROVIDER_REPO_PATH:-$REPO_ROOT/packages/net-content-provider}"
 if [ ! -d "$CP_REPO_PATH" ]; then
-  log_error "legacy-content-provider not found at: $CP_REPO_PATH"
+  log_error "net-content-provider not found at: $CP_REPO_PATH"
   log_error "  Fix: has the git subtree been added? See documentation/ai-docs/ for the subtree command."
   log_error "  Or override: export CONTENT_PROVIDER_REPO_PATH=/correct/path"
   exit 1
@@ -65,7 +65,7 @@ fi
 
 RUN_SCRIPT="$CP_REPO_PATH/03_scripts/03_local-mac_docker/02_run_api_charp.sh"
 if [ ! -f "$RUN_SCRIPT" ]; then
-  log_error "legacy-content-provider's own docker run script is missing: $RUN_SCRIPT"
+  log_error "net-content-provider's own docker run script is missing: $RUN_SCRIPT"
   log_error "  This subtree's layout may have changed — re-check where it now lives."
   exit 1
 fi

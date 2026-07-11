@@ -2,7 +2,7 @@
   "name": "cp-gui",
   "version": "0.0.0",
   "private": true,
-  "description": "Content Provider GUI — dual-purpose: (1) standalone browsing/editing app, analogous to legacy-content-provider/front_blazor, and (2) a component library reused inside packages/dashboard's Folders page. One implementation, not two. NOT implemented yet — see README.md for the Stage 1 scope (structure + integration contracts only).",
+  "description": "Content Provider GUI — dual-purpose: (1) standalone browsing/editing app, analogous to net-content-provider/front_blazor, and (2) a component library reused inside packages/dashboard's Folders page. One implementation, not two. NOT implemented yet — see README.md for the Stage 1 scope (structure + integration contracts only).",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

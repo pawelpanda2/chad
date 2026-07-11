@@ -1,6 +1,6 @@
 # packages/content-provider — new TypeScript/Node Content Provider (Stage 1)
 
-Not one package — a group of separate pnpm packages (see `pnpm-workspace.yaml`: `packages/content-provider/*`). Gradual, staged replacement for [`packages/legacy-content-provider`](../legacy-content-provider) (currently running .NET/Blazor implementation, stays authoritative until fully replaced).
+Not one package — a group of separate pnpm packages (see `pnpm-workspace.yaml`: `packages/content-provider/*`). Gradual, staged replacement for [`packages/net-content-provider`](../net-content-provider) (currently running .NET/Blazor implementation, stays authoritative until fully replaced).
 
 | Package | Role | Stage |
 |---|---|---|

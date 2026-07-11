@@ -6,7 +6,7 @@
  * mechanism (fetch POST, JSON args array, timeout), independently
  * implemented for cp-net-adapter's own use.
  *
- * Explicitly NOT modeled on legacy-content-provider/typescript_runner,
+ * Explicitly NOT modeled on net-content-provider/typescript_runner,
  * which spawns a `dotnet run` process against a separate, older
  * `SimpleRun.csproj` CLI project on every call — not the actual running
  * API. Confirmed by reading its source (2026-07-10).

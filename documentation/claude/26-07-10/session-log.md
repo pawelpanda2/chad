@@ -40,8 +40,8 @@ Migracja tych modułów do `chad` **nadal zablokowana** — czeka na osobną zgo
 
 1. **Pierwsza wersja**: content-provider zostaje jako zewnętrzne sibling-repo, wskazywane przez opcjonalny env `CONTENT_PROVIDER_REPO_PATH`.
 2. **Zmiana 1**: nie, ma być częścią monorepo od razu — Git subtree pod `packages/net-content-provider` (bo repo jest głównie .NET).
-3. **Zmiana 2**: nazwa `net-content-provider` zbyt wąska — repo jest mieszane (.NET + Blazor + Aspire + próba Next.js + pluginy + eksperymenty TS). Nazwa zmieniona na `packages/legacy-content-provider`.
-4. **Wykonano**: `git subtree add --prefix=packages/legacy-content-provider git@github.com:pawelpanda2/contentprovider.git main --squash` (wymagało najpierw initial commit w `chad`, bo miał zero commitów). Zweryfikowane: pnpm workspace nadal widzi tylko 4 projekty (root+dba+console+dashboard), subtree nie jest łapany przez glob `packages/*`. Real .env skopiowany z oryginalnego repo do testów (był gitignored, nie trafił do subtree).
+3. **Zmiana 2**: nazwa `net-content-provider` zbyt wąska — repo jest mieszane (.NET + Blazor + Aspire + próba Next.js + pluginy + eksperymenty TS). Nazwa zmieniona na `packages/net-content-provider`.
+4. **Wykonano**: `git subtree add --prefix=packages/net-content-provider git@github.com:pawelpanda2/contentprovider.git main --squash` (wymagało najpierw initial commit w `chad`, bo miał zero commitów). Zweryfikowane: pnpm workspace nadal widzi tylko 4 projekty (root+dba+console+dashboard), subtree nie jest łapany przez glob `packages/*`. Real .env skopiowany z oryginalnego repo do testów (był gitignored, nie trafił do subtree).
 5. **Zmiana 3 (najnowsza, jeszcze NIE wykonana)**: z powrotem `packages/net-content-provider`, ale teraz jako **Git submodule** (nie subtree) — bo stare repo `.NET` ma być dalej rozwijane osobno. Wymaga NAJPIERW oczyszczenia źródłowego repo `content-provider` (usunięcie non-.NET folderów, commit+push tam), DOPIERO POTEM dodania jako submodule. **Nic z tego jeszcze nie wykonane** — czekam na zatwierdzenie planu.
 
 ### Analiza folderów `content-provider` (fakty, nie zgadywanie)

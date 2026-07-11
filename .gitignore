@@ -1,7 +1,7 @@
 # removed from history 2026-07-11 (dead prototype: stale .next/ cache +
 # __MACOSX junk baked into the zip, no secrets found) — kept on disk
 # untracked in case it's still wanted for reference, must never be re-added.
-packages/legacy-content-provider/front_nextjs/Archive.zip
+packages/net-content-provider/front_nextjs/Archive.zip
 
 # ============================================
 # Dependencies
@@ -32,7 +32,7 @@ storybook-static/
 *.tsbuildinfo
 
 # ============================================
-# .NET / C# build artifacts (defensive at root too — packages/legacy-content-provider
+# .NET / C# build artifacts (defensive at root too — packages/net-content-provider
 # has its own thorough .gitignore, this just covers any other .NET code that
 # shows up elsewhere in the monorepo later)
 # ============================================

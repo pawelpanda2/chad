@@ -2,7 +2,7 @@
   "name": "cp-net-adapter",
   "version": "0.0.0",
   "private": true,
-  "description": "Compatibility with the real, currently-running .NET Content Provider via its HTTP /invoke endpoint. Read-only in Stage 1 (GetItem, GetByNames, GetManyByName, FindRecursively) — Put/PostParentItem exist but are Stage 3 scope. Modeled on packages/dba's proven invokeContentProvider client, NOT on legacy-content-provider/typescript_runner (which spawns `dotnet run` against an old, separate SimpleRun CLI project rather than calling the actual running API — confirmed by reading its source, not assumed).",
+  "description": "Compatibility with the real, currently-running .NET Content Provider via its HTTP /invoke endpoint. Read-only in Stage 1 (GetItem, GetByNames, GetManyByName, FindRecursively) — Put/PostParentItem exist but are Stage 3 scope. Modeled on packages/dba's proven invokeContentProvider client, NOT on net-content-provider/typescript_runner (which spawns `dotnet run` against an old, separate SimpleRun CLI project rather than calling the actual running API — confirmed by reading its source, not assumed).",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

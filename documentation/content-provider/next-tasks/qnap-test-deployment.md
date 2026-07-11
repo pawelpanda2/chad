@@ -18,12 +18,12 @@ NOT touch the paused TypeScript rewrite — see
 ## 2. Directory layout
 
 All QNAP-TEST-specific scripts and config live inside
-`packages/legacy-content-provider/`, self-contained (no dependency on the
+`packages/net-content-provider/`, self-contained (no dependency on the
 chad-monorepo-level `bash-scripts/`), because this directory is meant to
 eventually become a standalone submodule:
 
 ```
-packages/legacy-content-provider/
+packages/net-content-provider/
 ├── .env.qnap-test.example   # template, committed, documents every value
 ├── .env                      # REAL file, gitignored, copy from the example
 ├── 03_scripts/qnap/
@@ -61,15 +61,15 @@ Confirm nothing is already bound to `BLAZOR_PORT` before running
 
 | Plik | Środowisko | Serwis | Kto go czyta | Wymagane pola | Gdzie ma leżeć | Czy kopiowany na QNAP |
 |---|---|---|---|---|---|---|
-| `.env.qnap-test.example` | QNAP TEST | backend + Blazor (docs) | człowiek (szablon) | — | `packages/legacy-content-provider/` (git, committed) | Nie (to tylko wzór) |
-| `.env` | QNAP TEST | `03_scripts/qnap/*.sh` | skrypty bash | `QNAP_REPOS_HOST_PATH`, `CONTAINER_REPOS_PATH`, `CONTENT_PROVIDER_API_PORT`, `BLAZOR_PORT`, `QNAP_PUBLIC_HOST` | `packages/legacy-content-provider/.env` (gitignored) | Tak — kopiowany ręcznie/scp na QNAP po `git clone` |
+| `.env.qnap-test.example` | QNAP TEST | backend + Blazor (docs) | człowiek (szablon) | — | `packages/net-content-provider/` (git, committed) | Nie (to tylko wzór) |
+| `.env` | QNAP TEST | `03_scripts/qnap/*.sh` | skrypty bash | `QNAP_REPOS_HOST_PATH`, `CONTAINER_REPOS_PATH`, `CONTENT_PROVIDER_API_PORT`, `BLAZOR_PORT`, `QNAP_PUBLIC_HOST` | `packages/net-content-provider/.env` (gitignored) | Tak — kopiowany ręcznie/scp na QNAP po `git clone` |
 | `appsettings.json` | wszystkie | backend API (.NET `IConfiguration`) | proces API w kontenerze | `ApiUrls` (nadpisywane przez `-e ApiUrls=...`) | wypiekane w obrazie (`04_dockerfiles/webapi`) | Nie osobno — jest w obrazie |
 | `wwwroot/appsettings.json` | wszystkie | Blazor WASM (przeglądarka) | `WebAssemblyHostBuilder.Configuration` | `ContentProviderApiUrl` (podmieniane `sed`-em przy buildzie z `CONTENT_PROVIDER_API_URL` build-arg) | wypiekane w obrazie (`04_dockerfiles/assembly`) | Nie osobno — jest w obrazie |
 
 ## 4. Build → Deploy → Begin → End → Status
 
 ```bash
-cd packages/legacy-content-provider
+cd packages/net-content-provider
 cp .env.qnap-test.example .env   # then edit real values
 bash 03_scripts/qnap/deploy_qnap_test.sh   # one-shot: build + (re)start + verify
 ```
