@@ -1,0 +1,89 @@
+# Docker Compose — local Mac dev, full stack under Docker (mongo +
+# content-provider-api + dashboard). Used by
+# bash-scripts/dashboard/03_local_mac_docker/*.sh. Env file: .env.local-mac-docker
+# (copy from .env.local-mac-docker.example, never commit the real one).
+#
+# For local dev WITHOUT Docker (pnpm/tmuxinator instead), see
+# bash-scripts/dashboard/02_local_mac/ and .env.local-mac — that path runs
+# mongo standalone (no replica set) too, matching this file's mongo service.
+
+services:
+  mongodb:
+    image: mongo:7
+    container_name: chad-mongodb-local-mac-docker
+    restart: unless-stopped
+    ports:
+      - "${MONGODB_PORT:-27017}:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: "${MONGO_ROOT_USERNAME:-change_me}"
+      MONGO_INITDB_ROOT_PASSWORD: "${MONGO_ROOT_PASSWORD:-change_me}"
+    volumes:
+      - chad-mongodb-local-mac-docker-db:/data/db
+      - chad-mongodb-local-mac-docker-configdb:/data/configdb
+      - ./bash-scripts/mongo/backups:/backups
+
+  # Content Provider API — .NET backend, same Dockerfile already built and
+  # tested this session for QNAP TEST (packages/net-content-provider/
+  # 03_scripts/qnap/build_qnap_test.sh uses the identical Dockerfile).
+  content-provider-api:
+    build:
+      context: packages/net-content-provider
+      dockerfile: 04_dockerfiles/webapi
+    container_name: chad-content-provider-api-local-mac-docker
+    restart: unless-stopped
+    ports:
+      - "${CONTENT_PROVIDER_API_PORT:-12024}:12024"
+    environment:
+      # PreparerModule__NoSqlRepoSearchPaths__0 is the ONLY config key the
+      # real C# app reads (confirmed by reading SharpContainerApi source) —
+      # CONTENT_PROVIDER_ROOT (used by the old, now-removed dashboard compose
+      # files) is dead/unused code.
+      - PreparerModule__NoSqlRepoSearchPaths__0=/data/repos
+    volumes:
+      # Must be the PARENT of a "repos/" folder, not repos/ itself — see
+      # documentation/content-provider/next-tasks/qnap-test-deployment.md §6.
+      # :rw (not :ro) — the app writes an index/store into this root at
+      # runtime (confirmed by packages/dashboard/cp-root/.docstore existing
+      # on disk from earlier local use).
+      - "${CP_REPOS_HOST_PATH:-./packages/dashboard/cp-root}:/data/repos:rw"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:12024/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: packages/dashboard/Dockerfile
+      target: runner
+    container_name: chad-dashboard-local-mac-docker
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-12020}:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_TELEMETRY_DISABLED=1
+      # Docker network DNS — internal port is always 12024 regardless of
+      # the published host port above.
+      - CONTENT_PROVIDER_API_URL=http://content-provider-api:12024
+      - DATABASE_URL=file:/app/data/dev.db
+    depends_on:
+      content-provider-api:
+        condition: service_healthy
+    volumes:
+      - chad-dashboard-local-mac-docker-data:/app/data
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  chad-mongodb-local-mac-docker-db:
+    name: chad-mongodb-local-mac-docker-db
+  chad-mongodb-local-mac-docker-configdb:
+    name: chad-mongodb-local-mac-docker-configdb
+  chad-dashboard-local-mac-docker-data:
+    name: chad-dashboard-local-mac-docker-data

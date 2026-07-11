@@ -1,0 +1,59 @@
+# Root .dockerignore — build context is now the monorepo root (see
+# packages/dashboard/Dockerfile comment). Docker resolves .dockerignore
+# relative to the context root, so packages/dashboard/.dockerignore no
+# longer applies once context moves here.
+
+# Git
+.git
+.gitignore
+
+# Whole separate .NET/Blazor repo — huge, irrelevant to the dashboard's
+# Node.js build, and paused TS rewrite — also irrelevant.
+packages/net-content-provider
+packages/content-provider
+packages/cp-gui
+packages/cp-plugin
+packages/console
+
+# Dependencies / build outputs (installed/built inside the image itself)
+**/node_modules
+**/.next
+**/dist
+**/*.tsbuildinfo
+
+# Env files (never bake real secrets into an image)
+**/.env*
+!**/.env.example
+
+# Docker files themselves
+docker-compose*.yml
+Dockerfile*
+.dockerignore
+
+# Editors / OS junk
+.vscode
+.idea
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Docs, scratch, misc
+documentation
+bash-scripts
+*.md
+!packages/dashboard/README.md
+.claude
+
+# Local dev data / mounted volumes — not needed in the image
+packages/dashboard/cp-root
+packages/dashboard/Binaries
+**/data/
+**/repos/
+
+# Test/coverage
+coverage
+.nyc_output
+htmlcov
+test-results

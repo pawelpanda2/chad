@@ -1,30 +1,25 @@
-# Docker Compose — QNAP PROD environment
+# Docker Compose — QNAP PROD environment, full stack (mongo + content-provider-api
+# + dashboard). Used by bash-scripts/dashboard/05_qnap_prod/*.sh and
+# bash-scripts/dashboard/06_qnap_ssh/*_prod.sh. Env file: .env.qnap-prod
+# (copy from .env.qnap-prod.example, never commit the real one).
 #
-# Runtime na QNAP to WYŁĄCZNIE docker-compose (bez tmuxinator).
+# PROD deployment requires separate explicit approval — this file existing
+# does not deploy anything by itself.
 #
 # Dane MongoDB na trwałym bind mouncie QNAP — usunięcie kontenera
-# (docker stop / docker rm) NIE usuwa danych, dopóki bind mount zostaje.
-# Usuwa dane tylko skasowanie katalogu na hoście QNAP
+# (docker compose down) NIE usuwa danych, dopóki bind mount zostaje. Usuwa
+# dane tylko skasowanie katalogu na hoście QNAP
 # ($QNAP_CONTAINER_DATA_PATH/chad/mongodb/db).
 #
-# Backup logiczny: patrz bash-scripts/mongo/backup.sh (mongodump) —
-# bezpieczniejszy niż kopiowanie aktywnych plików bazy. Snapshoty QNAP
-# mogą być dodatkowym zabezpieczeniem, ale nie zastępują testowanego restore.
+# Backup logiczny: patrz bash-scripts/mongo/backup.sh (mongodump).
 #
-# PRZYGOTOWANE, NIE WDROŻONE (2026-07-10): tak jak w docker-compose.qnap.test.yml,
-# mongodb jest skonfigurowane jako single-node replica set (rs0) z idempotentnym
-# init-kontenerem. TA KONFIGURACJA MA POZOSTAĆ NIEUŻYWANA na produkcji, dopóki
-# nie zostanie jawnie zatwierdzone jej uruchomienie — patrz
+# PRZYGOTOWANE, NIE WDROŻONE (2026-07-10): mongodb skonfigurowane jako
+# single-node replica set (rs0) z idempotentnym init-kontenerem. TA
+# KONFIGURACJA MA POZOSTAĆ NIEUŻYWANA na produkcji, dopóki nie zostanie
+# jawnie zatwierdzone jej uruchomienie — patrz
 # documentation/ai-docs/2026-07-10_mongodb-replica-set-migration-plan.md.
 
 services:
-  # See docker-compose.qnap.test.yml for why this exists: MongoDB requires
-  # security.keyFile whenever auth + --replSet are combined, even for a
-  # single-node replica set (confirmed via local testing 2026-07-10; mongod
-  # refuses to start otherwise with "BadValue: security.keyFile is required
-  # when authorization is enabled with replica sets"). Generated inside the
-  # container, not via host bind-mount permissions, so it behaves the same
-  # on QNAP (Linux) as it did in local Mac testing.
   mongo-keyfile-init:
     image: mongo:7
     container_name: chad-mongo-keyfile-init-prod
@@ -106,3 +101,51 @@ services:
       - "--authenticationDatabase"
       - "admin"
       - "/mongo-rs-init.js"
+
+  content-provider-api:
+    build:
+      context: packages/net-content-provider
+      dockerfile: 04_dockerfiles/webapi
+    container_name: chad-content-provider-api-prod
+    restart: unless-stopped
+    ports:
+      - "${CONTENT_PROVIDER_API_PORT:-12034}:12024"
+    environment:
+      - PreparerModule__NoSqlRepoSearchPaths__0=/data/repos
+    volumes:
+      - "${CP_REPOS_HOST_PATH:-/share/Dropbox}:/data/repos:rw"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:12024/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: packages/dashboard/Dockerfile
+      target: runner
+    container_name: chad-dashboard-prod
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-12035}:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_TELEMETRY_DISABLED=1
+      - CONTENT_PROVIDER_API_URL=http://content-provider-api:12024
+      - DATABASE_URL=file:/app/data/dev.db
+    depends_on:
+      content-provider-api:
+        condition: service_healthy
+    volumes:
+      - chad-dashboard-prod-data:/app/data
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  chad-dashboard-prod-data:
+    name: chad-dashboard-qnap-prod-data
