@@ -27,6 +27,13 @@ if docker compose -p "$COMPOSE_PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE
   bash "$SCRIPT_DIR/04_end.sh"
 fi
 
+# Preflight: free up any of this stack's ports still held by a leftover
+# Docker container (e.g. from another compose project or a manual `docker
+# run`) — never touches a non-Docker process, never a broad docker cleanup.
+for port in "$DASHBOARD_PORT" "$CONTENT_PROVIDER_API_PORT" "$MONGODB_PORT"; do
+  ensure_port_available "$port" || exit 1
+done
+
 docker compose -p "$COMPOSE_PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d
 
 log_info "Waiting for content-provider-api health..."

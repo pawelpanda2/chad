@@ -55,3 +55,59 @@ require_file() {
   fi
   return 0
 }
+
+# Usage: find_docker_container_by_port 12020  -> prints container ID (empty if none)
+# Matches only containers that PUBLISH this exact host port — never a broad
+# scan of all containers.
+find_docker_container_by_port() {
+  local port="$1"
+  docker ps --filter "publish=$port" --format '{{.ID}}' 2>/dev/null | head -n1
+}
+
+# Usage: stop_docker_container_using_port 12020
+# Stops and removes ONLY the single container publishing this exact port
+# (never docker rm -f $(docker ps -aq), never docker system prune). Safe to
+# call when nothing is using the port — it's then a no-op.
+stop_docker_container_using_port() {
+  local port="$1"
+  local container_id
+  container_id="$(find_docker_container_by_port "$port")"
+  if [ -z "$container_id" ]; then
+    return 0
+  fi
+  local container_name
+  container_name="$(docker inspect -f '{{.Name}}' "$container_id" 2>/dev/null | sed 's#^/##')"
+  log_warn "Port $port is in use by Docker container '${container_name:-$container_id}' — stopping and removing it."
+  docker stop "$container_id" >/dev/null
+  docker rm "$container_id" >/dev/null 2>&1 || true
+  log_ok "Stopped and removed container '${container_name:-$container_id}' (was using port $port)."
+}
+
+# Usage: ensure_port_available 12020 || exit 1
+# If the port is free, returns 0 immediately. If a Docker container
+# publishes it, stops+removes ONLY that container and returns 0. If a
+# non-Docker process holds it, prints its PID/name and returns 1 — never
+# kills an arbitrary system process automatically.
+ensure_port_available() {
+  local port="$1"
+  if ! port_in_use "$port"; then
+    return 0
+  fi
+
+  local container_id
+  container_id="$(find_docker_container_by_port "$port")"
+  if [ -n "$container_id" ]; then
+    stop_docker_container_using_port "$port"
+    if port_in_use "$port"; then
+      log_error "Port $port is still in use after stopping the Docker container that published it."
+      return 1
+    fi
+    return 0
+  fi
+
+  local proc_line
+  proc_line="$(lsof -i ":$port" -sTCP:LISTEN -n -P 2>/dev/null | awk 'NR==2 {print $1, $2}')"
+  log_error "Port $port is in use by a non-Docker process: ${proc_line:-unknown}"
+  log_error "  Not killing it automatically — stop it yourself, then re-run."
+  return 1
+}
