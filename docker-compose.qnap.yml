@@ -36,9 +36,14 @@
 # (test LUB prod), patrz documentation/ai-docs/
 # 2026-07-10_mongodb-replica-set-migration-plan.md.
 
+# mongo:4.4 (not mongo:7, unlike docker-compose.local.yml) — this QNAP's
+# CPU lacks AVX, which MongoDB 5.0+ requires. Confirmed real crash loop:
+# "Illegal instruction" in mongod, docker-entrypoint.sh reporting "MongoDB
+# 5.0+ requires a CPU with AVX support, and your current system does not
+# appear to have that". 4.4 is the last release without that requirement.
 services:
   mongo-keyfile-init:
-    image: mongo:7
+    image: mongo:4.4
     container_name: chad-mongo-keyfile-init-${ENV_NAME}
     restart: "no"
     entrypoint: ["/bin/bash", "-c"]
@@ -57,7 +62,7 @@ services:
       - "${QNAP_CONTAINER_DATA_PATH:-/share/ContainerData}/chad-${ENV_NAME}/mongodb/keyfile:/keyfile-data"
 
   mongodb:
-    image: mongo:7
+    image: mongo:4.4
     container_name: chad-mongodb-${ENV_NAME}
     restart: unless-stopped
     command: ["--replSet", "rs0", "--bind_ip_all", "--keyFile", "/data/mongo-keyfile"]
@@ -100,7 +105,7 @@ services:
       start_period: 20s
 
   mongo-rs-init:
-    image: mongo:7
+    image: mongo:4.4
     container_name: chad-mongo-rs-init-${ENV_NAME}
     restart: "no"
     depends_on:
