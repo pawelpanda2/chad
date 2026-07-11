@@ -26,6 +26,7 @@ services:
   # tested this session for QNAP TEST (packages/net-content-provider/
   # 03_scripts/qnap/build_qnap_test.sh uses the identical Dockerfile).
   content-provider-api:
+    image: chad-content-provider-api:${IMAGE_TAG:-latest}
     build:
       context: packages/net-content-provider
       dockerfile: 04_dockerfiles/webapi
@@ -54,6 +55,7 @@ services:
       start_period: 40s
 
   dashboard:
+    image: chad-dashboard:${IMAGE_TAG:-latest}
     build:
       context: .
       dockerfile: packages/dashboard/Dockerfile

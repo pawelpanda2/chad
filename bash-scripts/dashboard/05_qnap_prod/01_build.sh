@@ -22,6 +22,16 @@ log_info "chad QNAP PROD — build"
 echo ""
 
 cd "$REPO_ROOT"
+
+# Plain date+time tag (no environment/arch suffix) — environment is already
+# distinguished by compose project name, ports, and container names, not by
+# the image tag. Every build gets both :latest and this timestamp tag.
+IMAGE_TAG="$(date +'%y%m%d_%H%M%S')"
+export IMAGE_TAG
+
 docker compose -p "$COMPOSE_PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" build --pull
 
-log_ok "Images built."
+docker tag "chad-dashboard:$IMAGE_TAG" "chad-dashboard:latest"
+docker tag "chad-content-provider-api:$IMAGE_TAG" "chad-content-provider-api:latest"
+
+log_ok "Images built and tagged: latest, $IMAGE_TAG"
