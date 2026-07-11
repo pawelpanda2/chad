@@ -24,8 +24,31 @@ bash-scripts/dashboard/
 ```
 
 Każdy z `03_local_mac_docker`, `04_qnap_test`, `05_qnap_prod` ma identyczny
-zestaw 5 skryptów: `01_build.sh`, `02_start.sh`, `03_end.sh`, `04_deploy.sh`,
-`05_status.sh`.
+zestaw 6 plików: `01_config.sh`, `02_build.sh`, `03_begin.sh`, `04_end.sh`,
+`05_status.sh`, `06_deploy.sh`.
+
+### `01_config.sh` — stałe środowiska, nie tylko porty
+
+Poza `COMPOSE_PROJECT_NAME`/`ENV_NAME`/portami, `01_config.sh` zawiera też
+pełną konfigurację modułów, które mają własny plik konfiguracyjny (patrz
+niżej: Content Provider). Każdy pozostały skrypt zaczyna od
+`source "$SCRIPT_DIR/01_config.sh"`.
+
+### Content Provider — appsettings.json generowany z `01_config.sh`
+
+Content Provider (`packages/net-content-provider`) nie ma własnego `.env`.
+Jego appsettings.json jest zapisany tekstowo (heredoc) jako
+`CONTENT_PROVIDER_APPSETTINGS_JSON` w `01_config.sh` KAŻDEGO środowiska
+(`02_local_mac`, `03_local_mac_docker`, `04_qnap_test`, `05_qnap_prod`) —
+nie jako pojedyncze zmienne środowiskowe `PreparerModule__*`. Funkcja
+`write_content_provider_appsettings()` (też w `01_config.sh`) zapisuje ten
+tekst do `.runtime/<env>/content-provider/appsettings.json` (gitignored,
+nigdy source of truth) tuż przed `docker compose up` / `docker run` —
+`03_begin.sh` woła ją zawsze na początku, przed sprawdzeniem czy stack już
+działa. Docker Compose montuje wygenerowany plik jako `/app/appsettings.json:ro`.
+Zmiana konfiguracji Content Providera = ponowne `03_begin.sh` (odtworzenie
+kontenera), nie rebuild obrazu — appsettings.json wczytuje się przy
+starcie procesu .NET, nie w trakcie działania.
 
 ### Tylko dwa pliki Compose, nie cztery
 
@@ -53,7 +76,7 @@ TEST, `05_qnap_prod/*.sh` ma porty PROD).
 
 ## Zasady działania skryptów deploymentowych
 
-### `01_build.sh`
+### `02_build.sh`
 
 Służy **wyłącznie** do budowania nowych obrazów Docker.
 
@@ -82,15 +105,21 @@ na Macu i natywnie na QNAP) taki suffix nie jest potrzebny. Jeśli
 problem cross-arch, tag można rozszerzyć wtedy — nie teraz, żeby nie
 komplikować bez potwierdzonej potrzeby.
 
-### `02_start.sh`
+### `03_begin.sh`
 
 Służy **wyłącznie** do uruchamiania już zbudowanych obrazów. Nie buduje.
 
-Przed startem sprawdza, czy stack już działa
-(`docker compose ps --format json | grep '"Running":true'`). Jeśli tak:
-1. woła `03_end.sh` (zatrzymuje i usuwa kontenery przez `docker compose down
-   --remove-orphans` — bez `-v`, bind mounty/named volumes/dane zostają),
-2. dopiero potem `docker compose up -d`.
+Kolejność działania:
+1. `write_content_provider_appsettings` (patrz wyżej) — generuje
+   appsettings.json świeżo za każdym razem.
+2. Sprawdza, czy stack już działa (`docker compose ps --format json |
+   grep '"State":"running"'`). Jeśli tak: woła `04_end.sh` (zatrzymuje i
+   usuwa kontenery przez `docker compose down --remove-orphans` — bez
+   `-v`, bind mounty/named volumes/dane zostają), dopiero potem
+   kontynuuje.
+3. **Preflight portów** (patrz niżej: "Automatyczne czyszczenie
+   konfliktów portów").
+4. `docker compose up -d`.
 
 Nigdy nie używa `docker compose down -v`, `docker system prune`, ani
 szerokiego usuwania obrazów/kontenerów — i nigdy nie dotyka drugiego
@@ -99,17 +128,44 @@ szerokiego usuwania obrazów/kontenerów — i nigdy nie dotyka drugiego
 Po starcie sprawdza healthcheck `content-provider-api` (`/health`,
 `anyRepoFound:true`) i odpowiedź HTTP dashboardu.
 
-### `03_end.sh`
+#### Automatyczne czyszczenie konfliktów portów (od commit `3d8cb6f`)
+
+Przed `docker compose up -d`, `03_begin.sh` sprawdza `DASHBOARD_PORT`,
+`CONTENT_PROVIDER_API_PORT`, `MONGODB_PORT` przez
+`ensure_port_available()` (`bash-scripts/common/lib.sh`):
+
+- **automatycznie zatrzymuje i usuwa TYLKO kontener Dockera, który
+  faktycznie publikuje wymagany port** (`docker ps --filter
+  publish=<port>`) — nigdy `docker rm -f $(docker ps -aq)`, nigdy `docker
+  system prune`,
+- **ten kontener może należeć do zupełnie innego stacku/projektu** —
+  wykrycie jest po porcie, nie po nazwie projektu Compose,
+- nie dotyka żadnego innego kontenera,
+- **nie zabija zwykłych procesów systemowych automatycznie** — jeśli port
+  zajmuje proces spoza Dockera, skrypt pokazuje jego PID i nazwę i
+  **przerywa start** (`exit 1`),
+- to świadome zachowanie: uruchomienie `03_begin.sh` MOŻE zatrzymać
+  starszą, niezależną wersję aplikacji (np. inny kontener), jeżeli
+  używa tego samego portu co ten stack. Jeśli dwie niezależne rzeczy
+  mają współistnieć na tym samym Macu/QNAP, muszą mieć różne porty —
+  skrypt tego nie rozstrzyga za ciebie, tylko usuwa co blokuje.
+
+Zweryfikowane realnie 2026-07-11: kontener-rzutka na porcie mongo +
+prawdziwy `cp_blazor` (inny, niezależny stack) na porcie dashboardu —
+`03_begin.sh` wykrył i usunął dokładnie te dwa kontenery, nic więcej, po
+czym poprawnie wystartował.
+
+### `04_end.sh`
 
 Zatrzymuje i usuwa **wyłącznie** kontenery/sieć/zasoby tymczasowe należące do
 danego projektu Compose: `docker compose -p <project> down --remove-orphans`.
 Nigdy `-v` (dane Mongo/dashboardu muszą przetrwać). Nigdy nie usuwa obrazów —
-zostają dostępne do ponownego `02_start.sh`.
+zostają dostępne do ponownego `03_begin.sh`.
 
-### `04_deploy.sh`
+### `06_deploy.sh`
 
-Pełny deployment nowej wersji: `01_build.sh` → `02_start.sh` → `05_status.sh`.
-Nie woła osobno `03_end.sh` — `02_start.sh` sam wykrywa działający stack i
+Pełny deployment nowej wersji: `02_build.sh` → `03_begin.sh` → `05_status.sh`.
+Nie woła osobno `04_end.sh` — `03_begin.sh` sam wykrywa działający stack i
 robi to za niego.
 
 ### `05_status.sh`
