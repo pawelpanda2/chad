@@ -11,8 +11,11 @@ REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel)"
 source "$REPO_ROOT/bash-scripts/common/lib.sh"
 
 COMPOSE_PROJECT_NAME="chad-test"
+ENV_NAME="test"
 DASHBOARD_PORT=12025
-COMPOSE_FILE="$REPO_ROOT/docker-compose.qnap-test.yml"
+CONTENT_PROVIDER_API_PORT=12024
+MONGODB_PORT=27018
+COMPOSE_FILE="$REPO_ROOT/docker-compose.qnap.yml"
 ENV_FILE="$REPO_ROOT/.env.qnap"
 
 require_command docker "install Docker" || exit 1
@@ -23,7 +26,7 @@ log_info "chad QNAP TEST — start"
 echo ""
 
 cd "$REPO_ROOT"
-export DASHBOARD_PORT
+export ENV_NAME DASHBOARD_PORT CONTENT_PROVIDER_API_PORT MONGODB_PORT
 
 if docker compose -p "$COMPOSE_PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps --format json 2>/dev/null | grep -q '"Running":true'; then
   log_warn "chad-test stack is already running — stopping it first, then starting fresh."

@@ -11,7 +11,8 @@ REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel)"
 source "$REPO_ROOT/bash-scripts/common/lib.sh"
 
 COMPOSE_PROJECT_NAME="chad-prod"
-COMPOSE_FILE="$REPO_ROOT/docker-compose.qnap-prod.yml"
+ENV_NAME="prod"
+COMPOSE_FILE="$REPO_ROOT/docker-compose.qnap.yml"
 ENV_FILE="$REPO_ROOT/.env.qnap"
 
 require_command docker "install Docker" || exit 1
@@ -22,6 +23,7 @@ log_info "chad QNAP PROD — build"
 echo ""
 
 cd "$REPO_ROOT"
+export ENV_NAME
 
 # Plain date+time tag (no environment/arch suffix) — environment is already
 # distinguished by compose project name, ports, and container names, not by

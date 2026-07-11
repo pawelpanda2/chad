@@ -8,7 +8,7 @@ source "$REPO_ROOT/bash-scripts/common/lib.sh"
 
 COMPOSE_PROJECT_NAME="chad-local"
 DASHBOARD_PORT=12020
-COMPOSE_FILE="$REPO_ROOT/docker-compose.local-mac-docker.yml"
+COMPOSE_FILE="$REPO_ROOT/docker-compose.local.yml"
 ENV_FILE="$REPO_ROOT/.env.local"
 
 echo ""

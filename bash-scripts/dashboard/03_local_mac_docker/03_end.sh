@@ -10,7 +10,7 @@ REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel)"
 source "$REPO_ROOT/bash-scripts/common/lib.sh"
 
 COMPOSE_PROJECT_NAME="chad-local"
-COMPOSE_FILE="$REPO_ROOT/docker-compose.local-mac-docker.yml"
+COMPOSE_FILE="$REPO_ROOT/docker-compose.local.yml"
 ENV_FILE="$REPO_ROOT/.env.local"
 
 require_command docker "install Docker" || exit 1

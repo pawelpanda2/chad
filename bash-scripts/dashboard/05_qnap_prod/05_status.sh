@@ -7,8 +7,11 @@ REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel)"
 source "$REPO_ROOT/bash-scripts/common/lib.sh"
 
 COMPOSE_PROJECT_NAME="chad-prod"
+ENV_NAME="prod"
 DASHBOARD_PORT=12035
-COMPOSE_FILE="$REPO_ROOT/docker-compose.qnap-prod.yml"
+CONTENT_PROVIDER_API_PORT=12034
+MONGODB_PORT=27017
+COMPOSE_FILE="$REPO_ROOT/docker-compose.qnap.yml"
 ENV_FILE="$REPO_ROOT/.env.qnap"
 
 echo ""
@@ -16,6 +19,7 @@ log_info "chad QNAP PROD — status"
 echo ""
 
 cd "$REPO_ROOT"
+export ENV_NAME DASHBOARD_PORT CONTENT_PROVIDER_API_PORT MONGODB_PORT
 docker compose -p "$COMPOSE_PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps
 
 echo ""

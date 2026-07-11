@@ -17,15 +17,39 @@ Struktura katalogów:
 ```
 bash-scripts/dashboard/
 ├── 02_local_mac/          # tmux/pnpm, BEZ Dockera (istniejące, nie-Compose)
-├── 03_local_mac_docker/   # docker-compose.local-mac-docker.yml
-├── 04_qnap_test/          # docker-compose.qnap-test.yml
-├── 05_qnap_prod/          # docker-compose.qnap-prod.yml (wymaga osobnej zgody na realny deploy)
+├── 03_local_mac_docker/   # docker-compose.local.yml
+├── 04_qnap_test/          # docker-compose.qnap.yml (ENV_NAME=test)
+├── 05_qnap_prod/          # docker-compose.qnap.yml (ENV_NAME=prod, wymaga osobnej zgody na realny deploy)
 └── 06_qnap_ssh/           # cienkie wrappery SSH nad 04_qnap_test / 05_qnap_prod
 ```
 
 Każdy z `03_local_mac_docker`, `04_qnap_test`, `05_qnap_prod` ma identyczny
 zestaw 5 skryptów: `01_build.sh`, `02_start.sh`, `03_end.sh`, `04_deploy.sh`,
 `05_status.sh`.
+
+### Tylko dwa pliki Compose, nie cztery
+
+Celowo **jeden** `docker-compose.qnap.yml` dla TEST i PROD (nie osobne
+`docker-compose.qnap-test.yml`/`docker-compose.qnap-prod.yml`), i **jeden**
+`docker-compose.local.yml` dla local-mac-docker. TEST/PROD różni WYŁĄCZNIE
+to, który skrypt (`04_qnap_test/*.sh` vs `05_qnap_prod/*.sh`) uruchamia ten
+sam plik — każdy z nich ma na sztywno wpisane w sobie (nie w osobnym pliku
+konfiguracyjnym, nie przez parametr z linii poleceń przekazywany przez
+człowieka) `COMPOSE_PROJECT_NAME`, `ENV_NAME` (`test`/`prod` — steruje
+`container_name`/nazwami wolumenów w `docker-compose.qnap.yml` przez
+interpolację `${ENV_NAME}`) oraz porty (`DASHBOARD_PORT`,
+`CONTENT_PROVIDER_API_PORT`, `MONGODB_PORT`), i `export`uje je tuż przed
+wywołaniem `docker compose`. To jedyny sposób, żeby jeden plik Compose
+obsłużył dwa środowiska — ale wartości same w sobie żyją w skryptach, nie w
+`.env.qnap` ani w osobnym pliku config.
+
+### Porty — NIE w `.env`
+
+`.env.local`/`.env.qnap` zawierają wyłącznie rzeczy zależne od środowiska
+(hosty, ścieżki, użytkownicy, hasła, klucze API, katalogi danych, Dropbox,
+QNAP, MongoDB credentials) — nigdy porty TEST/PROD. Porty są wpisane
+bezpośrednio w skryptach każdego katalogu (`04_qnap_test/*.sh` ma porty
+TEST, `05_qnap_prod/*.sh` ma porty PROD).
 
 ## Zasady działania skryptów deploymentowych
 
@@ -120,9 +144,22 @@ duplikowania logiki deploymentu. Host/user/port/repo-dir/hasło pochodzą z
 
 ## Weryfikacja
 
-Zrobione: `docker compose config` syntax-check na wszystkich trzech
-`docker-compose.*.yml` przeszedł. Realny `01_build.sh`/`04_deploy.sh` na
-Macu (local-mac-docker) — patrz następny commit/raport w tej sesji.
+Zrobione: `docker compose config` syntax-check na obu `docker-compose.*.yml`
+(`local.yml`, `qnap.yml` — dla `qnap.yml` sprawdzone z `ENV_NAME=test` i
+`ENV_NAME=prod` osobno) przeszedł.
+
+**Zablokowane 2026-07-11**: realny `01_build.sh` (local-mac-docker) doszedł
+do etapu `pnpm --filter dashboard exec prisma generate` (czyli: `dba` się
+zbudowało, `pnpm install` w kontekście całego monorepo zadziałało — Bug 1 z
+poprzedniej sekcji faktycznie naprawiony), ale przerwał się na błędzie
+BuildKit `error committing ...: write /var/lib/docker/buildkit/metadata_v2.db:
+input/output error`. Przyczyna: dysk Maca był praktycznie pełny (56MB wolne
+z 460GB, `df -h /` pokazywał 100% capacity) — to problem środowiska
+(miejsce na dysku), nie bug w Dockerfile/skryptach. Nie próbowano żadnego
+czyszczenia (`docker system prune` itp.) bez wyraźnej zgody użytkownika.
+Realny end-to-end test (`01_build.sh` → `02_start.sh` → idempotentny
+restart → `03_end.sh` z zachowaniem danych) do powtórzenia po zwolnieniu
+miejsca na dysku.
 
 Nie zrobione: żaden test na realnym QNAP (brak SSH w tej sesji) —
 `04_qnap_test`/`05_qnap_prod` nieprzetestowane end-to-end poza lokalną

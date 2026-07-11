@@ -1,11 +1,12 @@
 # Docker Compose — local Mac dev, full stack under Docker (mongo +
 # content-provider-api + dashboard). Used by
-# bash-scripts/dashboard/03_local_mac_docker/*.sh. Env file: .env.local (shared with 02_local_mac)
-# (copy from .env.local.example, never commit the real one).
+# bash-scripts/dashboard/03_local_mac_docker/*.sh. Env file: .env.local
+# (shared with 02_local_mac — copy from .env.local.example, never commit
+# the real one).
 #
 # For local dev WITHOUT Docker (pnpm/tmuxinator instead), see
-# bash-scripts/dashboard/02_local_mac/ and .env.local-mac — that path runs
-# mongo standalone (no replica set) too, matching this file's mongo service.
+# bash-scripts/dashboard/02_local_mac/ — that path runs mongo standalone (no
+# replica set) too, matching this file's mongo service.
 
 services:
   mongodb:
