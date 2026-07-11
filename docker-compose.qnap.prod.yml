@@ -1,0 +1,47 @@
+# Docker Compose — QNAP PROD: dashboard ONLY.
+#
+# Uses the SAME shared MongoDB (chad-mongodb) and Content Provider
+# (chad-content-provider-api) as TEST — started by
+# docker-compose.qnap.shared.yml (bash-scripts/dashboard/00_qnap_shared/).
+# Never starts/stops/rebuilds shared services itself — see
+# bash-scripts/dashboard/05_qnap_prod/03_begin.sh, which refuses to start
+# unless shared services are already up and healthy.
+#
+# Used by bash-scripts/dashboard/05_qnap_prod/*.sh, plus
+# bash-scripts/dashboard/06_qnap_ssh/*_prod.sh (thin SSH wrappers over
+# those). Env file: .env.qnap.
+services:
+  dashboard:
+    image: chad-dashboard:${IMAGE_TAG:-latest}
+    build:
+      context: .
+      dockerfile: packages/dashboard/Dockerfile
+      target: runner
+    container_name: chad-dashboard-prod
+    restart: unless-stopped
+    ports:
+      - "${DASHBOARD_PORT}:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_TELEMETRY_DISABLED=1
+      # Reaches the shared Content Provider by its container_name — service
+      # name resolution only works within the SAME compose project, and
+      # this dashboard is a separate project from docker-compose.qnap.shared.yml.
+      - CONTENT_PROVIDER_API_URL=http://chad-content-provider-api:12024
+      - DATABASE_URL=file:/app/data/dev.db
+    volumes:
+      - chad-dashboard-prod-data:/app/data
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  chad-dashboard-prod-data:
+    name: chad-dashboard-qnap-prod-data
+
+networks:
+  default:
+    name: chad-shared
+    external: true

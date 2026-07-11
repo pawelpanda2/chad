@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
-# Starts the full QNAP TEST stack (mongo + content-provider-api + dashboard)
-# under docker-compose. Never builds. Idempotent: checks whether the stack
-# is already running; if so, calls 04_end.sh (docker compose down
-# --remove-orphans, never -v) then starts fresh. Use 06_deploy.sh for
+# Starts the QNAP TEST dashboard under docker-compose. Never builds. Never
+# starts/stops/rebuilds the shared mongo/content-provider-api stack — only
+# checks it's already healthy (require_shared_services_healthy) and refuses
+# to start otherwise. Idempotent: checks whether the dashboard is already
+# running; if so, calls 04_end.sh then starts fresh. Use 06_deploy.sh for
 # build+begin. Run this ON the QNAP host (or via
 # bash-scripts/dashboard/06_qnap_ssh/begin_test.sh from your Mac).
+#
+# TEST uses the SAME shared MongoDB and Content Provider (and therefore the
+# SAME live data) as PROD — it is an alternative UI, not an isolated data
+# environment.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -21,45 +26,22 @@ echo ""
 
 cd "$REPO_ROOT"
 
-write_content_provider_appsettings
+require_shared_services_healthy "$CONTENT_PROVIDER_API_PORT" || {
+  log_error "Shared services (mongo + content-provider-api) are not healthy — refusing to start TEST dashboard."
+  exit 1
+}
 
 if docker compose -p "$COMPOSE_PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps --format json 2>/dev/null | grep -q '"State":"running"'; then
   log_warn "chad-test stack is already running — stopping it first, then starting fresh."
   bash "$SCRIPT_DIR/04_end.sh"
 fi
 
-# Preflight: free up any of this stack's ports still held by a leftover
-# Docker container (e.g. from another compose project or a manual `docker
-# run`) — never touches a non-Docker process, never a broad docker cleanup.
-for port in "$DASHBOARD_PORT" "$CONTENT_PROVIDER_API_PORT" "$MONGODB_PORT"; do
-  ensure_port_available "$port" || exit 1
-done
+# Preflight: free up the dashboard port if held by a leftover Docker
+# container — never touches a non-Docker process, never a broad docker
+# cleanup.
+ensure_port_available "$DASHBOARD_PORT" || exit 1
 
 docker compose -p "$COMPOSE_PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d
-
-log_info "Waiting for content-provider-api health..."
-HEALTHY=false
-for _ in $(seq 1 30); do
-  if curl -fsS -m 3 "http://localhost:$CONTENT_PROVIDER_API_PORT/health" >/dev/null 2>&1; then
-    HEALTHY=true
-    break
-  fi
-  sleep 2
-done
-
-if [ "$HEALTHY" != true ]; then
-  log_error "content-provider-api did not become healthy in time."
-  log_error "  Check: docker compose -p $COMPOSE_PROJECT_NAME -f $COMPOSE_FILE logs content-provider-api"
-  exit 1
-fi
-
-HEALTH_JSON="$(curl -fsS -m 3 "http://localhost:$CONTENT_PROVIDER_API_PORT/health")"
-log_ok "content-provider-api healthy: $HEALTH_JSON"
-
-if ! echo "$HEALTH_JSON" | grep -q '"anyRepoFound":true'; then
-  log_error "content-provider-api is up but reports no repos found. Check CP_REPOS_HOST_PATH in .env.qnap."
-  exit 1
-fi
 
 log_info "Waiting for dashboard to respond..."
 for _ in $(seq 1 30); do
@@ -70,6 +52,5 @@ for _ in $(seq 1 30); do
 done
 
 echo ""
-log_ok "chad-test stack is up."
-log_info "Dashboard:            http://<QNAP-IP>:$DASHBOARD_PORT"
-log_info "Content Provider API: http://<QNAP-IP>:$CONTENT_PROVIDER_API_PORT/health"
+log_ok "chad-test dashboard is up."
+log_info "Dashboard: http://<QNAP-IP>:$DASHBOARD_PORT"
