@@ -1,8 +1,20 @@
 # Struktura `bash-scripts/`
 
-Status: aktualne (2026-07-10). Katalog był wcześniej nazwany `03_scripts` — zmieniono nazwę i zaktualizowano wszystkie aktywne odwołania (root `package.json`, `.tmuxinator.yml`, `docker-compose*.yml`, własna dokumentacja). Pre-istniejące, historyczne odwołania do starego `03_scripts/nodejs/...` w `documentation/nodejs-style.md`, `packages/console/README.md` oraz w `packages/dashboard/03_scripts/` (osobny, wewnętrzny katalog skryptów odziedziczony z dawnego, samodzielnego repo `chad-dashbord` — opisuje inny, stary sposób deployu przez SSH/QNAP) zostały celowo pozostawione bez zmian — to dokumentacja historyczna dotycząca innej, starej struktury, nie części nowego `bash-scripts`.
+Status: aktualne (2026-07-11).
 
-Główne skrypty dashboardu przemianowano (2026-07-10): `start.sh` → `begin.sh`, `stop.sh` → `end.sh` (żeby autouzupełnianie `bash b<TAB>` / `bash e<TAB>` / `bash s<TAB>` było jednoznaczne — wcześniej `start`/`status`/`stop` zaczynały się wszystkie na `s`).
+**Aktualizacja 2026-07-11**: `packages/dashboard/03_scripts/nodejs/` (stary,
+odziedziczony z samodzielnego repo `chad-dashbord` katalog SSH/Docker-QNAP
+deployu, opisany w poprzednim akapicie jako "celowo pozostawiony") **został
+usunięty** — w pełni zastąpiony przez `bash-scripts/dashboard/{02_local_mac,
+03_local_mac_docker,04_qnap_test,05_qnap_prod,06_qnap_ssh}/`. Zobacz
+[dashboard-deployment-scripts.md](../../dashboard/common/features/dashboard-deployment-scripts.md)
+dla pełnego kontraktu tych skryptów (build/start/end/deploy/status) i
+[dashboard-start-scripts.md](../../dashboard/common/features/dashboard-start-scripts.md)
+dla `02_local_mac` (tmux/pnpm, bez Dockera).
+
+Status: aktualne (2026-07-10). Katalog był wcześniej nazwany `03_scripts` — zmieniono nazwę i zaktualizowano wszystkie aktywne odwołania (root `package.json`, `.tmuxinator.yml`, `docker-compose*.yml`, własna dokumentacja). Pre-istniejące, historyczne odwołania do starego `03_scripts/nodejs/...` w `documentation/nodejs-style.md`, `packages/console/README.md` dotyczą innej, starej struktury i pozostają bez zmian jako dokumentacja historyczna.
+
+Główne skrypty dashboardu przemianowano (2026-07-10): `start.sh` → `begin.sh`, `stop.sh` → `end.sh`. **Dalsza zmiana (2026-07-11)**: w `02_local_mac/` te same skrypty mają teraz numeryczne prefiksy i `begin.sh` → `02_start.sh` (żeby `01_build.sh`/`02_start.sh` nie zaczynały się od tej samej litery) — patrz dashboard-deployment-scripts.md.
 
 ## Struktura
 
