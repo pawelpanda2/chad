@@ -50,6 +50,33 @@ Zmiana konfiguracji Content Providera = ponowne `03_begin.sh` (odtworzenie
 kontenera), nie rebuild obrazu — appsettings.json wczytuje się przy
 starcie procesu .NET, nie w trakcie działania.
 
+#### Dlaczego generyczny appsettings.json, a nie skopiowany "prawdziwy" z QNAP
+
+Zanim pierwszy realny deploy `04_qnap_test` zastąpił stary deployment
+(2026-07-11), sprawdzono jego rzeczywistą konfigurację na żywym
+kontenerze `content-provider-api-test`, żeby upewnić się, że
+`CONTENT_PROVIDER_APPSETTINGS_JSON` w `01_config.sh` nie pomija czegoś
+istotnego specyficznego dla QNAP. Wynik: **stary deployment to inna,
+starsza wersja aplikacji, z innym schematem konfiguracji** — czyta
+`CONTENT_PROVIDER_ROOT` (env var), nie `PreparerModule:NoSqlRepoSearchPaths`
+jak obecny kod (`CONTENT_PROVIDER_ROOT` jest już w obecnym `Program.cs`/
+`DefaultPreparer.cs` oznaczone komentarzem jako martwy, nieużywany kod —
+dokładnie z powodu tego starego deploymentu). Jego `/app/appsettings.json`
+był praktycznie pusty (`{"Settings": {}}`) — cała jego konfiguracja żyła
+w zmiennych środowiskowych innego (starszego) kontraktu.
+
+Wniosek: nie istnieje "prawdziwy appsettings.json dla QNAP" do skopiowania
+dla obecnej wersji aplikacji — to inny kod. Generyczny szablon w
+`01_config.sh` (ten sam dla local-mac-docker/QNAP TEST/QNAP PROD, ze
+ścieżkami `/data/repos` wskazującymi na wewnętrzny punkt montowania w
+kontenerze, a nie realną ścieżkę hosta) jest poprawny — to dokładnie ten
+sam wzorzec, który zweryfikowano lokalnie na Macu z prawdziwymi danymi
+Dropbox (`repoCount: 36`). Realna ścieżka hosta (`/share/Dropbox` na
+QNAP, `/Users/pawelfluder/Dropbox` lokalnie) pochodzi z osobnej zmiennej
+`CP_REPOS_HOST_PATH` (`.env.qnap`/`.env.local`), montowanej przez
+docker-compose na `/data/repos` — appsettings.json nie musi (i nie
+powinien) znać realnej ścieżki hosta.
+
 ### Tylko dwa pliki Compose, nie cztery
 
 Celowo **jeden** `docker-compose.qnap.yml` dla TEST i PROD (nie osobne

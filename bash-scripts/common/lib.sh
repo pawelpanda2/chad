@@ -84,24 +84,34 @@ stop_docker_container_using_port() {
 }
 
 # Usage: ensure_port_available 12020 || exit 1
-# If the port is free, returns 0 immediately. If a Docker container
-# publishes it, stops+removes ONLY that container and returns 0. If a
-# non-Docker process holds it, prints its PID/name and returns 1 — never
-# kills an arbitrary system process automatically.
+# If a Docker container publishes the port, stops+removes ONLY that
+# container and returns 0. Otherwise falls back to lsof to check for a
+# non-Docker process; if found, prints its PID/name and returns 1 — never
+# kills an arbitrary system process automatically. If neither finds
+# anything, the port is free — returns 0.
+#
+# Docker is checked FIRST, before lsof, deliberately: `docker ps --filter
+# publish=<port>` is authoritative regardless of platform, but `lsof -i`
+# is NOT — confirmed on QNAP (Linux) that lsof reports a Docker-published
+# port as free even while `docker ps --filter publish=` correctly finds
+# the container holding it (real failure during the first QNAP TEST
+# deploy: the old lsof-first check silently reported every port free,
+# skipping cleanup, and `docker compose up` then failed with "port is
+# already allocated"). Checking Docker first works on both platforms.
 ensure_port_available() {
   local port="$1"
-  if ! port_in_use "$port"; then
-    return 0
-  fi
-
   local container_id
   container_id="$(find_docker_container_by_port "$port")"
   if [ -n "$container_id" ]; then
     stop_docker_container_using_port "$port"
-    if port_in_use "$port"; then
-      log_error "Port $port is still in use after stopping the Docker container that published it."
+    if [ -n "$(find_docker_container_by_port "$port")" ]; then
+      log_error "Port $port is still published by a Docker container after attempting cleanup."
       return 1
     fi
+    return 0
+  fi
+
+  if ! port_in_use "$port"; then
     return 0
   fi
 
