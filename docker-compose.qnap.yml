@@ -67,10 +67,15 @@ services:
         max-size: "10m"
         max-file: "3"
     healthcheck:
+      # "mongo" (legacy shell), not "mongosh" — confirmed real failure:
+      # mongo:4.4's image doesn't bundle mongosh at all ("executable file
+      # not found"), only the legacy shell. mongosh is only bundled from
+      # mongo:6.0+ (irrelevant here since 4.4 is pinned for AVX reasons —
+      # see the image comment above).
       test:
         [
           "CMD",
-          "mongosh",
+          "mongo",
           "--quiet",
           "--eval",
           "db.adminCommand({ ping: 1 })",
