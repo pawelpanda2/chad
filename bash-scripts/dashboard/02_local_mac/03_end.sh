@@ -16,7 +16,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel)"
 source "$REPO_ROOT/bash-scripts/common/lib.sh"
-source "$SCRIPT_DIR/lib.sh"
+
+FRONTEND_PORT=12080
 
 SESSION="chad-dashboard"
 OWNERSHIP_FILE="$REPO_ROOT/.tmp/dashboard/content-provider.owned"

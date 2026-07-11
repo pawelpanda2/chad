@@ -29,7 +29,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel)"
 source "$REPO_ROOT/bash-scripts/common/lib.sh"
-source "$SCRIPT_DIR/lib.sh"
+
+CONTENT_PROVIDER_API_URL="http://localhost:12024"
 
 WAIT_ONLY=false
 [ "${1:-}" = "--wait-only" ] && WAIT_ONLY=true

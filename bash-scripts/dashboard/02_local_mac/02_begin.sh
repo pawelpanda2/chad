@@ -8,8 +8,8 @@
 # it for several views.
 #
 # Usage:
-#   ./bash-scripts/dashboard/begin.sh            # normal start
-#   ./bash-scripts/dashboard/begin.sh --install  # also run pnpm install first
+#   ./bash-scripts/dashboard/02_local_mac/02_begin.sh            # normal start
+#   ./bash-scripts/dashboard/02_local_mac/02_begin.sh --install  # also run pnpm install first
 #
 # Works from any cwd — resolves the repo root from this script's own
 # location via git, not from $PWD.
@@ -20,8 +20,9 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel)"
 # shellcheck source=../../common/lib.sh
 source "$REPO_ROOT/bash-scripts/common/lib.sh"
-# shellcheck source=./lib.sh
-source "$SCRIPT_DIR/lib.sh"
+
+FRONTEND_PORT=12080
+CONTENT_PROVIDER_API_URL="http://localhost:12024"
 
 DO_INSTALL=false
 for arg in "$@"; do
@@ -78,33 +79,24 @@ if [ ! -d "$REPO_ROOT/node_modules" ]; then
     pnpm install
   else
     log_error "node_modules is missing at repo root."
-    log_error "  Fix: ./bash-scripts/dashboard/begin.sh --install"
+    log_error "  Fix: ./bash-scripts/dashboard/02_local_mac/02_begin.sh --install"
     log_error "  or:  pnpm install   (from $REPO_ROOT)"
     exit 1
   fi
 fi
 
-# FRONTEND_PORT comes from this directory's lib.sh (non-secret constant,
-# shared by begin/status/end/logs so they all agree on which port to check).
 export PORT="$FRONTEND_PORT"
 
-if port_in_use "$FRONTEND_PORT"; then
-  log_error "Port $FRONTEND_PORT is already in use."
-  log_error "  Fix:"
-  log_error "    bash status.sh"
-  log_error "    bash end.sh"
-  exit 1
+# Idempotent: if the session is already running (or its port is still held
+# by a not-yet-cleaned-up process), stop it first via 03_end.sh, then
+# continue to a fresh start — matches the same begin/end convention used by
+# packages/net-content-provider/03_scripts/qnap/begin_qnap_test.sh.
+if tmux has-session -t chad-dashboard 2>/dev/null || port_in_use "$FRONTEND_PORT"; then
+  log_warn "chad-dashboard is already running — stopping it first, then starting fresh."
+  bash "$SCRIPT_DIR/03_end.sh"
 fi
 
-if tmux has-session -t chad-dashboard 2>/dev/null; then
-  log_error "tmux session 'chad-dashboard' is already running."
-  log_error "  Fix:"
-  log_error "    bash status.sh"
-  log_error "    bash end.sh"
-  exit 1
-fi
-
-log_ok "Preflight checks passed (pnpm, tmux, tmuxinator, env, packages present, port $FRONTEND_PORT free)."
+log_ok "Preflight checks passed (pnpm, tmux, tmuxinator, env, packages present)."
 
 # ---------------------------------------------------------------------------
 # Ensure dba is built at least once before Next.js tries to import it
