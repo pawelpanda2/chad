@@ -18,8 +18,10 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel)"
-# shellcheck source=../common/lib.sh
+# shellcheck source=../../common/lib.sh
 source "$REPO_ROOT/bash-scripts/common/lib.sh"
+# shellcheck source=./lib.sh
+source "$SCRIPT_DIR/lib.sh"
 
 DO_INSTALL=false
 for arg in "$@"; do
@@ -45,8 +47,8 @@ require_command pnpm "brew install pnpm  (or: corepack enable)" || FAIL=true
 require_command tmux "brew install tmux" || FAIL=true
 require_command tmuxinator "brew install tmuxinator  (needs Ruby; brew handles that)" || FAIL=true
 
-require_file "$REPO_ROOT/packages/dashboard/.env" \
-  "cp packages/dashboard/.env.example packages/dashboard/.env and fill in real values" || FAIL=true
+require_file "$REPO_ROOT/.env.local" \
+  "cp .env.local.example .env.local and fill in real values" || FAIL=true
 
 for pkg in dba console dashboard; do
   require_file "$REPO_ROOT/packages/$pkg/package.json" \
@@ -57,6 +59,18 @@ if [ "$FAIL" = true ]; then
   log_error "Preflight checks failed — fix the issues above and re-run."
   exit 1
 fi
+
+# Export .env.local's real values (OPENAI_API_KEY, DATABASE_URL,
+# CP_REPOS_HOST_PATH, ...) into THIS shell so the tmux session's child
+# processes (pnpm dba, pnpm dashboard) inherit them — Next.js dev server
+# only auto-loads env files from its own package directory
+# (packages/dashboard/.env*), not from repo root, so exporting here is what
+# actually gets these values to it.
+set -a
+# shellcheck source=/dev/null
+source "$REPO_ROOT/.env.local"
+set +a
+export CONTENT_PROVIDER_API_URL
 
 if [ ! -d "$REPO_ROOT/node_modules" ]; then
   if [ "$DO_INSTALL" = true ]; then
@@ -70,11 +84,8 @@ if [ ! -d "$REPO_ROOT/node_modules" ]; then
   fi
 fi
 
-# Determine the dashboard's dev port from its own .env (FRONTEND_PORT),
-# falling back to Next.js's own default. This is the single source of truth
-# used by begin/status/end/logs so they all agree on which port to check.
-FRONTEND_PORT="$(grep -E '^FRONTEND_PORT=' "$REPO_ROOT/packages/dashboard/.env" 2>/dev/null | cut -d= -f2 | tr -d '[:space:]')"
-FRONTEND_PORT="${FRONTEND_PORT:-3000}"
+# FRONTEND_PORT comes from this directory's lib.sh (non-secret constant,
+# shared by begin/status/end/logs so they all agree on which port to check).
 export PORT="$FRONTEND_PORT"
 
 if port_in_use "$FRONTEND_PORT"; then
@@ -124,7 +135,7 @@ fi
 # ---------------------------------------------------------------------------
 
 log_info "Checking / ensuring Content Provider API..."
-if ! bash "$REPO_ROOT/bash-scripts/dashboard/run-content-provider-if-needed.sh" --wait-only; then
+if ! bash "$REPO_ROOT/bash-scripts/dashboard/02_local_mac/run-content-provider-if-needed.sh" --wait-only; then
   log_warn "Content Provider API is not available."
   log_warn "  Dashboard views that depend on it (leads, statuses, msg-planner, ...) will error."
   log_warn "  Views that don't touch it will still work fine."
@@ -143,12 +154,12 @@ echo ""
 if [ -t 1 ]; then
   # Real interactive terminal — attach normally, the whole point of using
   # tmuxinator, so the user lands inside the session.
-  tmuxinator start -p "$REPO_ROOT/bash-scripts/dashboard/tmuxinator.dashboard.yml"
+  tmuxinator start -p "$REPO_ROOT/bash-scripts/dashboard/02_local_mac/tmuxinator.dashboard.yml"
 else
   # No controlling terminal (e.g. invoked from CI, another script, or an
   # agent) — tmux cannot attach here ("open terminal failed: not a
   # terminal"). Start detached instead and tell the caller how to attach.
-  tmuxinator start -p "$REPO_ROOT/bash-scripts/dashboard/tmuxinator.dashboard.yml" --no-attach
+  tmuxinator start -p "$REPO_ROOT/bash-scripts/dashboard/02_local_mac/tmuxinator.dashboard.yml" --no-attach
   log_ok "Session started in the background (no TTY available to attach here)."
   log_info "Attach with: tmux attach -t chad-dashboard"
 fi

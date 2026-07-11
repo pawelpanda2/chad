@@ -7,6 +7,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel)"
 source "$REPO_ROOT/bash-scripts/common/lib.sh"
+source "$SCRIPT_DIR/lib.sh"
 
 SESSION="chad-dashboard"
 
@@ -23,9 +24,6 @@ fi
 
 echo ""
 
-FRONTEND_PORT="$(grep -E '^FRONTEND_PORT=' "$REPO_ROOT/packages/dashboard/.env" 2>/dev/null | cut -d= -f2 | tr -d '[:space:]')"
-FRONTEND_PORT="${FRONTEND_PORT:-3000}"
-
 if port_in_use "$FRONTEND_PORT"; then
   log_ok "Port $FRONTEND_PORT is in use (something is listening)."
   if curl -sS -o /dev/null -m 3 -w '%{http_code}' "http://localhost:$FRONTEND_PORT" 2>/dev/null | grep -qE '^[23]'; then
@@ -39,7 +37,7 @@ fi
 
 echo ""
 
-CP_API_URL="$(grep -E '^CONTENT_PROVIDER_API_URL=' "$REPO_ROOT/packages/dashboard/.env" 2>/dev/null | cut -d= -f2- | tr -d '[:space:]')"
+CP_API_URL="$CONTENT_PROVIDER_API_URL"
 OWNERSHIP_FILE="$REPO_ROOT/.tmp/dashboard/content-provider.owned"
 if [ -n "$CP_API_URL" ]; then
   if curl -sS -o /dev/null -m 3 "$CP_API_URL/health" 2>/dev/null || curl -sS -o /dev/null -m 3 "$CP_API_URL" 2>/dev/null; then

@@ -16,6 +16,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel)"
 source "$REPO_ROOT/bash-scripts/common/lib.sh"
+source "$SCRIPT_DIR/lib.sh"
 
 SESSION="chad-dashboard"
 OWNERSHIP_FILE="$REPO_ROOT/.tmp/dashboard/content-provider.owned"
@@ -47,8 +48,6 @@ else
 fi
 
 echo ""
-FRONTEND_PORT="$(grep -E '^FRONTEND_PORT=' "$REPO_ROOT/packages/dashboard/.env" 2>/dev/null | cut -d= -f2 | tr -d '[:space:]')"
-FRONTEND_PORT="${FRONTEND_PORT:-3000}"
 if port_in_use "$FRONTEND_PORT"; then
   log_warn "Port $FRONTEND_PORT is still in use by something (not necessarily an error if you have other services)."
 else

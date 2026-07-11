@@ -29,6 +29,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel)"
 source "$REPO_ROOT/bash-scripts/common/lib.sh"
+source "$SCRIPT_DIR/lib.sh"
 
 WAIT_ONLY=false
 [ "${1:-}" = "--wait-only" ] && WAIT_ONLY=true
@@ -37,8 +38,7 @@ OWNERSHIP_DIR="$REPO_ROOT/.tmp/dashboard"
 OWNERSHIP_FILE="$OWNERSHIP_DIR/content-provider.owned"
 mkdir -p "$OWNERSHIP_DIR"
 
-CP_API_URL="$(grep -E '^CONTENT_PROVIDER_API_URL=' "$REPO_ROOT/packages/dashboard/.env" 2>/dev/null | cut -d= -f2- | tr -d '[:space:]')"
-CP_API_URL="${CP_API_URL:-http://localhost:12024}"
+CP_API_URL="$CONTENT_PROVIDER_API_URL"
 
 check_health() {
   curl -fsS -m 3 "$CP_API_URL/health" >/dev/null 2>&1
