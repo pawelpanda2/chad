@@ -1,7 +1,7 @@
 # Docker Compose — QNAP PROD environment, full stack (mongo + content-provider-api
 # + dashboard). Used by bash-scripts/dashboard/05_qnap_prod/*.sh and
-# bash-scripts/dashboard/06_qnap_ssh/*_prod.sh. Env file: .env.qnap-prod
-# (copy from .env.qnap-prod.example, never commit the real one).
+# bash-scripts/dashboard/06_qnap_ssh/*_prod.sh. Env file: .env.qnap (shared with qnap-test)
+# (copy from .env.qnap.example, never commit the real one).
 #
 # PROD deployment requires separate explicit approval — this file existing
 # does not deploy anything by itself.
@@ -129,7 +129,7 @@ services:
     container_name: chad-dashboard-prod
     restart: unless-stopped
     ports:
-      - "${FRONTEND_PORT:-12035}:3000"
+      - "${DASHBOARD_PORT:-12035}:3000"
     environment:
       - NODE_ENV=production
       - NEXT_TELEMETRY_DISABLED=1

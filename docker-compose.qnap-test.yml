@@ -1,7 +1,7 @@
 # Docker Compose — QNAP TEST environment, full stack (mongo + content-provider-api
 # + dashboard). Used by bash-scripts/dashboard/04_qnap_test/*.sh and
-# bash-scripts/dashboard/06_qnap_ssh/*_test.sh. Env file: .env.qnap-test
-# (copy from .env.qnap-test.example, never commit the real one).
+# bash-scripts/dashboard/06_qnap_ssh/*_test.sh. Env file: .env.qnap (shared with qnap-prod)
+# (copy from .env.qnap.example, never commit the real one).
 #
 # Runtime na QNAP to WYŁĄCZNIE docker-compose (bez tmuxinator — tmuxinator jest
 # tylko lokalnym workflow developerskim).
@@ -9,7 +9,7 @@
 # NOTE: this is a DIFFERENT deployment from packages/net-content-provider/
 # 03_scripts/qnap/*.sh, which deploys a standalone content-provider-api +
 # Blazor GUI (no mongo, no dashboard) via plain `docker run`. Both can coexist
-# on the same QNAP — see .env.qnap-test.example for the port-overlap note
+# on the same QNAP — see .env.qnap.example for the port-overlap note
 # (net-content-provider's own Blazor defaults to 12020).
 #
 # Dane MongoDB MUSZĄ być na trwałym bind mouncie QNAP, nie w warstwie kontenera.
@@ -49,7 +49,7 @@ services:
       mongo-keyfile-init:
         condition: service_completed_successfully
     ports:
-      - "${MONGODB_TEST_PORT:-27018}:27017"
+      - "${MONGODB_PORT:-27018}:27017"
     environment:
       MONGO_INITDB_ROOT_USERNAME: "${MONGO_ROOT_USERNAME}"
       MONGO_INITDB_ROOT_PASSWORD: "${MONGO_ROOT_PASSWORD}"
@@ -127,7 +127,7 @@ services:
     container_name: chad-dashboard-test
     restart: unless-stopped
     ports:
-      - "${FRONTEND_PORT:-12025}:3000"
+      - "${DASHBOARD_PORT:-12025}:3000"
     environment:
       - NODE_ENV=production
       - NEXT_TELEMETRY_DISABLED=1
