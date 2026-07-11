@@ -1,50 +1,174 @@
-# dependencies
+# removed from history 2026-07-11 (dead prototype: stale .next/ cache +
+# __MACOSX junk baked into the zip, no secrets found) — kept on disk
+# untracked in case it's still wanted for reference, must never be re-added.
+packages/legacy-content-provider/front_nextjs/Archive.zip
+
+# ============================================
+# Dependencies
+# ============================================
 node_modules/
 /.pnp
 .pnp.*
+jspm_packages/
+bower_components/
+.pnpm-store/
+.yarn/cache/
+.yarn/unplugged/
+.yarn/build-state.yml
+.yarn/install-state.gz
 
-# builds
+# ============================================
+# Build outputs (JS/TS)
+# ============================================
 dist/
 .next/
 out/
 build/
+.turbo/
+.vercel/
+.cache/
+.parcel-cache/
+storybook-static/
+*.tsbuildinfo
 
-# env files (never commit real secrets)
+# ============================================
+# .NET / C# build artifacts (defensive at root too — packages/legacy-content-provider
+# has its own thorough .gitignore, this just covers any other .NET code that
+# shows up elsewhere in the monorepo later)
+# ============================================
+**/bin/
+**/obj/
+*.pdb
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# ============================================
+# Python (in case python_beeper-style code ever lands here)
+# ============================================
+__pycache__/
+*.pyc
+*.pyo
+.Python
+.venv/
+venv/
+env/
+*.egg-info/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# ============================================
+# Env files (never commit real secrets)
 # Broad by design: matches .env, .env.local, and every numbered/legacy
 # variant carried over from the source repos (.env.02_local_mac,
 # .env.05_docker_qnap_test, .env.mac-beeper, etc.) — only *.example files
 # are meant to be committed.
+# ============================================
 .env
 .env.*
 !.env.example
 !.env.*.example
 
-# misc
-.DS_Store
+# ============================================
+# Secrets / keys / credentials — broad by design, "na zapas"
+# ============================================
 *.pem
 *.key
+*.p12
+*.pfx
+*.ppk
+id_rsa*
+id_ed25519*
 *.db
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.pnpm-debug.log*
+*token*.json
+*credential*.json
+*secret*.json
+.npmrc
+.netrc
+.aws/
+.gcp/
+gcloud-service-key.json
+*service-account*.json
+
+# ============================================
+# Archives — "na zapas": nothing zipped/tarred should ever be committed
+# by accident (build caches, OS junk, forgotten exports all tend to hide
+# inside these). If a real asset genuinely needs to be an archive, force it:
+# git add -f path/to/file.zip
+# ============================================
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.tar.bz2
+*.7z
+*.rar
+__MACOSX/
+
+# ============================================
+# Database dumps / local data
+# ============================================
+*.dump
+*.sqlite
+*.sqlite3
+mongodb-data/
+bash-scripts/mongo/backups/*
+!bash-scripts/mongo/backups/.gitkeep
 
 # prisma generated client / local sqlite (dashboard)
 node_modules/.prisma
 /lib/generated/prisma
 
-# credential/token caches that may get pulled in from beeper-sync later
-*token*.json
-*credential*.json
+# ============================================
+# Logs
+# ============================================
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
 
-# editor
+# ============================================
+# Coverage / test artifacts
+# ============================================
+coverage/
+.nyc_output/
+TestResults/
+*.lcov
+
+# ============================================
+# OS junk
+# ============================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# ============================================
+# Editor / IDE
+# ============================================
 .vscode/*
 !.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*~
+.project
+.settings/
 
-# mongo local data (if ever created accidentally under repo instead of QNAP bind mount)
-mongodb-data/
-bash-scripts/mongo/backups/*
-!bash-scripts/mongo/backups/.gitkeep
+# ============================================
+# Infra state (defensive — none expected here yet, but never commit if it shows up)
+# ============================================
+*.tfstate
+*.tfstate.backup
+.terraform/
 
 # runtime state for dashboard start/stop scripts (ownership markers etc.)
 .tmp/
