@@ -2,6 +2,24 @@
 
 Status: **przygotowane, przetestowane lokalnie na Macu, NIE wdrożone na realnym QNAP.** Uzupełnia `2026-07-10_decision-beeper-mac-qnap-architecture.md`.
 
+**Aktualizacja 2026-07-11:** próba realnego wdrożenia na QNAP TEST
+(`docker-compose.qnap.yml`) trafiła dokładnie na zastrzeżenie z tego
+dokumentu i została cofnięta na wyraźną decyzję użytkownika. Real bug
+napotkany: `mongod` z `--replSet rs0` + `--keyFile` + `MONGO_INITDB_ROOT_USERNAME`/
+`PASSWORD` nigdy nie kończył bootstrapu ("Did not find local replica set
+configuration document at startup") — healthcheck nigdy nie przechodził,
+więc `mongo-rs-init` nigdy się nie uruchamiał. `docker-compose.qnap.yml`
+wrócił do zwykłego standalone `mongod` (tylko auth przez
+`MONGO_INITDB_ROOT_USERNAME`/`PASSWORD`, bez `--replSet`/`--keyFile`,
+bez `mongo-keyfile-init`/`mongo-rs-init`) dla realnego QNAP TEST i PROD.
+Ten dokument (serwisy `mongo-keyfile-init`/`mongo-rs-init`, `rs-init.js`)
+pozostaje planem/referencją na przyszłość — do ponownego wdrożenia
+dopiero gdy: (a) `beeper-oplog` faktycznie trafi do tego monorepo, i (b)
+padnie osobna, jawna zgoda na realny QNAP, tym razem z naprawionym
+bootstrapem auth+replicaSet (prawdopodobnie: utworzenie root usera PRZED
+włączeniem `--replSet`, zgodnie z sekwencją, jakiej oczekuje oficjalny
+mongo docker-entrypoint).
+
 ## 1. Dlaczego replica set
 
 `beeper-oplog` (moduł z `contacts`, jeszcze nie zmigrowany) używa MongoDB change streams (`collection.watch()`) do nasłuchiwania na `beeper_events` i normalizowania ich do `contacts`/`channels`/`messages`. **Change streams wymagają, żeby MongoDB działało jako replica set** — nie działają na standalone `mongod`. Stąd potrzeba przejścia z obecnego standalone na single-node replica set (`rs0`) — pojedynczy node, nie prawdziwa multi-node HA (to nie jest cel tej zmiany).

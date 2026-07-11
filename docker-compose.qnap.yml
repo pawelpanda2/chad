@@ -29,46 +29,29 @@
 #
 # Backup logiczny: patrz bash-scripts/mongo/backup.sh (mongodump).
 #
-# PRZYGOTOWANE, NIE WDROŻONE (2026-07-10): mongodb skonfigurowane jako
-# single-node replica set (rs0), bo beeper-oplog wymaga change streams. Init
-# jest idempotentny (mongo-rs-init, patrz bash-scripts/mongo/rs-init.js) —
-# bezpieczny do wielokrotnego uruchomienia. Zanim to pójdzie na realny QNAP
-# (test LUB prod), patrz documentation/ai-docs/
-# 2026-07-10_mongodb-replica-set-migration-plan.md.
-
+# mongodb: standalone (NOT a replica set) — reverted 2026-07-11 for the
+# real QNAP TEST deploy. The replica-set config (mongo-keyfile-init +
+# --keyFile + --replSet rs0 + mongo-rs-init) stays prepared but unused —
+# see documentation/ai-docs/2026-07-10_mongodb-replica-set-migration-plan.md,
+# which explicitly gates it behind a separate explicit approval + the
+# beeper-oplog module actually landing in this monorepo (not done yet).
+# Real failure hit deploying the replica-set version here: mongod combined
+# with MONGO_INITDB_ROOT_USERNAME/PASSWORD auth bootstrap never completed
+# ("Did not find local replica set configuration document at startup"),
+# so the healthcheck never passed and mongo-rs-init never got to run.
+# Standalone auth (MONGO_INITDB_ROOT_USERNAME/PASSWORD only, no
+# --replSet/--keyFile) doesn't have this bootstrap ordering problem.
+#
 # mongo:4.4 (not mongo:7, unlike docker-compose.local.yml) — this QNAP's
 # CPU lacks AVX, which MongoDB 5.0+ requires. Confirmed real crash loop:
 # "Illegal instruction" in mongod, docker-entrypoint.sh reporting "MongoDB
 # 5.0+ requires a CPU with AVX support, and your current system does not
 # appear to have that". 4.4 is the last release without that requirement.
 services:
-  mongo-keyfile-init:
-    image: mongo:4.4
-    container_name: chad-mongo-keyfile-init-${ENV_NAME}
-    restart: "no"
-    entrypoint: ["/bin/bash", "-c"]
-    command:
-      - |
-        set -e
-        if [ -f /keyfile-data/mongo-keyfile ]; then
-          echo "Keyfile already exists, leaving it as-is."
-        else
-          echo "Generating new mongo keyfile..."
-          openssl rand -base64 756 > /keyfile-data/mongo-keyfile
-        fi
-        chmod 400 /keyfile-data/mongo-keyfile
-        chown 999:999 /keyfile-data/mongo-keyfile
-    volumes:
-      - "${QNAP_CONTAINER_DATA_PATH:-/share/ContainerData}/chad-${ENV_NAME}/mongodb/keyfile:/keyfile-data"
-
   mongodb:
     image: mongo:4.4
     container_name: chad-mongodb-${ENV_NAME}
     restart: unless-stopped
-    command: ["--replSet", "rs0", "--bind_ip_all", "--keyFile", "/data/mongo-keyfile"]
-    depends_on:
-      mongo-keyfile-init:
-        condition: service_completed_successfully
     ports:
       - "${MONGODB_PORT}:27017"
     environment:
@@ -78,7 +61,6 @@ services:
       - "${QNAP_CONTAINER_DATA_PATH:-/share/ContainerData}/chad-${ENV_NAME}/mongodb/db:/data/db"
       - "${QNAP_CONTAINER_DATA_PATH:-/share/ContainerData}/chad-${ENV_NAME}/mongodb/configdb:/data/configdb"
       - "${QNAP_CONTAINER_DATA_PATH:-/share/ContainerData}/chad-${ENV_NAME}/mongodb/backups:/backups"
-      - "${QNAP_CONTAINER_DATA_PATH:-/share/ContainerData}/chad-${ENV_NAME}/mongodb/keyfile/mongo-keyfile:/data/mongo-keyfile:ro"
     logging:
       driver: "json-file"
       options:
@@ -91,7 +73,7 @@ services:
           "mongosh",
           "--quiet",
           "--eval",
-          "db.adminCommand('ping')",
+          "db.adminCommand({ ping: 1 })",
           "-u",
           "${MONGO_ROOT_USERNAME}",
           "-p",
@@ -103,26 +85,6 @@ services:
       timeout: 5s
       retries: 10
       start_period: 20s
-
-  mongo-rs-init:
-    image: mongo:4.4
-    container_name: chad-mongo-rs-init-${ENV_NAME}
-    restart: "no"
-    depends_on:
-      mongodb:
-        condition: service_healthy
-    volumes:
-      - ./bash-scripts/mongo/rs-init.js:/mongo-rs-init.js:ro
-    entrypoint:
-      - mongosh
-      - "mongodb://mongodb:27017/admin"
-      - "-u"
-      - "${MONGO_ROOT_USERNAME}"
-      - "-p"
-      - "${MONGO_ROOT_PASSWORD}"
-      - "--authenticationDatabase"
-      - "admin"
-      - "/mongo-rs-init.js"
 
   content-provider-api:
     image: chad-content-provider-api:${IMAGE_TAG:-latest}
