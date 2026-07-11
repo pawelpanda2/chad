@@ -34,3 +34,35 @@ export ENV_NAME DASHBOARD_PORT CONTENT_PROVIDER_API_PORT MONGODB_PORT
 DOCKER_CONFIG_DIR="$REPO_ROOT/.docker-qnap"
 mkdir -p "$DOCKER_CONFIG_DIR"
 export DOCKER_CONFIG="$DOCKER_CONFIG_DIR"
+
+# Content Provider's own config module (appsettings.json) — not a secret,
+# so the full file lives here as text rather than split into individual
+# PreparerModule__* environment variable overrides. /data/repos is the
+# in-container mount point for CP_REPOS_HOST_PATH (see docker-compose.qnap.yml),
+# not a real host path — the real host path lives in .env.qnap, not here.
+read -r -d '' CONTENT_PROVIDER_APPSETTINGS_JSON <<'EOF' || true
+{
+  "ApiUrls": "http://0.0.0.0:12024",
+  "IdentityModule": {
+    "DbFolderName": "IdentityDatabase",
+    "DbFileName": "IdentityDatabase.db"
+  },
+  "PreparerModule": {
+    "DbIdentityParentFolderSearchExpression": "/data/repos",
+    "SettingsSearchExpr": "0(0,1)",
+    "NoSqlRepoSearchPaths": [
+      "/data/repos"
+    ]
+  }
+}
+EOF
+
+# Writes CONTENT_PROVIDER_APPSETTINGS_JSON to the runtime path that
+# docker-compose.qnap.yml bind-mounts read-only into the container at
+# /app/appsettings.json. Call before `docker compose up` — never docker cp
+# into an already-running container (see 03_begin.sh).
+write_content_provider_appsettings() {
+  local output_file="$REPO_ROOT/.runtime/$ENV_NAME/content-provider/appsettings.json"
+  mkdir -p "$(dirname "$output_file")"
+  printf '%s\n' "$CONTENT_PROVIDER_APPSETTINGS_JSON" > "$output_file"
+}

@@ -177,3 +177,9 @@ Desktop.ini
 # HOME to a directory the SSH user can't write to — see
 # bash-scripts/dashboard/{04_qnap_test,05_qnap_prod}/01_config.sh)
 .docker-qnap/
+
+# generated per-environment module config files (e.g. content-provider's
+# appsettings.json), written by each environment's 01_config.sh before
+# `docker compose up` / `docker run` — never the source of truth, always
+# regenerated from the text embedded in that environment's 01_config.sh
+.runtime/
