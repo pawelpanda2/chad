@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SSHes into the QNAP and runs bash-scripts/dashboard/05_qnap_prod/02_start.sh
+# SSHes into the QNAP and runs bash-scripts/dashboard/05_qnap_prod/03_begin.sh
 # there (idempotent — stops+restarts if already running). Does not build.
 # Requires typing PROD to confirm.
 set -euo pipefail
@@ -14,4 +14,4 @@ if [ "$confirmation" != "PROD" ]; then
   exit 1
 fi
 
-run_remote_script "05_qnap_prod" "02_start.sh" "Start QNAP PROD"
+run_remote_script "05_qnap_prod" "03_begin.sh" "Start QNAP PROD"

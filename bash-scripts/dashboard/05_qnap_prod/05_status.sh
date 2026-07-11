@@ -1,34 +1,27 @@
 #!/usr/bin/env bash
 # Shows container status + health for the QNAP PROD docker-compose stack.
+# Never changes state.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel)"
 source "$REPO_ROOT/bash-scripts/common/lib.sh"
-
-COMPOSE_PROJECT_NAME="chad-prod"
-ENV_NAME="prod"
-DASHBOARD_PORT=12035
-CONTENT_PROVIDER_API_PORT=12034
-MONGODB_PORT=27017
-COMPOSE_FILE="$REPO_ROOT/docker-compose.qnap.yml"
-ENV_FILE="$REPO_ROOT/.env.qnap"
+source "$SCRIPT_DIR/01_config.sh"
 
 echo ""
 log_info "chad QNAP PROD — status"
 echo ""
 
 cd "$REPO_ROOT"
-export ENV_NAME DASHBOARD_PORT CONTENT_PROVIDER_API_PORT MONGODB_PORT
 docker compose -p "$COMPOSE_PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps
 
 echo ""
-if curl -fsS -m 3 "http://localhost:12034/health" 2>/dev/null; then
+if curl -fsS -m 3 "http://localhost:$CONTENT_PROVIDER_API_PORT/health" 2>/dev/null; then
   echo ""
-  log_ok "content-provider-api healthy (port 12034)."
+  log_ok "content-provider-api healthy (port $CONTENT_PROVIDER_API_PORT)."
 else
   echo ""
-  log_warn "content-provider-api did NOT respond on port 12034."
+  log_warn "content-provider-api did NOT respond on port $CONTENT_PROVIDER_API_PORT."
 fi
 
 echo ""

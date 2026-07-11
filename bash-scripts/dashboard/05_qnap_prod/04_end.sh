@@ -2,17 +2,13 @@
 # Stops the QNAP PROD stack (mongo + content-provider-api + dashboard).
 # Only ever touches the chad-prod compose project — never test, never
 # local-mac. --remove-orphans only, never -v: never deletes the mongo/
-# dashboard data volumes.
+# dashboard data volumes. Never removes images.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel)"
 source "$REPO_ROOT/bash-scripts/common/lib.sh"
-
-COMPOSE_PROJECT_NAME="chad-prod"
-ENV_NAME="prod"
-COMPOSE_FILE="$REPO_ROOT/docker-compose.qnap.yml"
-ENV_FILE="$REPO_ROOT/.env.qnap"
+source "$SCRIPT_DIR/01_config.sh"
 
 require_command docker "install Docker" || exit 1
 
@@ -21,7 +17,6 @@ log_info "chad QNAP PROD — end"
 echo ""
 
 cd "$REPO_ROOT"
-export ENV_NAME
 docker compose -p "$COMPOSE_PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" down --remove-orphans
 
-log_ok "chad-prod stack stopped. Data volumes preserved."
+log_ok "chad-prod stack stopped. Data volumes and images preserved."

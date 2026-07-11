@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SSHes into the QNAP and runs bash-scripts/dashboard/05_qnap_prod/04_deploy.sh
+# SSHes into the QNAP and runs bash-scripts/dashboard/05_qnap_prod/06_deploy.sh
 # there. Requires typing PROD to confirm — this is a real production
 # deployment, not a drill.
 set -euo pipefail
@@ -14,4 +14,4 @@ if [ "$confirmation" != "PROD" ]; then
   exit 1
 fi
 
-run_remote_script "05_qnap_prod" "04_deploy.sh" "Deploy QNAP PROD"
+run_remote_script "05_qnap_prod" "06_deploy.sh" "Deploy QNAP PROD"

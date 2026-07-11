@@ -172,3 +172,8 @@ Desktop.ini
 
 # runtime state for dashboard start/stop scripts (ownership markers etc.)
 .tmp/
+
+# writable Docker CLI config dir for QNAP scripts (Container Station sets
+# HOME to a directory the SSH user can't write to — see
+# bash-scripts/dashboard/{04_qnap_test,05_qnap_prod}/01_config.sh)
+.docker-qnap/

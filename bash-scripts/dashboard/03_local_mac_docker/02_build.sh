@@ -1,29 +1,24 @@
 #!/usr/bin/env bash
-# Builds the full QNAP PROD stack (mongo + content-provider-api + dashboard)
-# under docker-compose. Only builds — does not start anything. PROD
-# deployment requires separate explicit approval — building images does not
-# deploy anything by itself. See 02_start.sh / 03_end.sh / 05_status.sh /
-# 04_deploy.sh.
+# Builds the full local Mac stack (mongo + content-provider-api + dashboard)
+# under docker-compose. Only builds — never runs containers, never touches
+# a running environment, never `docker compose up`, never removes volumes.
+# See 03_begin.sh (start, idempotent) / 04_end.sh (stop) / 05_status.sh /
+# 06_deploy.sh (build + begin, one shot).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel)"
 source "$REPO_ROOT/bash-scripts/common/lib.sh"
-
-COMPOSE_PROJECT_NAME="chad-prod"
-ENV_NAME="prod"
-COMPOSE_FILE="$REPO_ROOT/docker-compose.qnap.yml"
-ENV_FILE="$REPO_ROOT/.env.qnap"
+source "$SCRIPT_DIR/01_config.sh"
 
 require_command docker "install Docker" || exit 1
-require_file "$ENV_FILE" "cp .env.qnap.example .env.qnap and fill in real values (never commit .env.qnap)" || exit 1
+require_file "$ENV_FILE" "cp .env.local.example .env.local and fill in real values (never commit .env.local)" || exit 1
 
 echo ""
-log_info "chad QNAP PROD — build"
+log_info "chad local-mac-docker — build"
 echo ""
 
 cd "$REPO_ROOT"
-export ENV_NAME
 
 # Plain date+time tag (no environment/arch suffix) — environment is already
 # distinguished by compose project name, ports, and container names, not by
