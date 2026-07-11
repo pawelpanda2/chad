@@ -127,9 +127,10 @@ To DWA NIEZALEŻNE systemy, celowo:
   dashboardu (mongo + content-provider-api + dashboard frontend), sterowany
   docker-compose.
 
-Oba mogą współistnieć na tym samym QNAP, ale domyślnie nachodzą na port 12020
-(Blazor net-content-provider vs dashboard test na 12025 — patrz
-`.env.qnap.example` dla dokładnych portów).
+Oba mogą współistnieć na tym samym QNAP, ale lokalnie na Macu domyślnie
+nachodzą na porty 12020/12024 (Blazor/API net-content-provider vs
+dashboard local-mac-docker — potwierdzone realnym konfliktem portów podczas
+weryfikacji 2026-07-11, patrz sekcja "Weryfikacja" niżej).
 
 ## `06_qnap_ssh` — SSH nad 04/05
 
@@ -144,23 +145,45 @@ duplikowania logiki deploymentu. Host/user/port/repo-dir/hasło pochodzą z
 
 ## Weryfikacja
 
-Zrobione: `docker compose config` syntax-check na obu `docker-compose.*.yml`
-(`local.yml`, `qnap.yml` — dla `qnap.yml` sprawdzone z `ENV_NAME=test` i
-`ENV_NAME=prod` osobno) przeszedł.
+**Zrobione i przechodzi (2026-07-11), lokalnie na Macu,
+`03_local_mac_docker`, pełny cykl:** `02_build.sh` → `03_begin.sh` →
+`05_status.sh` → `03_begin.sh` ponownie (idempotentny restart) →
+`04_end.sh` → `06_deploy.sh`. Wszystkie 6 kroków przeszły z realnym
+`docker compose` (nie tylko `config` syntax-check) — content-provider-api
+zdrowe z realnymi danymi repo (`anyRepoFound:true`), dashboard odpowiada
+HTTP, dane w wolumenach przetrwały restart.
 
-**Zablokowane 2026-07-11**: realny `01_build.sh` (local-mac-docker) doszedł
-do etapu `pnpm --filter dashboard exec prisma generate` (czyli: `dba` się
-zbudowało, `pnpm install` w kontekście całego monorepo zadziałało — Bug 1 z
-poprzedniej sekcji faktycznie naprawiony), ale przerwał się na błędzie
-BuildKit `error committing ...: write /var/lib/docker/buildkit/metadata_v2.db:
-input/output error`. Przyczyna: dysk Maca był praktycznie pełny (56MB wolne
-z 460GB, `df -h /` pokazywał 100% capacity) — to problem środowiska
-(miejsce na dysku), nie bug w Dockerfile/skryptach. Nie próbowano żadnego
-czyszczenia (`docker system prune` itp.) bez wyraźnej zgody użytkownika.
-Realny end-to-end test (`01_build.sh` → `02_start.sh` → idempotentny
-restart → `03_end.sh` z zachowaniem danych) do powtórzenia po zwolnieniu
-miejsca na dysku.
+Po drodze wcześniejsza próba (przed zwolnieniem miejsca na dysku)
+odsłoniła i doprowadziła do naprawy trzech realnych bugów, nie tylko
+problemu z dyskiem:
+
+1. `packages/dashboard/lib/chad-dba/client.ts` i `packages/dba/src/client.ts`
+   rzucały `"CONTENT_PROVIDER_API_URL environment variable is not set"`
+   na poziomie modułu (import-time) — Next.js importuje te moduły podczas
+   `next build`'s page-data collection, zanim docker-compose wstrzyknie
+   zmienną w runtime, więc KAŻDY build padał niezależnie od realnej
+   konfiguracji. Naprawa: odczyt zmiennej przeniesiony do wewnątrz
+   funkcji (lazy), ten sam błąd/komunikat, tylko odroczony do faktycznego
+   wywołania.
+2. Healthcheck `content-provider-api` w obu plikach Compose używał
+   `wget`, którego nie ma w obrazie `mcr.microsoft.com/dotnet/aspnet:8.0`
+   (ani `curl`) — potwierdzone: `docker exec ... which wget` nic nie
+   zwraca. Kontener był trwale "unhealthy", co blokowało `dashboard`'s
+   `depends_on: condition: service_healthy`. `packages/net-content-provider`'s
+   własne, sprawdzone skrypty też nie używają healthchecka w kontenerze —
+   sprawdzają `/health` z hosta po `docker run`. Usunięto healthcheck,
+   zmieniono `depends_on` na `condition: service_started`, realną bramkę
+   zdrowia robi (niezmieniony) polling curl w `03_begin.sh`.
+3. Wszystkie trzy `03_begin.sh` sprawdzały `docker compose ps --format
+   json | grep -q '"Running":true'` żeby wykryć już działający stack —
+   ale ta wersja Docker Compose (2.31.0) zwraca `"State":"running"`, nie
+   `"Running":true`. Sprawdzenie nigdy nie trafiało, więc gałąź
+   idempotentnego restartu (stop przez `04_end.sh` przed ponownym
+   startem) nigdy się nie wykonywała. Naprawiono wzorzec grep,
+   potwierdzono realnym testem że restart faktycznie się teraz wykonuje.
 
 Nie zrobione: żaden test na realnym QNAP (brak SSH w tej sesji) —
 `04_qnap_test`/`05_qnap_prod` nieprzetestowane end-to-end poza lokalną
-walidacją składni Compose.
+walidacją składni Compose (`docker compose config` z `ENV_NAME=test` i
+`ENV_NAME=prod`). Bugi 1 i 3 dotyczą też QNAP (ten sam kod) — naprawione
+tam też, ale nie zweryfikowane realnym uruchomieniem na QNAP.
