@@ -6,11 +6,7 @@
  */
 
 import { invokeContentProvider } from "./client.js";
-
-/**
- * Repository ID for the shared leads/reports/beeper data
- */
-export const SHARED_REPO_ID = "21d11bdc-f1f4-44d1-b61a-3fa6b039c641";
+import { getCurrentRepoGuid } from "./repo-context.js";
 
 /**
  * Gets all leads from the shared repository.
@@ -25,7 +21,7 @@ export async function GetAllLeads(): Promise<any> {
     "IRepoService",
     "IItemWorker",
     "PostByNames",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     "Folder",
     "leads",
     "all items",
@@ -43,7 +39,7 @@ export async function GetLeadByName(leadName: string): Promise<any> {
     "IRepoService",
     "IItemWorker",
     "GetByNames",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     "leads",
     leadName,
   ]);
@@ -78,7 +74,7 @@ export async function TodoLeads(): Promise<any> {
     "IRepoService",
     "IMethodWorker",
     "FindRecursively",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     leadsLoca,
     "//todo",
   ]);
@@ -97,7 +93,7 @@ export async function createStatusForLead(leadLoca: string): Promise<any> {
     "IRepoService",
     "IItemWorker",
     "PostParentItem",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     leadLoca,
     "Text",
     "status",
@@ -115,7 +111,7 @@ export async function findStatusForLead(leadLoca: string): Promise<any | null> {
     "IRepoService",
     "IItemWorker",
     "PostByNames",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     "Folder",
     "leads",
     "all items",
@@ -134,7 +130,7 @@ export async function findStatusForLead(leadLoca: string): Promise<any | null> {
     "IRepoService",
     "IManyItemsWorker",
     "GetManyByName",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     leadsLoca,
     "status",
   ]);
@@ -167,7 +163,7 @@ export function getStatusLocaFromItem(item: any): string {
     throw new Error("Status item has no Settings.address");
   }
 
-  const prefix = `${SHARED_REPO_ID}/`;
+  const prefix = `${getCurrentRepoGuid()}/`;
   if (!address.startsWith(prefix)) {
     throw new Error(`Status address \"${address}\" does not start with repo prefix \"${prefix}\"`);
   }
@@ -192,7 +188,7 @@ export async function getLeadContactsByLoca(leadLoca: string): Promise<string | 
       "IRepoService",
       "IItemWorker",
       "GetByNames2",
-      SHARED_REPO_ID,
+      getCurrentRepoGuid(),
       leadLoca,
       "contacts",
     ]);
@@ -221,11 +217,11 @@ export async function getLeadContactsByLoca(leadLoca: string): Promise<string | 
 export async function putStatusContent(loca: string, body: string): Promise<any> {
   // Validation: Ensure loca does not contain repo GUID
   // repoGuid should ONLY be passed as the repo argument, never in loca
-  if (loca.includes(SHARED_REPO_ID)) {
+  if (loca.includes(getCurrentRepoGuid())) {
     throw new Error(
       `Invalid loca for putStatusContent: loca contains repo GUID. ` +
       `repoGuid should only be passed as the repo argument, never in loca. ` +
-      `Function: putStatusContent, repo: ${SHARED_REPO_ID}, loca: ${loca}`
+      `Function: putStatusContent, repo: ${getCurrentRepoGuid()}, loca: ${loca}`
     );
   }
 
@@ -233,7 +229,7 @@ export async function putStatusContent(loca: string, body: string): Promise<any>
     "IRepoService",
     "IItemWorker",
     "Put",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     loca,
     "Text",
     "status",
@@ -256,7 +252,7 @@ export async function getStatusItem(loca: string): Promise<any> {
     "IRepoService",
     "IItemWorker",
     "GetItem",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     loca,
   ]);
 }
@@ -294,7 +290,7 @@ export interface PostItemByNamesResult {
  * @example
  * ```typescript
  * // Create/get beeper/whatsup/Alice/beeper
- * const result = await postItemByNames(SHARED_REPO_ID, ["beeper", "whatsup", "Alice", "beeper"]);
+ * const result = await postItemByNames(getCurrentRepoGuid(), ["beeper", "whatsup", "Alice", "beeper"]);
  * console.log(result.loca); // "03/06/71/02/01"
  * ```
  */
@@ -380,7 +376,7 @@ export async function postItemByNames(
  * @returns Promise resolving to the numeric loca of the final item
  */
 export async function ensureBeeperContactPath(leadName: string): Promise<string> {
-  const result = await postItemByNames(SHARED_REPO_ID, [
+  const result = await postItemByNames(getCurrentRepoGuid(), [
     "beeper",
     "whatsup",
     leadName,
@@ -401,7 +397,7 @@ export async function saveBeeperContactContent(loca: string, content: string): P
     "IRepoService",
     "IItemWorker",
     "Put",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     loca,
     "Text",
     "beeper",
@@ -431,7 +427,7 @@ export async function saveBeeperWhatsappConversation(
   content: string
 ): Promise<{ loca: string; address: string; success: boolean }> {
   // Step 1: POST - create or get the item
-  const postResult = await postItemByNames(SHARED_REPO_ID, [
+  const postResult = await postItemByNames(getCurrentRepoGuid(), [
     "beeper",
     "whatsup",
     leadName,
@@ -479,7 +475,7 @@ export async function getAllLeadNames(): Promise<string[]> {
     "IRepoService",
     "IItemWorker",
     "GetByNames",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     "leads",
     "all items",
   ]);
@@ -506,7 +502,7 @@ export async function getLeadContacts(leadName: string): Promise<string | null> 
     "IRepoService",
     "IItemWorker",
     "GetByNames",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     "leads",
     "all items",
     leadName,
@@ -533,7 +529,7 @@ export async function getLeadContactsItem(leadName: string): Promise<any> {
     "IRepoService",
     "IItemWorker",
     "GetByNames",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     "leads",
     "all items",
     leadName,
@@ -572,7 +568,7 @@ export async function getAllLeadsWithContacts(): Promise<LeadDashboardItem[]> {
 
   // Step 2: Get leads base loca
   const leadsLoca = allLeadsResponse.Settings?.address
-    ? allLeadsResponse.Settings.address.replace(`${SHARED_REPO_ID}/`, "")
+    ? allLeadsResponse.Settings.address.replace(`${getCurrentRepoGuid()}/`, "")
     : "03/06";
 
   const body = allLeadsResponse.Body;
@@ -583,7 +579,7 @@ export async function getAllLeadsWithContacts(): Promise<LeadDashboardItem[]> {
     "IRepoService",
     "IManyItemsWorker",
     "GetManyByName",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     leadsLoca,
     "contacts",
   ]);
@@ -596,7 +592,7 @@ export async function getAllLeadsWithContacts(): Promise<LeadDashboardItem[]> {
       if (address) {
         // Extract the lead name from the address
         // Address format: repoId/leadsLoca/leadKey/.../contacts
-        const withoutRepo = address.replace(`${SHARED_REPO_ID}/`, "");
+        const withoutRepo = address.replace(`${getCurrentRepoGuid()}/`, "");
         const withoutLeads = withoutRepo.replace(`${leadsLoca}/`, "");
         const leadName = withoutLeads.split("/").slice(1).join("/").replace("/contacts", "");
         if (leadName) {
@@ -638,7 +634,7 @@ export async function getLeadsParentItem(): Promise<any> {
     "IRepoService",
     "IItemWorker",
     "GetByNames",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     "leads",
     "all items",
   ]);
@@ -891,7 +887,7 @@ export async function createMsgWorkoutForLead(
     "IRepoService",
     "IItemWorker",
     "GetByNames2",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     leadLoca,
     "msg workout",
   ]);
@@ -900,7 +896,7 @@ export async function createMsgWorkoutForLead(
   
   if (msgWorkoutFolderResult?.Settings?.address) {
     // Folder exists
-    msgWorkoutFolderLoca = msgWorkoutFolderResult.Settings.address.replace(`${SHARED_REPO_ID}/`, "");
+    msgWorkoutFolderLoca = msgWorkoutFolderResult.Settings.address.replace(`${getCurrentRepoGuid()}/`, "");
   } else {
     // Folder doesn't exist, this shouldn't happen if getLeadMsgWorkoutsByLoca worked
     // but we handle it gracefully
@@ -912,7 +908,7 @@ export async function createMsgWorkoutForLead(
     "IRepoService",
     "IItemWorker",
     "PostParentItem",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     msgWorkoutFolderLoca,
     "Folder",
     workoutName,
@@ -922,7 +918,7 @@ export async function createMsgWorkoutForLead(
     throw new Error(`Failed to create workout "${workoutName}"`);
   }
   
-  const workoutLoca = workoutResult.Settings.address.replace(`${SHARED_REPO_ID}/`, "");
+  const workoutLoca = workoutResult.Settings.address.replace(`${getCurrentRepoGuid()}/`, "");
   
   return {
     workoutName,
@@ -960,7 +956,7 @@ export async function createMsgWorkoutForLead(
 export interface DateEntryItem {
   itemName: string;
   loca: string;
-  body?: Record<string, unknown>;
+  body?: string;
 }
 
 /**
@@ -973,47 +969,84 @@ export interface DailyEntryItem {
 }
 
 /**
+ * Gets every child Text-item of a single folder (identified by parent
+ * logical-name path, e.g. ["actions", "dates"]), with each child's own
+ * body fetched individually.
+ *
+ * This mirrors the PROVEN working pattern from getMsgPlannerDateFolders
+ * (documentation/dba/data-access.md §5-7), NOT IManyItemsWorker.GetList —
+ * GetList takes a C# ValueTuple parameter that the /invoke string-args
+ * resolver (FindParameters.ConvertParamFromString) cannot construct
+ * (confirmed real failure: "InvalidCastException: Invalid cast from
+ * 'System.String' to 'System.ValueTuple`2[...]'" — this method is not
+ * callable via /invoke at all, for any data, regardless of args). The
+ * documented, already-working approach for "list every child of one
+ * folder" is: GetByNames on the folder, then walk its Body map
+ * (physicalKey -> logicalName), building each child's loca as
+ * `${folderLoca}/${physicalKey}` — exactly what Msg Planner does.
+ *
+ * @param parentNames - logical-name path to the folder, e.g. ["actions", "dates"]
+ */
+async function getAllChildTextItems(
+  parentNames: string[]
+): Promise<Array<{ itemName: string; loca: string; body?: string }>> {
+  const repoGuid = getCurrentRepoGuid();
+
+  const folderResult = await invokeContentProvider([
+    "IRepoService",
+    "IItemWorker",
+    "GetByNames",
+    repoGuid,
+    ...parentNames,
+  ]);
+
+  if (!folderResult?.Settings?.address) {
+    return [];
+  }
+
+  const folderLoca = folderResult.Settings.address.replace(`${repoGuid}/`, "");
+
+  const childrenBody = folderResult?.Body;
+  if (!childrenBody || typeof childrenBody !== "object") {
+    return [];
+  }
+
+  const childEntries = Object.entries(childrenBody).filter(
+    ([physicalKey, logicalName]) =>
+      typeof physicalKey === "string" && physicalKey.length > 0 && typeof logicalName === "string"
+  ) as Array<[string, string]>;
+
+  const entries: Array<{ itemName: string; loca: string; body?: string }> = [];
+  for (const [physicalKey, logicalName] of childEntries) {
+    const childLoca = `${folderLoca}/${physicalKey}`;
+
+    const itemResult = await invokeContentProvider([
+      "IRepoService",
+      "IItemWorker",
+      "GetItem",
+      repoGuid,
+      childLoca,
+    ]);
+
+    let body: string | undefined;
+    if (itemResult?.Body) {
+      body = typeof itemResult.Body === "string" ? itemResult.Body : JSON.stringify(itemResult.Body);
+    }
+
+    entries.push({ itemName: logicalName, loca: childLoca, body });
+  }
+
+  return entries;
+}
+
+/**
  * Gets all date entries from the actions/dates folder.
- * 
+ *
  * @returns Promise resolving to array of date entry items
  */
 export async function getAllDateEntries(): Promise<DateEntryItem[]> {
   try {
-    // First ensure the actions/dates path exists
-    const result = await invokeContentProvider([
-      "IRepoService",
-      "IItemWorker",
-      "GetByNames",
-      SHARED_REPO_ID,
-      "actions",
-      "dates",
-    ]);
-
-    if (!result?.Body) {
-      return [];
-    }
-
-    const folderLoca = result.Settings?.address
-      ? result.Settings.address.replace(`${SHARED_REPO_ID}/`, "")
-      : "";
-
-    if (!folderLoca) {
-      return [];
-    }
-
-    // Parse Body map: physicalKey -> logicalName
-    const entries: DateEntryItem[] = [];
-    for (const [physicalKey, logicalName] of Object.entries(result.Body)) {
-      if (typeof logicalName === "string" && logicalName.trim()) {
-        entries.push({
-          itemName: logicalName.trim(),
-          loca: `${folderLoca}/${physicalKey}`,
-          body: result.Body as Record<string, unknown>,
-        });
-      }
-    }
-
-    return entries;
+    return await getAllChildTextItems(["actions", "dates"]);
   } catch {
     return [];
   }
@@ -1021,112 +1054,16 @@ export async function getAllDateEntries(): Promise<DateEntryItem[]> {
 
 /**
  * Gets all daily entries from the actions/daily folder.
- * 
- * Uses IManyItemsWorker.GetList to retrieve children of the daily folder,
- * then fetches each item's body content individually.
- * 
+ *
  * Note: The body is returned as a raw string. YAML parsing should be done
  * in the dashboard layer where js-yaml is available.
- * 
+ *
  * @returns Promise resolving to array of daily entry items
  */
 export async function getAllDailyEntries(): Promise<DailyEntryItem[]> {
   try {
-    console.log("[chad-dba] getAllDailyEntries: Starting...");
-    
-    // Step 1: Get the actions/daily folder to obtain its loca
-    const folderResult = await invokeContentProvider([
-      "IRepoService",
-      "IItemWorker",
-      "GetByNames",
-      SHARED_REPO_ID,
-      "actions",
-      "daily",
-    ]);
-
-    console.log("[chad-dba] getAllDailyEntries: Folder result:", JSON.stringify(folderResult, null, 2));
-
-    if (!folderResult?.Settings?.address) {
-      console.log("[chad-dba] getAllDailyEntries: No folder found - no Settings.address");
-      return [];
-    }
-
-    const folderLoca = folderResult.Settings.address.replace(`${SHARED_REPO_ID}/`, "");
-    console.log("[chad-dba] getAllDailyEntries: folderLoca:", folderLoca);
-
-    // Step 2: Get children of the daily folder using IManyItemsWorker.GetList
-    // IMPORTANT: Use IManyItemsWorker (interface), NOT ManyItemsWorker (implementation)
-    const childrenRaw = await invokeContentProvider([
-      "IRepoService",
-      "IManyItemsWorker",
-      "GetList",
-      SHARED_REPO_ID,
-      folderLoca,
-    ]);
-
-    console.log("[chad-dba] getAllDailyEntries: GetList raw response:", typeof childrenRaw === 'string' ? childrenRaw.substring(0, 500) : childrenRaw);
-
-    // Parse the JSON response - it's a list of ItemModel objects
-    let children: any[] = [];
-    if (typeof childrenRaw === 'string') {
-      try {
-        children = JSON.parse(childrenRaw);
-      } catch (parseError) {
-        console.error("[chad-dba] getAllDailyEntries: Failed to parse GetList response:", parseError);
-        return [];
-      }
-    } else if (Array.isArray(childrenRaw)) {
-      children = childrenRaw;
-    }
-
-    console.log("[chad-dba] getAllDailyEntries: Found", children.length, "children");
-    console.log("[chad-dba] getAllDailyEntries: Children names:", children.map(c => c.Settings?.name || c.Name));
-
-    // Step 3: For each child, get the full item with body
-    const entries: DailyEntryItem[] = [];
-    for (const child of children) {
-      const childLoca = child.Settings?.address 
-        ? child.Settings.address.replace(`${SHARED_REPO_ID}/`, "")
-        : child.Settings?.loca;
-      
-      const childName = child.Settings?.name || child.Name;
-      
-      if (!childLoca) {
-        console.warn("[chad-dba] getAllDailyEntries: Child without loca, skipping:", childName);
-        continue;
-      }
-
-      // Get the full item with body using GetItem
-      const itemResult = await invokeContentProvider([
-        "IRepoService",
-        "IItemWorker",
-        "GetItem",
-        SHARED_REPO_ID,
-        childLoca,
-      ]);
-
-      // Return body as raw string - YAML parsing is done in dashboard layer
-      let body: string | undefined;
-      if (itemResult?.Body) {
-        if (typeof itemResult.Body === 'string') {
-          body = itemResult.Body;
-        } else if (typeof itemResult.Body === 'object') {
-          // If body is already an object, stringify it
-          body = JSON.stringify(itemResult.Body);
-        }
-      }
-
-      entries.push({
-        itemName: childName || childLoca.split('/').pop() || '',
-        loca: childLoca,
-        body,
-      });
-    }
-
-    console.log("[chad-dba] getAllDailyEntries: Returning", entries.length, "entries");
-    return entries;
-  } catch (error) {
-    console.error("[chad-dba] getAllDailyEntries: Error:", error);
+    return await getAllChildTextItems(["actions", "daily"]);
+  } catch {
     return [];
   }
 }
@@ -1153,7 +1090,7 @@ export async function saveDateEntry(
     "IRepoService",
     "IItemWorker",
     "PostParentItem",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     "",  // root loca
     "Folder",
     "actions",
@@ -1163,14 +1100,14 @@ export async function saveDateEntry(
     throw new Error("Failed to get or create actions folder");
   }
 
-  const actionsLoca = actionsResult.Settings.address.replace(`${SHARED_REPO_ID}/`, "");
+  const actionsLoca = actionsResult.Settings.address.replace(`${getCurrentRepoGuid()}/`, "");
 
   // Step 2: Get or create dates folder under actions
   const datesResult = await invokeContentProvider([
     "IRepoService",
     "IItemWorker",
     "PostParentItem",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     actionsLoca,
     "Folder",
     "dates",
@@ -1180,14 +1117,14 @@ export async function saveDateEntry(
     throw new Error("Failed to get or create dates folder");
   }
 
-  const datesLoca = datesResult.Settings.address.replace(`${SHARED_REPO_ID}/`, "");
+  const datesLoca = datesResult.Settings.address.replace(`${getCurrentRepoGuid()}/`, "");
 
   // Step 3: Create text item under dates folder
   const entryResult = await invokeContentProvider([
     "IRepoService",
     "IItemWorker",
     "PostParentItem",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     datesLoca,
     "Text",
     itemName,
@@ -1197,14 +1134,14 @@ export async function saveDateEntry(
     throw new Error(`Failed to create date entry "${itemName}"`);
   }
 
-  const entryLoca = entryResult.Settings.address.replace(`${SHARED_REPO_ID}/`, "");
+  const entryLoca = entryResult.Settings.address.replace(`${getCurrentRepoGuid()}/`, "");
 
   // Step 4: Put YAML body
   await invokeContentProvider([
     "IRepoService",
     "IItemWorker",
     "Put",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     entryLoca,
     "Text",
     itemName,
@@ -1240,7 +1177,7 @@ export async function saveDailyEntry(
     "IRepoService",
     "IItemWorker",
     "PostParentItem",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     "",  // root loca
     "Folder",
     "actions",
@@ -1250,14 +1187,14 @@ export async function saveDailyEntry(
     throw new Error("Failed to get or create actions folder");
   }
 
-  const actionsLoca = actionsResult.Settings.address.replace(`${SHARED_REPO_ID}/`, "");
+  const actionsLoca = actionsResult.Settings.address.replace(`${getCurrentRepoGuid()}/`, "");
 
   // Step 2: Get or create daily folder under actions
   const dailyResult = await invokeContentProvider([
     "IRepoService",
     "IItemWorker",
     "PostParentItem",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     actionsLoca,
     "Folder",
     "daily",
@@ -1267,14 +1204,14 @@ export async function saveDailyEntry(
     throw new Error("Failed to get or create daily folder");
   }
 
-  const dailyLoca = dailyResult.Settings.address.replace(`${SHARED_REPO_ID}/`, "");
+  const dailyLoca = dailyResult.Settings.address.replace(`${getCurrentRepoGuid()}/`, "");
 
   // Step 3: Create text item under daily folder
   const entryResult = await invokeContentProvider([
     "IRepoService",
     "IItemWorker",
     "PostParentItem",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     dailyLoca,
     "Text",
     itemName,
@@ -1284,14 +1221,14 @@ export async function saveDailyEntry(
     throw new Error(`Failed to create daily entry "${itemName}"`);
   }
 
-  const entryLoca = entryResult.Settings.address.replace(`${SHARED_REPO_ID}/`, "");
+  const entryLoca = entryResult.Settings.address.replace(`${getCurrentRepoGuid()}/`, "");
 
   // Step 4: Put YAML body
   await invokeContentProvider([
     "IRepoService",
     "IItemWorker",
     "Put",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     entryLoca,
     "Text",
     itemName,
@@ -1306,38 +1243,112 @@ export async function saveDailyEntry(
 }
 
 /**
- * Generates a unique item name based on date with suffix handling.
- * 
- * Format: YY-MM-DD for the first entry, YY-MM-DDb, YY-MM-DDc, etc. for subsequent ones.
- * 
- * @param existingNames - Array of existing item names in the folder
- * @param dateStr - Date in YYYY-MM-DD format
- * @returns A unique item name
+ * Generates the next sequential zero-padded numeric item name ("01", "02",
+ * ...) that isn't already in existingNames. Item NAMES are just sequence
+ * numbers, not dates — the actual date lives inside the entry's own body
+ * (DATE/DATA field), so encoding it again in the name was redundant.
+ *
+ * The dateStr parameter kept for source compatibility with older callers
+ * that still pass it (harmless, ignored) — new callers should just pass
+ * existingNames.
  */
-export function generateEntryName(existingNames: string[], dateStr: string): string {
-  const parts = dateStr.split('-');
-  if (parts.length !== 3) {
-    return dateStr;
+export function generateEntryName(existingNames: string[], _dateStr?: string): string {
+  let n = existingNames.length + 1;
+  let candidate = String(n).padStart(2, "0");
+  while (existingNames.includes(candidate)) {
+    n += 1;
+    candidate = String(n).padStart(2, "0");
   }
-  
-  const shortDate = `${parts[0].slice(-2)}-${parts[1]}-${parts[2]}`;
-  
-  // Check if base name exists
-  if (!existingNames.includes(shortDate)) {
-    return shortDate;
+  return candidate;
+}
+
+/**
+ * Daily Tracker "— AUTO" columns, computed from Date Entry records grouped
+ * by matching date. Rules reconstructed from the Google Sheet's exported
+ * values (no formulas were present in the export — see
+ * documentation/dashboard/common/features/daily-tracker-dates.md for the
+ * worked examples this was derived from) and confirmed by the project
+ * owner:
+ *
+ * - PULLS: count of that day's Date records with PULL truthy.
+ * - CLOSES: sum of CLOSE weights for that day (NIE=0, BLISKO=0.5, TAK=1).
+ * - QUALITY D/P: average JAKOŚĆ of that day's records where PULL is truthy
+ *   (records without a pull are excluded).
+ * - QUALITY C: average JAKOŚĆ of that day's records where CLOSE=TAK
+ *   (BLISKO does NOT count).
+ *
+ * Averaging multiple qualifying records for one day is the project
+ * owner's best-guess reconstruction (not confirmed against a larger
+ * dataset or the original formulas) — revisit if real data contradicts it.
+ */
+export interface DailyAutoFields {
+  pullsAuto: number;
+  closesAuto: number;
+  qualityDpAuto: number | null;
+  qualityCAuto: number | null;
+}
+
+function isPullTruthy(value: unknown): boolean {
+  const s = String(value ?? "").trim().toUpperCase();
+  return s === "TRUE" || s === "TAK" || s === "1";
+}
+
+function closeWeight(value: unknown): number {
+  const s = String(value ?? "").trim().toUpperCase();
+  if (s === "TAK") return 1;
+  if (s === "BLISKO") return 0.5;
+  return 0; // NIE or anything else
+}
+
+function parseQuality(value: unknown): number | null {
+  if (value === undefined || value === null || value === "") return null;
+  const normalized = String(value).replace(",", ".");
+  const n = Number(normalized);
+  return Number.isFinite(n) ? n : null;
+}
+
+function average(values: number[]): number | null {
+  if (values.length === 0) return null;
+  return values.reduce((a, b) => a + b, 0) / values.length;
+}
+
+/**
+ * Computes PULLS/CLOSES/QUALITY D/P/QUALITY C for every date present in
+ * dateEntryFields, keyed by the date string exactly as it appears in the
+ * DATA field (so callers should look up using the same DATE/DATA string
+ * format the Daily Entry and Date Entry forms actually save).
+ *
+ * @param dateEntryFields - parsed YAML fields (DATA, PULL, CLOSE, JAKOŚĆ) of every Date Entry record
+ */
+export function computeDailyAutoFieldsByDate(
+  dateEntryFields: Array<Record<string, unknown>>
+): Map<string, DailyAutoFields> {
+  const byDate = new Map<string, Array<Record<string, unknown>>>();
+  for (const fields of dateEntryFields) {
+    const date = String(fields["DATA"] ?? "").trim();
+    if (!date) continue;
+    if (!byDate.has(date)) byDate.set(date, []);
+    byDate.get(date)!.push(fields);
   }
-  
-  // Try suffixes b, c, d, ... z
-  const letters = 'bcdefghijklmnopqrstuvwxyz';
-  for (const letter of letters) {
-    const nameWithSuffix = `${shortDate}${letter}`;
-    if (!existingNames.includes(nameWithSuffix)) {
-      return nameWithSuffix;
-    }
+
+  const result = new Map<string, DailyAutoFields>();
+  for (const [date, records] of byDate) {
+    const pullRecords = records.filter((r) => isPullTruthy(r["PULL"]));
+    const closeYesRecords = records.filter((r) => closeWeight(r["CLOSE"]) === 1);
+
+    result.set(date, {
+      pullsAuto: pullRecords.length,
+      closesAuto: records.reduce((sum, r) => sum + closeWeight(r["CLOSE"]), 0),
+      qualityDpAuto: average(
+        pullRecords.map((r) => parseQuality(r["JAKOŚĆ"])).filter((n): n is number => n !== null)
+      ),
+      qualityCAuto: average(
+        closeYesRecords.map((r) => parseQuality(r["JAKOŚĆ"])).filter((n): n is number => n !== null)
+      ),
+    });
   }
-  
-  // Fallback - add timestamp
-  return `${shortDate}_${Date.now()}`;
+
+  return result;
 }
 
 export async function getLeadMsgWorkoutsByLoca(leadLoca: string): Promise<MsgWorkoutsResult> {
@@ -1346,7 +1357,7 @@ export async function getLeadMsgWorkoutsByLoca(leadLoca: string): Promise<MsgWor
       "IRepoService",
       "IItemWorker",
       "GetByNames2",
-      SHARED_REPO_ID,
+      getCurrentRepoGuid(),
       leadLoca,
       "msg workout",
     ]);
@@ -1361,14 +1372,14 @@ export async function getLeadMsgWorkoutsByLoca(leadLoca: string): Promise<MsgWor
 
     // Get the msg workout folder's loca from the address
     const folderAddress = result.Settings.address || "";
-    if (!folderAddress.startsWith(`${SHARED_REPO_ID}/`)) {
+    if (!folderAddress.startsWith(`${getCurrentRepoGuid()}/`)) {
       return {
         workouts: [],
         notFound: false,
         error: "Invalid folder address format",
       };
     }
-    const msgWorkoutFolderLoca = folderAddress.substring(`${SHARED_REPO_ID}/`.length);
+    const msgWorkoutFolderLoca = folderAddress.substring(`${getCurrentRepoGuid()}/`.length);
 
     // Check if Body exists and is an object
     if (!result.Body || typeof result.Body !== "object") {
@@ -1734,7 +1745,7 @@ export async function getMsgWorkoutForEdit(loca: string): Promise<MsgWorkoutEdit
     "IRepoService",
     "IItemWorker",
     "GetItem",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     loca,
   ]);
 
@@ -1743,7 +1754,7 @@ export async function getMsgWorkoutForEdit(loca: string): Promise<MsgWorkoutEdit
   }
 
   // Build full address from repo GUID and loca
-  const address = `${SHARED_REPO_ID}/${loca}`;
+  const address = `${getCurrentRepoGuid()}/${loca}`;
 
   // Get lead name from the loca path (first segment = girlId)
   const girlId = loca.split("/")[0] || "";
@@ -1780,7 +1791,7 @@ export async function saveMsgWorkout(loca: string, content: string): Promise<boo
     "IRepoService",
     "IItemWorker",
     "GetItem",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     loca,
   ]);
 
@@ -1794,7 +1805,7 @@ export async function saveMsgWorkout(loca: string, content: string): Promise<boo
     "IRepoService",
     "IItemWorker",
     "Put",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     loca,
     "Text",
     itemName,
@@ -1830,7 +1841,7 @@ export async function leadExists(leadName: string): Promise<boolean> {
       "IRepoService",
       "IItemWorker",
       "GetByNames",
-      SHARED_REPO_ID,
+      getCurrentRepoGuid(),
       "leads",
       "all items",
       leadName,
@@ -1874,7 +1885,7 @@ export async function createLead(
       "IRepoService",
       "IItemWorker",
       "GetByNames",
-      SHARED_REPO_ID,
+      getCurrentRepoGuid(),
       "leads",
       "all items",
     ]);
@@ -1888,14 +1899,14 @@ export async function createLead(
       };
     }
 
-    const parentLoca = parentResult.Settings.address.replace(`${SHARED_REPO_ID}/`, "");
+    const parentLoca = parentResult.Settings.address.replace(`${getCurrentRepoGuid()}/`, "");
 
     // Step 2: Create the lead item using PostParentItem
     const leadResult = await invokeContentProvider([
       "IRepoService",
       "IItemWorker",
       "PostParentItem",
-      SHARED_REPO_ID,
+      getCurrentRepoGuid(),
       parentLoca,
       "Folder",
       leadName,
@@ -1910,28 +1921,28 @@ export async function createLead(
       };
     }
 
-    const leadLoca = leadResult.Settings.address.replace(`${SHARED_REPO_ID}/`, "");
+    const leadLoca = leadResult.Settings.address.replace(`${getCurrentRepoGuid()}/`, "");
 
     // Step 3: Create contacts text item under the lead (always, even if empty)
     const contactsResult = await invokeContentProvider([
       "IRepoService",
       "IItemWorker",
       "PostParentItem",
-      SHARED_REPO_ID,
+      getCurrentRepoGuid(),
       leadLoca,
       "Text",
       "contacts",
     ]);
 
     if (contactsResult?.Settings?.address) {
-      const contactsLoca = contactsResult.Settings.address.replace(`${SHARED_REPO_ID}/`, "");
+      const contactsLoca = contactsResult.Settings.address.replace(`${getCurrentRepoGuid()}/`, "");
 
       // Write contacts content (empty string if no contacts provided)
       await invokeContentProvider([
         "IRepoService",
         "IItemWorker",
         "Put",
-        SHARED_REPO_ID,
+        getCurrentRepoGuid(),
         contactsLoca,
         "Text",
         "contacts",
@@ -1944,7 +1955,7 @@ export async function createLead(
       "IRepoService",
       "IItemWorker",
       "PostParentItem",
-      SHARED_REPO_ID,
+      getCurrentRepoGuid(),
       leadLoca,
       "Folder",
       "msg workout",
@@ -2041,7 +2052,7 @@ export async function getMsgPlannerDateFolders(): Promise<MsgPlannerDateFolder[]
     "IRepoService",
     "IItemWorker",
     "GetByNames",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     "leads",
     "msg planner",
   ]);
@@ -2054,7 +2065,7 @@ export async function getMsgPlannerDateFolders(): Promise<MsgPlannerDateFolder[]
     return [];
   }
 
-  const msgPlannerLoca = chad_GetLocaFromAddress(msgPlannerResult.Settings.address, SHARED_REPO_ID);
+  const msgPlannerLoca = chad_GetLocaFromAddress(msgPlannerResult.Settings.address, getCurrentRepoGuid());
   console.log("[chad-dba] msg planner loca:", msgPlannerLoca);
 
   // Step 2: Read child physical keys -> logical names from the folder body map.
@@ -2151,7 +2162,7 @@ export async function getMsgPlannerBodyForDate(date: string, dateFolderLoca: str
     "IRepoService",
     "IItemWorker",
     "GetItem",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     dateFolderLoca,
   ]);
 
@@ -2181,7 +2192,7 @@ export async function saveMsgPlannerBody(dateFolderLoca: string, content: string
     "IRepoService",
     "IItemWorker",
     "GetItem",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     dateFolderLoca,
   ]);
 
@@ -2199,7 +2210,7 @@ export async function saveMsgPlannerBody(dateFolderLoca: string, content: string
     "IRepoService",
     "IItemWorker",
     "Put",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     dateFolderLoca,
     "Text",
     itemName,
@@ -2385,7 +2396,7 @@ export async function createMsgPlannerDateFolder(
     "IRepoService",
     "IItemWorker",
     "GetByNames",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     "leads",
     "msg planner",
   ]);
@@ -2394,7 +2405,7 @@ export async function createMsgPlannerDateFolder(
     throw new Error("Msg planner folder not found. Cannot create date folder.");
   }
 
-  const msgPlannerLoca = chad_GetLocaFromAddress(msgPlannerResult.Settings.address, SHARED_REPO_ID);
+  const msgPlannerLoca = chad_GetLocaFromAddress(msgPlannerResult.Settings.address, getCurrentRepoGuid());
   console.log(`[chad-dba] Msg planner loca: ${msgPlannerLoca}`);
 
   // Step 2: Get existing children to find unique name if needed
@@ -2422,7 +2433,7 @@ export async function createMsgPlannerDateFolder(
     "IRepoService",
     "IItemWorker",
     "PostParentItem",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     msgPlannerLoca,
     "Text",  // Same type as existing date folders
     actualName,  // Logical name (YY-MM-DD format, possibly with suffix)
@@ -2433,7 +2444,7 @@ export async function createMsgPlannerDateFolder(
   }
 
   // Step 5: Extract the loca of the created item
-  const dateItemLoca = chad_GetLocaFromAddress(dateItemResult.Settings.address, SHARED_REPO_ID);
+  const dateItemLoca = chad_GetLocaFromAddress(dateItemResult.Settings.address, getCurrentRepoGuid());
   console.log(`[chad-dba] Created date folder "${actualName}" with loca: ${dateItemLoca}`);
 
   const result: MsgPlannerDateFolder & { generatedBody?: string; originalDate?: string } = {

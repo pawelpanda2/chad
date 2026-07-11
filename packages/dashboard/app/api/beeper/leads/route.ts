@@ -8,16 +8,22 @@
  */
 
 import { NextResponse } from "next/server";
-import { getAllLeadsFromRepository } from "dba";
+import { getAllLeadsFromRepository, runWithRepoContext } from "dba";
+import { getCurrentUserFromCookies } from "@/lib/session";
 
 /**
  * GET /api/beeper/leads
- * Returns a list of all leads from the shared repository.
+ * Returns a list of all leads from the current user's repository.
  * This includes leads with and without saved WhatsApp conversations.
  */
 export async function GET() {
   try {
-    const leads = await getAllLeadsFromRepository();
+    const user = await getCurrentUserFromCookies();
+    if (!user) {
+      return NextResponse.json({ ok: false, error: "NOT_AUTHENTICATED" }, { status: 401 });
+    }
+
+    const leads = await runWithRepoContext(user, () => getAllLeadsFromRepository());
     return NextResponse.json(leads);
   } catch (error) {
     console.error("Error fetching all leads:", error);

@@ -9,6 +9,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { getCurrentUserFromCookies } from "@/lib/session";
 
 /**
  * POST /api/leads-dashboard/msg-workout
@@ -20,6 +21,11 @@ import { NextRequest, NextResponse } from "next/server";
  */
 export async function POST(request: NextRequest) {
   try {
+    const user = await getCurrentUserFromCookies();
+    if (!user) {
+      return NextResponse.json({ error: "NOT_AUTHENTICATED" }, { status: 401 });
+    }
+
     const body = await request.json();
     const { leadName, leadLoca } = body;
 
@@ -30,8 +36,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { createMsgWorkoutForLead } = await import("dba");
-    const result = await createMsgWorkoutForLead(leadName, leadLoca);
+    const { createMsgWorkoutForLead, runWithRepoContext } = await import("dba");
+    const result = await runWithRepoContext(user, () =>
+      createMsgWorkoutForLead(leadName, leadLoca)
+    );
 
     return NextResponse.json(result);
   } catch (error) {

@@ -10,7 +10,8 @@
  */
 
 import { NextResponse } from "next/server";
-import { getAllLeadsWithContacts } from "dba";
+import { getAllLeadsWithContacts, runWithRepoContext } from "dba";
+import { getCurrentUserFromCookies } from "@/lib/session";
 
 /**
  * GET /api/leads-dashboard
@@ -18,7 +19,12 @@ import { getAllLeadsWithContacts } from "dba";
  */
 export async function GET() {
   try {
-    const leads = await getAllLeadsWithContacts();
+    const user = await getCurrentUserFromCookies();
+    if (!user) {
+      return NextResponse.json({ ok: false, error: "NOT_AUTHENTICATED" }, { status: 401 });
+    }
+
+    const leads = await runWithRepoContext(user, () => getAllLeadsWithContacts());
     return NextResponse.json(leads);
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);

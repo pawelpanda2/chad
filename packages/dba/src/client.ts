@@ -253,6 +253,6 @@ export async function getUsersList(): Promise<any> {
     "GetByNames",
     "root",
     "users",
-    "users-list",
+    "chad_admin",
   ]);
 }

@@ -12,13 +12,19 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getTodoMsgLeads, getFirstMsgLeads } from "dba";
+import { getTodoMsgLeads, getFirstMsgLeads, runWithRepoContext } from "dba";
+import { getCurrentUserFromCookies } from "@/lib/session";
 
 /**
  * GET /api/todo-msg?type=todo|first-msg
  * Returns filtered leads based on the type parameter.
  */
 export async function GET(request: NextRequest) {
+  const user = await getCurrentUserFromCookies();
+  if (!user) {
+    return NextResponse.json({ error: "NOT_AUTHENTICATED" }, { status: 401 });
+  }
+
   const { searchParams } = new URL(request.url);
   const type = searchParams.get("type");
 
@@ -31,10 +37,10 @@ export async function GET(request: NextRequest) {
 
   try {
     if (type === "todo") {
-      const leads = await getTodoMsgLeads();
+      const leads = await runWithRepoContext(user, () => getTodoMsgLeads());
       return NextResponse.json(leads);
     } else {
-      const leads = await getFirstMsgLeads();
+      const leads = await runWithRepoContext(user, () => getFirstMsgLeads());
       return NextResponse.json(leads);
     }
   } catch (error) {

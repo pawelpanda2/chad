@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Shows container status + health for the QNAP PROD docker-compose stack.
-# Never changes state.
+# Shows container status + health for the QNAP PROD dashboard ONLY. For
+# shared mongo/content-provider-api status, see
+# bash-scripts/dashboard/00_qnap_shared/05_status.sh. Never changes state.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -16,17 +17,11 @@ cd "$REPO_ROOT"
 docker compose -p "$COMPOSE_PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps
 
 echo ""
-if curl -fsS -m 3 "http://localhost:$CONTENT_PROVIDER_API_PORT/health" 2>/dev/null; then
-  echo ""
-  log_ok "content-provider-api healthy (port $CONTENT_PROVIDER_API_PORT)."
-else
-  echo ""
-  log_warn "content-provider-api did NOT respond on port $CONTENT_PROVIDER_API_PORT."
-fi
-
-echo ""
 if curl -fsS -o /dev/null -m 3 -w '%{http_code}' "http://localhost:$DASHBOARD_PORT" 2>/dev/null | grep -qE '^[23]'; then
   log_ok "dashboard responds (port $DASHBOARD_PORT)."
 else
   log_warn "dashboard did NOT respond on port $DASHBOARD_PORT."
 fi
+
+echo ""
+log_info "(Shared mongo/content-provider-api status: bash bash-scripts/dashboard/00_qnap_shared/05_status.sh)"

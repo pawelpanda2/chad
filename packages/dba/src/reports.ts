@@ -6,7 +6,7 @@
  */
 
 import { invokeContentProvider } from "./client.js";
-import { SHARED_REPO_ID } from "./leads.js";
+import { getCurrentRepoGuid } from "./repo-context.js";
 
 /**
  * Gets all reports from the shared repository.
@@ -20,7 +20,7 @@ export async function GetReports(): Promise<any> {
     "IRepoService",
     "IItemWorker",
     "GetByNames",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     "reports",
   ]);
 }
@@ -36,7 +36,7 @@ export async function GetReportByName(reportName: string): Promise<any> {
     "IRepoService",
     "IItemWorker",
     "GetByNames",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     "reports",
     reportName,
   ]);

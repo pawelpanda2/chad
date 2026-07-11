@@ -19,7 +19,8 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getStatusesDashboardList, getTracesFromError, traceAndExecute } from "dba";
+import { getStatusesDashboardList, getTracesFromError, traceAndExecute, runWithRepoContext } from "dba";
+import { getCurrentUserFromCookies } from "@/lib/session";
 
 /**
  * GET /api/statuses?range=...
@@ -27,6 +28,11 @@ import { getStatusesDashboardList, getTracesFromError, traceAndExecute } from "d
  * Includes _traces array with Content Provider request details for Dev Panel.
  */
 export async function GET(request: NextRequest) {
+  const user = await getCurrentUserFromCookies();
+  if (!user) {
+    return NextResponse.json({ ok: false, error: "NOT_AUTHENTICATED" }, { status: 401 });
+  }
+
   const { searchParams } = new URL(request.url);
   const range = searchParams.get("range") || undefined;
 
@@ -35,9 +41,11 @@ export async function GET(request: NextRequest) {
 
   try {
     // Use traceAndExecute to collect all Content Provider traces
-    const { data: leads, _traces } = await traceAndExecute(async () => {
-      return await getStatusesDashboardList(range);
-    });
+    const { data: leads, _traces } = await runWithRepoContext(user, () =>
+      traceAndExecute(async () => {
+        return await getStatusesDashboardList(range);
+      })
+    );
 
     console.log(`[/api/statuses] Success: returned ${leads.length} leads, ${_traces.length} traces`);
     

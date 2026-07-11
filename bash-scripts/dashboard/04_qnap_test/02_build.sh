@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
-# Builds the full QNAP TEST stack (mongo + content-provider-api + dashboard)
-# under docker-compose. Only builds — never runs containers, never touches
-# a running environment. See 03_begin.sh (start, idempotent) / 04_end.sh
-# (stop) / 05_status.sh / 06_deploy.sh (build + begin, one shot). Run this
-# ON the QNAP host (or via bash-scripts/dashboard/06_qnap_ssh/deploy_test.sh
-# from your Mac).
+# Builds the QNAP TEST dashboard image only. Never runs containers, never
+# touches a running environment, never builds/touches the shared mongo/
+# content-provider-api stack (see bash-scripts/dashboard/00_qnap_shared/).
+# Run this ON the QNAP host (or via
+# bash-scripts/dashboard/06_qnap_ssh/deploy_test.sh from your Mac).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -30,6 +29,5 @@ export IMAGE_TAG
 docker compose -p "$COMPOSE_PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" build --pull
 
 docker tag "chad-dashboard:$IMAGE_TAG" "chad-dashboard:latest"
-docker tag "chad-content-provider-api:$IMAGE_TAG" "chad-content-provider-api:latest"
 
-log_ok "Images built and tagged: latest, $IMAGE_TAG"
+log_ok "Image built and tagged: latest, $IMAGE_TAG"

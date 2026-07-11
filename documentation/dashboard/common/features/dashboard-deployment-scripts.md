@@ -1,105 +1,154 @@
-# Dashboard stack deployment — docker-compose (`bash-scripts/dashboard/03-06`)
+# Dashboard stack deployment — docker-compose (`bash-scripts/dashboard/00,03-06`)
 
-Status: struktura + kontrakt skryptów ustalone 2026-07-11, niezweryfikowane
-jeszcze end-to-end na realnym QNAP (tylko lokalnie na Macu, patrz sekcja
-"Weryfikacja" niżej).
+Status: przebudowane 2026-07-11 na architekturę **shared/test/prod** — jedno
+wspólne MongoDB i jeden wspólny Content Provider dla QNAP TEST i QNAP PROD,
+osobne kontenery tylko dla dashboardu. Zweryfikowane end-to-end na realnym
+QNAP (patrz sekcja "Weryfikacja" niżej).
 
 ## Czym to jest
 
-Pełny stack dashboardu (mongo + content-provider-api + dashboard frontend)
-sterowany **docker-compose**, w tej samej konwencji `build/start/end/deploy/
-status` co już wcześniej sprawdzona w
-`packages/net-content-provider/03_scripts/qnap/*.sh` (osobny, niezależny
-system — patrz niżej "Różnica względem net-content-provider").
+TEST i PROD na QNAP to **dwa osobne dashboardy wskazujące na dokładnie te
+same, prawdziwe dane** — jedno wspólne MongoDB (`chad-mongodb`) i jeden
+wspólny Content Provider (`chad-content-provider-api`), czytający z
+`/share/Dropbox`. TEST **nie jest** izolowanym środowiskiem danych ani
+sandboxem — to alternatywny/testowy interfejs do tych samych, prawdziwych
+danych, używany do weryfikacji wyglądu, layoutu, scrollbarów, edytorów,
+formularzy i integracji dashboardu bez ryzyka dla dostępności PROD. Zmiana
+danych wykonana przez dashboard TEST jest widoczna również w PROD.
 
 Struktura katalogów:
 
 ```
 bash-scripts/dashboard/
 ├── 02_local_mac/          # tmux/pnpm, BEZ Dockera (istniejące, nie-Compose)
-├── 03_local_mac_docker/   # docker-compose.local.yml
-├── 04_qnap_test/          # docker-compose.qnap.yml (ENV_NAME=test)
-├── 05_qnap_prod/          # docker-compose.qnap.yml (ENV_NAME=prod, wymaga osobnej zgody na realny deploy)
-└── 06_qnap_ssh/           # cienkie wrappery SSH nad 04_qnap_test / 05_qnap_prod
+├── 03_local_mac_docker/   # docker-compose.local.yml (mongo+CP+dashboard razem, tylko lokalnie)
+├── 00_qnap_shared/        # docker-compose.qnap.shared.yml (mongo + content-provider-api, wspólne dla TEST i PROD)
+├── 04_qnap_test/          # docker-compose.qnap.test.yml (TYLKO dashboard TEST)
+├── 05_qnap_prod/          # docker-compose.qnap.prod.yml (TYLKO dashboard PROD, wymaga osobnej zgody na realny deploy)
+└── 06_qnap_ssh/           # cienkie wrappery SSH nad 00_qnap_shared / 04_qnap_test / 05_qnap_prod
 ```
 
-Każdy z `03_local_mac_docker`, `04_qnap_test`, `05_qnap_prod` ma identyczny
+Każdy z `00_qnap_shared`, `04_qnap_test`, `05_qnap_prod` ma identyczny
 zestaw 6 plików: `01_config.sh`, `02_build.sh`, `03_begin.sh`, `04_end.sh`,
-`05_status.sh`, `06_deploy.sh`.
+`05_status.sh`, `06_deploy.sh`. Konwencja nazw skryptów to **build / begin /
+end / status / deploy** — nigdy `start_*`/`stop_*`.
 
-### `01_config.sh` — stałe środowiska, nie tylko porty
+Lokalny `docker-compose.local.yml` (`03_local_mac_docker`) łączy mongo + CP +
+dashboard w jednym pliku, bo lokalnie nie ma potrzeby rozdzielać TEST/PROD —
+ten podział dotyczy wyłącznie QNAP.
+
+## Dlaczego shared/test/prod, a nie jeden plik na środowisko
+
+Do 2026-07-11 istniał jeden `docker-compose.qnap.yml` z mongo+CP+dashboard,
+uruchamiany dwukrotnie (raz jako `chad-test`, raz jako `chad-prod`) —
+**każde środowisko miało własne, osobne MongoDB i własny, osobny Content
+Provider** (`chad-mongodb-test`/`chad-mongodb-prod`,
+`chad-content-provider-api-test`/`-prod`), mimo że oba czytały ten sam
+`/share/Dropbox`. To nie spełniało wymagania biznesowego: TEST ma być
+alternatywnym UI do **tych samych** prawdziwych danych, nie osobnym zestawem
+danych.
+
+Przebudowano na trzy pliki:
+
+- `docker-compose.qnap.shared.yml` — MongoDB (`chad-mongodb`) +
+  Content Provider API (`chad-content-provider-api`). Uruchamiane/zatrzymywane
+  **tylko** przez `00_qnap_shared/*.sh`.
+- `docker-compose.qnap.test.yml` — tylko `dashboard` (`chad-dashboard-test`).
+- `docker-compose.qnap.prod.yml` — tylko `dashboard` (`chad-dashboard-prod`).
+
+Wszystkie trzy są osobnymi projektami Compose (`-p chad-shared` /
+`chad-test` / `chad-prod`), połączonymi przez jedną **zewnętrzną** sieć
+Docker `chad-shared` (tworzoną idempotentnie przez `ensure_docker_network`
+w `bash-scripts/common/lib.sh`, wywoływaną z `00_qnap_shared/03_begin.sh`).
+
+### DNS między osobnymi projektami Compose — container_name, nie service name
+
+Compose service-name DNS resolution (np. `http://content-provider-api:12024`)
+działa tylko **w obrębie tego samego projektu Compose**. Skoro dashboard
+TEST/PROD i shared są teraz osobnymi projektami na wspólnej zewnętrznej
+sieci, dashboard musi łączyć się z Content Providerem po jego
+**`container_name`**, nie nazwie serwisu:
+
+```
+CONTENT_PROVIDER_API_URL=http://chad-content-provider-api:12024
+```
+
+(wcześniej, gdy oba serwisy żyły w jednym pliku compose, działało
+`http://content-provider-api:12024` — nazwa serwisu). To samo dotyczyłoby
+Mongo (`chad-mongodb:27017`), gdyby/gdy dashboard zacznie łączyć się z Mongo
+bezpośrednio — na dziś (2026-07-11) dashboard/`dba` jeszcze nie konsumują
+MongoDB w kodzie, Mongo jest czystą infrastrukturą przygotowaną pod
+przyszłe feature'y (patrz `documentation/ai-docs/
+26-07-10_cline_prompt_mongodb_qnap_folders_v3.md`).
+
+### `01_config.sh` — stałe środowiska
 
 Poza `COMPOSE_PROJECT_NAME`/`ENV_NAME`/portami, `01_config.sh` zawiera też
-pełną konfigurację modułów, które mają własny plik konfiguracyjny (patrz
-niżej: Content Provider). Każdy pozostały skrypt zaczyna od
-`source "$SCRIPT_DIR/01_config.sh"`.
+pełną konfigurację modułów, które mają własny plik konfiguracyjny. Każdy
+pozostały skrypt zaczyna od `source "$SCRIPT_DIR/01_config.sh"`.
 
-### Content Provider — appsettings.json generowany z `01_config.sh`
+### Content Provider — appsettings.json generowany z `00_qnap_shared/01_config.sh`
 
 Content Provider (`packages/net-content-provider`) nie ma własnego `.env`.
 Jego appsettings.json jest zapisany tekstowo (heredoc) jako
-`CONTENT_PROVIDER_APPSETTINGS_JSON` w `01_config.sh` KAŻDEGO środowiska
-(`02_local_mac`, `03_local_mac_docker`, `04_qnap_test`, `05_qnap_prod`) —
-nie jako pojedyncze zmienne środowiskowe `PreparerModule__*`. Funkcja
-`write_content_provider_appsettings()` (też w `01_config.sh`) zapisuje ten
-tekst do `.runtime/<env>/content-provider/appsettings.json` (gitignored,
-nigdy source of truth) tuż przed `docker compose up` / `docker run` —
-`03_begin.sh` woła ją zawsze na początku, przed sprawdzeniem czy stack już
-działa. Docker Compose montuje wygenerowany plik jako `/app/appsettings.json:ro`.
-Zmiana konfiguracji Content Providera = ponowne `03_begin.sh` (odtworzenie
-kontenera), nie rebuild obrazu — appsettings.json wczytuje się przy
-starcie procesu .NET, nie w trakcie działania.
+`CONTENT_PROVIDER_APPSETTINGS_JSON` w `00_qnap_shared/01_config.sh` (jedno
+miejsce teraz, bo jest jeden wspólny Content Provider — wcześniej ten sam
+tekst był zduplikowany w `04_qnap_test`/`05_qnap_prod`). Funkcja
+`write_content_provider_appsettings()` zapisuje ten tekst do
+`.runtime/shared/content-provider/appsettings.json` (gitignored, nigdy
+source of truth) tuż przed `docker compose up` — `00_qnap_shared/03_begin.sh`
+woła ją zawsze na początku. Docker Compose montuje wygenerowany plik jako
+`/app/appsettings.json:ro`. Zmiana konfiguracji Content Providera = ponowne
+`00_qnap_shared/03_begin.sh` (odtworzenie kontenera), nie rebuild obrazu.
 
-#### Dlaczego generyczny appsettings.json, a nie skopiowany "prawdziwy" z QNAP
+`04_qnap_test`/`05_qnap_prod` już NIE generują appsettings.json — nie mają
+własnego Content Providera.
 
-Zanim pierwszy realny deploy `04_qnap_test` zastąpił stary deployment
-(2026-07-11), sprawdzono jego rzeczywistą konfigurację na żywym
-kontenerze `content-provider-api-test`, żeby upewnić się, że
-`CONTENT_PROVIDER_APPSETTINGS_JSON` w `01_config.sh` nie pomija czegoś
-istotnego specyficznego dla QNAP. Wynik: **stary deployment to inna,
-starsza wersja aplikacji, z innym schematem konfiguracji** — czyta
-`CONTENT_PROVIDER_ROOT` (env var), nie `PreparerModule:NoSqlRepoSearchPaths`
-jak obecny kod (`CONTENT_PROVIDER_ROOT` jest już w obecnym `Program.cs`/
-`DefaultPreparer.cs` oznaczone komentarzem jako martwy, nieużywany kod —
-dokładnie z powodu tego starego deploymentu). Jego `/app/appsettings.json`
-był praktycznie pusty (`{"Settings": {}}`) — cała jego konfiguracja żyła
-w zmiennych środowiskowych innego (starszego) kontraktu.
+### Ścieżka danych Content Providera: `/share/Dropbox`, NIE `/share/cp_1`
 
-Wniosek: nie istnieje "prawdziwy appsettings.json dla QNAP" do skopiowania
-dla obecnej wersji aplikacji — to inny kod. Generyczny szablon w
-`01_config.sh` (ten sam dla local-mac-docker/QNAP TEST/QNAP PROD, ze
-ścieżkami `/data/repos` wskazującymi na wewnętrzny punkt montowania w
-kontenerze, a nie realną ścieżkę hosta) jest poprawny — to dokładnie ten
-sam wzorzec, który zweryfikowano lokalnie na Macu z prawdziwymi danymi
-Dropbox (`repoCount: 36`). Realna ścieżka hosta (`/share/Dropbox` na
-QNAP, `/Users/pawelfluder/Dropbox` lokalnie) pochodzi z osobnej zmiennej
-`CP_REPOS_HOST_PATH` (`.env.qnap`/`.env.local`), montowanej przez
-docker-compose na `/data/repos` — appsettings.json nie musi (i nie
-powinien) znać realnej ścieżki hosta.
-
-### Tylko dwa pliki Compose, nie cztery
-
-Celowo **jeden** `docker-compose.qnap.yml` dla TEST i PROD (nie osobne
-`docker-compose.qnap-test.yml`/`docker-compose.qnap-prod.yml`), i **jeden**
-`docker-compose.local.yml` dla local-mac-docker. TEST/PROD różni WYŁĄCZNIE
-to, który skrypt (`04_qnap_test/*.sh` vs `05_qnap_prod/*.sh`) uruchamia ten
-sam plik — każdy z nich ma na sztywno wpisane w sobie (nie w osobnym pliku
-konfiguracyjnym, nie przez parametr z linii poleceń przekazywany przez
-człowieka) `COMPOSE_PROJECT_NAME`, `ENV_NAME` (`test`/`prod` — steruje
-`container_name`/nazwami wolumenów w `docker-compose.qnap.yml` przez
-interpolację `${ENV_NAME}`) oraz porty (`DASHBOARD_PORT`,
-`CONTENT_PROVIDER_API_PORT`, `MONGODB_PORT`), i `export`uje je tuż przed
-wywołaniem `docker compose`. To jedyny sposób, żeby jeden plik Compose
-obsłużył dwa środowiska — ale wartości same w sobie żyją w skryptach, nie w
-`.env.qnap` ani w osobnym pliku config.
+`/share/cp_1` był bind mountem **starego, nieaktualnego** deploymentu
+(`content-provider-api-prod`, poza tym monorepo, zastąpionego tą
+architekturą 2026-07-11). Aktualna, poprawna ścieżka danych to
+`/share/Dropbox` (`CP_REPOS_HOST_PATH` w `.env.qnap`) — potwierdzone
+realnie: `repoCount: 36`. Jeśli gdziekolwiek pojawi się `/share/cp_1`,
+traktuj to jako pozostałość po starym deploymencie, nie jako aktualne
+źródło danych.
 
 ### Porty — NIE w `.env`
 
 `.env.local`/`.env.qnap` zawierają wyłącznie rzeczy zależne od środowiska
 (hosty, ścieżki, użytkownicy, hasła, klucze API, katalogi danych, Dropbox,
-QNAP, MongoDB credentials) — nigdy porty TEST/PROD. Porty są wpisane
-bezpośrednio w skryptach każdego katalogu (`04_qnap_test/*.sh` ma porty
-TEST, `05_qnap_prod/*.sh` ma porty PROD).
+QNAP, MongoDB credentials) — nigdy porty. Porty są wpisane bezpośrednio w
+skryptach każdego katalogu:
+
+| Środowisko | Katalog | Port |
+|---|---|---|
+| SHARED | `00_qnap_shared/01_config.sh` | Content Provider API: `12024` (publikowany na host) |
+| SHARED | `00_qnap_shared/01_config.sh` | MongoDB: **brak publikowanego portu hosta** — tylko wewnętrzna sieć `chad-shared` (`chad-mongodb:27017`) |
+| TEST | `04_qnap_test/01_config.sh` | Dashboard: `12020` |
+| PROD | `05_qnap_prod/01_config.sh` | Dashboard: `12030` |
+
+`04_qnap_test`/`05_qnap_prod` nadal mają `CONTENT_PROVIDER_API_PORT=12024`
+zdefiniowany — ale wyłącznie jako **odczyt**, do preflightowego sprawdzenia
+zdrowia shared przed startem dashboardu (`require_shared_services_healthy`),
+nigdy do uruchamiania/zatrzymywania/budowania Content Providera.
+
+## `require_shared_services_healthy` — preflight test/prod → shared
+
+Ponieważ shared, TEST i PROD to trzy osobne projekty Compose, `depends_on`
+między nimi nie działa. Zamiast tego `bash-scripts/common/lib.sh` ma funkcję
+`require_shared_services_healthy <cp_port>`, wywoływaną z
+`04_qnap_test/03_begin.sh` i `05_qnap_prod/03_begin.sh` PRZED
+`docker compose up`:
+
+1. sprawdza, czy sieć `chad-shared` istnieje,
+2. sprawdza `docker inspect chad-mongodb` → `State.Health.Status == healthy`,
+3. sprawdza, że kontener `chad-content-provider-api` działa,
+4. sprawdza `curl http://localhost:12024/health`.
+
+Jeśli którykolwiek krok zawiedzie, dashboard **odmawia startu** z czytelnym
+błędem wskazującym `bash bash-scripts/dashboard/00_qnap_shared/03_begin.sh`.
+Dashboard TEST/PROD nigdy sam nie uruchamia/nie naprawia shared.
 
 ## Zasady działania skryptów deploymentowych
 
@@ -107,98 +156,99 @@ TEST, `05_qnap_prod/*.sh` ma porty PROD).
 
 Służy **wyłącznie** do budowania nowych obrazów Docker.
 
+- `00_qnap_shared/02_build.sh` buduje tylko `chad-content-provider-api`
+  (jedyny serwis z `build:` w `docker-compose.qnap.shared.yml` — mongo to
+  gotowy obraz `mongo:4.4`).
+- `04_qnap_test/02_build.sh` / `05_qnap_prod/02_build.sh` budują tylko
+  `chad-dashboard`.
+
 Nie może:
 - uruchamiać kontenerów,
 - zatrzymywać działającego środowiska,
 - wykonywać `docker compose up`,
 - usuwać wolumenów ani danych.
 
-Każdy build tworzy obrazy z dwoma tagami:
-- `latest`
-- tag czasowy w formacie `YYMMDD_HHMMSS` (np. `260511_041130`)
-
-Przykład: `chad-dashboard:latest`, `chad-dashboard:260511_041130`.
-
-**Celowo bez** nazwy środowiska/architektury w tagu (`_test`, `_prod`, `_mac`,
-`_linux`) — środowisko jest rozróżniane przez nazwę projektu Compose
-(`chad-local` / `chad-test` / `chad-prod`), porty, nazwy kontenerów i katalog
-skryptów, nie przez tag obrazu. To celowo inaczej niż
-`packages/net-content-provider/03_scripts/qnap/build_qnap_test.sh`, który
-taguje `_mac`/`_linux` — tam to ma sens (binarka .NET, realne ryzyko
-niekompatybilności architektury przy emulacji cross-platform); dla obrazu
-Next.js budowanego z wymuszoną platformą `linux/amd64` (przez Docker Desktop
-na Macu i natywnie na QNAP) taki suffix nie jest potrzebny. Jeśli
-`content-provider-api` (też .NET, budowany też w tym stacku) kiedyś sprawi
-problem cross-arch, tag można rozszerzyć wtedy — nie teraz, żeby nie
-komplikować bez potwierdzonej potrzeby.
+Każdy build tworzy obrazy z dwoma tagami: `latest` i tag czasowy
+`YYMMDD_HHMMSS`. Celowo bez nazwy środowiska/architektury w tagu — środowisko
+jest rozróżniane przez nazwę projektu Compose, porty i nazwy kontenerów.
 
 ### `03_begin.sh`
 
 Służy **wyłącznie** do uruchamiania już zbudowanych obrazów. Nie buduje.
 
-Kolejność działania:
-1. `write_content_provider_appsettings` (patrz wyżej) — generuje
-   appsettings.json świeżo za każdym razem.
-2. Sprawdza, czy stack już działa (`docker compose ps --format json |
-   grep '"State":"running"'`). Jeśli tak: woła `04_end.sh` (zatrzymuje i
-   usuwa kontenery przez `docker compose down --remove-orphans` — bez
-   `-v`, bind mounty/named volumes/dane zostają), dopiero potem
-   kontynuuje.
-3. **Preflight portów** (patrz niżej: "Automatyczne czyszczenie
-   konfliktów portów").
+`00_qnap_shared/03_begin.sh`:
+1. `ensure_docker_network chad-shared` (idempotentne).
+2. `write_content_provider_appsettings`.
+3. Jeśli już działa: `04_end.sh`, potem start od nowa.
+4. Preflight portu `12024` (`ensure_port_available`).
+5. `docker compose up -d`.
+6. Czeka na `chad-mongodb` `healthy` i `content-provider-api` `/health`
+   (`anyRepoFound:true`).
+
+`04_qnap_test/03_begin.sh` / `05_qnap_prod/03_begin.sh`:
+1. `require_shared_services_healthy` — **odmawia startu**, jeśli shared nie
+   działa.
+2. Jeśli dashboard już działa: `04_end.sh`, potem start od nowa.
+3. Preflight portu dashboardu.
 4. `docker compose up -d`.
+5. Czeka na odpowiedź HTTP dashboardu.
 
-Nigdy nie używa `docker compose down -v`, `docker system prune`, ani
-szerokiego usuwania obrazów/kontenerów — i nigdy nie dotyka drugiego
-środowiska (każdy skrypt jest zakresowany `-p <compose-project-name>`).
+Żaden z tych skryptów nigdy nie używa `docker compose down -v`, `docker
+system prune`, ani szerokiego usuwania obrazów/kontenerów — i nigdy nie
+dotyka innego środowiska (każdy jest zakresowany `-p <compose-project-name>`).
+**`04_qnap_test`/`05_qnap_prod` nigdy nie restartują shared** — tylko je
+sprawdzają.
 
-Po starcie sprawdza healthcheck `content-provider-api` (`/health`,
-`anyRepoFound:true`) i odpowiedź HTTP dashboardu.
+#### Automatyczne czyszczenie konfliktów portów
 
-#### Automatyczne czyszczenie konfliktów portów (od commit `3d8cb6f`)
-
-Przed `docker compose up -d`, `03_begin.sh` sprawdza `DASHBOARD_PORT`,
-`CONTENT_PROVIDER_API_PORT`, `MONGODB_PORT` przez
-`ensure_port_available()` (`bash-scripts/common/lib.sh`):
-
-- **automatycznie zatrzymuje i usuwa TYLKO kontener Dockera, który
-  faktycznie publikuje wymagany port** (`docker ps --filter
-  publish=<port>`) — nigdy `docker rm -f $(docker ps -aq)`, nigdy `docker
-  system prune`,
-- **ten kontener może należeć do zupełnie innego stacku/projektu** —
-  wykrycie jest po porcie, nie po nazwie projektu Compose,
-- nie dotyka żadnego innego kontenera,
-- **nie zabija zwykłych procesów systemowych automatycznie** — jeśli port
-  zajmuje proces spoza Dockera, skrypt pokazuje jego PID i nazwę i
-  **przerywa start** (`exit 1`),
-- to świadome zachowanie: uruchomienie `03_begin.sh` MOŻE zatrzymać
-  starszą, niezależną wersję aplikacji (np. inny kontener), jeżeli
-  używa tego samego portu co ten stack. Jeśli dwie niezależne rzeczy
-  mają współistnieć na tym samym Macu/QNAP, muszą mieć różne porty —
-  skrypt tego nie rozstrzyga za ciebie, tylko usuwa co blokuje.
-
-Zweryfikowane realnie 2026-07-11: kontener-rzutka na porcie mongo +
-prawdziwy `cp_blazor` (inny, niezależny stack) na porcie dashboardu —
-`03_begin.sh` wykrył i usunął dokładnie te dwa kontenery, nic więcej, po
-czym poprawnie wystartował.
+Przed `docker compose up -d`, `03_begin.sh` sprawdza porty przez
+`ensure_port_available()` (`bash-scripts/common/lib.sh`) — automatycznie
+zatrzymuje i usuwa TYLKO kontener Dockera, który faktycznie publikuje
+wymagany port, nigdy szerokie czyszczenie. Jeśli port zajmuje proces spoza
+Dockera, skrypt pokazuje jego PID/nazwę i przerywa start.
 
 ### `04_end.sh`
 
 Zatrzymuje i usuwa **wyłącznie** kontenery/sieć/zasoby tymczasowe należące do
 danego projektu Compose: `docker compose -p <project> down --remove-orphans`.
-Nigdy `-v` (dane Mongo/dashboardu muszą przetrwać). Nigdy nie usuwa obrazów —
-zostają dostępne do ponownego `03_begin.sh`.
+Nigdy `-v`. Nigdy nie usuwa obrazów.
+
+`00_qnap_shared/04_end.sh` zatrzymuje MongoDB + Content Provider **używane
+przez OBA dashboardy** — ostrzega o tym w logach. `04_qnap_test/04_end.sh` /
+`05_qnap_prod/04_end.sh` zatrzymują wyłącznie swój dashboard.
 
 ### `06_deploy.sh`
 
 Pełny deployment nowej wersji: `02_build.sh` → `03_begin.sh` → `05_status.sh`.
-Nie woła osobno `04_end.sh` — `03_begin.sh` sam wykrywa działający stack i
-robi to za niego.
 
 ### `05_status.sh`
 
-Pokazuje `docker compose ps`, sprawdza healthcheck content-provider-api,
-sprawdza odpowiedź HTTP dashboardu. Nie zmienia stanu środowiska.
+Pokazuje `docker compose ps` + health checki dla danego projektu. Nie
+zmienia stanu środowiska. `00_qnap_shared/05_status.sh` pokazuje sieć +
+Mongo health + CP health. `04_qnap_test`/`05_qnap_prod`'s `05_status.sh`
+pokazują tylko swój dashboard i wskazują na
+`00_qnap_shared/05_status.sh` dla statusu shared.
+
+## `06_qnap_ssh` — SSH nad 00/04/05
+
+Cienkie wrappery: łączą się SSH, `cd $QNAP_REPO_DIR && git pull --ff-only`,
+i wołają realny skrypt z `00_qnap_shared/`, `04_qnap_test/` lub
+`05_qnap_prod/` — bez duplikowania logiki deploymentu. Host/user/port/
+repo-dir/hasło pochodzą z `.env.qnap` (root, gitignored).
+
+- `begin_shared.sh` / `end_shared.sh` / `deploy_shared.sh` — wymagają
+  wpisania `SHARED` do potwierdzenia (dotyczą OBU dashboardów naraz).
+- `status_shared.sh` — read-only, bez potwierdzenia.
+- `begin_test.sh` / `end_test.sh` / `deploy_test.sh` / `status_test.sh` —
+  bez potwierdzenia (TEST, choć współdzieli dane z PROD, jest bezpieczny do
+  restartu — restart dashboardu nie dotyka danych).
+- `begin_prod.sh` / `deploy_prod.sh` — wymagają wpisania `PROD`.
+- `end_prod.sh` / `status_prod.sh` — bez potwierdzenia (zatrzymanie/odczyt
+  zawsze bezpieczne, odwracalne).
+
+Nazewnictwo: `begin_*`/`end_*`/`status_*`/`deploy_*` — **nigdy**
+`start_*`/`stop_*` (dawne `start_test.sh`/`start_prod.sh` przemianowane na
+`begin_test.sh`/`begin_prod.sh` 2026-07-11).
 
 ## Różnica względem `packages/net-content-provider/03_scripts/qnap/*.sh`
 
@@ -206,67 +256,20 @@ To DWA NIEZALEŻNE systemy, celowo:
 - `packages/net-content-provider/03_scripts/qnap/*.sh` — samodzielny
   content-provider-api + Blazor GUI, bez mongo, bez dashboardu, sterowany
   plain `docker run` (nie Compose). Pozostaje nietknięty przez tę pracę.
-- `bash-scripts/dashboard/{03,04,05}_*` (ten dokument) — pełny stack
-  dashboardu (mongo + content-provider-api + dashboard frontend), sterowany
-  docker-compose.
-
-Oba mogą współistnieć na tym samym QNAP, ale lokalnie na Macu domyślnie
-nachodzą na porty 12020/12024 (Blazor/API net-content-provider vs
-dashboard local-mac-docker — potwierdzone realnym konfliktem portów podczas
-weryfikacji 2026-07-11, patrz sekcja "Weryfikacja" niżej).
-
-## `06_qnap_ssh` — SSH nad 04/05
-
-Cienkie wrappery: łączą się SSH, `cd $QNAP_REPO_DIR && git pull --ff-only`,
-i wołają realny skrypt z `04_qnap_test/` lub `05_qnap_prod/` — bez
-duplikowania logiki deploymentu. Host/user/port/repo-dir/hasło pochodzą z
-`.env.qnap` (root, gitignored), nigdy hardcoded w skryptach
-(`bash-scripts/dashboard/06_qnap_ssh/lib.sh`).
-
-`deploy_prod.sh` i `start_prod.sh` wymagają wpisania `PROD` do potwierdzenia
-— to prawdziwy deployment produkcyjny, nie próba.
+- `bash-scripts/dashboard/{00,03,04,05}_*` (ten dokument) — stack dashboardu
+  + wspólne mongo/CP, sterowany docker-compose.
 
 ## Weryfikacja
 
-**Zrobione i przechodzi (2026-07-11), lokalnie na Macu,
-`03_local_mac_docker`, pełny cykl:** `02_build.sh` → `03_begin.sh` →
-`05_status.sh` → `03_begin.sh` ponownie (idempotentny restart) →
-`04_end.sh` → `06_deploy.sh`. Wszystkie 6 kroków przeszły z realnym
-`docker compose` (nie tylko `config` syntax-check) — content-provider-api
-zdrowe z realnymi danymi repo (`anyRepoFound:true`), dashboard odpowiada
-HTTP, dane w wolumenach przetrwały restart.
-
-Po drodze wcześniejsza próba (przed zwolnieniem miejsca na dysku)
-odsłoniła i doprowadziła do naprawy trzech realnych bugów, nie tylko
-problemu z dyskiem:
-
-1. `packages/dashboard/lib/chad-dba/client.ts` i `packages/dba/src/client.ts`
-   rzucały `"CONTENT_PROVIDER_API_URL environment variable is not set"`
-   na poziomie modułu (import-time) — Next.js importuje te moduły podczas
-   `next build`'s page-data collection, zanim docker-compose wstrzyknie
-   zmienną w runtime, więc KAŻDY build padał niezależnie od realnej
-   konfiguracji. Naprawa: odczyt zmiennej przeniesiony do wewnątrz
-   funkcji (lazy), ten sam błąd/komunikat, tylko odroczony do faktycznego
-   wywołania.
-2. Healthcheck `content-provider-api` w obu plikach Compose używał
-   `wget`, którego nie ma w obrazie `mcr.microsoft.com/dotnet/aspnet:8.0`
-   (ani `curl`) — potwierdzone: `docker exec ... which wget` nic nie
-   zwraca. Kontener był trwale "unhealthy", co blokowało `dashboard`'s
-   `depends_on: condition: service_healthy`. `packages/net-content-provider`'s
-   własne, sprawdzone skrypty też nie używają healthchecka w kontenerze —
-   sprawdzają `/health` z hosta po `docker run`. Usunięto healthcheck,
-   zmieniono `depends_on` na `condition: service_started`, realną bramkę
-   zdrowia robi (niezmieniony) polling curl w `03_begin.sh`.
-3. Wszystkie trzy `03_begin.sh` sprawdzały `docker compose ps --format
-   json | grep -q '"Running":true'` żeby wykryć już działający stack —
-   ale ta wersja Docker Compose (2.31.0) zwraca `"State":"running"`, nie
-   `"Running":true`. Sprawdzenie nigdy nie trafiało, więc gałąź
-   idempotentnego restartu (stop przez `04_end.sh` przed ponownym
-   startem) nigdy się nie wykonywała. Naprawiono wzorzec grep,
-   potwierdzono realnym testem że restart faktycznie się teraz wykonuje.
-
-Nie zrobione: żaden test na realnym QNAP (brak SSH w tej sesji) —
-`04_qnap_test`/`05_qnap_prod` nieprzetestowane end-to-end poza lokalną
-walidacją składni Compose (`docker compose config` z `ENV_NAME=test` i
-`ENV_NAME=prod`). Bugi 1 i 3 dotyczą też QNAP (ten sam kod) — naprawione
-tam też, ale nie zweryfikowane realnym uruchomieniem na QNAP.
+**Zrobione i przechodzi (2026-07-11), na realnym QNAP (s12,
+`100.117.139.83`):** migracja z jednego pliku compose (osobne mongo/CP na
+środowisko) na shared/test/prod. `00_qnap_shared/03_begin.sh` →
+`04_qnap_test/03_begin.sh` → `05_qnap_prod/03_begin.sh`, wraz z pełną
+weryfikacją: `chad-mongodb` healthy, `chad-content-provider-api`
+`/health` → `anyRepoFound:true` (36 repo z `/share/Dropbox`), oba
+dashboardy (`chad-dashboard-test:12020`, `chad-dashboard-prod:12030`)
+odpowiadają HTTP i wskazują na dokładnie ten sam `chad-mongodb` +
+`chad-content-provider-api`. Legacy `personal-dashboard-prod` +
+`content-provider-api-prod` (stary, niepowiązany deployment na `/share/cp_1`,
+zastąpiony tą architekturą) zatrzymane. Pełne wyniki:
+`documentation/dashboard/common/features/shared-qnap-services.md`.

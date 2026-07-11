@@ -15,7 +15,9 @@ import {
   getMsgPlannerBodyForDate,
   saveMsgPlannerBody,
   createMsgPlannerDateFolder,
+  runWithRepoContext,
 } from "dba";
+import { getCurrentUserFromCookies } from "@/lib/session";
 
 /**
  * GET /api/msg-planner
@@ -25,6 +27,11 @@ import {
  * - date: Optional. If provided, returns body content for that date.
  */
 export async function GET(request: NextRequest) {
+  const user = await getCurrentUserFromCookies();
+  if (!user) {
+    return NextResponse.json({ error: "NOT_AUTHENTICATED" }, { status: 401 });
+  }
+
   const { searchParams } = new URL(request.url);
   const date = searchParams.get("date");
 
@@ -35,9 +42,9 @@ export async function GET(request: NextRequest) {
       // Get body content for specific date
       // First, we need to find the loca for this date
       console.log("[MsgPlanner API] Fetching date folders to find:", date);
-      const dateFolders = await getMsgPlannerDateFolders();
+      const dateFolders = await runWithRepoContext(user, () => getMsgPlannerDateFolders());
       console.log("[MsgPlanner API] Found date folders:", dateFolders);
-      
+
       const dateFolder = dateFolders.find((f) => f.date === date);
       console.log("[MsgPlanner API] Found date folder:", dateFolder);
 
@@ -49,13 +56,15 @@ export async function GET(request: NextRequest) {
         );
       }
 
-      const bodyData = await getMsgPlannerBodyForDate(date, dateFolder.loca);
+      const bodyData = await runWithRepoContext(user, () =>
+        getMsgPlannerBodyForDate(date, dateFolder.loca)
+      );
       console.log("[MsgPlanner API] Body data:", bodyData);
       return NextResponse.json(bodyData);
     } else {
       // Get list of all date folders
       console.log("[MsgPlanner API] Fetching all date folders...");
-      const dateFolders = await getMsgPlannerDateFolders();
+      const dateFolders = await runWithRepoContext(user, () => getMsgPlannerDateFolders());
       console.log("[MsgPlanner API] Found", dateFolders.length, "date folders:", dateFolders);
       return NextResponse.json(dateFolders);
     }
@@ -92,6 +101,11 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
+    const user = await getCurrentUserFromCookies();
+    if (!user) {
+      return NextResponse.json({ error: "NOT_AUTHENTICATED" }, { status: 401 });
+    }
+
     const body = await request.json();
     const { action, date, loca, content } = body;
 
@@ -106,7 +120,7 @@ export async function POST(request: NextRequest) {
 
       console.log(`[MsgPlanner API] Creating new date folder: ${date}`);
       // Always generate body content when creating a new plan
-      const result = await createMsgPlannerDateFolder(date, true);
+      const result = await runWithRepoContext(user, () => createMsgPlannerDateFolder(date, true));
       console.log(`[MsgPlanner API] Created date folder:`, result);
       return NextResponse.json(result);
     }
@@ -126,7 +140,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    await saveMsgPlannerBody(loca, content);
+    await runWithRepoContext(user, () => saveMsgPlannerBody(loca, content));
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Error in msg planner POST:", error);

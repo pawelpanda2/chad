@@ -148,7 +148,7 @@ export async function getUsersList(): Promise<any> {
     "IRepoService",
     "IItemWorker",
     "GetByNames",
-    "root",
+    "chad_admin",
     "users",
     "users-list",
   ]);

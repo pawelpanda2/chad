@@ -98,6 +98,57 @@ stop_docker_container_using_port() {
 # deploy: the old lsof-first check silently reported every port free,
 # skipping cleanup, and `docker compose up` then failed with "port is
 # already allocated"). Checking Docker first works on both platforms.
+# Usage: ensure_docker_network chad-shared
+# Creates the named Docker network only if it doesn't already exist
+# (idempotent). Never recreates/touches an existing network.
+ensure_docker_network() {
+  local network="$1"
+  if docker network inspect "$network" >/dev/null 2>&1; then
+    return 0
+  fi
+  log_info "Creating Docker network '$network' (doesn't exist yet)."
+  docker network create "$network" >/dev/null
+  log_ok "Created Docker network '$network'."
+}
+
+# Usage: require_shared_services_healthy 12024
+# Preflight for TEST/PROD dashboard begin scripts: refuses to proceed
+# unless the shared chad-mongodb + chad-content-provider-api stack (started
+# separately by bash-scripts/dashboard/00_qnap_shared/03_begin.sh) is
+# already up and healthy. Never starts/restarts shared services itself —
+# only reads state.
+require_shared_services_healthy() {
+  local cp_port="$1"
+
+  if ! docker network inspect chad-shared >/dev/null 2>&1; then
+    log_error "Docker network 'chad-shared' does not exist."
+    log_error "  Fix: bash bash-scripts/dashboard/00_qnap_shared/03_begin.sh (start shared services first)."
+    return 1
+  fi
+
+  local mongo_state
+  mongo_state="$(docker inspect -f '{{.State.Health.Status}}' chad-mongodb 2>/dev/null || true)"
+  if [ "$mongo_state" != "healthy" ]; then
+    log_error "Shared chad-mongodb container is not running/healthy (state: ${mongo_state:-not found})."
+    log_error "  Fix: bash bash-scripts/dashboard/00_qnap_shared/03_begin.sh"
+    return 1
+  fi
+
+  if ! docker ps --filter "name=^chad-content-provider-api$" --filter "status=running" --format '{{.Names}}' | grep -qx "chad-content-provider-api"; then
+    log_error "Shared chad-content-provider-api container is not running."
+    log_error "  Fix: bash bash-scripts/dashboard/00_qnap_shared/03_begin.sh"
+    return 1
+  fi
+
+  if ! curl -fsS -m 3 "http://localhost:$cp_port/health" >/dev/null 2>&1; then
+    log_error "Shared content-provider-api did not respond on port $cp_port."
+    log_error "  Fix: bash bash-scripts/dashboard/00_qnap_shared/05_status.sh (diagnose shared stack)."
+    return 1
+  fi
+
+  return 0
+}
+
 ensure_port_available() {
   local port="$1"
   local container_id

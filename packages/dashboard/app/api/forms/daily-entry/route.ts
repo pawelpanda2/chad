@@ -1,12 +1,69 @@
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
 import * as yaml from 'js-yaml';
-import { 
-  saveDailyEntry, 
-  getAllDailyEntries, 
+import {
+  saveDailyEntry,
+  getAllDailyEntries,
+  getAllDateEntries,
   generateEntryName,
-  SHARED_REPO_ID 
+  runWithRepoContext,
+  computeDailyAutoFieldsByDate,
 } from 'dba';
+import { getCurrentUserFromCookies } from '@/lib/session';
+
+function parseYaml(body: string | undefined): Record<string, unknown> {
+  if (!body) return {};
+  try {
+    return (yaml.load(body) as Record<string, unknown>) || {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * GET /api/forms/daily-entry
+ *
+ * Lists all daily entries for the Tracker view. Each entry's YAML body is
+ * parsed into its raw field keys (DATE, STATE, TRAINING TIME, ...) exactly
+ * as saved by the POST handler below — no renaming/reshaping. Also fetches
+ * every Date Entry record to compute the "— AUTO" columns (PULLS, CLOSES,
+ * QUALITY D/P, QUALITY C) — see computeDailyAutoFieldsByDate in dba for
+ * the exact rule. Matched to each daily entry by its DATE field against
+ * date entries' DATA field (same calendar day).
+ */
+export async function GET() {
+  const user = await getCurrentUserFromCookies();
+  if (!user) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
+
+  try {
+    const { dailyEntries, autoByDate } = await runWithRepoContext(user, async () => {
+      const [daily, dates] = await Promise.all([getAllDailyEntries(), getAllDateEntries()]);
+      const dateFields = dates.map((d) => parseYaml(d.body));
+      return { dailyEntries: daily, autoByDate: computeDailyAutoFieldsByDate(dateFields) };
+    });
+
+    const rows = dailyEntries.map((entry) => {
+      const fields = parseYaml(entry.body);
+      const date = String(fields["DATE"] ?? "").trim();
+      const auto = autoByDate.get(date);
+      const fieldsWithAuto = {
+        ...fields,
+        "PULLS AUTO": auto?.pullsAuto ?? "",
+        "CLOSES AUTO": auto?.closesAuto ?? "",
+        "QUALITY DP AUTO": auto?.qualityDpAuto ?? "",
+        "QUALITY C AUTO": auto?.qualityCAuto ?? "",
+      };
+      return { itemName: entry.itemName, loca: entry.loca, fields: fieldsWithAuto };
+    });
+    return NextResponse.json({ entries: rows });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Unknown error" },
+      { status: 500 }
+    );
+  }
+}
 
 /**
  * POST /api/forms/daily-entry
@@ -24,7 +81,9 @@ import {
  */
 export async function POST(request: Request) {
   const payload = await request.json();
-  
+
+  const user = await getCurrentUserFromCookies();
+
   // Build response object with debug info
   const debugResponse: Record<string, unknown> = {
     event: "daily-entry-form-submit",
@@ -35,8 +94,8 @@ export async function POST(request: Request) {
     },
     backend: {
       endpointCalled: true,
-      repoGuid: SHARED_REPO_ID,
-      repoGuidSource: "chad-dba/SHARED_REPO_ID",
+      repoGuid: user?.repoGuid ?? null,
+      username: user?.username ?? null,
     },
     cpFlow: {
       called: false,
@@ -44,31 +103,12 @@ export async function POST(request: Request) {
     },
   };
 
-  // Get session from cookie (for debug info only)
-  let sessionRaw = "";
-  let userId = "";
-  
-  try {
-    const cookieStore = await cookies();
-    const sessionCookie = cookieStore.get('session');
-    if (sessionCookie) {
-      sessionRaw = sessionCookie.value;
-      const [id] = sessionCookie.value.split(':');
-      userId = id;
-    }
-  } catch {
-    // Session read failed
-  }
-
-  (debugResponse.backend as Record<string, unknown>).sessionRaw = sessionRaw;
-  (debugResponse.backend as Record<string, unknown>).userId = userId;
-
-  if (!sessionRaw) {
+  if (!user) {
     debugResponse.error = {
       message: "No session found",
       type: "NOT_AUTHENTICATED",
     };
-    
+
     return NextResponse.json({
       success: false,
       error: "Not authenticated",
@@ -91,18 +131,21 @@ export async function POST(request: Request) {
   }
 
   try {
-    // Step 1: Get existing entries to generate unique name
-    const existingEntries = await getAllDailyEntries();
-    const existingNames = existingEntries.map(e => e.itemName);
-    
-    // Step 2: Generate unique item name
-    const itemName = generateEntryName(existingNames, dateStr);
-    
-    // Step 3: Convert payload to YAML body
-    const bodyYaml = yaml.dump(payload);
-    
-    // Step 4: Save to Content Provider using chad-dba
-    const result = await saveDailyEntry(itemName, bodyYaml);
+    const result = await runWithRepoContext(user, async () => {
+      // Step 1: Get existing entries to generate unique name
+      const existingEntries = await getAllDailyEntries();
+      const existingNames = existingEntries.map(e => e.itemName);
+
+      // Step 2: Generate unique item name
+      const itemName = generateEntryName(existingNames, dateStr);
+
+      // Step 3: Convert payload to YAML body
+      const bodyYaml = yaml.dump(payload);
+
+      // Step 4: Save to Content Provider using chad-dba
+      return await saveDailyEntry(itemName, bodyYaml);
+    });
+    const itemName = result.itemName;
     
     debugResponse.cpFlow = {
       called: true,

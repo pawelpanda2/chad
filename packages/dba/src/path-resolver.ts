@@ -17,7 +17,7 @@
  */
 
 import { invokeContentProvider } from "./client.js";
-import { SHARED_REPO_ID } from "./leads.js";
+import { getCurrentRepoGuid } from "./repo-context.js";
 
 /**
  * Resolves a path by names to get the actual item.
@@ -32,7 +32,7 @@ import { SHARED_REPO_ID } from "./leads.js";
  * @example
  * ```typescript
  * // Resolve leads/all items
- * const item = await chad_ResolveByNames(SHARED_REPO_ID, "leads", "all items");
+ * const item = await chad_ResolveByNames(getCurrentRepoGuid(), "leads", "all items");
  * console.log(item.Settings.address); // "21d11bdc-f1f4-44d1-b61a-3fa6b039c641/03/06"
  * ```
  */
@@ -96,7 +96,7 @@ export function chad_GetLocaFromAddress(address: string, repoId: string): string
  * 
  * @example
  * ```typescript
- * const loca = await chad_ResolveLocaByNames(SHARED_REPO_ID, "leads", "all items");
+ * const loca = await chad_ResolveLocaByNames(getCurrentRepoGuid(), "leads", "all items");
  * console.log(loca); // "03/06"
  * ```
  */
@@ -121,7 +121,7 @@ export async function chad_ResolveLocaByNames(
  * @returns Promise resolving to the numeric loca for leads
  */
 export async function chad_GetLeadsLoca(): Promise<string> {
-  return chad_ResolveLocaByNames(SHARED_REPO_ID, "leads", "all items");
+  return chad_ResolveLocaByNames(getCurrentRepoGuid(), "leads", "all items");
 }
 
 /**
@@ -130,7 +130,7 @@ export async function chad_GetLeadsLoca(): Promise<string> {
  * @returns Promise resolving to the numeric loca for reports
  */
 export async function chad_GetReportsLoca(): Promise<string> {
-  return chad_ResolveLocaByNames(SHARED_REPO_ID, "reports");
+  return chad_ResolveLocaByNames(getCurrentRepoGuid(), "reports");
 }
 
 /**
@@ -139,7 +139,7 @@ export async function chad_GetReportsLoca(): Promise<string> {
  * @returns Promise resolving to the numeric loca for beeper
  */
 export async function chad_GetBeeperLoca(): Promise<string> {
-  return chad_ResolveLocaByNames(SHARED_REPO_ID, "beeper");
+  return chad_ResolveLocaByNames(getCurrentRepoGuid(), "beeper");
 }
 
 /**
@@ -212,7 +212,7 @@ export async function chad_GetLeadsStatuses(): Promise<any> {
     "IRepoService",
     "IItemWorker",
     "PostByNames",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     "Folder",
     "leads",
     "all items",
@@ -225,7 +225,7 @@ export async function chad_GetLeadsStatuses(): Promise<any> {
   }
 
   // AdrTuple.Loca equivalent: strip repo GUID prefix from address
-  const leadsLoca = chad_GetLocaFromAddress(allItems.Settings.address, SHARED_REPO_ID);
+  const leadsLoca = chad_GetLocaFromAddress(allItems.Settings.address, getCurrentRepoGuid());
 
   // Step 2: GetManyByName with the loca (C# test: IManyItemsWorker.GetManyByName)
   // IMPORTANT: IManyItemsWorker (interface prefix), NOT ManyItemsWorker
@@ -233,7 +233,7 @@ export async function chad_GetLeadsStatuses(): Promise<any> {
     "IRepoService",
     "IManyItemsWorker",
     "GetManyByName",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     leadsLoca,
     "status",
   ]);

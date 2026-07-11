@@ -6,7 +6,7 @@
  */
 
 import { invokeContentProvider } from "./client.js";
-import { SHARED_REPO_ID } from "./leads.js";
+import { getCurrentRepoGuid } from "./repo-context.js";
 import { parseAddressToRepoLoca, readBodyMap } from "./beeper.js";
 
 /**
@@ -83,7 +83,7 @@ export async function SaveAiAnswerToMsgWorkout(
       "IRepoService",
       "IItemWorker",
       "GetByNames",
-      SHARED_REPO_ID,
+      getCurrentRepoGuid(),
       "leads",
       "all items"
     ]);

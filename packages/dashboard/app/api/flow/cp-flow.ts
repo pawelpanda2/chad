@@ -7,9 +7,6 @@
 
 import * as yaml from 'js-yaml';
 
-// Shared repository GUID - same as used by Leads and other working features
-const SHARED_REPO_ID = "21d11bdc-f1f4-44d1-b61a-3fa6b039c641";
-
 // Content Provider API URL (for debug/logging purposes)
 const CP_API_URL = process.env.CONTENT_PROVIDER_API_URL || 'http://localhost:5055';
 
@@ -22,13 +19,6 @@ export interface CpCallTrace {
   parsedResponse: Record<string, unknown> | null;
   parseError: string | null;
   error: string | null;
-}
-
-export interface RepoKeyResult {
-  repoKey: string;
-  repoKeySource: string;
-  sessionUserGuid: string | null;
-  sessionUsername: string | null;
 }
 
 export interface FormsResult {
@@ -170,36 +160,6 @@ async function invokeCpWithTrace(
 }
 
 /**
- * Resolve repo key from session
- * Returns the repo key to use for Content Provider operations
- * 
- * The repo key must be a valid identifier without hyphens.
- * If username is a GUID (contains hyphens), we remove the hyphens.
- */
-export async function resolveRepoKey(session: { user?: { id?: string; username?: string } } | null): Promise<RepoKeyResult> {
-  const sessionUserGuid = session?.user?.id || null;
-  const sessionUsername = session?.user?.username || null;
-
-  // Use username as repo key, but remove hyphens if it's a GUID
-  // GUID format: 339e1f74-ec6e-46ef-835b-fea92e66a491 -> 339e1f74ec6e46ef835bfea92e66a491
-  let repoKey = sessionUsername || '';
-  let repoKeySource = sessionUsername ? 'session.username' : 'none';
-  
-  // Remove hyphens from GUID-like strings
-  if (repoKey && repoKey.includes('-')) {
-    repoKey = repoKey.replace(/-/g, '');
-    repoKeySource = 'session.username (GUID hyphens removed)';
-  }
-
-  return {
-    repoKey,
-    repoKeySource,
-    sessionUserGuid,
-    sessionUsername,
-  };
-}
-
-/**
  * Get all action records for a user
  * Flow:
  * 1. GetByNames(repoKey, "forms", "actions") - get list of records
@@ -292,10 +252,8 @@ export async function getUserLeadRecords(repoKey: string): Promise<{ records: Ar
 /**
  * Get all forms for current user
  */
-export async function getCurrentUserForms(session: { user?: { id?: string; username?: string } } | null): Promise<FormsResult> {
-  const repoInfo = await resolveRepoKey(session);
-  
-  if (!repoInfo.repoKey) {
+export async function getCurrentUserForms(repoGuid: string): Promise<FormsResult> {
+  if (!repoGuid) {
     return {
       actionRecords: [],
       leadRecords: [],
@@ -305,8 +263,8 @@ export async function getCurrentUserForms(session: { user?: { id?: string; usern
   }
 
   const allCalls: CpCallTrace[] = [];
-  const actionResult = await getUserActionRecords(repoInfo.repoKey);
-  const leadResult = await getUserLeadRecords(repoInfo.repoKey);
+  const actionResult = await getUserActionRecords(repoGuid);
+  const leadResult = await getUserLeadRecords(repoGuid);
 
   allCalls.push(...actionResult.cpCalls);
   allCalls.push(...leadResult.cpCalls);
@@ -326,12 +284,11 @@ export async function getCurrentUserForms(session: { user?: { id?: string; usern
  * 3. Put(repoKey, itemAddress, "Text", recordKey, body)
  */
 export async function saveActionForm(
-  session: { user?: { id?: string; username?: string } } | null,
+  repoGuid: string,
   payload: Record<string, unknown>
 ): Promise<SaveFormResult> {
-  const repoInfo = await resolveRepoKey(session);
   
-  if (!repoInfo.repoKey) {
+  if (!repoGuid) {
     return {
       success: false,
       cpCalls: [],
@@ -347,14 +304,14 @@ export async function saveActionForm(
     await invokeCpWithTrace(
       cpCalls,
       'PostByNames action record',
-      ['IRepoService', 'IItemWorker', 'PostByNames', repoInfo.repoKey, 'Text', 'forms', 'actions', recordKey]
+      ['IRepoService', 'IItemWorker', 'PostByNames', repoGuid, 'Text', 'forms', 'actions', recordKey]
     );
 
     // Step 2: GetByNames to get item address
     const getResult = await invokeCpWithTrace(
       cpCalls,
       'Get action record after PostByNames',
-      ['IRepoService', 'IItemWorker', 'GetByNames', repoInfo.repoKey, 'forms', 'actions', recordKey]
+      ['IRepoService', 'IItemWorker', 'GetByNames', repoGuid, 'forms', 'actions', recordKey]
     );
 
     // Step 3: Put body
@@ -366,7 +323,7 @@ export async function saveActionForm(
       await invokeCpWithTrace(
         cpCalls,
         'Put action body',
-        ['IRepoService', 'IItemWorker', 'Put', repoInfo.repoKey, itemAddress, 'Text', recordKey, bodyYaml]
+        ['IRepoService', 'IItemWorker', 'Put', repoGuid, itemAddress, 'Text', recordKey, bodyYaml]
       );
     }
 
@@ -388,12 +345,11 @@ export async function saveActionForm(
  * 3. Put(repoKey, itemAddress, "Text", recordKey, body)
  */
 export async function saveLeadForm(
-  session: { user?: { id?: string; username?: string } } | null,
+  repoGuid: string,
   payload: Record<string, unknown>
 ): Promise<SaveFormResult> {
-  const repoInfo = await resolveRepoKey(session);
   
-  if (!repoInfo.repoKey) {
+  if (!repoGuid) {
     return {
       success: false,
       cpCalls: [],
@@ -409,14 +365,14 @@ export async function saveLeadForm(
     await invokeCpWithTrace(
       cpCalls,
       'PostByNames lead record',
-      ['IRepoService', 'IItemWorker', 'PostByNames', repoInfo.repoKey, 'Text', 'forms', 'leads', recordKey]
+      ['IRepoService', 'IItemWorker', 'PostByNames', repoGuid, 'Text', 'forms', 'leads', recordKey]
     );
 
     // Step 2: GetByNames to get item address
     const getResult = await invokeCpWithTrace(
       cpCalls,
       'Get lead record after PostByNames',
-      ['IRepoService', 'IItemWorker', 'GetByNames', repoInfo.repoKey, 'forms', 'leads', recordKey]
+      ['IRepoService', 'IItemWorker', 'GetByNames', repoGuid, 'forms', 'leads', recordKey]
     );
 
     // Step 3: Put body
@@ -428,7 +384,7 @@ export async function saveLeadForm(
       await invokeCpWithTrace(
         cpCalls,
         'Put lead body',
-        ['IRepoService', 'IItemWorker', 'Put', repoInfo.repoKey, itemAddress, 'Text', recordKey, bodyYaml]
+        ['IRepoService', 'IItemWorker', 'Put', repoGuid, itemAddress, 'Text', recordKey, bodyYaml]
       );
     }
 
@@ -537,20 +493,15 @@ export async function getDailyEntryRecords(repoKey: string): Promise<{ records: 
  * Flow:
  * 1. Ensure folder "actions" exists under root (using PostParentItem or GetByNames)
  * 2. Ensure folder "dates" exists under actions
- * 3. PostParentItem(SHARED_REPO_ID, datesLoca, "Text", itemName) - create text item
- * 4. GetByNames(SHARED_REPO_ID, "actions", "dates", itemName) - get item address
- * 5. Put(SHARED_REPO_ID, itemLoca, bodyYaml)
+ * 3. PostParentItem(repoGuid, datesLoca, "Text", itemName) - create text item
+ * 4. GetByNames(repoGuid, "actions", "dates", itemName) - get item address
+ * 5. Put(repoGuid, itemLoca, bodyYaml)
  */
 export async function saveDateEntryForm(
-  session: { user?: { id?: string; username?: string } } | null,
+  repoGuid: string,
   itemName: string,
   payload: Record<string, unknown>
 ): Promise<SaveFormResult> {
-  // Use SHARED_REPO_ID - same repo as Leads and other working features
-  const repoGuid = SHARED_REPO_ID;
-  
-  // Session is not used for repo identification, but we keep it for future use
-  const _sessionUserGuid = session?.user?.id || null;
 
   const cpCalls: CpCallTrace[] = [];
 
@@ -670,13 +621,12 @@ export async function saveDateEntryForm(
  * 5. Put(repoKey, itemLoca, bodyYaml)
  */
 export async function saveDailyEntryForm(
-  session: { user?: { id?: string; username?: string } } | null,
+  repoGuid: string,
   itemName: string,
   payload: Record<string, unknown>
 ): Promise<SaveFormResult> {
-  const repoInfo = await resolveRepoKey(session);
   
-  if (!repoInfo.repoKey) {
+  if (!repoGuid) {
     return {
       success: false,
       cpCalls: [],
@@ -692,7 +642,7 @@ export async function saveDailyEntryForm(
     const actionsResult = await invokeCpWithTrace(
       cpCalls,
       'Get actions folder',
-      ['IRepoService', 'IItemWorker', 'GetByNames', repoInfo.repoKey, 'actions']
+      ['IRepoService', 'IItemWorker', 'GetByNames', repoGuid, 'actions']
     );
     
     if (actionsResult) {
@@ -705,7 +655,7 @@ export async function saveDailyEntryForm(
       const createActionsResult = await invokeCpWithTrace(
         cpCalls,
         'Create actions folder',
-        ['IRepoService', 'IItemWorker', 'PostParentItem', repoInfo.repoKey, '', 'Folder', 'actions']
+        ['IRepoService', 'IItemWorker', 'PostParentItem', repoGuid, '', 'Folder', 'actions']
       );
       if (createActionsResult) {
         // PostParentItem returns JSON, not YAML
@@ -726,7 +676,7 @@ export async function saveDailyEntryForm(
     const dailyResult = await invokeCpWithTrace(
       cpCalls,
       'Get daily folder',
-      ['IRepoService', 'IItemWorker', 'GetByNames', repoInfo.repoKey, 'actions', 'daily']
+      ['IRepoService', 'IItemWorker', 'GetByNames', repoGuid, 'actions', 'daily']
     );
     
     if (dailyResult) {
@@ -739,7 +689,7 @@ export async function saveDailyEntryForm(
       const createDailyResult = await invokeCpWithTrace(
         cpCalls,
         'Create daily folder',
-        ['IRepoService', 'IItemWorker', 'PostParentItem', repoInfo.repoKey, actionsLoca, 'Folder', 'daily']
+        ['IRepoService', 'IItemWorker', 'PostParentItem', repoGuid, actionsLoca, 'Folder', 'daily']
       );
       if (createDailyResult) {
         // PostParentItem returns JSON, not YAML
@@ -759,14 +709,14 @@ export async function saveDailyEntryForm(
     await invokeCpWithTrace(
       cpCalls,
       'PostParentItem daily entry text item',
-      ['IRepoService', 'IItemWorker', 'PostParentItem', repoInfo.repoKey, dailyLoca, 'Text', itemName]
+      ['IRepoService', 'IItemWorker', 'PostParentItem', repoGuid, dailyLoca, 'Text', itemName]
     );
 
     // Step 4: Get item address
     const getResult = await invokeCpWithTrace(
       cpCalls,
       'Get daily entry item after PostParentItem',
-      ['IRepoService', 'IItemWorker', 'GetByNames', repoInfo.repoKey, 'actions', 'daily', itemName]
+      ['IRepoService', 'IItemWorker', 'GetByNames', repoGuid, 'actions', 'daily', itemName]
     );
 
     // Step 5: Put body
@@ -777,7 +727,7 @@ export async function saveDailyEntryForm(
       await invokeCpWithTrace(
         cpCalls,
         'Put daily entry body',
-        ['IRepoService', 'IItemWorker', 'Put', repoInfo.repoKey, itemLoca, bodyYaml]
+        ['IRepoService', 'IItemWorker', 'Put', repoGuid, itemLoca, bodyYaml]
       );
     }
 

@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# Builds the full QNAP PROD stack (mongo + content-provider-api + dashboard)
-# under docker-compose. Only builds — never runs containers. PROD
-# deployment requires separate explicit approval — building images does
-# not deploy anything by itself. See 03_begin.sh / 04_end.sh / 05_status.sh
-# / 06_deploy.sh.
+# Builds the QNAP PROD dashboard image only. Never runs containers, never
+# touches a running environment, never builds/touches the shared mongo/
+# content-provider-api stack (see bash-scripts/dashboard/00_qnap_shared/).
+# PROD deployment requires separate explicit approval — building images
+# does not deploy anything by itself. See 03_begin.sh / 04_end.sh /
+# 05_status.sh / 06_deploy.sh.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -29,6 +30,5 @@ export IMAGE_TAG
 docker compose -p "$COMPOSE_PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" build --pull
 
 docker tag "chad-dashboard:$IMAGE_TAG" "chad-dashboard:latest"
-docker tag "chad-content-provider-api:$IMAGE_TAG" "chad-content-provider-api:latest"
 
-log_ok "Images built and tagged: latest, $IMAGE_TAG"
+log_ok "Image built and tagged: latest, $IMAGE_TAG"

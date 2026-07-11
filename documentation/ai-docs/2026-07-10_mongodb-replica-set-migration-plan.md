@@ -2,6 +2,18 @@
 
 Status: **przygotowane, przetestowane lokalnie na Macu, NIE wdrożone na realnym QNAP.** Uzupełnia `2026-07-10_decision-beeper-mac-qnap-architecture.md`.
 
+**Aktualizacja 2026-07-11 (2):** `docker-compose.qnap.yml` (jeden plik,
+osobne mongo/CP na TEST i PROD), o którym mowa niżej, został tego samego
+dnia rozdzielony na `docker-compose.qnap.shared.yml` (jedno wspólne
+MongoDB `chad-mongodb` + jeden wspólny Content Provider
+`chad-content-provider-api` dla TEST i PROD) +
+`docker-compose.qnap.test.yml` / `docker-compose.qnap.prod.yml` (tylko
+dashboard). Zastrzeżenie o replica set poniżej pozostaje w mocy bez zmian —
+standalone `mongod` z auth, bez `--replSet`/`--keyFile`, teraz w
+`docker-compose.qnap.shared.yml`. Patrz
+`documentation/dashboard/common/features/dashboard-deployment-scripts.md` i
+`documentation/dashboard/common/features/shared-qnap-services.md`.
+
 **Aktualizacja 2026-07-11:** próba realnego wdrożenia na QNAP TEST
 (`docker-compose.qnap.yml`) trafiła dokładnie na zastrzeżenie z tego
 dokumentu i została cofnięta na wyraźną decyzję użytkownika. Real bug

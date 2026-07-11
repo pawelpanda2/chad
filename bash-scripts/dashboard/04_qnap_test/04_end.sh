@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Stops the QNAP TEST stack (mongo + content-provider-api + dashboard).
-# Only ever touches the chad-test compose project — never prod, never
-# local-mac. --remove-orphans only, never -v: never deletes the mongo/
-# dashboard data volumes. Never removes images.
+# Stops the QNAP TEST dashboard ONLY. Never touches the shared mongo/
+# content-provider-api stack, prod, or local-mac. --remove-orphans only,
+# never -v: never deletes the dashboard's own data volume. Never removes
+# images.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -19,4 +19,4 @@ echo ""
 cd "$REPO_ROOT"
 docker compose -p "$COMPOSE_PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" down --remove-orphans
 
-log_ok "chad-test stack stopped. Data volumes and images preserved."
+log_ok "chad-test dashboard stopped. Data volume and images preserved. Shared services (mongo/content-provider-api) untouched."
