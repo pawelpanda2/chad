@@ -27,7 +27,7 @@ set +a
 QNAP_REPOS_HOST_PATH="${QNAP_REPOS_HOST_PATH:?Set QNAP_REPOS_HOST_PATH in .env}"
 CONTAINER_REPOS_PATH="${CONTAINER_REPOS_PATH:-/data/repos}"
 CONTENT_PROVIDER_API_PORT="${CONTENT_PROVIDER_API_PORT:-12024}"
-BLAZOR_PORT="${BLAZOR_PORT:-12020}"
+BLAZOR_PORT="${BLAZOR_PORT:-12024}"
 
 # ---------------------------------------------------------------------------
 # Validate the repos directory BEFORE starting anything — the backend

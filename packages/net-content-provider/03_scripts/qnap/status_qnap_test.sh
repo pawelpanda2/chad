@@ -14,7 +14,7 @@ if [ -f "$ENV_FILE" ]; then
   set +a
 fi
 CONTENT_PROVIDER_API_PORT="${CONTENT_PROVIDER_API_PORT:-12024}"
-BLAZOR_PORT="${BLAZOR_PORT:-12020}"
+BLAZOR_PORT="${BLAZOR_PORT:-12024}"
 
 echo ""
 log_info "Content Provider — QNAP TEST status"

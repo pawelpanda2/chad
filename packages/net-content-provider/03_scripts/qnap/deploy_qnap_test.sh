@@ -79,7 +79,7 @@ bash "$SCRIPT_DIR/begin_qnap_test.sh"
 
 echo ""
 log_info "Waiting for Blazor GUI to respond..."
-BLAZOR_PORT="${BLAZOR_PORT:-12020}"
+BLAZOR_PORT="${BLAZOR_PORT:-12024}"
 GUI_OK=false
 for _ in $(seq 1 20); do
   if curl -fsS -o /dev/null -m 3 -w '%{http_code}' "http://localhost:$BLAZOR_PORT" 2>/dev/null | grep -qE '^[23]'; then
