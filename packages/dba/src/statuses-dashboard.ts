@@ -8,16 +8,16 @@
  */
 
 import { invokeContentProvider } from "./client.js";
-import { 
-  GetAllLeads, 
-  SHARED_REPO_ID, 
-  createStatusForLead, 
+import { getCurrentRepoGuid } from "./repo-context.js";
+import {
+  GetAllLeads,
+  createStatusForLead,
   findStatusForLead,
   getStatusLocaFromItem,
   putStatusContent,
   getStatusItem,
   parseStatusBody,
-  hasField 
+  hasField
 } from "./leads.js";
 import { chad_GetLeadsLoca, chad_GetLeadsStatuses } from "./path-resolver.js";
 
@@ -351,8 +351,8 @@ export async function getStatusesDashboardList(range?: string): Promise<StatusLe
       if (!address) continue;
       
       // Strip repo GUID prefix to get numeric loca
-      const loca = address.startsWith(`${SHARED_REPO_ID}/`) 
-        ? address.substring(`${SHARED_REPO_ID}/`.length) 
+      const loca = address.startsWith(`${getCurrentRepoGuid()}/`) 
+        ? address.substring(`${getCurrentRepoGuid()}/`.length) 
         : address;
       
       // Extract leadKey from loca

@@ -14,7 +14,7 @@
  */
 
 import { invokeContentProvider } from "./client.js";
-import { SHARED_REPO_ID } from "./leads.js";
+import { getCurrentRepoGuid } from "./repo-context.js";
 
 /**
  * Result of finding a conversation for a lead
@@ -39,7 +39,7 @@ export async function GetBeeper(): Promise<any> {
     "IRepoService",
     "IItemWorker",
     "GetByNames",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     "beeper",
   ]);
 }
@@ -55,7 +55,7 @@ export async function GetBeeperItemByName(itemName: string): Promise<any> {
     "IRepoService",
     "IItemWorker",
     "GetByNames",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     "beeper",
     itemName,
   ]);
@@ -190,7 +190,7 @@ export async function chad_FindReportsByLeadName(leadName: string): Promise<Repo
       "IRepoService",
       "IItemWorker",
       "GetByNames",
-      SHARED_REPO_ID,
+      getCurrentRepoGuid(),
       "reports",
     ]);
     
@@ -298,7 +298,7 @@ export async function getAllBeeperWhatsappLeads(): Promise<string[]> {
       "IRepoService",
       "IItemWorker",
       "GetByNames",
-      SHARED_REPO_ID,
+      getCurrentRepoGuid(),
       "beeper",
     ]);
     
@@ -393,7 +393,7 @@ export async function getBeeperWhatsappConversation(leadName: string): Promise<s
       "IRepoService",
       "IItemWorker",
       "GetByNames",
-      SHARED_REPO_ID,
+      getCurrentRepoGuid(),
       "beeper",
     ]);
     
@@ -498,7 +498,7 @@ export async function getAllLeadsFromRepository(): Promise<string[]> {
       "IRepoService",
       "IItemWorker",
       "GetByNames",
-      SHARED_REPO_ID,
+      getCurrentRepoGuid(),
       "leads",
       "all items",
     ]);
@@ -544,7 +544,7 @@ export async function chad_FindConversationByLeadName(leadName: string): Promise
       "IRepoService",
       "IItemWorker",
       "GetByNames",
-      SHARED_REPO_ID,
+      getCurrentRepoGuid(),
       "beeper",
     ]);
     

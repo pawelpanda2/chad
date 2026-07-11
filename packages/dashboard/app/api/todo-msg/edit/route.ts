@@ -7,13 +7,19 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getMsgWorkoutForEdit, saveMsgWorkout } from "dba";
+import { getMsgWorkoutForEdit, saveMsgWorkout, runWithRepoContext } from "dba";
+import { getCurrentUserFromCookies } from "@/lib/session";
 
 /**
  * GET /api/todo-msg/edit?loca=...
  * Returns the msg workout data for editing.
  */
 export async function GET(request: NextRequest) {
+  const user = await getCurrentUserFromCookies();
+  if (!user) {
+    return NextResponse.json({ error: "NOT_AUTHENTICATED" }, { status: 401 });
+  }
+
   const { searchParams } = new URL(request.url);
   const loca = searchParams.get("loca");
 
@@ -25,7 +31,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const data = await getMsgWorkoutForEdit(loca);
+    const data = await runWithRepoContext(user, () => getMsgWorkoutForEdit(loca));
     if (!data) {
       return NextResponse.json(
         { error: "Msg workout not found" },
@@ -54,6 +60,11 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
+    const user = await getCurrentUserFromCookies();
+    if (!user) {
+      return NextResponse.json({ error: "NOT_AUTHENTICATED" }, { status: 401 });
+    }
+
     const body = await request.json();
     const { loca, content } = body;
 
@@ -71,7 +82,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    await saveMsgWorkout(loca, content);
+    await runWithRepoContext(user, () => saveMsgWorkout(loca, content));
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Error saving msg workout:", error);

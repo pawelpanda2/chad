@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import * as yaml from 'js-yaml';
-import { getAllDailyEntries, getAllDateEntries, SHARED_REPO_ID } from 'dba';
+import { getAllDailyEntries, getAllDateEntries, runWithRepoContext } from 'dba';
+import { getCurrentUserFromCookies } from '@/lib/session';
 
 /**
  * Daily entry record with parsed YAML body
@@ -45,6 +46,14 @@ function parseYaml(str: string): Record<string, unknown> | null {
  * 4. Return combined result with debug info
  */
 export async function GET() {
+  const user = await getCurrentUserFromCookies();
+  if (!user) {
+    return NextResponse.json(
+      { success: false, error: "NOT_AUTHENTICATED", dateEntries: [], dailyEntries: [] },
+      { status: 401 }
+    );
+  }
+
   // Build response object with debug info
   const debugResponse: Record<string, unknown> = {
     event: "get-views",
@@ -54,7 +63,7 @@ export async function GET() {
     },
     backend: {
       endpointCalled: true,
-      repoGuid: SHARED_REPO_ID,
+      repoGuid: user.repoGuid,
     },
     cpFlow: {
       called: false,
@@ -66,10 +75,10 @@ export async function GET() {
   // Call chad-dba to get records
   try {
     const cpCalls: Array<{ function: string; result: string }> = [];
-    
+
     // Get date entries
     console.log("[dashboard] Getting date entries...");
-    const dateEntriesRaw = await getAllDateEntries();
+    const dateEntriesRaw = await runWithRepoContext(user, () => getAllDateEntries());
     cpCalls.push({
       function: "getAllDateEntries",
       result: `Found ${dateEntriesRaw.length} entries`,
@@ -78,7 +87,7 @@ export async function GET() {
 
     // Get daily entries (uses IManyItemsWorker.GetList)
     console.log("[dashboard] Getting daily entries...");
-    const dailyEntriesRaw = await getAllDailyEntries();
+    const dailyEntriesRaw = await runWithRepoContext(user, () => getAllDailyEntries());
     cpCalls.push({
       function: "getAllDailyEntries",
       result: `Found ${dailyEntriesRaw.length} entries`,

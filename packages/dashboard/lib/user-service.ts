@@ -5,7 +5,7 @@
  * using the Content Provider API (C# ASP.NET service) via the GetByNames method.
  *
  * The API is called with:
- *   POST /invoke { "args": ["IRepoService", "IItemWorker", "GetByNames", "root", "users", "users-list"] }
+ *   POST /invoke { "args": ["IRepoService", "IItemWorker", "GetByNames", "root", "users", "chad_admin"] }
  *
  * All user-related operations should use this service to ensure consistency
  * and to avoid duplicating the user fetching logic.
@@ -18,10 +18,14 @@ import * as yaml from 'js-yaml';
 const CONTENT_PROVIDER_API_URL = process.env.CONTENT_PROVIDER_API_URL || 'http://localhost:5055';
 
 /**
- * User data structure as stored in Content Provider
+ * User data structure as stored in Content Provider.
+ *
+ * repoGuid = userId: one GUID, not two. It's both this user's identity
+ * (embedded in the session cookie at login) and the Content Provider repo
+ * GUID for their data root — see chad_admin's body.txt comment.
  */
 export interface CpUser {
-  id: string;
+  repoGuid: string;
   username: string;
   email: string;
   passwordHash: string;
@@ -140,7 +144,7 @@ async function invokeSharp(args: string[]): Promise<string> {
  * Calls GetByNames method through the Sharp runner to fetch users.
  *
  * Equivalent C# call:
- *   IRepoService IItemWorker GetByNames root users users-list
+ *   IRepoService IItemWorker GetByNames root users chad_admin
  *
  * @returns Promise resolving to the raw string result from the runner
  */
@@ -151,7 +155,7 @@ export async function getUsersFromSharpRaw(): Promise<string> {
     'GetByNames',
     'root',
     'users',
-    'users-list'
+    'chad_admin'
   ];
 
   console.log('[UserService] Calling getUsersFromSharp with args:', args.join(' '));
@@ -174,7 +178,7 @@ export async function getUsersFromSharpRaw(): Promise<string> {
 export async function getUsersFromSharp(options?: { includeDebug?: boolean }): Promise<AppUser[] | { users: AppUser[]; debug: UserServiceDebugInfo }> {
   const debug: UserServiceDebugInfo = {
     runnerCalled: true,
-    arguments: ['IRepoService', 'IItemWorker', 'GetByNames', 'root', 'users', 'users-list'],
+    arguments: ['IRepoService', 'IItemWorker', 'GetByNames', 'root', 'users', 'chad_admin'],
     rawResult: '',
     usersCount: 0,
   };
@@ -242,7 +246,7 @@ export async function getUsersFromSharp(options?: { includeDebug?: boolean }): P
 
     // Map to application user format
     const users: AppUser[] = parsedData.users.map((user: CpUser) => ({
-      id: user.id,
+      id: user.repoGuid,
       username: user.username,
       displayName: user.username, // Use username as displayName
       email: user.email,
@@ -333,6 +337,27 @@ export async function findUserByUsername(username: string): Promise<CpUser | nul
   return users.find(
     u => u.username.toLowerCase() === username.toLowerCase()
   ) || null;
+}
+
+/**
+ * Resolves the current user's { repoGuid, username } from the raw id stored
+ * in the session cookie (see app/api/auth/login/route.ts — the cookie value
+ * IS the user's repoGuid). Validates the id against chad_admin's real user
+ * list rather than trusting the cookie blindly, so a forged/arbitrary GUID
+ * in a tampered cookie can't be used to read another repo's data.
+ *
+ * Returns null if the id doesn't match any known user (invalid session, or
+ * an account like test2/test3 that has no repo provisioned yet).
+ */
+export async function resolveCurrentUser(
+  repoGuidFromCookie: string
+): Promise<{ repoGuid: string; username: string } | null> {
+  const users = await getRawUsersFromSharp();
+  const user = users.find(u => u.repoGuid === repoGuidFromCookie);
+  if (!user) {
+    return null;
+  }
+  return { repoGuid: user.repoGuid, username: user.username };
 }
 
 /**

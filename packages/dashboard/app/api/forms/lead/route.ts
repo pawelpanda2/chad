@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { createLead } from 'dba';
+import { createLead, runWithRepoContext } from 'dba';
+import { getCurrentUserFromCookies } from '@/lib/session';
 
 /**
  * POST /api/forms/lead
@@ -25,8 +26,13 @@ import { createLead } from 'dba';
  */
 export async function POST(request: Request) {
   try {
+    const user = await getCurrentUserFromCookies();
+    if (!user) {
+      return NextResponse.json({ success: false, error: 'NOT_AUTHENTICATED' }, { status: 401 });
+    }
+
     const payload = await request.json();
-    
+
     const {
       leadName,
       meetingDay,
@@ -65,7 +71,7 @@ export async function POST(request: Request) {
     }
 
     // Create the lead
-    const result = await createLead(leadName, contacts);
+    const result = await runWithRepoContext(user, () => createLead(leadName, contacts));
 
     if (result.success) {
       return NextResponse.json({

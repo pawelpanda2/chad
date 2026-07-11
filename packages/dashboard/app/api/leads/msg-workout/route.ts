@@ -11,13 +11,19 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getMsgWorkoutForEdit, saveMsgWorkout } from "dba";
+import { getMsgWorkoutForEdit, saveMsgWorkout, runWithRepoContext } from "dba";
+import { getCurrentUserFromCookies } from "@/lib/session";
 
 /**
  * GET /api/leads/msg-workout?workoutLoca=...&leadName=...&leadLoca=...&workoutName=...
  * Returns the msg workout data for viewing/editing.
  */
 export async function GET(request: NextRequest) {
+  const user = await getCurrentUserFromCookies();
+  if (!user) {
+    return NextResponse.json({ error: "NOT_AUTHENTICATED" }, { status: 401 });
+  }
+
   const { searchParams } = new URL(request.url);
   const workoutLoca = searchParams.get("workoutLoca");
   const leadName = searchParams.get("leadName");
@@ -34,7 +40,7 @@ export async function GET(request: NextRequest) {
 
   try {
     // Use existing getMsgWorkoutForEdit which uses GetItem with loca
-    const workoutData = await getMsgWorkoutForEdit(workoutLoca);
+    const workoutData = await runWithRepoContext(user, () => getMsgWorkoutForEdit(workoutLoca));
 
     if (!workoutData) {
       return NextResponse.json(
@@ -72,6 +78,11 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
+    const user = await getCurrentUserFromCookies();
+    if (!user) {
+      return NextResponse.json({ error: "NOT_AUTHENTICATED" }, { status: 401 });
+    }
+
     const body = await request.json();
     const { workoutLoca, content } = body;
 
@@ -89,7 +100,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    await saveMsgWorkout(workoutLoca, content);
+    await runWithRepoContext(user, () => saveMsgWorkout(workoutLoca, content));
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Error saving msg workout:", error);

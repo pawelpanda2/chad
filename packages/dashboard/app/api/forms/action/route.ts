@@ -1,21 +1,20 @@
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-import { saveActionForm, resolveRepoKey, type CpCallTrace } from '@/app/api/flow/cp-flow';
+import { saveActionForm, type CpCallTrace } from '@/app/api/flow/cp-flow';
+import { getCurrentUserFromCookies } from '@/lib/session';
 
 /**
  * POST /api/forms/action
- * 
+ *
  * Saves an action form record to Content Provider.
- * 
+ *
  * Flow:
- * 1. Read session from cookie
- * 2. Resolve repoKey from session.username
- * 3. Call cp-flow.saveActionForm(session, payload)
- * 4. Return result with full debug trace
+ * 1. Resolve current user (repoGuid + username) from session cookie
+ * 2. Call cp-flow.saveActionForm(repoGuid, payload)
+ * 3. Return result with full debug trace
  */
 export async function POST(request: Request) {
   const payload = await request.json();
-  
+
   // Build response object with full debug trace
   const debugResponse: Record<string, unknown> = {
     event: "action-form-submit",
@@ -34,35 +33,21 @@ export async function POST(request: Request) {
     },
   };
 
-  // Get session from cookie
-  let session: { user?: { id?: string; username?: string } } | null = null;
-  let sessionRaw = "";
-  
-  try {
-    const cookieStore = await cookies();
-    const sessionCookie = cookieStore.get('session');
-    if (sessionCookie) {
-      sessionRaw = sessionCookie.value;
-      const [userId] = sessionCookie.value.split(':');
-      session = { user: { id: userId, username: userId } };
-    }
-  } catch {
-    // Session read failed
-  }
+  const user = await getCurrentUserFromCookies();
 
-  (debugResponse.backend as Record<string, unknown>).sessionRaw = sessionRaw;
-  (debugResponse.backend as Record<string, unknown>).sessionParsed = session;
+  (debugResponse.backend as Record<string, unknown>).userGuid = user?.repoGuid ?? null;
+  (debugResponse.backend as Record<string, unknown>).username = user?.username ?? null;
 
-  if (!session) {
+  if (!user) {
     debugResponse.error = {
       message: "No session found",
       type: "NOT_AUTHENTICATED",
     };
     debugResponse.cpFlow = {
       called: false,
-      reason: "No session cookie found",
+      reason: "No session cookie found, or session id doesn't match a known user",
     };
-    
+
     return NextResponse.json({
       success: false,
       error: "Not authenticated",
@@ -70,34 +55,9 @@ export async function POST(request: Request) {
     }, { status: 401 });
   }
 
-  // Resolve repoKey from session
-  const repoInfo = await resolveRepoKey(session);
-  
-  (debugResponse.backend as Record<string, unknown>).userGuid = repoInfo.sessionUserGuid;
-  (debugResponse.backend as Record<string, unknown>).username = repoInfo.sessionUsername;
-  (debugResponse.backend as Record<string, unknown>).repoKey = repoInfo.repoKey;
-  (debugResponse.backend as Record<string, unknown>).repoKeySource = repoInfo.repoKeySource;
-
-  if (!repoInfo.repoKey) {
-    debugResponse.error = {
-      message: "Could not resolve repo key from session",
-      type: "REPO_KEY_NOT_RESOLVED",
-    };
-    debugResponse.cpFlow = {
-      called: false,
-      reason: "repoKey missing - session has no username",
-    };
-    
-    return NextResponse.json({
-      success: false,
-      error: "Could not resolve user repository",
-      debug: debugResponse,
-    }, { status: 400 });
-  }
-
   // Call cp-flow saveActionForm
   try {
-    const result = await saveActionForm(session, payload);
+    const result = await saveActionForm(user.repoGuid, payload);
     
     debugResponse.cpFlow = {
       called: true,

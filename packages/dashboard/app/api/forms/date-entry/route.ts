@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
 import * as yaml from 'js-yaml';
-import { 
-  saveDateEntry, 
-  getAllDateEntries, 
+import {
+  saveDateEntry,
+  getAllDateEntries,
   generateEntryName,
-  SHARED_REPO_ID 
+  runWithRepoContext,
 } from 'dba';
+import { getCurrentUserFromCookies } from '@/lib/session';
 
 /**
  * POST /api/forms/date-entry
@@ -24,7 +24,9 @@ import {
  */
 export async function POST(request: Request) {
   const payload = await request.json();
-  
+
+  const user = await getCurrentUserFromCookies();
+
   // Build response object with debug info
   const debugResponse: Record<string, unknown> = {
     event: "date-entry-form-submit",
@@ -35,8 +37,8 @@ export async function POST(request: Request) {
     },
     backend: {
       endpointCalled: true,
-      repoGuid: SHARED_REPO_ID,
-      repoGuidSource: "chad-dba/SHARED_REPO_ID",
+      repoGuid: user?.repoGuid ?? null,
+      username: user?.username ?? null,
     },
     cpFlow: {
       called: false,
@@ -44,31 +46,12 @@ export async function POST(request: Request) {
     },
   };
 
-  // Get session from cookie (for debug info only)
-  let sessionRaw = "";
-  let userId = "";
-  
-  try {
-    const cookieStore = await cookies();
-    const sessionCookie = cookieStore.get('session');
-    if (sessionCookie) {
-      sessionRaw = sessionCookie.value;
-      const [id] = sessionCookie.value.split(':');
-      userId = id;
-    }
-  } catch {
-    // Session read failed
-  }
-
-  (debugResponse.backend as Record<string, unknown>).sessionRaw = sessionRaw;
-  (debugResponse.backend as Record<string, unknown>).userId = userId;
-
-  if (!sessionRaw) {
+  if (!user) {
     debugResponse.error = {
       message: "No session found",
       type: "NOT_AUTHENTICATED",
     };
-    
+
     return NextResponse.json({
       success: false,
       error: "Not authenticated",
@@ -91,18 +74,21 @@ export async function POST(request: Request) {
   }
 
   try {
-    // Step 1: Get existing entries to generate unique name
-    const existingEntries = await getAllDateEntries();
-    const existingNames = existingEntries.map(e => e.itemName);
-    
-    // Step 2: Generate unique item name
-    const itemName = generateEntryName(existingNames, dateStr);
-    
-    // Step 3: Convert payload to YAML body
-    const bodyYaml = yaml.dump(payload);
-    
-    // Step 4: Save to Content Provider using chad-dba
-    const result = await saveDateEntry(itemName, bodyYaml);
+    const result = await runWithRepoContext(user, async () => {
+      // Step 1: Get existing entries to generate unique name
+      const existingEntries = await getAllDateEntries();
+      const existingNames = existingEntries.map(e => e.itemName);
+
+      // Step 2: Generate unique item name
+      const itemName = generateEntryName(existingNames, dateStr);
+
+      // Step 3: Convert payload to YAML body
+      const bodyYaml = yaml.dump(payload);
+
+      // Step 4: Save to Content Provider using chad-dba
+      return await saveDateEntry(itemName, bodyYaml);
+    });
+    const itemName = result.itemName;
     
     debugResponse.cpFlow = {
       called: true,

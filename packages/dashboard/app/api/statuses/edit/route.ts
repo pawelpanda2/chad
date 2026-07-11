@@ -7,20 +7,27 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { 
+import {
   getTracesFromError,
-  getLeadStatusEditor, 
-  saveLeadStatus, 
+  getLeadStatusEditor,
+  saveLeadStatus,
   createLeadStatus,
   traceAndExecute,
-  type StatusFields 
+  runWithRepoContext,
+  type StatusFields
 } from "dba";
+import { getCurrentUserFromCookies } from "@/lib/session";
 
 /**
  * GET /api/statuses/edit?leadKey=...
  * Returns the status data for editing.
  */
 export async function GET(request: NextRequest) {
+  const user = await getCurrentUserFromCookies();
+  if (!user) {
+    return NextResponse.json({ error: "NOT_AUTHENTICATED" }, { status: 401 });
+  }
+
   const { searchParams } = new URL(request.url);
   const leadKey = searchParams.get("leadKey");
 
@@ -32,9 +39,11 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const { data, _traces } = await traceAndExecute(async () => {
-      return await getLeadStatusEditor(leadKey);
-    });
+    const { data, _traces } = await runWithRepoContext(user, () =>
+      traceAndExecute(async () => {
+        return await getLeadStatusEditor(leadKey);
+      })
+    );
 
     if (!data) {
       return NextResponse.json(
@@ -72,6 +81,11 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
+    const user = await getCurrentUserFromCookies();
+    if (!user) {
+      return NextResponse.json({ error: "NOT_AUTHENTICATED" }, { status: 401 });
+    }
+
     const body = await request.json();
     const { leadKey, fields, createDefault } = body;
 
@@ -84,10 +98,12 @@ export async function POST(request: NextRequest) {
 
     // Create default status if requested
     if (createDefault) {
-      const { _traces } = await traceAndExecute(async () => {
-        await createLeadStatus(leadKey);
-        return { success: true };
-      });
+      const { _traces } = await runWithRepoContext(user, () =>
+        traceAndExecute(async () => {
+          await createLeadStatus(leadKey);
+          return { success: true };
+        })
+      );
       return NextResponse.json({ success: true, created: true, _traces });
     }
 
@@ -110,10 +126,12 @@ export async function POST(request: NextRequest) {
       "priority-today": Number(fields["priority-today"] ?? 0),
     };
     
-    const { _traces } = await traceAndExecute(async () => {
-      await saveLeadStatus(leadKey, statusFields);
-      return { success: true };
-    });
+    const { _traces } = await runWithRepoContext(user, () =>
+      traceAndExecute(async () => {
+        await saveLeadStatus(leadKey, statusFields);
+        return { success: true };
+      })
+    );
 
     return NextResponse.json({ success: true, _traces });
   } catch (error) {

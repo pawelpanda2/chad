@@ -6,11 +6,7 @@
  */
 
 import { invokeContentProvider } from "./client.js";
-
-/**
- * Repository ID for the shared leads/reports/beeper data
- */
-export const SHARED_REPO_ID = "21d11bdc-f1f4-44d1-b61a-3fa6b039c641";
+import { getCurrentRepoGuid } from "./repo-context.js";
 
 /**
  * Gets all leads from the shared repository.
@@ -25,7 +21,7 @@ export async function GetAllLeads(): Promise<any> {
     "IRepoService",
     "IItemWorker",
     "PostByNames",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     "Folder",
     "leads",
     "all items",
@@ -43,7 +39,7 @@ export async function GetLeadByName(leadName: string): Promise<any> {
     "IRepoService",
     "IItemWorker",
     "GetByNames",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     "leads",
     leadName,
   ]);
@@ -78,7 +74,7 @@ export async function TodoLeads(): Promise<any> {
     "IRepoService",
     "IMethodWorker",
     "FindRecursively",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     leadsLoca,
     "//todo",
   ]);
@@ -97,7 +93,7 @@ export async function createStatusForLead(leadLoca: string): Promise<any> {
     "IRepoService",
     "IItemWorker",
     "PostParentItem",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     leadLoca,
     "Text",
     "status",
@@ -115,7 +111,7 @@ export async function findStatusForLead(leadLoca: string): Promise<any | null> {
     "IRepoService",
     "IItemWorker",
     "PostByNames",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     "Folder",
     "leads",
     "all items",
@@ -134,7 +130,7 @@ export async function findStatusForLead(leadLoca: string): Promise<any | null> {
     "IRepoService",
     "IManyItemsWorker",
     "GetManyByName",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     leadsLoca,
     "status",
   ]);
@@ -167,7 +163,7 @@ export function getStatusLocaFromItem(item: any): string {
     throw new Error("Status item has no Settings.address");
   }
 
-  const prefix = `${SHARED_REPO_ID}/`;
+  const prefix = `${getCurrentRepoGuid()}/`;
   if (!address.startsWith(prefix)) {
     throw new Error(`Status address \"${address}\" does not start with repo prefix \"${prefix}\"`);
   }
@@ -192,7 +188,7 @@ export async function getLeadContactsByLoca(leadLoca: string): Promise<string | 
       "IRepoService",
       "IItemWorker",
       "GetByNames2",
-      SHARED_REPO_ID,
+      getCurrentRepoGuid(),
       leadLoca,
       "contacts",
     ]);
@@ -221,11 +217,11 @@ export async function getLeadContactsByLoca(leadLoca: string): Promise<string | 
 export async function putStatusContent(loca: string, body: string): Promise<any> {
   // Validation: Ensure loca does not contain repo GUID
   // repoGuid should ONLY be passed as the repo argument, never in loca
-  if (loca.includes(SHARED_REPO_ID)) {
+  if (loca.includes(getCurrentRepoGuid())) {
     throw new Error(
       `Invalid loca for putStatusContent: loca contains repo GUID. ` +
       `repoGuid should only be passed as the repo argument, never in loca. ` +
-      `Function: putStatusContent, repo: ${SHARED_REPO_ID}, loca: ${loca}`
+      `Function: putStatusContent, repo: ${getCurrentRepoGuid()}, loca: ${loca}`
     );
   }
 
@@ -233,7 +229,7 @@ export async function putStatusContent(loca: string, body: string): Promise<any>
     "IRepoService",
     "IItemWorker",
     "Put",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     loca,
     "Text",
     "status",
@@ -256,7 +252,7 @@ export async function getStatusItem(loca: string): Promise<any> {
     "IRepoService",
     "IItemWorker",
     "GetItem",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     loca,
   ]);
 }
@@ -294,7 +290,7 @@ export interface PostItemByNamesResult {
  * @example
  * ```typescript
  * // Create/get beeper/whatsup/Alice/beeper
- * const result = await postItemByNames(SHARED_REPO_ID, ["beeper", "whatsup", "Alice", "beeper"]);
+ * const result = await postItemByNames(getCurrentRepoGuid(), ["beeper", "whatsup", "Alice", "beeper"]);
  * console.log(result.loca); // "03/06/71/02/01"
  * ```
  */
@@ -380,7 +376,7 @@ export async function postItemByNames(
  * @returns Promise resolving to the numeric loca of the final item
  */
 export async function ensureBeeperContactPath(leadName: string): Promise<string> {
-  const result = await postItemByNames(SHARED_REPO_ID, [
+  const result = await postItemByNames(getCurrentRepoGuid(), [
     "beeper",
     "whatsup",
     leadName,
@@ -401,7 +397,7 @@ export async function saveBeeperContactContent(loca: string, content: string): P
     "IRepoService",
     "IItemWorker",
     "Put",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     loca,
     "Text",
     "beeper",
@@ -431,7 +427,7 @@ export async function saveBeeperWhatsappConversation(
   content: string
 ): Promise<{ loca: string; address: string; success: boolean }> {
   // Step 1: POST - create or get the item
-  const postResult = await postItemByNames(SHARED_REPO_ID, [
+  const postResult = await postItemByNames(getCurrentRepoGuid(), [
     "beeper",
     "whatsup",
     leadName,
@@ -479,7 +475,7 @@ export async function getAllLeadNames(): Promise<string[]> {
     "IRepoService",
     "IItemWorker",
     "GetByNames",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     "leads",
     "all items",
   ]);
@@ -506,7 +502,7 @@ export async function getLeadContacts(leadName: string): Promise<string | null> 
     "IRepoService",
     "IItemWorker",
     "GetByNames",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     "leads",
     "all items",
     leadName,
@@ -533,7 +529,7 @@ export async function getLeadContactsItem(leadName: string): Promise<any> {
     "IRepoService",
     "IItemWorker",
     "GetByNames",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     "leads",
     "all items",
     leadName,
@@ -572,7 +568,7 @@ export async function getAllLeadsWithContacts(): Promise<LeadDashboardItem[]> {
 
   // Step 2: Get leads base loca
   const leadsLoca = allLeadsResponse.Settings?.address
-    ? allLeadsResponse.Settings.address.replace(`${SHARED_REPO_ID}/`, "")
+    ? allLeadsResponse.Settings.address.replace(`${getCurrentRepoGuid()}/`, "")
     : "03/06";
 
   const body = allLeadsResponse.Body;
@@ -583,7 +579,7 @@ export async function getAllLeadsWithContacts(): Promise<LeadDashboardItem[]> {
     "IRepoService",
     "IManyItemsWorker",
     "GetManyByName",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     leadsLoca,
     "contacts",
   ]);
@@ -596,7 +592,7 @@ export async function getAllLeadsWithContacts(): Promise<LeadDashboardItem[]> {
       if (address) {
         // Extract the lead name from the address
         // Address format: repoId/leadsLoca/leadKey/.../contacts
-        const withoutRepo = address.replace(`${SHARED_REPO_ID}/`, "");
+        const withoutRepo = address.replace(`${getCurrentRepoGuid()}/`, "");
         const withoutLeads = withoutRepo.replace(`${leadsLoca}/`, "");
         const leadName = withoutLeads.split("/").slice(1).join("/").replace("/contacts", "");
         if (leadName) {
@@ -638,7 +634,7 @@ export async function getLeadsParentItem(): Promise<any> {
     "IRepoService",
     "IItemWorker",
     "GetByNames",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     "leads",
     "all items",
   ]);
@@ -891,7 +887,7 @@ export async function createMsgWorkoutForLead(
     "IRepoService",
     "IItemWorker",
     "GetByNames2",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     leadLoca,
     "msg workout",
   ]);
@@ -900,7 +896,7 @@ export async function createMsgWorkoutForLead(
   
   if (msgWorkoutFolderResult?.Settings?.address) {
     // Folder exists
-    msgWorkoutFolderLoca = msgWorkoutFolderResult.Settings.address.replace(`${SHARED_REPO_ID}/`, "");
+    msgWorkoutFolderLoca = msgWorkoutFolderResult.Settings.address.replace(`${getCurrentRepoGuid()}/`, "");
   } else {
     // Folder doesn't exist, this shouldn't happen if getLeadMsgWorkoutsByLoca worked
     // but we handle it gracefully
@@ -912,7 +908,7 @@ export async function createMsgWorkoutForLead(
     "IRepoService",
     "IItemWorker",
     "PostParentItem",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     msgWorkoutFolderLoca,
     "Folder",
     workoutName,
@@ -922,7 +918,7 @@ export async function createMsgWorkoutForLead(
     throw new Error(`Failed to create workout "${workoutName}"`);
   }
   
-  const workoutLoca = workoutResult.Settings.address.replace(`${SHARED_REPO_ID}/`, "");
+  const workoutLoca = workoutResult.Settings.address.replace(`${getCurrentRepoGuid()}/`, "");
   
   return {
     workoutName,
@@ -984,7 +980,7 @@ export async function getAllDateEntries(): Promise<DateEntryItem[]> {
       "IRepoService",
       "IItemWorker",
       "GetByNames",
-      SHARED_REPO_ID,
+      getCurrentRepoGuid(),
       "actions",
       "dates",
     ]);
@@ -994,7 +990,7 @@ export async function getAllDateEntries(): Promise<DateEntryItem[]> {
     }
 
     const folderLoca = result.Settings?.address
-      ? result.Settings.address.replace(`${SHARED_REPO_ID}/`, "")
+      ? result.Settings.address.replace(`${getCurrentRepoGuid()}/`, "")
       : "";
 
     if (!folderLoca) {
@@ -1039,7 +1035,7 @@ export async function getAllDailyEntries(): Promise<DailyEntryItem[]> {
       "IRepoService",
       "IItemWorker",
       "GetByNames",
-      SHARED_REPO_ID,
+      getCurrentRepoGuid(),
       "actions",
       "daily",
     ]);
@@ -1051,7 +1047,7 @@ export async function getAllDailyEntries(): Promise<DailyEntryItem[]> {
       return [];
     }
 
-    const folderLoca = folderResult.Settings.address.replace(`${SHARED_REPO_ID}/`, "");
+    const folderLoca = folderResult.Settings.address.replace(`${getCurrentRepoGuid()}/`, "");
     console.log("[chad-dba] getAllDailyEntries: folderLoca:", folderLoca);
 
     // Step 2: Get children of the daily folder using IManyItemsWorker.GetList
@@ -1060,7 +1056,7 @@ export async function getAllDailyEntries(): Promise<DailyEntryItem[]> {
       "IRepoService",
       "IManyItemsWorker",
       "GetList",
-      SHARED_REPO_ID,
+      getCurrentRepoGuid(),
       folderLoca,
     ]);
 
@@ -1086,7 +1082,7 @@ export async function getAllDailyEntries(): Promise<DailyEntryItem[]> {
     const entries: DailyEntryItem[] = [];
     for (const child of children) {
       const childLoca = child.Settings?.address 
-        ? child.Settings.address.replace(`${SHARED_REPO_ID}/`, "")
+        ? child.Settings.address.replace(`${getCurrentRepoGuid()}/`, "")
         : child.Settings?.loca;
       
       const childName = child.Settings?.name || child.Name;
@@ -1101,7 +1097,7 @@ export async function getAllDailyEntries(): Promise<DailyEntryItem[]> {
         "IRepoService",
         "IItemWorker",
         "GetItem",
-        SHARED_REPO_ID,
+        getCurrentRepoGuid(),
         childLoca,
       ]);
 
@@ -1153,7 +1149,7 @@ export async function saveDateEntry(
     "IRepoService",
     "IItemWorker",
     "PostParentItem",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     "",  // root loca
     "Folder",
     "actions",
@@ -1163,14 +1159,14 @@ export async function saveDateEntry(
     throw new Error("Failed to get or create actions folder");
   }
 
-  const actionsLoca = actionsResult.Settings.address.replace(`${SHARED_REPO_ID}/`, "");
+  const actionsLoca = actionsResult.Settings.address.replace(`${getCurrentRepoGuid()}/`, "");
 
   // Step 2: Get or create dates folder under actions
   const datesResult = await invokeContentProvider([
     "IRepoService",
     "IItemWorker",
     "PostParentItem",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     actionsLoca,
     "Folder",
     "dates",
@@ -1180,14 +1176,14 @@ export async function saveDateEntry(
     throw new Error("Failed to get or create dates folder");
   }
 
-  const datesLoca = datesResult.Settings.address.replace(`${SHARED_REPO_ID}/`, "");
+  const datesLoca = datesResult.Settings.address.replace(`${getCurrentRepoGuid()}/`, "");
 
   // Step 3: Create text item under dates folder
   const entryResult = await invokeContentProvider([
     "IRepoService",
     "IItemWorker",
     "PostParentItem",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     datesLoca,
     "Text",
     itemName,
@@ -1197,14 +1193,14 @@ export async function saveDateEntry(
     throw new Error(`Failed to create date entry "${itemName}"`);
   }
 
-  const entryLoca = entryResult.Settings.address.replace(`${SHARED_REPO_ID}/`, "");
+  const entryLoca = entryResult.Settings.address.replace(`${getCurrentRepoGuid()}/`, "");
 
   // Step 4: Put YAML body
   await invokeContentProvider([
     "IRepoService",
     "IItemWorker",
     "Put",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     entryLoca,
     "Text",
     itemName,
@@ -1240,7 +1236,7 @@ export async function saveDailyEntry(
     "IRepoService",
     "IItemWorker",
     "PostParentItem",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     "",  // root loca
     "Folder",
     "actions",
@@ -1250,14 +1246,14 @@ export async function saveDailyEntry(
     throw new Error("Failed to get or create actions folder");
   }
 
-  const actionsLoca = actionsResult.Settings.address.replace(`${SHARED_REPO_ID}/`, "");
+  const actionsLoca = actionsResult.Settings.address.replace(`${getCurrentRepoGuid()}/`, "");
 
   // Step 2: Get or create daily folder under actions
   const dailyResult = await invokeContentProvider([
     "IRepoService",
     "IItemWorker",
     "PostParentItem",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     actionsLoca,
     "Folder",
     "daily",
@@ -1267,14 +1263,14 @@ export async function saveDailyEntry(
     throw new Error("Failed to get or create daily folder");
   }
 
-  const dailyLoca = dailyResult.Settings.address.replace(`${SHARED_REPO_ID}/`, "");
+  const dailyLoca = dailyResult.Settings.address.replace(`${getCurrentRepoGuid()}/`, "");
 
   // Step 3: Create text item under daily folder
   const entryResult = await invokeContentProvider([
     "IRepoService",
     "IItemWorker",
     "PostParentItem",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     dailyLoca,
     "Text",
     itemName,
@@ -1284,14 +1280,14 @@ export async function saveDailyEntry(
     throw new Error(`Failed to create daily entry "${itemName}"`);
   }
 
-  const entryLoca = entryResult.Settings.address.replace(`${SHARED_REPO_ID}/`, "");
+  const entryLoca = entryResult.Settings.address.replace(`${getCurrentRepoGuid()}/`, "");
 
   // Step 4: Put YAML body
   await invokeContentProvider([
     "IRepoService",
     "IItemWorker",
     "Put",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     entryLoca,
     "Text",
     itemName,
@@ -1346,7 +1342,7 @@ export async function getLeadMsgWorkoutsByLoca(leadLoca: string): Promise<MsgWor
       "IRepoService",
       "IItemWorker",
       "GetByNames2",
-      SHARED_REPO_ID,
+      getCurrentRepoGuid(),
       leadLoca,
       "msg workout",
     ]);
@@ -1361,14 +1357,14 @@ export async function getLeadMsgWorkoutsByLoca(leadLoca: string): Promise<MsgWor
 
     // Get the msg workout folder's loca from the address
     const folderAddress = result.Settings.address || "";
-    if (!folderAddress.startsWith(`${SHARED_REPO_ID}/`)) {
+    if (!folderAddress.startsWith(`${getCurrentRepoGuid()}/`)) {
       return {
         workouts: [],
         notFound: false,
         error: "Invalid folder address format",
       };
     }
-    const msgWorkoutFolderLoca = folderAddress.substring(`${SHARED_REPO_ID}/`.length);
+    const msgWorkoutFolderLoca = folderAddress.substring(`${getCurrentRepoGuid()}/`.length);
 
     // Check if Body exists and is an object
     if (!result.Body || typeof result.Body !== "object") {
@@ -1734,7 +1730,7 @@ export async function getMsgWorkoutForEdit(loca: string): Promise<MsgWorkoutEdit
     "IRepoService",
     "IItemWorker",
     "GetItem",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     loca,
   ]);
 
@@ -1743,7 +1739,7 @@ export async function getMsgWorkoutForEdit(loca: string): Promise<MsgWorkoutEdit
   }
 
   // Build full address from repo GUID and loca
-  const address = `${SHARED_REPO_ID}/${loca}`;
+  const address = `${getCurrentRepoGuid()}/${loca}`;
 
   // Get lead name from the loca path (first segment = girlId)
   const girlId = loca.split("/")[0] || "";
@@ -1780,7 +1776,7 @@ export async function saveMsgWorkout(loca: string, content: string): Promise<boo
     "IRepoService",
     "IItemWorker",
     "GetItem",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     loca,
   ]);
 
@@ -1794,7 +1790,7 @@ export async function saveMsgWorkout(loca: string, content: string): Promise<boo
     "IRepoService",
     "IItemWorker",
     "Put",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     loca,
     "Text",
     itemName,
@@ -1830,7 +1826,7 @@ export async function leadExists(leadName: string): Promise<boolean> {
       "IRepoService",
       "IItemWorker",
       "GetByNames",
-      SHARED_REPO_ID,
+      getCurrentRepoGuid(),
       "leads",
       "all items",
       leadName,
@@ -1874,7 +1870,7 @@ export async function createLead(
       "IRepoService",
       "IItemWorker",
       "GetByNames",
-      SHARED_REPO_ID,
+      getCurrentRepoGuid(),
       "leads",
       "all items",
     ]);
@@ -1888,14 +1884,14 @@ export async function createLead(
       };
     }
 
-    const parentLoca = parentResult.Settings.address.replace(`${SHARED_REPO_ID}/`, "");
+    const parentLoca = parentResult.Settings.address.replace(`${getCurrentRepoGuid()}/`, "");
 
     // Step 2: Create the lead item using PostParentItem
     const leadResult = await invokeContentProvider([
       "IRepoService",
       "IItemWorker",
       "PostParentItem",
-      SHARED_REPO_ID,
+      getCurrentRepoGuid(),
       parentLoca,
       "Folder",
       leadName,
@@ -1910,28 +1906,28 @@ export async function createLead(
       };
     }
 
-    const leadLoca = leadResult.Settings.address.replace(`${SHARED_REPO_ID}/`, "");
+    const leadLoca = leadResult.Settings.address.replace(`${getCurrentRepoGuid()}/`, "");
 
     // Step 3: Create contacts text item under the lead (always, even if empty)
     const contactsResult = await invokeContentProvider([
       "IRepoService",
       "IItemWorker",
       "PostParentItem",
-      SHARED_REPO_ID,
+      getCurrentRepoGuid(),
       leadLoca,
       "Text",
       "contacts",
     ]);
 
     if (contactsResult?.Settings?.address) {
-      const contactsLoca = contactsResult.Settings.address.replace(`${SHARED_REPO_ID}/`, "");
+      const contactsLoca = contactsResult.Settings.address.replace(`${getCurrentRepoGuid()}/`, "");
 
       // Write contacts content (empty string if no contacts provided)
       await invokeContentProvider([
         "IRepoService",
         "IItemWorker",
         "Put",
-        SHARED_REPO_ID,
+        getCurrentRepoGuid(),
         contactsLoca,
         "Text",
         "contacts",
@@ -1944,7 +1940,7 @@ export async function createLead(
       "IRepoService",
       "IItemWorker",
       "PostParentItem",
-      SHARED_REPO_ID,
+      getCurrentRepoGuid(),
       leadLoca,
       "Folder",
       "msg workout",
@@ -2041,7 +2037,7 @@ export async function getMsgPlannerDateFolders(): Promise<MsgPlannerDateFolder[]
     "IRepoService",
     "IItemWorker",
     "GetByNames",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     "leads",
     "msg planner",
   ]);
@@ -2054,7 +2050,7 @@ export async function getMsgPlannerDateFolders(): Promise<MsgPlannerDateFolder[]
     return [];
   }
 
-  const msgPlannerLoca = chad_GetLocaFromAddress(msgPlannerResult.Settings.address, SHARED_REPO_ID);
+  const msgPlannerLoca = chad_GetLocaFromAddress(msgPlannerResult.Settings.address, getCurrentRepoGuid());
   console.log("[chad-dba] msg planner loca:", msgPlannerLoca);
 
   // Step 2: Read child physical keys -> logical names from the folder body map.
@@ -2151,7 +2147,7 @@ export async function getMsgPlannerBodyForDate(date: string, dateFolderLoca: str
     "IRepoService",
     "IItemWorker",
     "GetItem",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     dateFolderLoca,
   ]);
 
@@ -2181,7 +2177,7 @@ export async function saveMsgPlannerBody(dateFolderLoca: string, content: string
     "IRepoService",
     "IItemWorker",
     "GetItem",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     dateFolderLoca,
   ]);
 
@@ -2199,7 +2195,7 @@ export async function saveMsgPlannerBody(dateFolderLoca: string, content: string
     "IRepoService",
     "IItemWorker",
     "Put",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     dateFolderLoca,
     "Text",
     itemName,
@@ -2385,7 +2381,7 @@ export async function createMsgPlannerDateFolder(
     "IRepoService",
     "IItemWorker",
     "GetByNames",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     "leads",
     "msg planner",
   ]);
@@ -2394,7 +2390,7 @@ export async function createMsgPlannerDateFolder(
     throw new Error("Msg planner folder not found. Cannot create date folder.");
   }
 
-  const msgPlannerLoca = chad_GetLocaFromAddress(msgPlannerResult.Settings.address, SHARED_REPO_ID);
+  const msgPlannerLoca = chad_GetLocaFromAddress(msgPlannerResult.Settings.address, getCurrentRepoGuid());
   console.log(`[chad-dba] Msg planner loca: ${msgPlannerLoca}`);
 
   // Step 2: Get existing children to find unique name if needed
@@ -2422,7 +2418,7 @@ export async function createMsgPlannerDateFolder(
     "IRepoService",
     "IItemWorker",
     "PostParentItem",
-    SHARED_REPO_ID,
+    getCurrentRepoGuid(),
     msgPlannerLoca,
     "Text",  // Same type as existing date folders
     actualName,  // Logical name (YY-MM-DD format, possibly with suffix)
@@ -2433,7 +2429,7 @@ export async function createMsgPlannerDateFolder(
   }
 
   // Step 5: Extract the loca of the created item
-  const dateItemLoca = chad_GetLocaFromAddress(dateItemResult.Settings.address, SHARED_REPO_ID);
+  const dateItemLoca = chad_GetLocaFromAddress(dateItemResult.Settings.address, getCurrentRepoGuid());
   console.log(`[chad-dba] Created date folder "${actualName}" with loca: ${dateItemLoca}`);
 
   const result: MsgPlannerDateFolder & { generatedBody?: string; originalDate?: string } = {

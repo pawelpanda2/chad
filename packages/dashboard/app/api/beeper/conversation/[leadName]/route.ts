@@ -5,7 +5,8 @@
  */
 
 import { NextResponse } from "next/server";
-import { getBeeperWhatsappConversation } from "dba";
+import { getBeeperWhatsappConversation, runWithRepoContext } from "dba";
+import { getCurrentUserFromCookies } from "@/lib/session";
 
 interface RouteParams {
   params: Promise<{
@@ -15,6 +16,11 @@ interface RouteParams {
 
 export async function GET(_request: Request, { params }: RouteParams) {
   try {
+    const user = await getCurrentUserFromCookies();
+    if (!user) {
+      return NextResponse.json({ ok: false, error: "NOT_AUTHENTICATED" }, { status: 401 });
+    }
+
     const { leadName } = await params;
     if (!leadName) {
       return NextResponse.json(
@@ -29,7 +35,9 @@ export async function GET(_request: Request, { params }: RouteParams) {
     }
 
     const decodedLeadName = decodeURIComponent(leadName);
-    const content = await getBeeperWhatsappConversation(decodedLeadName);
+    const content = await runWithRepoContext(user, () =>
+      getBeeperWhatsappConversation(decodedLeadName)
+    );
 
     if (content === null) {
       return NextResponse.json(

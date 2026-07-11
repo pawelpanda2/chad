@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
 			service: "IRepoService",
 			worker: "IItemWorker",
 			method: "GetByNames",
-			args: ["root", "users", "users-list"]
+			args: ["root", "users", "chad_admin"]
 		};
 		debugInfo.contentProviderApiUrl = process.env.CONTENT_PROVIDER_API_URL;
 
@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
 			const allUsers = await getRawUsersFromSharp();
 			debugInfo.allUsersCount = allUsers.length;
 			debugInfo.allUsersSample = allUsers.slice(0, 3).map((u: CpUser) => ({
-				id: u.id,
+				repoGuid: u.repoGuid,
 				username: u.username,
 				email: u.email
 			}));
@@ -107,8 +107,10 @@ export async function POST(request: NextRequest) {
 
 		console.log("[Login] Successfully authenticated user:", username);
 
-		// Create session cookie (simple implementation using httpOnly cookie)
-		const sessionToken = `${user.id}:${Date.now()}`;
+		// Create session cookie (simple implementation using httpOnly cookie).
+		// user.repoGuid doubles as this user's identity AND their Content
+		// Provider data-root repo GUID — see chad_admin's body.txt comment.
+		const sessionToken = `${user.repoGuid}:${Date.now()}`;
 		const cookieOptions = [
 			"session=" + encodeURIComponent(sessionToken),
 			"HttpOnly",
@@ -130,7 +132,7 @@ export async function POST(request: NextRequest) {
 		return NextResponse.json(
 			{
 				user: {
-					id: user.id,
+					repoGuid: user.repoGuid,
 					username: user.username,
 					displayName: user.username,
 				},
