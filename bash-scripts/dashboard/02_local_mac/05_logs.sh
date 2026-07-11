@@ -12,7 +12,7 @@ SESSION="chad-dashboard"
 
 if ! command_exists tmux || ! tmux has-session -t "$SESSION" 2>/dev/null; then
   log_error "tmux session '$SESSION' is not running — nothing to show."
-  log_error "  Start it first: bash 02_begin.sh"
+  log_error "  Start it first: bash 02_start.sh"
   exit 1
 fi
 

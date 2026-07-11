@@ -22,4 +22,4 @@ windows:
       panes:
         - tmux select-pane -t "$TMUX_PANE" -T "DBA (tsc --watch)" && pnpm dba
         - tmux select-pane -t "$TMUX_PANE" -T "Dashboard (next dev)" && pnpm dashboard
-        - tmux select-pane -t "$TMUX_PANE" -T "Content Provider" && ./bash-scripts/dashboard/02_local_mac/run-content-provider-if-needed.sh
+        - tmux select-pane -t "$TMUX_PANE" -T "Content Provider" && ./bash-scripts/content-provider/run-content-provider-if-needed.sh

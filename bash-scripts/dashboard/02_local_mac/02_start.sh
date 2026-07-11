@@ -8,8 +8,8 @@
 # it for several views.
 #
 # Usage:
-#   ./bash-scripts/dashboard/02_local_mac/02_begin.sh            # normal start
-#   ./bash-scripts/dashboard/02_local_mac/02_begin.sh --install  # also run pnpm install first
+#   ./bash-scripts/dashboard/02_local_mac/02_start.sh            # normal start
+#   ./bash-scripts/dashboard/02_local_mac/02_start.sh --install  # also run pnpm install first
 #
 # Works from any cwd — resolves the repo root from this script's own
 # location via git, not from $PWD.
@@ -79,7 +79,7 @@ if [ ! -d "$REPO_ROOT/node_modules" ]; then
     pnpm install
   else
     log_error "node_modules is missing at repo root."
-    log_error "  Fix: ./bash-scripts/dashboard/02_local_mac/02_begin.sh --install"
+    log_error "  Fix: ./bash-scripts/dashboard/02_local_mac/02_start.sh --install"
     log_error "  or:  pnpm install   (from $REPO_ROOT)"
     exit 1
   fi
@@ -127,7 +127,7 @@ fi
 # ---------------------------------------------------------------------------
 
 log_info "Checking / ensuring Content Provider API..."
-if ! bash "$REPO_ROOT/bash-scripts/dashboard/02_local_mac/run-content-provider-if-needed.sh" --wait-only; then
+if ! bash "$REPO_ROOT/bash-scripts/content-provider/run-content-provider-if-needed.sh" --wait-only; then
   log_warn "Content Provider API is not available."
   log_warn "  Dashboard views that depend on it (leads, statuses, msg-planner, ...) will error."
   log_warn "  Views that don't touch it will still work fine."
