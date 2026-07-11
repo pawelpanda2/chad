@@ -1,28 +1,45 @@
-# Docker Compose — QNAP PROD environment, full stack (mongo + content-provider-api
-# + dashboard). Used by bash-scripts/dashboard/05_qnap_prod/*.sh and
-# bash-scripts/dashboard/06_qnap_ssh/*_prod.sh. Env file: .env.qnap (shared with qnap-test)
-# (copy from .env.qnap.example, never commit the real one).
+# Docker Compose — QNAP (TEST and PROD share this ONE file), full stack
+# (mongo + content-provider-api + dashboard). Used by
+# bash-scripts/dashboard/04_qnap_test/*.sh (TEST) and
+# bash-scripts/dashboard/05_qnap_prod/*.sh (PROD), plus
+# bash-scripts/dashboard/06_qnap_ssh/*_test.sh / *_prod.sh (thin SSH wrappers
+# over those). Env file: .env.qnap (copy from .env.qnap.example, never
+# commit the real one).
 #
-# PROD deployment requires separate explicit approval — this file existing
-# does not deploy anything by itself.
+# TEST vs PROD is distinguished ENTIRELY by which script runs this file, not
+# by a separate compose file: each of 04_qnap_test/*.sh and
+# 05_qnap_prod/*.sh sets ENV_NAME (test/prod), the ports, and
+# COMPOSE_PROJECT_NAME (-p flag) directly — hardcoded in that script, not
+# passed as ad-hoc CLI overrides. See documentation/dashboard/common/
+# features/dashboard-deployment-scripts.md for the full script contract.
 #
-# Dane MongoDB na trwałym bind mouncie QNAP — usunięcie kontenera
-# (docker compose down) NIE usuwa danych, dopóki bind mount zostaje. Usuwa
-# dane tylko skasowanie katalogu na hoście QNAP
-# ($QNAP_CONTAINER_DATA_PATH/chad/mongodb/db).
+# Runtime na QNAP to WYŁĄCZNIE docker-compose (bez tmuxinator — tmuxinator jest
+# tylko lokalnym workflow developerskim).
+#
+# NOTE: this is a DIFFERENT deployment from packages/net-content-provider/
+# 03_scripts/qnap/*.sh, które deployuje samodzielny content-provider-api +
+# Blazor GUI (no mongo, no dashboard) via plain `docker run`. Oba mogą
+# współistnieć na tym samym QNAP — patrz .env.qnap.example (port-overlap
+# note: net-content-provider's own Blazor domyślnie na 12020).
+#
+# Dane MongoDB MUSZĄ być na trwałym bind mouncie QNAP, nie w warstwie
+# kontenera. Usunięcie kontenera (docker compose down) NIE usuwa danych,
+# dopóki bind mount zostaje — usuwa je tylko skasowanie katalogu na hoście
+# QNAP ($QNAP_CONTAINER_DATA_PATH/chad-${ENV_NAME}/mongodb/db).
 #
 # Backup logiczny: patrz bash-scripts/mongo/backup.sh (mongodump).
 #
 # PRZYGOTOWANE, NIE WDROŻONE (2026-07-10): mongodb skonfigurowane jako
-# single-node replica set (rs0) z idempotentnym init-kontenerem. TA
-# KONFIGURACJA MA POZOSTAĆ NIEUŻYWANA na produkcji, dopóki nie zostanie
-# jawnie zatwierdzone jej uruchomienie — patrz
-# documentation/ai-docs/2026-07-10_mongodb-replica-set-migration-plan.md.
+# single-node replica set (rs0), bo beeper-oplog wymaga change streams. Init
+# jest idempotentny (mongo-rs-init, patrz bash-scripts/mongo/rs-init.js) —
+# bezpieczny do wielokrotnego uruchomienia. Zanim to pójdzie na realny QNAP
+# (test LUB prod), patrz documentation/ai-docs/
+# 2026-07-10_mongodb-replica-set-migration-plan.md.
 
 services:
   mongo-keyfile-init:
     image: mongo:7
-    container_name: chad-mongo-keyfile-init-prod
+    container_name: chad-mongo-keyfile-init-${ENV_NAME}
     restart: "no"
     entrypoint: ["/bin/bash", "-c"]
     command:
@@ -37,26 +54,26 @@ services:
         chmod 400 /keyfile-data/mongo-keyfile
         chown 999:999 /keyfile-data/mongo-keyfile
     volumes:
-      - "${QNAP_CONTAINER_DATA_PATH:-/share/ContainerData}/chad/mongodb/keyfile:/keyfile-data"
+      - "${QNAP_CONTAINER_DATA_PATH:-/share/ContainerData}/chad-${ENV_NAME}/mongodb/keyfile:/keyfile-data"
 
   mongodb:
     image: mongo:7
-    container_name: chad-mongodb-prod
+    container_name: chad-mongodb-${ENV_NAME}
     restart: unless-stopped
     command: ["--replSet", "rs0", "--bind_ip_all", "--keyFile", "/data/mongo-keyfile"]
     depends_on:
       mongo-keyfile-init:
         condition: service_completed_successfully
     ports:
-      - "${MONGODB_PORT:-27017}:27017"
+      - "${MONGODB_PORT}:27017"
     environment:
       MONGO_INITDB_ROOT_USERNAME: "${MONGO_ROOT_USERNAME}"
       MONGO_INITDB_ROOT_PASSWORD: "${MONGO_ROOT_PASSWORD}"
     volumes:
-      - "${QNAP_CONTAINER_DATA_PATH:-/share/ContainerData}/chad/mongodb/db:/data/db"
-      - "${QNAP_CONTAINER_DATA_PATH:-/share/ContainerData}/chad/mongodb/configdb:/data/configdb"
-      - "${QNAP_CONTAINER_DATA_PATH:-/share/ContainerData}/chad/mongodb/backups:/backups"
-      - "${QNAP_CONTAINER_DATA_PATH:-/share/ContainerData}/chad/mongodb/keyfile/mongo-keyfile:/data/mongo-keyfile:ro"
+      - "${QNAP_CONTAINER_DATA_PATH:-/share/ContainerData}/chad-${ENV_NAME}/mongodb/db:/data/db"
+      - "${QNAP_CONTAINER_DATA_PATH:-/share/ContainerData}/chad-${ENV_NAME}/mongodb/configdb:/data/configdb"
+      - "${QNAP_CONTAINER_DATA_PATH:-/share/ContainerData}/chad-${ENV_NAME}/mongodb/backups:/backups"
+      - "${QNAP_CONTAINER_DATA_PATH:-/share/ContainerData}/chad-${ENV_NAME}/mongodb/keyfile/mongo-keyfile:/data/mongo-keyfile:ro"
     logging:
       driver: "json-file"
       options:
@@ -84,7 +101,7 @@ services:
 
   mongo-rs-init:
     image: mongo:7
-    container_name: chad-mongo-rs-init-prod
+    container_name: chad-mongo-rs-init-${ENV_NAME}
     restart: "no"
     depends_on:
       mongodb:
@@ -107,13 +124,15 @@ services:
     build:
       context: packages/net-content-provider
       dockerfile: 04_dockerfiles/webapi
-    container_name: chad-content-provider-api-prod
+    container_name: chad-content-provider-api-${ENV_NAME}
     restart: unless-stopped
     ports:
-      - "${CONTENT_PROVIDER_API_PORT:-12034}:12024"
+      - "${CONTENT_PROVIDER_API_PORT}:12024"
     environment:
       - PreparerModule__NoSqlRepoSearchPaths__0=/data/repos
     volumes:
+      # Parent of "repos/", not repos/ itself — see
+      # documentation/content-provider/next-tasks/qnap-test-deployment.md §6.
       - "${CP_REPOS_HOST_PATH:-/share/Dropbox}:/data/repos:rw"
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:12024/health"]
@@ -128,10 +147,10 @@ services:
       context: .
       dockerfile: packages/dashboard/Dockerfile
       target: runner
-    container_name: chad-dashboard-prod
+    container_name: chad-dashboard-${ENV_NAME}
     restart: unless-stopped
     ports:
-      - "${DASHBOARD_PORT:-12035}:3000"
+      - "${DASHBOARD_PORT}:3000"
     environment:
       - NODE_ENV=production
       - NEXT_TELEMETRY_DISABLED=1
@@ -141,7 +160,7 @@ services:
       content-provider-api:
         condition: service_healthy
     volumes:
-      - chad-dashboard-prod-data:/app/data
+      - chad-dashboard-${ENV_NAME}-data:/app/data
     logging:
       driver: "json-file"
       options:
@@ -149,5 +168,7 @@ services:
         max-file: "3"
 
 volumes:
+  chad-dashboard-test-data:
+    name: chad-dashboard-qnap-test-data
   chad-dashboard-prod-data:
     name: chad-dashboard-qnap-prod-data
