@@ -3,10 +3,67 @@ import * as yaml from 'js-yaml';
 import {
   saveDailyEntry,
   getAllDailyEntries,
+  getAllDateEntries,
   generateEntryName,
   runWithRepoContext,
+  computeDailyAutoFieldsByDate,
 } from 'dba';
 import { getCurrentUserFromCookies } from '@/lib/session';
+
+function parseYaml(body: string | undefined): Record<string, unknown> {
+  if (!body) return {};
+  try {
+    return (yaml.load(body) as Record<string, unknown>) || {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * GET /api/forms/daily-entry
+ *
+ * Lists all daily entries for the Tracker view. Each entry's YAML body is
+ * parsed into its raw field keys (DATE, STATE, TRAINING TIME, ...) exactly
+ * as saved by the POST handler below — no renaming/reshaping. Also fetches
+ * every Date Entry record to compute the "— AUTO" columns (PULLS, CLOSES,
+ * QUALITY D/P, QUALITY C) — see computeDailyAutoFieldsByDate in dba for
+ * the exact rule. Matched to each daily entry by its DATE field against
+ * date entries' DATA field (same calendar day).
+ */
+export async function GET() {
+  const user = await getCurrentUserFromCookies();
+  if (!user) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
+
+  try {
+    const { dailyEntries, autoByDate } = await runWithRepoContext(user, async () => {
+      const [daily, dates] = await Promise.all([getAllDailyEntries(), getAllDateEntries()]);
+      const dateFields = dates.map((d) => parseYaml(d.body));
+      return { dailyEntries: daily, autoByDate: computeDailyAutoFieldsByDate(dateFields) };
+    });
+
+    const rows = dailyEntries.map((entry) => {
+      const fields = parseYaml(entry.body);
+      const date = String(fields["DATE"] ?? "").trim();
+      const auto = autoByDate.get(date);
+      const fieldsWithAuto = {
+        ...fields,
+        "PULLS AUTO": auto?.pullsAuto ?? "",
+        "CLOSES AUTO": auto?.closesAuto ?? "",
+        "QUALITY DP AUTO": auto?.qualityDpAuto ?? "",
+        "QUALITY C AUTO": auto?.qualityCAuto ?? "",
+      };
+      return { itemName: entry.itemName, loca: entry.loca, fields: fieldsWithAuto };
+    });
+    return NextResponse.json({ entries: rows });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Unknown error" },
+      { status: 500 }
+    );
+  }
+}
 
 /**
  * POST /api/forms/daily-entry

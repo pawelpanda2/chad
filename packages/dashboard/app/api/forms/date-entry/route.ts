@@ -9,6 +9,41 @@ import {
 import { getCurrentUserFromCookies } from '@/lib/session';
 
 /**
+ * GET /api/forms/date-entry
+ *
+ * Lists all date entries for the Dates view. Each entry's YAML body is
+ * parsed into its raw field keys (DATA, ŹRÓDŁO, NAZWA, ...) exactly as
+ * saved by the POST handler below — no renaming/reshaping.
+ */
+export async function GET() {
+  const user = await getCurrentUserFromCookies();
+  if (!user) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
+
+  try {
+    const entries = await runWithRepoContext(user, () => getAllDateEntries());
+    const rows = entries.map((entry) => {
+      let fields: Record<string, unknown> = {};
+      if (entry.body) {
+        try {
+          fields = (yaml.load(entry.body) as Record<string, unknown>) || {};
+        } catch {
+          fields = {};
+        }
+      }
+      return { itemName: entry.itemName, loca: entry.loca, fields };
+    });
+    return NextResponse.json({ entries: rows });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Unknown error" },
+      { status: 500 }
+    );
+  }
+}
+
+/**
  * POST /api/forms/date-entry
  * 
  * Saves a date entry form record to Content Provider under actions/dates.

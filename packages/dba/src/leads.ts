@@ -956,7 +956,7 @@ export async function createMsgWorkoutForLead(
 export interface DateEntryItem {
   itemName: string;
   loca: string;
-  body?: Record<string, unknown>;
+  body?: string;
 }
 
 /**
@@ -969,47 +969,84 @@ export interface DailyEntryItem {
 }
 
 /**
+ * Gets every child Text-item of a single folder (identified by parent
+ * logical-name path, e.g. ["actions", "dates"]), with each child's own
+ * body fetched individually.
+ *
+ * This mirrors the PROVEN working pattern from getMsgPlannerDateFolders
+ * (documentation/dba/data-access.md §5-7), NOT IManyItemsWorker.GetList —
+ * GetList takes a C# ValueTuple parameter that the /invoke string-args
+ * resolver (FindParameters.ConvertParamFromString) cannot construct
+ * (confirmed real failure: "InvalidCastException: Invalid cast from
+ * 'System.String' to 'System.ValueTuple`2[...]'" — this method is not
+ * callable via /invoke at all, for any data, regardless of args). The
+ * documented, already-working approach for "list every child of one
+ * folder" is: GetByNames on the folder, then walk its Body map
+ * (physicalKey -> logicalName), building each child's loca as
+ * `${folderLoca}/${physicalKey}` — exactly what Msg Planner does.
+ *
+ * @param parentNames - logical-name path to the folder, e.g. ["actions", "dates"]
+ */
+async function getAllChildTextItems(
+  parentNames: string[]
+): Promise<Array<{ itemName: string; loca: string; body?: string }>> {
+  const repoGuid = getCurrentRepoGuid();
+
+  const folderResult = await invokeContentProvider([
+    "IRepoService",
+    "IItemWorker",
+    "GetByNames",
+    repoGuid,
+    ...parentNames,
+  ]);
+
+  if (!folderResult?.Settings?.address) {
+    return [];
+  }
+
+  const folderLoca = folderResult.Settings.address.replace(`${repoGuid}/`, "");
+
+  const childrenBody = folderResult?.Body;
+  if (!childrenBody || typeof childrenBody !== "object") {
+    return [];
+  }
+
+  const childEntries = Object.entries(childrenBody).filter(
+    ([physicalKey, logicalName]) =>
+      typeof physicalKey === "string" && physicalKey.length > 0 && typeof logicalName === "string"
+  ) as Array<[string, string]>;
+
+  const entries: Array<{ itemName: string; loca: string; body?: string }> = [];
+  for (const [physicalKey, logicalName] of childEntries) {
+    const childLoca = `${folderLoca}/${physicalKey}`;
+
+    const itemResult = await invokeContentProvider([
+      "IRepoService",
+      "IItemWorker",
+      "GetItem",
+      repoGuid,
+      childLoca,
+    ]);
+
+    let body: string | undefined;
+    if (itemResult?.Body) {
+      body = typeof itemResult.Body === "string" ? itemResult.Body : JSON.stringify(itemResult.Body);
+    }
+
+    entries.push({ itemName: logicalName, loca: childLoca, body });
+  }
+
+  return entries;
+}
+
+/**
  * Gets all date entries from the actions/dates folder.
- * 
+ *
  * @returns Promise resolving to array of date entry items
  */
 export async function getAllDateEntries(): Promise<DateEntryItem[]> {
   try {
-    // First ensure the actions/dates path exists
-    const result = await invokeContentProvider([
-      "IRepoService",
-      "IItemWorker",
-      "GetByNames",
-      getCurrentRepoGuid(),
-      "actions",
-      "dates",
-    ]);
-
-    if (!result?.Body) {
-      return [];
-    }
-
-    const folderLoca = result.Settings?.address
-      ? result.Settings.address.replace(`${getCurrentRepoGuid()}/`, "")
-      : "";
-
-    if (!folderLoca) {
-      return [];
-    }
-
-    // Parse Body map: physicalKey -> logicalName
-    const entries: DateEntryItem[] = [];
-    for (const [physicalKey, logicalName] of Object.entries(result.Body)) {
-      if (typeof logicalName === "string" && logicalName.trim()) {
-        entries.push({
-          itemName: logicalName.trim(),
-          loca: `${folderLoca}/${physicalKey}`,
-          body: result.Body as Record<string, unknown>,
-        });
-      }
-    }
-
-    return entries;
+    return await getAllChildTextItems(["actions", "dates"]);
   } catch {
     return [];
   }
@@ -1017,112 +1054,16 @@ export async function getAllDateEntries(): Promise<DateEntryItem[]> {
 
 /**
  * Gets all daily entries from the actions/daily folder.
- * 
- * Uses IManyItemsWorker.GetList to retrieve children of the daily folder,
- * then fetches each item's body content individually.
- * 
+ *
  * Note: The body is returned as a raw string. YAML parsing should be done
  * in the dashboard layer where js-yaml is available.
- * 
+ *
  * @returns Promise resolving to array of daily entry items
  */
 export async function getAllDailyEntries(): Promise<DailyEntryItem[]> {
   try {
-    console.log("[chad-dba] getAllDailyEntries: Starting...");
-    
-    // Step 1: Get the actions/daily folder to obtain its loca
-    const folderResult = await invokeContentProvider([
-      "IRepoService",
-      "IItemWorker",
-      "GetByNames",
-      getCurrentRepoGuid(),
-      "actions",
-      "daily",
-    ]);
-
-    console.log("[chad-dba] getAllDailyEntries: Folder result:", JSON.stringify(folderResult, null, 2));
-
-    if (!folderResult?.Settings?.address) {
-      console.log("[chad-dba] getAllDailyEntries: No folder found - no Settings.address");
-      return [];
-    }
-
-    const folderLoca = folderResult.Settings.address.replace(`${getCurrentRepoGuid()}/`, "");
-    console.log("[chad-dba] getAllDailyEntries: folderLoca:", folderLoca);
-
-    // Step 2: Get children of the daily folder using IManyItemsWorker.GetList
-    // IMPORTANT: Use IManyItemsWorker (interface), NOT ManyItemsWorker (implementation)
-    const childrenRaw = await invokeContentProvider([
-      "IRepoService",
-      "IManyItemsWorker",
-      "GetList",
-      getCurrentRepoGuid(),
-      folderLoca,
-    ]);
-
-    console.log("[chad-dba] getAllDailyEntries: GetList raw response:", typeof childrenRaw === 'string' ? childrenRaw.substring(0, 500) : childrenRaw);
-
-    // Parse the JSON response - it's a list of ItemModel objects
-    let children: any[] = [];
-    if (typeof childrenRaw === 'string') {
-      try {
-        children = JSON.parse(childrenRaw);
-      } catch (parseError) {
-        console.error("[chad-dba] getAllDailyEntries: Failed to parse GetList response:", parseError);
-        return [];
-      }
-    } else if (Array.isArray(childrenRaw)) {
-      children = childrenRaw;
-    }
-
-    console.log("[chad-dba] getAllDailyEntries: Found", children.length, "children");
-    console.log("[chad-dba] getAllDailyEntries: Children names:", children.map(c => c.Settings?.name || c.Name));
-
-    // Step 3: For each child, get the full item with body
-    const entries: DailyEntryItem[] = [];
-    for (const child of children) {
-      const childLoca = child.Settings?.address 
-        ? child.Settings.address.replace(`${getCurrentRepoGuid()}/`, "")
-        : child.Settings?.loca;
-      
-      const childName = child.Settings?.name || child.Name;
-      
-      if (!childLoca) {
-        console.warn("[chad-dba] getAllDailyEntries: Child without loca, skipping:", childName);
-        continue;
-      }
-
-      // Get the full item with body using GetItem
-      const itemResult = await invokeContentProvider([
-        "IRepoService",
-        "IItemWorker",
-        "GetItem",
-        getCurrentRepoGuid(),
-        childLoca,
-      ]);
-
-      // Return body as raw string - YAML parsing is done in dashboard layer
-      let body: string | undefined;
-      if (itemResult?.Body) {
-        if (typeof itemResult.Body === 'string') {
-          body = itemResult.Body;
-        } else if (typeof itemResult.Body === 'object') {
-          // If body is already an object, stringify it
-          body = JSON.stringify(itemResult.Body);
-        }
-      }
-
-      entries.push({
-        itemName: childName || childLoca.split('/').pop() || '',
-        loca: childLoca,
-        body,
-      });
-    }
-
-    console.log("[chad-dba] getAllDailyEntries: Returning", entries.length, "entries");
-    return entries;
-  } catch (error) {
-    console.error("[chad-dba] getAllDailyEntries: Error:", error);
+    return await getAllChildTextItems(["actions", "daily"]);
+  } catch {
     return [];
   }
 }
@@ -1302,38 +1243,112 @@ export async function saveDailyEntry(
 }
 
 /**
- * Generates a unique item name based on date with suffix handling.
- * 
- * Format: YY-MM-DD for the first entry, YY-MM-DDb, YY-MM-DDc, etc. for subsequent ones.
- * 
- * @param existingNames - Array of existing item names in the folder
- * @param dateStr - Date in YYYY-MM-DD format
- * @returns A unique item name
+ * Generates the next sequential zero-padded numeric item name ("01", "02",
+ * ...) that isn't already in existingNames. Item NAMES are just sequence
+ * numbers, not dates — the actual date lives inside the entry's own body
+ * (DATE/DATA field), so encoding it again in the name was redundant.
+ *
+ * The dateStr parameter kept for source compatibility with older callers
+ * that still pass it (harmless, ignored) — new callers should just pass
+ * existingNames.
  */
-export function generateEntryName(existingNames: string[], dateStr: string): string {
-  const parts = dateStr.split('-');
-  if (parts.length !== 3) {
-    return dateStr;
+export function generateEntryName(existingNames: string[], _dateStr?: string): string {
+  let n = existingNames.length + 1;
+  let candidate = String(n).padStart(2, "0");
+  while (existingNames.includes(candidate)) {
+    n += 1;
+    candidate = String(n).padStart(2, "0");
   }
-  
-  const shortDate = `${parts[0].slice(-2)}-${parts[1]}-${parts[2]}`;
-  
-  // Check if base name exists
-  if (!existingNames.includes(shortDate)) {
-    return shortDate;
+  return candidate;
+}
+
+/**
+ * Daily Tracker "— AUTO" columns, computed from Date Entry records grouped
+ * by matching date. Rules reconstructed from the Google Sheet's exported
+ * values (no formulas were present in the export — see
+ * documentation/dashboard/common/features/daily-tracker-dates.md for the
+ * worked examples this was derived from) and confirmed by the project
+ * owner:
+ *
+ * - PULLS: count of that day's Date records with PULL truthy.
+ * - CLOSES: sum of CLOSE weights for that day (NIE=0, BLISKO=0.5, TAK=1).
+ * - QUALITY D/P: average JAKOŚĆ of that day's records where PULL is truthy
+ *   (records without a pull are excluded).
+ * - QUALITY C: average JAKOŚĆ of that day's records where CLOSE=TAK
+ *   (BLISKO does NOT count).
+ *
+ * Averaging multiple qualifying records for one day is the project
+ * owner's best-guess reconstruction (not confirmed against a larger
+ * dataset or the original formulas) — revisit if real data contradicts it.
+ */
+export interface DailyAutoFields {
+  pullsAuto: number;
+  closesAuto: number;
+  qualityDpAuto: number | null;
+  qualityCAuto: number | null;
+}
+
+function isPullTruthy(value: unknown): boolean {
+  const s = String(value ?? "").trim().toUpperCase();
+  return s === "TRUE" || s === "TAK" || s === "1";
+}
+
+function closeWeight(value: unknown): number {
+  const s = String(value ?? "").trim().toUpperCase();
+  if (s === "TAK") return 1;
+  if (s === "BLISKO") return 0.5;
+  return 0; // NIE or anything else
+}
+
+function parseQuality(value: unknown): number | null {
+  if (value === undefined || value === null || value === "") return null;
+  const normalized = String(value).replace(",", ".");
+  const n = Number(normalized);
+  return Number.isFinite(n) ? n : null;
+}
+
+function average(values: number[]): number | null {
+  if (values.length === 0) return null;
+  return values.reduce((a, b) => a + b, 0) / values.length;
+}
+
+/**
+ * Computes PULLS/CLOSES/QUALITY D/P/QUALITY C for every date present in
+ * dateEntryFields, keyed by the date string exactly as it appears in the
+ * DATA field (so callers should look up using the same DATE/DATA string
+ * format the Daily Entry and Date Entry forms actually save).
+ *
+ * @param dateEntryFields - parsed YAML fields (DATA, PULL, CLOSE, JAKOŚĆ) of every Date Entry record
+ */
+export function computeDailyAutoFieldsByDate(
+  dateEntryFields: Array<Record<string, unknown>>
+): Map<string, DailyAutoFields> {
+  const byDate = new Map<string, Array<Record<string, unknown>>>();
+  for (const fields of dateEntryFields) {
+    const date = String(fields["DATA"] ?? "").trim();
+    if (!date) continue;
+    if (!byDate.has(date)) byDate.set(date, []);
+    byDate.get(date)!.push(fields);
   }
-  
-  // Try suffixes b, c, d, ... z
-  const letters = 'bcdefghijklmnopqrstuvwxyz';
-  for (const letter of letters) {
-    const nameWithSuffix = `${shortDate}${letter}`;
-    if (!existingNames.includes(nameWithSuffix)) {
-      return nameWithSuffix;
-    }
+
+  const result = new Map<string, DailyAutoFields>();
+  for (const [date, records] of byDate) {
+    const pullRecords = records.filter((r) => isPullTruthy(r["PULL"]));
+    const closeYesRecords = records.filter((r) => closeWeight(r["CLOSE"]) === 1);
+
+    result.set(date, {
+      pullsAuto: pullRecords.length,
+      closesAuto: records.reduce((sum, r) => sum + closeWeight(r["CLOSE"]), 0),
+      qualityDpAuto: average(
+        pullRecords.map((r) => parseQuality(r["JAKOŚĆ"])).filter((n): n is number => n !== null)
+      ),
+      qualityCAuto: average(
+        closeYesRecords.map((r) => parseQuality(r["JAKOŚĆ"])).filter((n): n is number => n !== null)
+      ),
+    });
   }
-  
-  // Fallback - add timestamp
-  return `${shortDate}_${Date.now()}`;
+
+  return result;
 }
 
 export async function getLeadMsgWorkoutsByLoca(leadLoca: string): Promise<MsgWorkoutsResult> {
