@@ -119,16 +119,28 @@ repo's standard local → local Docker → QNAP test → QNAP prod rollout order
 4. **`/affinity` view, avatar cropper UI, and Google-enrich merge
    suggestions not ported** — all schema-compatible, can be added later
    without data-layer changes (see the route mapping table above).
-5. **None of this has been runtime-tested against a live MongoDB or a real
-   Beeper Desktop** — no MongoDB instance was available in this session.
-   Verified instead via: `tsc --noEmit` (dba package build + full dashboard
-   typecheck, both clean), `next lint` on the new pages (clean), and
-   `node --check` syntax validation on every migrated `.mjs` script. Before
-   relying on this in production: start a local MongoDB, run
-   `pnpm dashboard`, and click through `/dashboard/beeper`,
-   `/dashboard/beeper/[id]`, `/dashboard/beeper/inbox`,
-   `/dashboard/beeper/merge` against a database seeded via the migration
-   script (dry-run-verified first).
+5. **`dba`'s beeper-crm layer is now runtime-verified** (2026-07-12,
+   follow-up session): ran every exported function (`ensureBeeperIndexes`,
+   `listBeeperContacts`, `getBeeperContact`, profile/tags/timeline-event
+   mutations, `searchBeeperContacts`, `getBeeperMergeSuggestions`,
+   `mergeBeeperContacts`, `getBeeperInbox`, `getBeeperDashboardStats`,
+   `exportBeeperContactForAI`, `subscribeToBeeperChanges`) against a
+   throwaway, isolated local MongoDB (`docker run mongo:7`, no shared
+   volume, removed afterward) seeded with sample contacts/channels/messages.
+   All passed. **Found and fixed one real bug** carried over from the
+   source project: `getBeeperContact` could list the same direct channel
+   twice in its `channels` array (see the `dba: fix duplicate direct
+   channel...` commit) — not user-visible today since the UI doesn't render
+   that array, but a genuine correctness bug now fixed.
+   **Still not runtime-tested:** the Next.js API-route layer (only
+   statically verified via `tsc --noEmit` + `next lint`, both clean — a
+   live `next dev` + browser click-through was not done this pass) and
+   `beeper-ws`/`beeper-sync`/`beeper-oplog` (need a real Beeper Desktop
+   instance, Mac-only, not available in a coding session). Before relying
+   on the UI in production: run `pnpm dashboard` against a MongoDB seeded
+   via the migration script (dry-run-verified first) and click through
+   `/dashboard/beeper`, `/dashboard/beeper/[id]`, `/dashboard/beeper/inbox`,
+   `/dashboard/beeper/merge`.
 6. **`beeper-sync`'s many one-off diagnostic/repair scripts**
    (`fix-senderid-index.mjs`, `cleanup-ghosts.mjs`,
    `fix-image-attachments.mjs`, etc.) were migrated verbatim (env-path
