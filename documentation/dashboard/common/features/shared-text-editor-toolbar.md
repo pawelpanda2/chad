@@ -54,6 +54,17 @@ Key rules:
 - Toolbar is NOT inside CodeMirror
 - Preview and Editor are Tabs inside the content Card
 
+### Standard-frame styling (2026-07-12)
+The component root is now itself the **standard rounded frame** — it matches
+`DashboardPageShell`: `rounded-xl border bg-card overflow-hidden`, fills its
+area (`h-full min-h-0`), and scrolls only internally (`.cm-scroller`). This keeps
+editors visually consistent with list/content pages (buttons above a framed
+area) without forcing the editor into `DashboardPageShell`.
+
+- The toolbar row uses `flex-wrap` so it stays usable on phone-width screens.
+- The **Preview** tab no longer shows the eye icon — plain "Preview" text only.
+- See [responsive-layout-standard.md](responsive-layout-standard.md).
+
 ## Features
 
 ### Save Button

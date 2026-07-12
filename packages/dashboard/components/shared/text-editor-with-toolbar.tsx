@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BodyTextEditor } from "@/components/shared/body-text-editor";
 import { PreviewContent } from "@/components/shared/headers-renderer";
-import { Save, Loader2, Eye } from "lucide-react";
+import { Save, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // ============================================================================
@@ -89,9 +89,16 @@ export function TextEditorWithToolbar({
   }, [onSave]);
 
   return (
-    <div className={cn("flex h-full min-h-0 flex-col", className)}>
-      {/* Toolbar - single line above content area */}
-      <div className="flex shrink-0 items-center gap-1 border-b">
+    <div
+      className={cn(
+        // Looks and behaves like the standard frame (DashboardPageShell): a
+        // rounded, bordered card that fills its area with only internal scroll.
+        "flex h-full min-h-0 flex-col overflow-hidden rounded-xl border bg-card",
+        className,
+      )}
+    >
+      {/* Toolbar — buttons above the content; wraps on narrow (phone) widths */}
+      <div className="flex shrink-0 flex-wrap items-center gap-1 border-b">
         {showPreview && (
           <Tabs
             value={activeTab}
@@ -103,7 +110,6 @@ export function TextEditorWithToolbar({
                 value="preview"
                 className="h-7 text-xs rounded-none data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"
               >
-                <Eye className="h-3.5 w-3.5 mr-1" />
                 Preview
               </TabsTrigger>
               <TabsTrigger

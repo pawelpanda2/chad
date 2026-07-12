@@ -260,9 +260,9 @@ export default function MsgPlannerPage() {
   }
 
   return (
-    <EditorPageShell gapClassName="gap-0">
-      {/* Msg Planner specific toolbar - separate line above the shared editor */}
-      <div className="flex shrink-0 items-center gap-1 px-4 py-2 border-b">
+    <EditorPageShell>
+      {/* Msg Planner toolbar — buttons above the framed editor (standard layout) */}
+      <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1">
         <Select value={selectedDate} onValueChange={handleDateChange}>
           <SelectTrigger className="w-[160px] h-8">
             <SelectValue placeholder="Select date" />

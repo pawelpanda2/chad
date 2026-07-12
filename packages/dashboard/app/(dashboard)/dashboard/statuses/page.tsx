@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { Suspense, useState, useEffect, useCallback, useMemo } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
-import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -15,7 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { buildLeadDetailsHref } from "@/lib/lead-links";
-import { EditorPageShell } from "@/components/shared/editor-page-shell";
+import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
 import {
   RefreshCw,
   AlertCircle,
@@ -522,9 +521,10 @@ function StatusesPageContent() {
 
   if (view === "editor" && editorData) {
     return (
-      <EditorPageShell>
-        {/* Header */}
-        <div className="flex items-center gap-[10px]">
+      <DashboardPageShell
+        padded={false}
+        contentClassName="p-4"
+        toolbar={
           <button
             onClick={closeEditor}
             className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
@@ -532,11 +532,8 @@ function StatusesPageContent() {
             <ArrowLeft className="h-4 w-4" />
             Back to list
           </button>
-        </div>
-
-        {/* Editor Card */}
-        <Card className="flex-1 gap-0 overflow-hidden py-0">
-          <CardContent className="h-full min-h-0 overflow-auto p-[22px]">
+        }
+      >
             {/* Lead Info */}
             <div className="mb-6">
               <div className="flex items-center gap-2 flex-wrap">
@@ -674,9 +671,7 @@ function StatusesPageContent() {
                 Cancel
               </Button>
             </div>
-          </CardContent>
-        </Card>
-      </EditorPageShell>
+      </DashboardPageShell>
     );
   }
 
@@ -686,10 +681,12 @@ function StatusesPageContent() {
 
   if (mode === "matrix") {
     return (
-      <EditorPageShell>
-        {/* Header with filter, mode selector, and save button */}
-        <div className="flex flex-wrap items-center gap-[10px]">
-          {/* Filter input */}
+      <DashboardPageShell
+        scroll={false}
+        padded={false}
+        toolbar={
+          <>
+            {/* Filter input */}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -725,31 +722,26 @@ function StatusesPageContent() {
             </span>
           )}
 
-          {/* Lead count */}
-          <span className="text-sm text-muted-foreground ml-auto">
-            {filteredLeadsForMatrix.length} of {leads.length} leads
-          </span>
-        </div>
-
+            {/* Lead count */}
+            <span className="text-sm text-muted-foreground ml-auto">
+              {filteredLeadsForMatrix.length} of {leads.length} leads
+            </span>
+          </>
+        }
+      >
         {/* Main Content - Matrix Table */}
-        <Card className="flex-1 gap-0 overflow-hidden py-0">
-          <CardContent className="h-full min-h-0 p-0">
-            {loading ? (
-              <div className="flex items-center justify-center py-12">
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <RefreshCw className="h-4 w-4 animate-spin" />
-                  <span>Loading leads...</span>
-                </div>
-              </div>
-            ) : filteredLeadsForMatrix.length === 0 ? (
-              <div className="flex items-center justify-center py-12">
-                <div className="flex flex-col items-center gap-3 text-muted-foreground text-center px-4">
-                  <User className="h-12 w-12 opacity-20" />
-                  <span className="text-sm">No leads found</span>
-                </div>
-              </div>
-            ) : (
-              <div className="h-full overflow-auto">
+        {loading ? (
+          <div className="flex items-center gap-2 py-4 text-muted-foreground">
+            <RefreshCw className="h-4 w-4 animate-spin" />
+            <span>Loading leads...</span>
+          </div>
+        ) : filteredLeadsForMatrix.length === 0 ? (
+          <div className="flex items-center gap-3 py-4 text-muted-foreground">
+            <User className="h-8 w-8 opacity-20" />
+            <span className="text-sm">No leads found</span>
+          </div>
+        ) : (
+          <div className="h-full overflow-auto">
                 <table className="w-full border-collapse text-sm">
                   <thead className="bg-muted sticky top-0 z-10">
                     <tr>
@@ -967,9 +959,7 @@ function StatusesPageContent() {
                 </table>
               </div>
             )}
-          </CardContent>
-        </Card>
-      </EditorPageShell>
+      </DashboardPageShell>
     );
   }
 
@@ -978,11 +968,11 @@ function StatusesPageContent() {
   // ========================================================================
 
   return (
-    <EditorPageShell>
-      {/* Header with filter */}
-      <div className="flex flex-wrap items-center gap-[10px]">
-        {/* Mode selector */}
-        <Select value={mode} onValueChange={(v) => setMode(v as ViewMode)}>
+    <DashboardPageShell
+      toolbar={
+        <>
+          {/* Mode selector */}
+          <Select value={mode} onValueChange={(v) => setMode(v as ViewMode)}>
           <SelectTrigger className="w-[140px]">
             <SelectValue placeholder="Select mode" />
           </SelectTrigger>
@@ -1012,43 +1002,38 @@ function StatusesPageContent() {
           </button>
         </form>
 
-        <span className="text-sm text-muted-foreground">
-          {leads.length} leads
-        </span>
-      </div>
-
+          <span className="text-sm text-muted-foreground">
+            {leads.length} leads
+          </span>
+        </>
+      }
+    >
       {/* Main Content */}
-      <Card className="flex-1 gap-0 overflow-hidden py-0">
-        <CardContent className="h-full min-h-0 p-[10px]">
-          {loading ? (
-            <div className="flex items-center justify-center py-12">
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <RefreshCw className="h-4 w-4 animate-spin" />
-                <span>Loading leads...</span>
-              </div>
-            </div>
-          ) : error ? (
-            <div className="flex items-center justify-center py-12">
-              <div className="flex flex-col items-center gap-2 text-muted-foreground text-center px-4">
-                <AlertCircle className="h-6 w-6" />
-                <span>{error}</span>
-                <button
-                  onClick={loadLeads}
-                  className="text-sm text-primary hover:underline mt-2"
-                >
-                  Retry
-                </button>
-              </div>
-            </div>
-          ) : leads.length === 0 ? (
-            <div className="flex items-center justify-center py-12">
-              <div className="flex flex-col items-center gap-3 text-muted-foreground text-center px-4">
-                <User className="h-12 w-12 opacity-20" />
-                <span className="text-sm">No leads found</span>
-              </div>
-            </div>
-          ) : (
-            <div className="h-full overflow-auto divide-y">
+      {loading ? (
+        <div className="flex items-center gap-2 py-4 text-muted-foreground">
+          <RefreshCw className="h-4 w-4 animate-spin" />
+          <span>Loading leads...</span>
+        </div>
+      ) : error ? (
+        <div className="flex flex-col items-start gap-2 py-4 text-muted-foreground">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="h-6 w-6" />
+            <span>{error}</span>
+          </div>
+          <button
+            onClick={loadLeads}
+            className="text-sm text-primary hover:underline"
+          >
+            Retry
+          </button>
+        </div>
+      ) : leads.length === 0 ? (
+        <div className="flex items-center gap-3 py-4 text-muted-foreground">
+          <User className="h-8 w-8 opacity-20" />
+          <span className="text-sm">No leads found</span>
+        </div>
+      ) : (
+        <div className="divide-y">
               {leads.map((lead) => (
                 <div
                   key={lead.leadKey}
@@ -1096,10 +1081,8 @@ function StatusesPageContent() {
                   </div>
                 </div>
               ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-    </EditorPageShell>
+        </div>
+      )}
+    </DashboardPageShell>
   );
 }

@@ -3,10 +3,9 @@
 import Link from "next/link";
 import { Suspense, useState, useEffect, useCallback, useMemo } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { EditorPageShell } from "@/components/shared/editor-page-shell";
+import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
 import { buildLeadDetailsHref, getLeadDetailsHref } from "@/lib/lead-links";
 import {
   RefreshCw,
@@ -238,13 +237,8 @@ function ViewsPageContent() {
 
   if (!selectedView) {
     return (
-      <EditorPageShell>
-        <div>
-          <h2 className="text-xl font-bold tracking-tight">Views</h2>
-          <p className="text-sm text-muted-foreground">Select a view to display</p>
-        </div>
-
-        <div className="grid grid-cols-3 gap-2">
+      <DashboardPageShell toolbar={<h2 className="text-lg font-bold">Views</h2>}>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           <button
             type="button"
             onClick={() => handleViewSelect("tracker")}
@@ -270,7 +264,7 @@ function ViewsPageContent() {
             <span className="text-xs text-muted-foreground mt-0.5">All leads</span>
           </button>
         </div>
-      </EditorPageShell>
+      </DashboardPageShell>
     );
   }
 
@@ -281,64 +275,60 @@ function ViewsPageContent() {
 
   if (selectedView === "leads") {
     return (
-      <EditorPageShell>
-        <div className="flex flex-wrap items-center gap-3 shrink-0">
-          <Button variant="outline" size="sm" onClick={handleBack} className="gap-1 h-7 px-2">
-            <ArrowLeft className="h-3 w-3" />Back
-          </Button>
-          <div className="flex items-center gap-2">
-            <User className="h-4 w-4" />
-            <h2 className="text-lg font-bold">Views / LEADS</h2>
-          </div>
-          <div className="relative">
-            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-            <Input
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-              placeholder="Filter leads..."
-              className="pl-7 h-7 text-xs w-[220px]"
-            />
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleRefresh}
-            disabled={isLoading}
-            className="gap-2 h-7 text-xs ml-auto"
-          >
-            <RefreshCw className={`h-3 w-3 ${isLoading ? "animate-spin" : ""}`} />
-            Refresh
-          </Button>
-          <span className="text-xs text-muted-foreground">
-            {filteredLeads.length} of {leads.length} leads
-          </span>
-        </div>
-
+      <DashboardPageShell
+        toolbar={
+          <>
+            <Button variant="outline" size="sm" onClick={handleBack} className="gap-1 h-7 px-2">
+              <ArrowLeft className="h-3 w-3" />Back
+            </Button>
+            <div className="flex items-center gap-2">
+              <User className="h-4 w-4" />
+              <h2 className="text-lg font-bold">Views / LEADS</h2>
+            </div>
+            <div className="relative">
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+                placeholder="Filter leads..."
+                className="pl-7 h-7 text-xs w-[220px]"
+              />
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRefresh}
+              disabled={isLoading}
+              className="gap-2 h-7 text-xs ml-auto"
+            >
+              <RefreshCw className={`h-3 w-3 ${isLoading ? "animate-spin" : ""}`} />
+              Refresh
+            </Button>
+            <span className="text-xs text-muted-foreground">
+              {filteredLeads.length} of {leads.length} leads
+            </span>
+          </>
+        }
+      >
         {error && (
-          <div className="p-2 rounded-lg bg-red-50 text-red-700 border border-red-200 text-xs shrink-0">
+          <div className="mb-2 p-2 rounded-lg bg-red-50 text-red-700 border border-red-200 text-xs">
             Error: {error}
           </div>
         )}
 
-        <Card className="flex-1 gap-0 overflow-hidden py-0">
-          <CardContent className="h-full min-h-0 p-[10px]">
-            <div className="h-full overflow-auto divide-y">
-              {isLoading ? (
-                <div className="flex items-center justify-center py-12">
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <RefreshCw className="h-4 w-4 animate-spin" />
-                    <span>Loading leads...</span>
-                  </div>
-                </div>
-              ) : filteredLeads.length === 0 ? (
-                <div className="flex items-center justify-center py-12">
-                  <div className="flex flex-col items-center gap-3 text-muted-foreground text-center px-4">
-                    <User className="h-12 w-12 opacity-20" />
-                    <span className="text-sm">No leads found</span>
-                  </div>
-                </div>
-              ) : (
-                filteredLeads.map((lead) => (
+        {isLoading ? (
+          <div className="flex items-center gap-2 py-4 text-muted-foreground">
+            <RefreshCw className="h-4 w-4 animate-spin" />
+            <span>Loading leads...</span>
+          </div>
+        ) : filteredLeads.length === 0 ? (
+          <div className="flex items-center gap-3 py-4 text-muted-foreground">
+            <User className="h-8 w-8 opacity-20" />
+            <span className="text-sm">No leads found</span>
+          </div>
+        ) : (
+          <div className="divide-y">
+              {filteredLeads.map((lead) => (
                   <div
                     key={lead.leadKey}
                     className="flex items-center rounded-lg px-[10px] py-[10px] transition-colors group hover:bg-accent"
@@ -379,12 +369,10 @@ function ViewsPageContent() {
                       </div>
                     </div>
                   </div>
-                ))
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      </EditorPageShell>
+                ))}
+          </div>
+        )}
+      </DashboardPageShell>
     );
   }
 
@@ -397,56 +385,57 @@ function ViewsPageContent() {
   const isTracker = selectedView === "tracker";
 
   return (
-    <EditorPageShell>
-      {/* Header */}
-      <div className="flex flex-wrap items-center gap-3 shrink-0">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleBack}
-          className="gap-1 h-7 px-2"
-        >
-          <ArrowLeft className="h-3 w-3" />Back
-        </Button>
-        <div className="flex items-center gap-2">
-          <TableIcon className="h-4 w-4" />
-          <h2 className="text-lg font-bold">Views / {viewTitle}</h2>
-        </div>
-        <div className="relative">
-          <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-          <Input
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            placeholder="Filter rows..."
-            className="pl-7 h-7 text-xs w-[220px]"
-          />
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleRefresh}
-          disabled={isLoading}
-          className="gap-2 h-7 text-xs ml-auto"
-        >
-          <RefreshCw className={`h-3 w-3 ${isLoading ? 'animate-spin' : ''}`} />
-          Refresh
-        </Button>
-        <span className="text-xs text-muted-foreground">
-          {currentEntries.length} of {(selectedView === "dates" ? dateEntries : dailyEntries).length}
-        </span>
-      </div>
-
+    <DashboardPageShell
+      scroll={false}
+      padded={false}
+      toolbar={
+        <>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleBack}
+            className="gap-1 h-7 px-2"
+          >
+            <ArrowLeft className="h-3 w-3" />Back
+          </Button>
+          <div className="flex items-center gap-2">
+            <TableIcon className="h-4 w-4" />
+            <h2 className="text-lg font-bold">Views / {viewTitle}</h2>
+          </div>
+          <div className="relative">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <Input
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              placeholder="Filter rows..."
+              className="pl-7 h-7 text-xs w-[220px]"
+            />
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRefresh}
+            disabled={isLoading}
+            className="gap-2 h-7 text-xs ml-auto"
+          >
+            <RefreshCw className={`h-3 w-3 ${isLoading ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+          <span className="text-xs text-muted-foreground">
+            {currentEntries.length} of {(selectedView === "dates" ? dateEntries : dailyEntries).length}
+          </span>
+        </>
+      }
+    >
       {/* Error display */}
       {error && (
-        <div className="p-2 rounded-lg bg-red-50 text-red-700 border border-red-200 text-xs shrink-0">
+        <div className="mb-1 shrink-0 p-2 rounded-lg bg-red-50 text-red-700 border border-red-200 text-xs">
           Error: {error}
         </div>
       )}
 
       {/* Table — fills remaining space, scrolls internally only */}
-      <Card className="flex-1 gap-0 overflow-hidden py-0">
-        <CardContent className="h-full min-h-0 p-0">
-          <div className="h-full overflow-auto">
+      <div className="min-h-0 flex-1 overflow-auto">
             <table className="w-full border-collapse text-xs">
               <thead className="sticky top-0 z-10">
                 {isTracker && (
@@ -509,9 +498,7 @@ function ViewsPageContent() {
                 )}
               </tbody>
             </table>
-          </div>
-        </CardContent>
-      </Card>
-    </EditorPageShell>
+      </div>
+    </DashboardPageShell>
   );
 }

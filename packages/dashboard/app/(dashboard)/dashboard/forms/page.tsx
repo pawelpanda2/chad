@@ -1,12 +1,11 @@
 "use client";
 import { Suspense, useState, useEffect, useCallback, useMemo } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { EditorPageShell } from "@/components/shared/editor-page-shell";
+import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
 import { toast } from "sonner";
 import { ArrowLeft, Plus, X, CheckCircle2, AlertCircle } from "lucide-react";
 
@@ -546,11 +545,13 @@ function FormsPageContent() {
 
   if (!selectedForm) {
     return (
-      <EditorPageShell>
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight">Forms</h2>
-          <p className="text-sm text-muted-foreground">Select a form to fill out</p>
-        </div>
+      <DashboardPageShell toolbar={<h2 className="text-lg font-bold">Forms</h2>}>
+        {/*
+          Fixed 4-column grid: buttons always sit on a 4-wide grid. A partial
+          last row keeps each button at its column width and leaves the empty
+          cells blank (like a table slot with no button) instead of stretching
+          the remaining buttons across the row.
+        */}
         <div className="grid grid-cols-4 gap-2">
           <button
             type="button"
@@ -585,7 +586,7 @@ function FormsPageContent() {
             <span className="text-xs text-muted-foreground mt-1">Log session</span>
           </button>
         </div>
-      </EditorPageShell>
+      </DashboardPageShell>
     );
   }
 
@@ -595,18 +596,18 @@ function FormsPageContent() {
 
   if (selectedForm === "action") {
     return (
-      <div className="space-y-4">
-        <div className="flex items-center gap-4">
-          <Button variant="outline" size="sm" onClick={handleFormBack} className="gap-2">
-            <ArrowLeft className="h-4 w-4" />Back
-          </Button>
-          <div className="flex items-center gap-3">
+      <DashboardPageShell
+        padded={false}
+        contentClassName="p-4"
+        toolbar={
+          <>
+            <Button variant="outline" size="sm" onClick={handleFormBack} className="gap-2">
+              <ArrowLeft className="h-4 w-4" />Back
+            </Button>
             <h2 className="text-xl font-bold">Action</h2>
-            <span className="text-sm text-muted-foreground">Log your session</span>
-          </div>
-        </div>
-        <Card>
-          <CardContent className="p-4">
+          </>
+        }
+      >
             <form onSubmit={handleActionSubmit} className="space-y-3">
               <div className="grid gap-3 md:grid-cols-[auto_auto_1fr_auto] items-end">
                 <div className="space-y-1">
@@ -658,15 +659,13 @@ function FormsPageContent() {
                 {isSubmitting ? "Saving..." : "Save to Content Provider"}
               </Button>
             </form>
-          </CardContent>
-        </Card>
         {submitResult && (
-          <div className={`p-3 rounded-lg flex items-center gap-2 ${submitResult.type === "success" ? "bg-green-50 text-green-700 border border-green-200" : "bg-red-50 text-red-700 border border-red-200"}`}>
+          <div className={`mt-3 p-3 rounded-lg flex items-center gap-2 ${submitResult.type === "success" ? "bg-green-50 text-green-700 border border-green-200" : "bg-red-50 text-red-700 border border-red-200"}`}>
             {submitResult.type === "success" ? <CheckCircle2 className="h-5 w-5 flex-shrink-0" /> : <AlertCircle className="h-5 w-5 flex-shrink-0" />}
             <span className="text-sm">{submitResult.message}</span>
           </div>
         )}
-      </div>
+      </DashboardPageShell>
     );
   }
 
@@ -695,15 +694,18 @@ function FormsPageContent() {
     ];
 
     return (
-      <EditorPageShell>
-        <div className="flex items-center gap-3 shrink-0">
-          <Button variant="outline" size="sm" onClick={handleFormBack} className="gap-1 h-7 px-2">
-            <ArrowLeft className="h-3 w-3" />Back
-          </Button>
-          <h2 className="text-lg font-bold">DAILY ENTRY</h2>
-        </div>
-        <Card className="flex-1 gap-0 overflow-hidden py-0 max-w-xl">
-          <CardContent className="h-full min-h-0 overflow-auto p-0">
+      <DashboardPageShell
+        padded={false}
+        frameClassName="max-w-xl"
+        toolbar={
+          <>
+            <Button variant="outline" size="sm" onClick={handleFormBack} className="gap-1 h-7 px-2">
+              <ArrowLeft className="h-3 w-3" />Back
+            </Button>
+            <h2 className="text-lg font-bold">DAILY ENTRY</h2>
+          </>
+        }
+      >
             <form onSubmit={handleAddActionSubmit}>
               <table className="w-full border-collapse text-sm">
                 <thead className="sticky top-0 z-10">
@@ -783,9 +785,7 @@ function FormsPageContent() {
                 </tbody>
               </table>
             </form>
-          </CardContent>
-        </Card>
-      </EditorPageShell>
+      </DashboardPageShell>
     );
   }
 
@@ -795,15 +795,18 @@ function FormsPageContent() {
 
   if (selectedForm === "date_entry") {
     return (
-      <EditorPageShell>
-        <div className="flex items-center gap-3 shrink-0">
-          <Button variant="outline" size="sm" onClick={handleFormBack} className="gap-1 h-7 px-2">
-            <ArrowLeft className="h-3 w-3" />Back
-          </Button>
-          <h2 className="text-lg font-bold">DATE ENTRY</h2>
-        </div>
-        <Card className="flex-1 gap-0 overflow-hidden py-0 max-w-xl">
-          <CardContent className="h-full min-h-0 overflow-auto p-0">
+      <DashboardPageShell
+        padded={false}
+        frameClassName="max-w-xl"
+        toolbar={
+          <>
+            <Button variant="outline" size="sm" onClick={handleFormBack} className="gap-1 h-7 px-2">
+              <ArrowLeft className="h-3 w-3" />Back
+            </Button>
+            <h2 className="text-lg font-bold">DATE ENTRY</h2>
+          </>
+        }
+      >
             <form onSubmit={handleDateEntrySubmit}>
               <table className="w-full border-collapse text-sm">
                 <thead className="sticky top-0 z-10">
@@ -928,9 +931,7 @@ function FormsPageContent() {
                 </tbody>
               </table>
             </form>
-          </CardContent>
-        </Card>
-      </EditorPageShell>
+      </DashboardPageShell>
     );
   }
 
@@ -939,20 +940,18 @@ function FormsPageContent() {
   // ============================================================================
 
   return (
-    <div className="space-y-3">
-      {/* Header */}
-      <div className="flex items-center gap-4">
-        <Button variant="outline" size="sm" onClick={handleFormBack} className="gap-2">
-          <ArrowLeft className="h-4 w-4" />Back
-        </Button>
-        <div className="flex items-center gap-3">
+    <DashboardPageShell
+      padded={false}
+      contentClassName="p-3"
+      toolbar={
+        <>
+          <Button variant="outline" size="sm" onClick={handleFormBack} className="gap-2">
+            <ArrowLeft className="h-4 w-4" />Back
+          </Button>
           <h2 className="text-xl font-bold">Add Lead</h2>
-          <span className="text-sm text-muted-foreground">Fill out and save to Content Provider</span>
-        </div>
-      </div>
-
-      <Card className="m-0">
-        <CardContent className="p-3 space-y-3">
+        </>
+      }
+    >
           <form onSubmit={handleLeadSubmit} className="space-y-3">
 
             {/* Lead Name/Id Section */}
@@ -1050,8 +1049,6 @@ function FormsPageContent() {
               </div>
             )}
           </form>
-        </CardContent>
-      </Card>
-    </div>
+    </DashboardPageShell>
   );
 }

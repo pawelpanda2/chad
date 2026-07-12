@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Suspense, useState, useEffect, useCallback } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Card, CardContent } from "@/components/ui/card";
+import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
 import { buildLeadDetailsHref } from "@/lib/lead-links";
 import {
   Select,
@@ -102,85 +102,78 @@ function TodoMsgPageContent() {
   // Render
   // ========================================================================
 
+  const toolbar = (
+    <>
+      <Select
+        value={filterType}
+        onValueChange={(value: FilterType) => setFilterType(value)}
+      >
+        <SelectTrigger className="w-[200px]">
+          <SelectValue placeholder="Select filter" />
+        </SelectTrigger>
+        <SelectContent>
+          {Object.entries(FILTER_LABELS).map(([value, label]) => (
+            <SelectItem key={value} value={value}>
+              {label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      <Select
+        value={cityFilter}
+        onValueChange={(value: CityFilter) => setCityFilter(value)}
+      >
+        <SelectTrigger className="w-[180px]">
+          <SelectValue placeholder="Select city" />
+        </SelectTrigger>
+        <SelectContent>
+          {Object.entries(CITY_LABELS).map(([value, label]) => (
+            <SelectItem key={value} value={value}>
+              {label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      <button
+        onClick={loadLeads}
+        disabled={loading}
+        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground disabled:opacity-50"
+      >
+        <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+        Refresh
+      </button>
+    </>
+  );
+
   return (
-    <div className="-m-[22px] flex min-h-[calc(100dvh-4rem-20px)] flex-col gap-[10px]">
-      <div className="flex flex-wrap items-center gap-[10px]">
-        <Select
-          value={filterType}
-          onValueChange={(value: FilterType) => setFilterType(value)}
-        >
-          <SelectTrigger className="w-[200px]">
-            <SelectValue placeholder="Select filter" />
-          </SelectTrigger>
-          <SelectContent>
-            {Object.entries(FILTER_LABELS).map(([value, label]) => (
-              <SelectItem key={value} value={value}>
-                {label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <Select
-          value={cityFilter}
-          onValueChange={(value: CityFilter) => setCityFilter(value)}
-        >
-          <SelectTrigger className="w-[180px]">
-            <SelectValue placeholder="Select city" />
-          </SelectTrigger>
-          <SelectContent>
-            {Object.entries(CITY_LABELS).map(([value, label]) => (
-              <SelectItem key={value} value={value}>
-                {label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <button
-          onClick={loadLeads}
-          disabled={loading}
-          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground disabled:opacity-50"
-        >
-          <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
-          Refresh
-        </button>
-      </div>
-
-      {/* Main Content */}
-      <Card className="flex-1 gap-0 overflow-hidden py-0">
-        <CardContent className="h-full p-[10px]">
-          {loading ? (
-            <div className="flex items-center justify-center py-12">
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <RefreshCw className="h-4 w-4 animate-spin" />
-                <span>Loading leads...</span>
-              </div>
-            </div>
-          ) : error ? (
-            <div className="flex items-center justify-center py-12">
-              <div className="flex flex-col items-center gap-2 text-muted-foreground text-center px-4">
-                <AlertCircle className="h-6 w-6" />
-                <span>{error}</span>
-                <button
-                  onClick={loadLeads}
-                  className="text-sm text-primary hover:underline mt-2"
-                >
-                  Retry
-                </button>
-              </div>
-            </div>
-          ) : leads.length === 0 ? (
-            <div className="flex items-center justify-center py-12">
-              <div className="flex flex-col items-center gap-3 text-muted-foreground text-center px-4">
-                <MessageSquare className="h-12 w-12 opacity-20" />
-                <span className="text-sm">
-                  No leads found for this filter
-                </span>
-              </div>
-            </div>
-          ) : (
-            <div className="divide-y">
+    <DashboardPageShell toolbar={toolbar}>
+      {loading ? (
+        <div className="flex items-center gap-2 py-4 text-muted-foreground">
+          <RefreshCw className="h-4 w-4 animate-spin" />
+          <span>Loading leads...</span>
+        </div>
+      ) : error ? (
+        <div className="flex flex-col items-start gap-2 py-4 text-muted-foreground">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="h-6 w-6" />
+            <span>{error}</span>
+          </div>
+          <button
+            onClick={loadLeads}
+            className="text-sm text-primary hover:underline"
+          >
+            Retry
+          </button>
+        </div>
+      ) : leads.length === 0 ? (
+        <div className="flex items-center gap-3 py-4 text-muted-foreground">
+          <MessageSquare className="h-8 w-8 opacity-20" />
+          <span className="text-sm">No leads found for this filter</span>
+        </div>
+      ) : (
+        <div className="divide-y">
               {leads.map((lead) => (
                 <div
                   key={lead.leadKey}
@@ -231,10 +224,8 @@ function TodoMsgPageContent() {
                   </div>
                 </div>
               ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-    </div>
+        </div>
+      )}
+    </DashboardPageShell>
   );
 }
