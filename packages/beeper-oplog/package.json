@@ -1,0 +1,14 @@
+{
+  "name": "beeper-oplog",
+  "private": true,
+  "type": "module",
+  "description": "QNAP-targeted MongoDB change-stream normalizer: beeper_events -> contacts/channels/messages. Requires MongoDB replica set (change streams) - NOT deployed yet, see documentation/beeper/architecture.md.",
+  "scripts": {
+    "dev": "node index.mjs",
+    "start": "node index.mjs"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.0",
+    "mongodb": "^7.1.1"
+  }
+}

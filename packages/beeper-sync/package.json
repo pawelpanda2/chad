@@ -1,0 +1,29 @@
+{
+  "name": "beeper-sync",
+  "private": true,
+  "type": "module",
+  "description": "Mac-only, manually-run Beeper history importer (SQLite + REST) writing into the shared chad MongoDB. See documentation/beeper/architecture.md.",
+  "scripts": {
+    "sync": "node index.mjs",
+    "sync:force": "node index.mjs --force",
+    "sync:sqlite": "node index.mjs --sqlite",
+    "sync:sqlite:force": "node index.mjs --sqlite --force",
+    "sync:all": "node sync-all.mjs",
+    "sync:all:force": "node sync-all.mjs --force",
+    "enrich": "node enrich-contacts.mjs",
+    "enrich:sqlite": "node enrich-from-sqlite.mjs",
+    "dedup": "node dedup-messages.mjs",
+    "fix:contacts": "node fix-contact-dupes.mjs",
+    "fix:attachments": "node fix-image-attachments.mjs",
+    "fix:senderid-index": "node fix-senderid-index.mjs",
+    "cleanup:empty": "node cleanup-empty-messages.mjs",
+    "cleanup:ghosts": "node cleanup-ghosts.mjs",
+    "diag": "node diag-setup.mjs",
+    "google:sync": "node sync-google-contacts.mjs",
+    "google:auth": "node sync-google-contacts.mjs --auth"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.0",
+    "mongodb": "^7.1.1"
+  }
+}
