@@ -1,0 +1,15 @@
+{
+  "name": "beeper-ws",
+  "private": true,
+  "type": "module",
+  "description": "Mac-only long-lived WebSocket listener: Beeper Desktop -> beeper_events collection in the shared chad MongoDB. See documentation/beeper/architecture.md.",
+  "scripts": {
+    "dev": "node index.mjs",
+    "start": "node index.mjs"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.0",
+    "mongodb": "^7.1.1",
+    "ws": "^8.20.0"
+  }
+}
