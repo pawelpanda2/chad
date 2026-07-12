@@ -1,6 +1,34 @@
-# Plan migracji Content Providera na TypeScript/Node — STAN ZATRZYMANY (2026-07-10)
+# Plan migracji Content Providera na TypeScript/Node
 
-**Status: WSTRZYMANE.** Priorytet zmienił się na działający deployment starego, obecnego .NET Content Providera na QNAP TEST (patrz `documentation/content-provider/next-tasks/qnap-test-deployment-plan.md`, jeśli już powstał, albo najnowszy dokument w `next-tasks/` o tej nazwie). Nic z poniższego nie zostało usunięte — to jest punkt, od którego wznowić pracę, gdy temat wróci.
+**Status (2026-07-12): WZNOWIONE.** Praca wstrzymana 2026-07-10 została podjęta ponownie. Sekcja 0 poniżej opisuje, co zrobiono w tej sesji. Sekcje 1-9 to oryginalny stan z 2026-07-10, zachowany jako historia — częściowo nieaktualny, patrz adnotacje.
+
+## 0. Sesja wznowienia (2026-07-12)
+
+Zrobione:
+
+- `packages/cp-gui/README.md` — dokończone (dokładny punkt przerwania z 2026-07-10). `pnpm install` + build całej grupy (`cp-core`, `cp-entry`, `cp-net-adapter`, `cp-gui`) — zielone.
+- **`cp-core` naprawiony** po realnym audycie źródeł .NET (`packages/net-content-provider/api_charp/SharpRepoService/SharpRepoServiceProg`):
+  - usunięto błędne wymagane pole `created` (nie istnieje w żadnym z 12630 sprawdzonych plików `config.yaml` ani w modelu C#);
+  - dodano brakujący typ `CpItemType = "Ref"` (obok `Folder`/`Text`);
+  - dodano `ContentProviderError`/`ValidationResult` (`packages/content-provider/core/src/errors.ts`).
+- **Rozstrzygnięto ostatecznie sprzeczność `body.txt` vs `body` (sekcja 5.1, patrz niżej)**: zawsze `body.txt`, bez wyjątków, bez fallbacku. Potwierdzone czytaniem `PathWorker.SetNames`/`GetBodyPath` (`.../Workers/System/PathWorker.cs:39-43,87-92`) — nie istnieje ścieżka kodu obsługująca plik `body` bez rozszerzenia. `packages/cp-plugin/README.md`'s "Known note" zamknięte.
+- **`packages/content-provider/files` (cp-files) zaimplementowany — Etap 2, read-only.** `GetItem`, `GetByNames`, `GetManyByName`, `FindRecursively` działają i przechodzą test zgodności na żywo; `Put`/`PostParentItem` rzucają (Etap 3). Podłączony do `cp-entry`'s routing switch — domyślne repo→backend mapowanie pozostaje puste (wszystko nadal na `net-adapter`), więc **dashboard/console nie zmieniły zachowania**.
+- **Test zgodności wykonany naprawdę, read-only, na żywych danych** (`packages/content-provider/files/tests/compat-smoke.mjs`): porównanie `cp-files` vs realny, działający kontener `.NET` (`chad-content-provider-api-local-mac-docker`, port 12024, zamontowany na tym samym realnym `/Users/pawelfluder/Dropbox`) — **12/12 testów PASS** na repo `21d11bdc-f1f4-44d1-b61a-3fa6b039c641` (w tym `GetManyByName` z 57 i 64 realnymi dopasowaniami) + dodatkowe 5/5 PASS na drugim, strukturalnie innym repo (`0272bd75-b34a-4b9a-8289-8dd0991622e7`, "Persistency"). Żadne dane nie zostały zmodyfikowane.
+- **Trzy realne błędy znalezione i naprawione w trakcie testowania na żywo** (nie zgadywane — każdy potwierdzony przez bezpośrednie wywołanie żywego `/invoke`):
+  1. `loca` jest **slash-joined** (`"03/06"`), nie dash-joined — wcześniejsze założenie (oparte błędnie na konwencji `cp-plugin`'s własnego URL) było złe; poprawione po zweryfikowaniu z `documentation/dba/resolve-paths.md`.
+  2. `CpItem.Address` (i `Config.address`/`Settings.address`) jest **zawsze przeliczany** jako `repoGuid + "/" + fizyczny loca` — .NET samo-naprawia (`MigrationWorker.TryMigrateConfig`) `address` przy KAŻDYM odczycie, więc nieaktualna wartość zapisana w `config.yaml` na dysku nigdy nie jest zwracana klientowi.
+  3. `GetManyByName(repo, parentLoca, name)` przeszukuje **wnuki** `parentLoca` (dzieci każdego bezpośredniego dziecka), nie bezpośrednie dzieci — potwierdzone: `GetManyByName(repo, "03/06", "status")` zwraca po jednym itemie "status" z każdego folderu-leada pod "03/06", nie item "status" bezpośrednio pod "03/06" (taki nie istnieje).
+  4. `Folder`-type itemy zwracają `Body` jako JSON-owy obiekt `{childIndex: childName}` (nie pusty string) — potwierdzone na żywo, zgodne z `documentation/dba/resolve-paths.md`'s przykładem `leadsNameMap`.
+  5. `body.txt` czytany przez .NET ucina jeden końcowy znak nowej linii (linia-po-linii + `String.Join("\n", ...)`) — Node's `readFile` go zachowuje; poprawione (`packages/content-provider/files/src/body.ts`).
+- **Uwaga (niezweryfikowana jeszcze do końca)**: `type: "Ref"` itemy nie są dereferencjonowane przez `cp-files` — świadomie odłożone. Sprawdzone na żywych danych: nawet realne .NET rzuca twardy błąd (`PathWorker.HandleError`) przy próbie odczytu jednego z prawdziwych `Ref` itemów ze stale'ową `refAddress` — potwierdza, że to nietrywialny przypadek brzegowy, nie coś do pobieżnego odtworzenia.
+- W toku: agent w tle czyta `packages/net-content-provider/api_charp/SimpleRunTests/SimpleRunTests/*.cs` (autorytatywne testy C#) żeby zweryfikować/rozszerzyć powyższe ustalenia (szczególnie `FindRecursively`, `GetByNames` tie-breaking, `Put`/`PostParentItem` spec) zamiast dalej zgadywać przez próbowanie na żywo. Wyniki dopiszę po zakończeniu.
+- Nieruszone: cały pozostały stan z 2026-07-10 (sekcje 1-9 poniżej) jest nadal aktualny tam, gdzie nie zaprzeczają mu powyższe punkty. W szczególności: `cp-mongo` nadal nieistniejący; `cp-gui` nadal tylko kontrakty (żadnych komponentów); oczyszczenie źródłowego repo `content-provider` i zamiana subtree→submodule nadal nie wykonane.
+
+---
+
+## Stan z 2026-07-10 (historia, częściowo nieaktualna — patrz adnotacje wyżej)
+
+**Status: WSTRZYMANE (2026-07-10, wznowione 2026-07-12 — patrz sekcja 0).** Priorytet zmienił się na działający deployment starego, obecnego .NET Content Providera na QNAP TEST (patrz `documentation/content-provider/next-tasks/qnap-test-deployment-plan.md`, jeśli już powstał, albo najnowszy dokument w `next-tasks/` o tej nazwie). Nic z poniższego nie zostało usunięte — to jest punkt, od którego wznowić pracę, gdy temat wróci.
 
 ## 1. Aktualnie przyjęta struktura
 
@@ -12,7 +40,7 @@ packages/
 │   ├── core/                  # cp-core     — modele/interfejsy/nazwy metod, zero logiki storage
 │   ├── entry/                 # cp-entry    — publiczne wejście: repo GUID → storage → jednolity model
 │   ├── net-adapter/           # cp-net-adapter — kompatybilność ze starym .NET przez /invoke (Etap 1, read-only)
-│   ├── files/                 # cp-files    — NIEISTNIEJĄCE jeszcze (Etap 2)
+│   ├── files/                 # cp-files    — Etap 2, read-only, zaimplementowany 2026-07-12 (patrz sekcja 0)
 │   ├── mongo/                 # cp-mongo    — NIEISTNIEJĄCE jeszcze (Etap 2)
 │   └── README.md
 ├── net-content-provider/   # OBECNY stan: Git subtree z całego repo content-provider (nie submodule)
@@ -28,7 +56,7 @@ pnpm-workspace.yaml zaktualizowany o `packages/content-provider/*` (dodatkowy gl
 | `cp-core` | Modele (`CpConfig`, `CpBody`, `CpItem`), interfejs `ContentProviderStorage` z kompatybilnymi nazwami metod (`GetItem`, `GetByNames`, `GetManyByName`, `FindRecursively`, `Put`, `PostParentItem`). **Nie wybiera** implementacji storage. | — |
 | `cp-entry` | **Jedyny pakiet, który dashboard/cp-gui/API mają importować.** Routing: repo GUID → backend (`repo-storage-config.ts`, na razie statyczna mapa, domyślnie `net-adapter`) → deleguje do wybranego backendu. | `cp-core`, `cp-net-adapter` |
 | `cp-net-adapter` | Implementuje `ContentProviderStorage` wołając realne, działające HTTP `/invoke` API .NET. Własny, minimalny klient HTTP (`invoke.ts`) — **nie** kopiuje `net-content-provider/typescript_runner` (patrz sekcja 5), wzorowany na sprawdzonym `packages/dba/src/client.ts`, ale niezależnie zaimplementowany (bez couplingu do tracingu dev-panelu). | `cp-core` |
-| `cp-files` | Storage: pliki/Dropbox. **Nie zaimplementowane.** | `cp-core` (planowane) |
+| `cp-files` | Storage: pliki/Dropbox. **Zaimplementowany, read-only, Etap 2 (2026-07-12).** `GetItem`/`GetByNames`/`GetManyByName`/`FindRecursively` — 17/17 real compat-test PASS vs żywe .NET API na dwóch repos. `Put`/`PostParentItem` rzucają (Etap 3). | `cp-core` |
 | `cp-mongo` | Storage: MongoDB. **Nie zaimplementowane.** | `cp-core` (planowane) |
 | `cp-gui` | UI dual-purpose: standalone app + komponenty w `packages/dashboard` zakładka Folders. **Na razie tylko: package.json, tsconfig, 3 kontrakty integracyjne (`BackendAdapter`, `PluginAdapter`, `RepoAdapter`), index.ts.** README.md NIE dopisane (błąd zapisu, patrz sekcja 9). | `cp-core` (dla typów) |
 | `cp-plugin` | Osobny program desktopowy (lokalne HTTP API do otwierania edytora/Findera/terminala). Zmigrowany z `net-content-provider/plugin_nodejs` — kod przeniesiony, przetestowany (`/health` odpowiada), package.json/README/`.env.example`/`.gitignore` gotowe. | brak (świadomie niezależny od content-provider) |
@@ -61,7 +89,7 @@ pnpm-workspace.yaml zaktualizowany o `packages/content-provider/*` (dodatkowy gl
 
 ## 5. Otwarte decyzje (Decision Required)
 
-1. **Sprzeczność `body.txt` vs `body` bez rozszerzenia**: wcześniej w tej samej sesji ustalono ostatecznie `body.txt` (z rozszerzeniem — po chwilowym odwróceniu decyzji i cofnięciu). Później, przy migracji `cp-plugin`, pojawiła się wiadomość mówiąca "dostosuj model do nowej nazwy pliku body bez rozszerzenia" — **sprzeczne z wcześniejszym ustaleniem**. Zachowano `body.txt` (zgodnie z ostatnią jawną decyzją), flaga zostawiona w `packages/cp-plugin/README.md`. **Wymaga jednoznacznego potwierdzenia, które ustalenie obowiązuje.**
+1. ~~**Sprzeczność `body.txt` vs `body` bez rozszerzenia**~~ — **ROZSTRZYGNIĘTE 2026-07-12, ostatecznie: zawsze `body.txt`.** Potwierdzone czytaniem realnego kodu .NET (`PathWorker.SetNames`/`GetBodyPath`) i 12630 prawdziwych plików na dysku — nie istnieje wariant bez rozszerzenia. Patrz sekcja 0 i `packages/content-provider/files/README.md`.
 2. Czy `cp-gui` ma być zbudowany na Vite+React (standalone) czy w jakiś inny sposób współdzielić komponenty z Next.js dashboardem (np. jako pakiet komponentów importowany bezpośrednio) — nierozstrzygnięte, nie blokowało Etapu 1 (kontrakty są framework-agnostic).
 3. Czy `RepoAdapter` w docelowej wersji potrzebuje więcej niż `listRepos()` — nierozstrzygnięte, celowo minimalne w Stage 1.
 4. Typ `Ref` w selektorze "Add" w Blazor `FolderView.razor` — sprzeczne reguły w dokumentacji (`content-provider.md`/`frequent-bugs.md` zabraniają, `CONTENT_PROVIDER_GUIDE.md` go implementuje) — przy budowie prawdziwego `cp-gui` trzeba to rozstrzygnąć, nie kopiować automatycznie.
@@ -94,10 +122,22 @@ pnpm-workspace.yaml zaktualizowany o `packages/content-provider/*` (dodatkowy gl
 - Nazwa pakietu `cp-core`/`cp-entry`/`cp-net-adapter` już zajęta w `pnpm-workspace.yaml` — jeśli submodule/reorganizacja repo źródłowego zmieni strukturę, trzeba ponownie zweryfikować, że `packages/content-provider/*` nadal poprawnie się rozwiązuje.
 - Sprzeczność `body.txt`/`body` (sekcja 5.1) może się przeciekać do nowego kodu, jeśli zostanie rozstrzygnięta inaczej niż obecnie przyjęte `body.txt`.
 
-## 9. Dokładny punkt wznowienia pracy
+## 9. Punkt wznowienia z 2026-07-10 (zamknięty — patrz sekcja 0)
 
-Następny krok, gdy temat TypeScript Content Providera wróci:
-1. Dokończyć `packages/cp-gui/README.md` (treść była już przygotowana w poprzedniej odpowiedzi, przerwana błędem zapisu — do odtworzenia: opis dual-purpose, źródło wzorca Blazor z konkretnymi wnioskami z `FolderView.razor`/`TextView.razor`, tabela kontraktów, sekcja "Not in Stage 1").
-2. `pnpm install` + `pnpm --filter cp-gui build` — jeszcze niewykonane po utworzeniu plików `cp-gui` (blokowane przez brakujące README nie jest wymagane technicznie, ale warto zrobić od razu po dokończeniu README).
-3. Commit całości nowych pakietów (`cp-core`, `cp-entry`, `cp-net-adapter`, `cp-gui`, `cp-plugin`) — **jeszcze niescommitowane** w chwili wstrzymania (sprawdzić `git status` przed kontynuacją, coś mogło się zmienić w międzyczasie).
-4. Dopiero potem: plan plików do usunięcia ze źródłowego repo `content-provider` (sekcja 7) + submodule (sekcja 6, punkty 1-5).
+~~Następny krok, gdy temat TypeScript Content Providera wróci:~~ — wykonane 2026-07-12, patrz sekcja 0. Punkty 1-3 poniżej zamknięte; punkt 4 (oczyszczenie źródłowego repo + submodule) nadal aktualny, patrz sekcja 10.
+
+1. ~~Dokończyć `packages/cp-gui/README.md`~~ ✅
+2. ~~`pnpm install` + `pnpm --filter cp-gui build`~~ ✅
+3. ~~Commit całości nowych pakietów~~ ✅ (plus `cp-files`, dodany w tej samej sesji)
+4. Plan plików do usunięcia ze źródłowego repo `content-provider` (sekcja 7) + submodule (sekcja 6, punkty 1-5) — **nadal nie wykonane**.
+
+## 10. Nowy punkt wznowienia (2026-07-12)
+
+Następny krok, gdy temat wróci:
+
+1. Dokończyć weryfikację względem `packages/net-content-provider/api_charp/SimpleRunTests/SimpleRunTests/*.cs` (autorytatywne testy C#) — w toku pod koniec tej sesji, sprawdzić czy potwierdza/koryguje `GetByNames` tie-breaking i `FindRecursively` matching semantics (oba oznaczone jako "Known approximations" w `packages/content-provider/files/README.md`).
+2. Zbadać i, jeśli sensowne, zaimplementować obsługę `Ref`-type itemów w `cp-files` (dereferencja przez `refGuid`/`refAddress`) — obecnie świadomie pominięte; nawet realne .NET rzuca błąd na jednym z prawdziwych `Ref` itemów ze stale'ową referencją, więc to nietrywialne.
+3. `cp-mongo` — w ogóle nie zaczęte.
+4. `cp-gui` — nadal tylko kontrakty, zero komponentów (FolderView/TextView/nav/breadcrumb). Wzorzec Blazor: `repos.razor` to główny panel nawigacji (constant górna część), a dolna część przełącza się między Text-item i Folder-item `.razor` komponentami — sprawdzić dokładne ścieżki w `packages/net-content-provider/front_blazor` przed implementacją.
+5. `Put`/`PostParentItem` w `cp-files` (Etap 3) — obecnie rzucają `ContentProviderError`.
+6. Dopiero potem: oczyszczenie źródłowego repo `content-provider` + submodule (sekcja 6, punkty 1-5) — nadal nie wykonane, nie priorytet.
