@@ -1,0 +1,21 @@
+{
+  "name": "cp-files",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Filesystem/Dropbox storage implementation of cp-core's ContentProviderStorage. Read-only Stage 2 (GetItem, GetByNames, GetManyByName, FindRecursively) — Put/PostParentItem throw \"not implemented\" until Stage 3. Reads the same repos/<repo-guid>/<numeric>/... structure the real .NET Content Provider writes; never writes.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "cp-core": "workspace:*",
+    "yaml": "^2.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "typescript": "^5.3.3"
+  }
+}

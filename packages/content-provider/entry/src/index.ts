@@ -5,12 +5,15 @@
  *
  * Routes repo GUID -> backend (see repo-storage-config.ts) -> delegates to
  * that backend's ContentProviderStorage implementation -> returns the
- * unified CpItem model. Stage 1: only cp-net-adapter exists as a backend;
- * cp-files and cp-mongo throw "not implemented" until their own stages.
+ * unified CpItem model. cp-net-adapter and cp-files (read-only, Stage 2)
+ * both exist now; cp-mongo still throws "not implemented" until its own
+ * stage. REPO_BACKEND_OVERRIDES defaults every repo to net-adapter, so
+ * this wiring doesn't change behavior for any existing consumer.
  */
 
 import type { ContentProviderStorage, CpItemType } from "cp-core";
 import { netAdapterStorage } from "cp-net-adapter";
+import { filesStorage } from "cp-files";
 import { getBackendKindForRepo } from "./repo-storage-config.js";
 
 function getStorageForRepo(repoGuid: string): ContentProviderStorage {
@@ -19,9 +22,7 @@ function getStorageForRepo(repoGuid: string): ContentProviderStorage {
     case "net-adapter":
       return netAdapterStorage;
     case "files":
-      throw new Error(
-        "cp-files backend is not implemented yet (planned for Stage 2)."
-      );
+      return filesStorage;
     case "mongo":
       throw new Error(
         "cp-mongo backend is not implemented yet (planned for Stage 2)."

@@ -32,9 +32,9 @@ PLUGIN_ROOT=/path/to/content-provider/repos
 
 `PLUGIN_ROOT` must point at the same root the running Content Provider serves data from (currently, for local dev: the `CONTENT_PROVIDER_STORAGE_HOST` used by `packages/net-content-provider`'s Docker setup).
 
-## Known note (2026-07-10)
+## Resolved note (2026-07-10, closed 2026-07-12)
 
-`/openbody/` opens `body.txt` — this matches the currently-confirmed convention (`body` **with** the `.txt` extension). A later instruction in the same session mentioned adapting this to a body file "without extension," which contradicts that earlier, explicitly-confirmed decision. Left as `body.txt` pending an explicit reconfirmation either way — see the final report for this flagged open question.
+`/openbody/` opens `body.txt` — this is correct and final. Settled definitively on 2026-07-12 by reading the real .NET source (`PathWorker.SetNames`/`GetBodyPath`) and inspecting 12630 real config.yaml/body.txt pairs on disk: there is no extensionless `body` variant anywhere in the running code or on disk, no legacy/current split. See `packages/content-provider/files/README.md` for the full writeup.
 
 ## Run
 

@@ -12,7 +12,8 @@
   },
   "dependencies": {
     "cp-core": "workspace:*",
-    "cp-net-adapter": "workspace:*"
+    "cp-net-adapter": "workspace:*",
+    "cp-files": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
