@@ -1,8 +1,11 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { Suspense, useState, useEffect, useCallback, useMemo } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { EditorPageShell } from "@/components/shared/editor-page-shell";
 import { RefreshCw, ArrowLeft, Table as TableIcon, Search, ArrowUp, ArrowDown } from "lucide-react";
 import { toast } from "sonner";
 
@@ -86,12 +89,29 @@ const CELL_CLASS: Record<Group, string> = {
 // ============================================================================
 
 export default function ViewsPage() {
-  const [selectedView, setSelectedView] = useState<ViewType>(null);
+  return (
+    <Suspense fallback={null}>
+      <ViewsPageContent />
+    </Suspense>
+  );
+}
+
+function ViewsPageContent() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  // The URL is the single source of truth for which view is selected, so
+  // browser back/forward works correctly across: selection menu -> a view
+  // -> (e.g.) a form's post-save redirect back into a view. Each transition
+  // uses router.push (a new history entry), never replace.
+  const viewParam = searchParams.get("view");
+  const selectedView: ViewType = viewParam === "dates" || viewParam === "tracker" ? viewParam : null;
+
   const [dateEntries, setDateEntries] = useState<DateEntryRecord[]>([]);
   const [dailyEntries, setDailyEntries] = useState<DailyEntryRecord[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [saveInfo, setSaveInfo] = useState<{ path: string; item: string } | null>(null);
   const [filter, setFilter] = useState("");
   const [sortKey, setSortKey] = useState<string>("");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
@@ -102,14 +122,10 @@ export default function ViewsPage() {
     try {
       const response = await fetch("/api/views");
       const result = await response.json();
-      
+
       if (result.success) {
         setDateEntries(result.dateEntries || []);
         setDailyEntries(result.dailyEntries || []);
-        // Check for save info in response
-        if (result.saveInfo) {
-          setSaveInfo(result.saveInfo);
-        }
       } else {
         setError(result.error || "Failed to fetch data");
         toast.error(result.error || "Failed to fetch data");
@@ -127,20 +143,13 @@ export default function ViewsPage() {
     fetchData();
   }, [fetchData]);
 
-  // Check if we should show a specific view based on URL param or save info
+  // Reset filter/sort defaults whenever the selected view changes (including
+  // via browser back/forward, since selectedView is derived from the URL).
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const view = params.get("view");
-    if (view === "dates" || view === "tracker") {
-      setSelectedView(view as ViewType);
-    }
-    
-    // Clear save info after showing
-    if (saveInfo) {
-      const timer = setTimeout(() => setSaveInfo(null), 5000);
-      return () => clearTimeout(timer);
-    }
-  }, [saveInfo]);
+    setFilter("");
+    setSortKey(selectedView === "dates" ? "DATA" : selectedView === "tracker" ? "DATE" : "");
+    setSortDir(selectedView === "dates" ? "desc" : "asc");
+  }, [selectedView]);
 
   const handleRefresh = () => {
     fetchData();
@@ -148,19 +157,11 @@ export default function ViewsPage() {
   };
 
   const handleBack = () => {
-    setSelectedView(null);
-    setSaveInfo(null);
-    // Clear URL params
-    window.history.replaceState({}, "", "/dashboard/views");
+    router.push(pathname);
   };
 
   const handleViewSelect = (view: ViewType) => {
-    setSelectedView(view);
-    setFilter("");
-    setSortKey(view === "dates" ? "DATA" : "DATE");
-    setSortDir(view === "dates" ? "desc" : "asc");
-    // Update URL with view param
-    window.history.replaceState({}, "", `/dashboard/views?view=${view}`);
+    router.push(`${pathname}?view=${view}`);
   };
 
   const toggleSort = (key: string) => {
@@ -200,14 +201,12 @@ export default function ViewsPage() {
 
   if (!selectedView) {
     return (
-      <div className="space-y-3">
-        {/* Header */}
+      <EditorPageShell>
         <div>
           <h2 className="text-xl font-bold tracking-tight">Views</h2>
           <p className="text-sm text-muted-foreground">Select a view to display</p>
         </div>
 
-        {/* View Selection Grid */}
         <div className="grid grid-cols-3 gap-2">
           <button
             type="button"
@@ -231,7 +230,7 @@ export default function ViewsPage() {
             <span className="text-xs text-muted-foreground mt-0.5">More views</span>
           </div>
         </div>
-      </div>
+      </EditorPageShell>
     );
   }
 
@@ -244,9 +243,9 @@ export default function ViewsPage() {
   const isTracker = selectedView === "tracker";
 
   return (
-    <div className="space-y-3">
+    <EditorPageShell>
       {/* Header */}
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3 shrink-0">
         <Button
           variant="outline"
           size="sm"
@@ -283,87 +282,82 @@ export default function ViewsPage() {
         </span>
       </div>
 
-      {/* Save info display */}
-      {saveInfo && (
-        <div className="p-2 rounded-lg bg-green-50 text-green-700 border border-green-200 text-xs">
-          <div className="font-semibold">Saved:</div>
-          <div>path: {saveInfo.path}</div>
-          <div>item: {saveInfo.item}</div>
-        </div>
-      )}
-
-      {/* Table */}
-      <div className="border rounded-lg overflow-hidden max-h-[calc(100dvh-14rem)] overflow-auto">
-        <table className="w-full border-collapse text-xs">
-          <thead className="sticky top-0 z-10">
-            {isTracker && (
-              <tr>
-                <th
-                  className="border p-1 bg-muted"
-                  colSpan={columns.filter((c) => c.group === "none").length}
-                />
-                {(["training", "action", "texting", "results"] as const).map((g) => (
-                  <th
-                    key={g}
-                    colSpan={columns.filter((c) => c.group === g).length}
-                    className={`border p-1 text-center font-bold ${GROUP_HEADER_CLASS[g]}`}
-                  >
-                    {g.toUpperCase()}
-                  </th>
-                ))}
-              </tr>
-            )}
-            <tr>
-              {columns.map((col) => (
-                <th
-                  key={col.key}
-                  onClick={() => toggleSort(col.key)}
-                  className={`border p-1.5 px-2 text-left font-semibold whitespace-nowrap cursor-pointer select-none hover:brightness-95 ${GROUP_HEADER_CLASS[col.group]}`}
-                >
-                  <span className="inline-flex items-center gap-1">
-                    {col.label}
-                    {sortKey === col.key && (sortDir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)}
-                  </span>
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {currentEntries.length === 0 ? (
-              <tr>
-                <td colSpan={columns.length} className="border h-8 text-center text-muted-foreground">
-                  No entries yet. Use Forms to add data.
-                </td>
-              </tr>
-            ) : (
-              currentEntries.map((entry) => (
-                <tr key={entry.itemName} className="hover:bg-accent/50">
-                  {columns.map((col) => {
-                    const raw = entry.body?.[col.key];
-                    const value = typeof raw === "number" ? (Number.isInteger(raw) ? String(raw) : raw.toFixed(1)) : String(raw ?? "");
-                    return (
-                      <td
-                        key={col.key}
-                        className={`border p-1.5 px-2 whitespace-nowrap max-w-[180px] truncate ${CELL_CLASS[col.group]}`}
-                        title={value}
-                      >
-                        {value}
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-
       {/* Error display */}
       {error && (
-        <div className="p-2 rounded-lg bg-red-50 text-red-700 border border-red-200 text-xs">
+        <div className="p-2 rounded-lg bg-red-50 text-red-700 border border-red-200 text-xs shrink-0">
           Error: {error}
         </div>
       )}
-    </div>
+
+      {/* Table — fills remaining space, scrolls internally only */}
+      <Card className="flex-1 gap-0 overflow-hidden py-0">
+        <CardContent className="h-full min-h-0 p-0">
+          <div className="h-full overflow-auto">
+            <table className="w-full border-collapse text-xs">
+              <thead className="sticky top-0 z-10">
+                {isTracker && (
+                  <tr>
+                    <th
+                      className="border p-1 bg-muted"
+                      colSpan={columns.filter((c) => c.group === "none").length}
+                    />
+                    {(["training", "action", "texting", "results"] as const).map((g) => (
+                      <th
+                        key={g}
+                        colSpan={columns.filter((c) => c.group === g).length}
+                        className={`border p-1 text-center font-bold ${GROUP_HEADER_CLASS[g]}`}
+                      >
+                        {g.toUpperCase()}
+                      </th>
+                    ))}
+                  </tr>
+                )}
+                <tr>
+                  {columns.map((col) => (
+                    <th
+                      key={col.key}
+                      onClick={() => toggleSort(col.key)}
+                      className={`border p-1.5 px-2 text-left font-semibold whitespace-nowrap cursor-pointer select-none hover:brightness-95 ${GROUP_HEADER_CLASS[col.group]}`}
+                    >
+                      <span className="inline-flex items-center gap-1">
+                        {col.label}
+                        {sortKey === col.key && (sortDir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)}
+                      </span>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {currentEntries.length === 0 ? (
+                  <tr>
+                    <td colSpan={columns.length} className="border h-8 text-center text-muted-foreground">
+                      No entries yet. Use Forms to add data.
+                    </td>
+                  </tr>
+                ) : (
+                  currentEntries.map((entry) => (
+                    <tr key={entry.itemName} className="hover:bg-accent/50">
+                      {columns.map((col) => {
+                        const raw = entry.body?.[col.key];
+                        const value = typeof raw === "number" ? (Number.isInteger(raw) ? String(raw) : raw.toFixed(1)) : String(raw ?? "");
+                        return (
+                          <td
+                            key={col.key}
+                            className={`border p-1.5 px-2 whitespace-nowrap max-w-[180px] truncate ${CELL_CLASS[col.group]}`}
+                            title={value}
+                          >
+                            {value}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
+    </EditorPageShell>
   );
 }

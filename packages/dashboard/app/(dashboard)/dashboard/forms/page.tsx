@@ -1,5 +1,6 @@
 "use client";
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { Suspense, useState, useEffect, useCallback, useMemo } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -189,7 +190,28 @@ function generateActionTitle(date: Date, actionType: 'dg' | 'ng', suffix?: strin
 // ============================================================================
 
 export default function FormsPage() {
-  const [selectedForm, setSelectedForm] = useState<FormType>(null);
+  return (
+    <Suspense fallback={null}>
+      <FormsPageContent />
+    </Suspense>
+  );
+}
+
+function FormsPageContent() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  // The URL is the single source of truth for which form is selected, so
+  // browser back/forward works correctly: forms menu -> a form -> (on save)
+  // a view. Each transition uses router.push (a new history entry), never
+  // replace, so back-navigation steps through each state in order.
+  const formParam = searchParams.get("form");
+  const selectedForm: FormType =
+    formParam === "action" || formParam === "lead" || formParam === "add_action" || formParam === "date_entry"
+      ? formParam
+      : null;
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitResult, setSubmitResult] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
@@ -325,11 +347,15 @@ export default function FormsPage() {
   }, []);
 
   const handleFormSelect = (form: FormType) => {
-    setSelectedForm(form);
     if (form === "action") resetActionForm();
     else if (form === "lead") resetLeadForm();
     else if (form === "add_action") resetAddActionForm();
     else if (form === "date_entry") resetDateEntryForm();
+    router.push(`${pathname}?form=${form}`);
+  };
+
+  const handleFormBack = () => {
+    router.push(pathname);
   };
 
   // Auto-generate action title when type, date, or suffix changes
@@ -371,7 +397,7 @@ export default function FormsPage() {
       if (result.success) {
         setSubmitResult({ type: "success", message: `Action "${actionData.actionTitle}" saved successfully!` });
         toast.success("Action saved successfully!");
-        setTimeout(() => { setSubmitResult(null); setSelectedForm(null); resetActionForm(); }, 3000);
+        setTimeout(() => { setSubmitResult(null); resetActionForm(); router.push(pathname); }, 3000);
       } else {
         throw new Error(result.error || "Unknown error");
       }
@@ -414,7 +440,7 @@ export default function FormsPage() {
       if (!response.ok) throw new Error(result.error || "Unknown error");
       setSubmitResult({ type: "success", message: `Lead "${leadName}" saved successfully!` });
       toast.success(`Lead "${leadName}" saved successfully!`);
-      setTimeout(() => { setSubmitResult(null); setSelectedForm(null); resetLeadForm(); }, 3000);
+      setTimeout(() => { setSubmitResult(null); resetLeadForm(); router.push(pathname); }, 3000);
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : "Unknown error";
       setSubmitResult({ type: "error", message: errorMsg });
@@ -460,7 +486,7 @@ export default function FormsPage() {
           message: `DAILY ENTRY saved as "${result.itemName}"! Path: ${result.path || 'actions/daily'}` 
         });
         toast.success(`DAILY ENTRY saved as "${result.itemName}"!`);
-        setTimeout(() => { setSubmitResult(null); setSelectedForm(null); resetAddActionForm(); }, 3000);
+        setTimeout(() => { setSubmitResult(null); resetAddActionForm(); router.push("/dashboard/views?view=tracker"); }, 1200);
       } else {
         throw new Error(result.error || "Unknown error");
       }
@@ -500,7 +526,7 @@ export default function FormsPage() {
           message: `DATE ENTRY saved as "${result.itemName}"! Path: ${result.path || 'actions/dates'}` 
         });
         toast.success(`DATE ENTRY saved as "${result.itemName}"!`);
-        setTimeout(() => { setSubmitResult(null); setSelectedForm(null); resetDateEntryForm(); }, 3000);
+        setTimeout(() => { setSubmitResult(null); resetDateEntryForm(); router.push("/dashboard/views?view=dates"); }, 1200);
       } else {
         throw new Error(result.error || "Unknown error");
       }
@@ -570,7 +596,7 @@ export default function FormsPage() {
     return (
       <div className="space-y-4">
         <div className="flex items-center gap-4">
-          <Button variant="outline" size="sm" onClick={() => setSelectedForm(null)} className="gap-2">
+          <Button variant="outline" size="sm" onClick={handleFormBack} className="gap-2">
             <ArrowLeft className="h-4 w-4" />Back
           </Button>
           <div className="flex items-center gap-3">
@@ -670,7 +696,7 @@ export default function FormsPage() {
     return (
       <div className="space-y-3">
         <div className="flex items-center gap-3">
-          <Button variant="outline" size="sm" onClick={() => setSelectedForm(null)} className="gap-1 h-7 px-2">
+          <Button variant="outline" size="sm" onClick={handleFormBack} className="gap-1 h-7 px-2">
             <ArrowLeft className="h-3 w-3" />Back
           </Button>
           <h2 className="text-lg font-bold">DAILY ENTRY</h2>
@@ -768,7 +794,7 @@ export default function FormsPage() {
     return (
       <div className="space-y-3">
         <div className="flex items-center gap-3">
-          <Button variant="outline" size="sm" onClick={() => setSelectedForm(null)} className="gap-1 h-7 px-2">
+          <Button variant="outline" size="sm" onClick={handleFormBack} className="gap-1 h-7 px-2">
             <ArrowLeft className="h-3 w-3" />Back
           </Button>
           <h2 className="text-lg font-bold">DATE ENTRY</h2>
@@ -911,7 +937,7 @@ export default function FormsPage() {
     <div className="space-y-3">
       {/* Header */}
       <div className="flex items-center gap-4">
-        <Button variant="outline" size="sm" onClick={() => setSelectedForm(null)} className="gap-2">
+        <Button variant="outline" size="sm" onClick={handleFormBack} className="gap-2">
           <ArrowLeft className="h-4 w-4" />Back
         </Button>
         <div className="flex items-center gap-3">
