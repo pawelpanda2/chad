@@ -12,6 +12,8 @@ export * from './repo-context.js';
 export * from './leads.js';
 export * from './reports.js';
 export * from './beeper.js';
+export * from './mongo.js';
+export * from './beeper-crm.js';
 export * from './path-resolver.js';
 export * from './ai-answer.js';
 export * from './statuses-dashboard.js';
