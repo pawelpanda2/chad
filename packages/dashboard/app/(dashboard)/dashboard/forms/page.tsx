@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { EditorPageShell } from "@/components/shared/editor-page-shell";
 import { toast } from "sonner";
 import { ArrowLeft, Plus, X, CheckCircle2, AlertCircle } from "lucide-react";
 
@@ -545,28 +546,12 @@ function FormsPageContent() {
 
   if (!selectedForm) {
     return (
-      <div className="space-y-4">
+      <EditorPageShell>
         <div>
           <h2 className="text-2xl font-bold tracking-tight">Forms</h2>
           <p className="text-sm text-muted-foreground">Select a form to fill out</p>
         </div>
         <div className="grid grid-cols-4 gap-2">
-          <button
-            type="button"
-            onClick={() => handleFormSelect("lead")}
-            className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[70px]"
-          >
-            <span className="font-semibold text-sm">Add Lead</span>
-            <span className="text-xs text-muted-foreground mt-1">New contact</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => handleFormSelect("action")}
-            className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[70px]"
-          >
-            <span className="font-semibold text-sm">Actions</span>
-            <span className="text-xs text-muted-foreground mt-1">Log session</span>
-          </button>
           <button
             type="button"
             onClick={() => handleFormSelect("add_action")}
@@ -583,8 +568,24 @@ function FormsPageContent() {
             <span className="font-semibold text-sm">DATE ENTRY</span>
             <span className="text-xs text-muted-foreground mt-1">Date log</span>
           </button>
+          <button
+            type="button"
+            onClick={() => handleFormSelect("lead")}
+            className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[70px]"
+          >
+            <span className="font-semibold text-sm">Add Lead</span>
+            <span className="text-xs text-muted-foreground mt-1">New contact</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => handleFormSelect("action")}
+            className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[70px]"
+          >
+            <span className="font-semibold text-sm">Actions</span>
+            <span className="text-xs text-muted-foreground mt-1">Log session</span>
+          </button>
         </div>
-      </div>
+      </EditorPageShell>
     );
   }
 

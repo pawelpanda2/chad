@@ -188,7 +188,7 @@ function LeadDetailsPageContent() {
 
   /** Go back to leads list */
   const handleBack = () => {
-    router.push(returnTo || "/dashboard/leads");
+    router.push(returnTo || "/dashboard/views?view=leads");
   };
 
   /** Extract item number from loca (last segment) */

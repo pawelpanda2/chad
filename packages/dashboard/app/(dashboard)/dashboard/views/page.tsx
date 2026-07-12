@@ -1,12 +1,23 @@
 "use client";
 
+import Link from "next/link";
 import { Suspense, useState, useEffect, useCallback, useMemo } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { EditorPageShell } from "@/components/shared/editor-page-shell";
-import { RefreshCw, ArrowLeft, Table as TableIcon, Search, ArrowUp, ArrowDown } from "lucide-react";
+import { buildLeadDetailsHref, getLeadDetailsHref } from "@/lib/lead-links";
+import {
+  RefreshCw,
+  ArrowLeft,
+  Table as TableIcon,
+  Search,
+  ArrowUp,
+  ArrowDown,
+  User,
+  CheckCircle2,
+} from "lucide-react";
 import { toast } from "sonner";
 
 // ============================================================================
@@ -23,7 +34,14 @@ interface DailyEntryRecord {
   body?: Record<string, unknown>;
 }
 
-type ViewType = null | "dates" | "tracker";
+interface LeadDashboardItem {
+  leadKey: string;
+  leadName: string;
+  loca: string;
+  hasContacts: boolean;
+}
+
+type ViewType = null | "tracker" | "dates" | "leads";
 type SortDir = "asc" | "desc";
 
 // ============================================================================
@@ -106,10 +124,13 @@ function ViewsPageContent() {
   // -> (e.g.) a form's post-save redirect back into a view. Each transition
   // uses router.push (a new history entry), never replace.
   const viewParam = searchParams.get("view");
-  const selectedView: ViewType = viewParam === "dates" || viewParam === "tracker" ? viewParam : null;
+  const selectedView: ViewType =
+    viewParam === "tracker" || viewParam === "dates" || viewParam === "leads" ? viewParam : null;
+  const returnTo = searchParams.toString() ? `${pathname}?${searchParams.toString()}` : pathname;
 
   const [dateEntries, setDateEntries] = useState<DateEntryRecord[]>([]);
   const [dailyEntries, setDailyEntries] = useState<DailyEntryRecord[]>([]);
+  const [leads, setLeads] = useState<LeadDashboardItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
@@ -120,15 +141,23 @@ function ViewsPageContent() {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await fetch("/api/views");
-      const result = await response.json();
+      const [viewsRes, leadsRes] = await Promise.all([
+        fetch("/api/views"),
+        fetch("/api/leads-dashboard"),
+      ]);
+      const viewsResult = await viewsRes.json();
+      const leadsResult = await leadsRes.json();
 
-      if (result.success) {
-        setDateEntries(result.dateEntries || []);
-        setDailyEntries(result.dailyEntries || []);
+      if (viewsResult.success) {
+        setDateEntries(viewsResult.dateEntries || []);
+        setDailyEntries(viewsResult.dailyEntries || []);
       } else {
-        setError(result.error || "Failed to fetch data");
-        toast.error(result.error || "Failed to fetch data");
+        setError(viewsResult.error || "Failed to fetch data");
+        toast.error(viewsResult.error || "Failed to fetch data");
+      }
+
+      if (Array.isArray(leadsResult)) {
+        setLeads(leadsResult);
       }
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : "Unknown error";
@@ -195,6 +224,14 @@ function ViewsPageContent() {
     });
   }, [selectedView, dateEntries, dailyEntries, filter, sortKey, sortDir]);
 
+  const filteredLeads = useMemo(() => {
+    if (!filter.trim()) return leads;
+    const f = filter.toLowerCase().trim();
+    return leads.filter(
+      (lead) => lead.leadName.toLowerCase().includes(f) || lead.leadKey.toLowerCase().includes(f)
+    );
+  }, [leads, filter]);
+
   // ============================================================================
   // Render: View Selection Menu
   // ============================================================================
@@ -210,6 +247,14 @@ function ViewsPageContent() {
         <div className="grid grid-cols-3 gap-2">
           <button
             type="button"
+            onClick={() => handleViewSelect("tracker")}
+            className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
+          >
+            <span className="font-semibold text-sm">TRACKER</span>
+            <span className="text-xs text-muted-foreground mt-0.5">Daily tracker</span>
+          </button>
+          <button
+            type="button"
             onClick={() => handleViewSelect("dates")}
             className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
           >
@@ -218,24 +263,133 @@ function ViewsPageContent() {
           </button>
           <button
             type="button"
-            onClick={() => handleViewSelect("tracker")}
+            onClick={() => handleViewSelect("leads")}
             className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
           >
-            <span className="font-semibold text-sm">TRACKER</span>
-            <span className="text-xs text-muted-foreground mt-0.5">Daily tracker</span>
+            <span className="font-semibold text-sm">LEADS</span>
+            <span className="text-xs text-muted-foreground mt-0.5">All leads</span>
           </button>
-          {/* Placeholder for future views */}
-          <div className="flex flex-col items-center justify-center p-3 border rounded-lg bg-muted/30 text-center min-h-[60px]">
-            <span className="font-semibold text-sm text-muted-foreground">Coming soon</span>
-            <span className="text-xs text-muted-foreground mt-0.5">More views</span>
-          </div>
         </div>
       </EditorPageShell>
     );
   }
 
   // ============================================================================
-  // Render: Single View
+  // Render: Leads (moved here from the former standalone /dashboard/leads
+  // page — same data/links, just embedded as a Views option)
+  // ============================================================================
+
+  if (selectedView === "leads") {
+    return (
+      <EditorPageShell>
+        <div className="flex flex-wrap items-center gap-3 shrink-0">
+          <Button variant="outline" size="sm" onClick={handleBack} className="gap-1 h-7 px-2">
+            <ArrowLeft className="h-3 w-3" />Back
+          </Button>
+          <div className="flex items-center gap-2">
+            <User className="h-4 w-4" />
+            <h2 className="text-lg font-bold">Views / LEADS</h2>
+          </div>
+          <div className="relative">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <Input
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              placeholder="Filter leads..."
+              className="pl-7 h-7 text-xs w-[220px]"
+            />
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRefresh}
+            disabled={isLoading}
+            className="gap-2 h-7 text-xs ml-auto"
+          >
+            <RefreshCw className={`h-3 w-3 ${isLoading ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
+          <span className="text-xs text-muted-foreground">
+            {filteredLeads.length} of {leads.length} leads
+          </span>
+        </div>
+
+        {error && (
+          <div className="p-2 rounded-lg bg-red-50 text-red-700 border border-red-200 text-xs shrink-0">
+            Error: {error}
+          </div>
+        )}
+
+        <Card className="flex-1 gap-0 overflow-hidden py-0">
+          <CardContent className="h-full min-h-0 p-[10px]">
+            <div className="h-full overflow-auto divide-y">
+              {isLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                    <span>Loading leads...</span>
+                  </div>
+                </div>
+              ) : filteredLeads.length === 0 ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="flex flex-col items-center gap-3 text-muted-foreground text-center px-4">
+                    <User className="h-12 w-12 opacity-20" />
+                    <span className="text-sm">No leads found</span>
+                  </div>
+                </div>
+              ) : (
+                filteredLeads.map((lead) => (
+                  <div
+                    key={lead.leadKey}
+                    className="flex items-center rounded-lg px-[10px] py-[10px] transition-colors group hover:bg-accent"
+                  >
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                      <Link
+                        href={getLeadDetailsHref(lead.leadName, lead.loca)}
+                        className="flex flex-shrink-0 items-center gap-2 rounded-lg"
+                        aria-label={`Open lead details for ${lead.leadName}`}
+                      >
+                        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-primary">
+                          <User className="h-3.5 w-3.5" />
+                        </span>
+                        <span className="text-xs text-muted-foreground flex-shrink-0">
+                          {lead.leadKey}.
+                        </span>
+                      </Link>
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <span className="font-medium text-sm truncate select-text">{lead.leadName}</span>
+                        <Link
+                          href={buildLeadDetailsHref({
+                            leadName: lead.leadName,
+                            leadLoca: lead.loca,
+                            returnTo,
+                          })}
+                          className="text-xs text-primary underline underline-offset-4"
+                        >
+                          info
+                        </Link>
+                        {lead.hasContacts ? (
+                          <span className="flex items-center gap-1 text-xs text-green-600">
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                            Contacts
+                          </span>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">No contacts</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </EditorPageShell>
+    );
+  }
+
+  // ============================================================================
+  // Render: Tracker / Dates
   // ============================================================================
 
   const columns = selectedView === "dates" ? DATE_COLUMNS : DAILY_COLUMNS;
