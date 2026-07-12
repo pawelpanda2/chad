@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Sidebar } from "@/components/shared/sidebar";
 import { Topbar } from "@/components/shared/topbar";
@@ -10,20 +10,39 @@ import { cn } from "@/lib/utils";
 // restore the topbar everywhere — no other change needed.
 const SHOW_TOPBAR = false;
 
+// Same breakpoint Tailwind uses for `md`.
+const DESKTOP_QUERY = "(min-width: 768px)";
+
 export default function DashboardLayout({
 	children,
 }: {
 	children: React.ReactNode;
 }) {
-	// Single open/close state used identically on desktop and mobile — there is
-	// no separate desktop layout.
-	const [menuOpen, setMenuOpen] = useState(false);
+	// Same push-in sidebar on both desktop and mobile, and it is OPEN by default
+	// on both. The ONLY difference is what happens after picking a menu item:
+	//   - desktop: sidebar stays open,
+	//   - mobile:  sidebar closes.
+	const [menuOpen, setMenuOpen] = useState(true);
+	const [isDesktop, setIsDesktop] = useState(true);
+
+	useEffect(() => {
+		const mq = window.matchMedia(DESKTOP_QUERY);
+		const apply = () => setIsDesktop(mq.matches);
+		apply();
+		mq.addEventListener("change", apply);
+		return () => mq.removeEventListener("change", apply);
+	}, []);
+
+	// A selected menu item closes the sidebar only on mobile.
+	const handleNavigate = () => {
+		if (!isDesktop) setMenuOpen(false);
+	};
 
 	return (
 		<div className="relative flex h-[100dvh] overflow-hidden bg-background">
 			{/* Sidebar — inline panel that PUSHES the content aside. No overlay,
-			    no dimming of the area outside the menu; the main content simply
-			    shifts right to make room and stays fully interactive. */}
+			    no dimming; the main content simply shifts to make room and stays
+			    fully interactive. */}
 			<div
 				className={cn(
 					"h-full shrink-0 overflow-hidden transition-[width] duration-300 ease-in-out",
@@ -31,17 +50,17 @@ export default function DashboardLayout({
 				)}
 			>
 				<div className="h-full w-72">
-					<Sidebar mobile onMobileClose={() => setMenuOpen(false)} />
+					<Sidebar mobile onMobileClose={handleNavigate} />
 				</div>
 			</div>
 
 			{/* Main column — shifts naturally as the sidebar takes/releases space.
-			    Clicking the content while the menu is open closes it (click
-			    outside the sidebar), without any blocking/greyed overlay. */}
+			    On mobile, clicking the content while the menu is open closes it
+			    (click outside the sidebar); on desktop the menu stays open. */}
 			<div
 				className="flex min-w-0 flex-1 flex-col overflow-hidden"
 				onClick={() => {
-					if (menuOpen) setMenuOpen(false);
+					if (!isDesktop && menuOpen) setMenuOpen(false);
 				}}
 			>
 				{SHOW_TOPBAR && (

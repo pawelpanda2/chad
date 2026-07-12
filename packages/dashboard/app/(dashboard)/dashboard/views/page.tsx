@@ -238,7 +238,12 @@ function ViewsPageContent() {
   if (!selectedView) {
     return (
       <DashboardPageShell toolbar={<h2 className="text-lg font-bold">Views</h2>}>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+        {/*
+          Fixed 4-column grid (same as Forms): the 3 buttons occupy 3 cells and
+          the 4th cell stays empty — buttons keep their column width instead of
+          stretching to fill the row.
+        */}
+        <div className="grid grid-cols-4 gap-2">
           <button
             type="button"
             onClick={() => handleViewSelect("tracker")}

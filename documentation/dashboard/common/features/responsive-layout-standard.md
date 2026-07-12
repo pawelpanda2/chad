@@ -44,9 +44,13 @@ Brak cache. Feature nie wprowadza ani nie modyfikuje żadnego cache.
 
 `app/(dashboard)/layout.tsx`
 
-**Desktop == mobile** — jeden układ, brak osobnej wersji desktopowej. Ta sama
-logika otwierania/zamykania menu na każdym rozmiarze ekranu (jeden stan
-`menuOpen`).
+**Wspólny mechanizm, jedna różnica w zachowaniu.** Ten sam push-in sidebar i ten
+sam stan `menuOpen` na każdym rozmiarze; sidebar jest **domyślnie otwarty** na
+desktopie **i** na telefonie. Jedyna różnica desktop vs mobile: co się dzieje po
+wyborze pozycji menu — na **desktopie** sidebar **zostaje otwarty**, na
+**telefonie** **zamyka się**. Rozróżnienie przez `matchMedia("(min-width:
+768px)")` → `isDesktop` (ten sam próg co Tailwind `md`); to jedyne miejsce, gdzie
+layout różnicuje desktop i mobile.
 
 - Kontener główny: `flex h-[100dvh] overflow-hidden` (używa `dvh`, więc pasek
   adresu telefonu i obrót ekranu nie psują wysokości).
@@ -54,10 +58,14 @@ logika otwierania/zamykania menu na każdym rozmiarze ekranu (jeden stan
   wypychający treść** (`transition-[width]` `w-0` ↔ `w-72`) — identycznie na
   desktopie i mobile. **Bez overlay i bez wyszarzania** obszaru poza menu:
   główna treść przesuwa się w prawo, robiąc miejsce, i pozostaje w pełni
-  klikalna. Domyślnie ukryty (`w-0`); wtedy główny obszar zajmuje praktycznie
-  całą szerokość okna. Zamyka się po wyborze pozycji menu (`onMobileClose`) oraz
-  po kliknięciu w treść (klik poza sidebarem — `onClick` na kolumnie treści,
-  bez blokującej nakładki). Nie ma osobnej, zadokowanej wersji desktopowej.
+  klikalna. Domyślnie **otwarty** (`w-72`) na desktopie i mobile. Po wyborze
+  pozycji menu: desktop — zostaje otwarty; mobile — zamyka się (`onMobileClose`
+  gated `!isDesktop`). Na mobile zamyka się też po kliknięciu w treść (klik poza
+  sidebarem — `onClick` na kolumnie treści, tylko gdy `!isDesktop`, bez
+  blokującej nakładki). Nie ma osobnej, zadokowanej wersji desktopowej.
+- **Wyloguj**: zwykła pozycja **wewnątrz** przewijanej nawigacji (`<nav>` z
+  `overflow-y-auto`), nie osobna, przyklejona stopka. Gdy pozycji menu jest
+  więcej niż mieści ekran, menu ma własny wewnętrzny scrollbar.
 - **Uchwyt menu (wszędzie)**: mały chevron przyklejony do lewej krawędzi,
   wyśrodkowany w pionie (wzorowany na uchwycie Dev Panela). Przełącza menu i
   „jedzie" do prawej krawędzi sidebara po otwarciu (`left-0` ↔ `left-72`,
@@ -67,7 +75,7 @@ logika otwierania/zamykania menu na każdym rozmiarze ekranu (jeden stan
   (`{SHOW_TOPBAR && <Topbar />}`). Implementacja **pozostaje w drzewie** — żeby
   przywrócić topbar wszędzie, wystarczy zmienić flagę na `true`, bez innych
   zmian. Nie usunięto implementacji.
-- **Theme toggle**: przeniesiony do stopki `Sidebar` (bo topbar jest ukryty
+- **Theme toggle**: przeniesiony do nagłówka `Sidebar` (bo topbar jest ukryty
   app-wide), więc przełącznik motywu pozostaje dostępny.
 - **Główna treść**: `<main className="min-h-0 flex-1 overflow-y-auto p-0.5">`.
   Padding ~2px, żeby ramka niemal idealnie wypełniała ekran. `overflow-y-auto`
@@ -167,7 +175,8 @@ Ekrany edytora korzystające z `EditorPageShell` + `TextEditorWithToolbar`
   celowo pozostaje `overflow-y-auto`, żeby ich nie przyciąć.
 - Topbar (search + ikony) jest ukryty na każdym rozmiarze; jego funkcje
   (search, powiadomienia, profil) nie są obecnie dostępne poza kodem. Theme
-  toggle przeniesiono do stopki sidebara, więc pozostaje dostępny.
+  toggle przeniesiono do nagłówka sidebara, a Wyloguj jest pozycją w menu, więc
+  oba pozostają dostępne.
 - Weryfikacja: przeszły `tsc --noEmit` oraz `next build`. Widoku mobilnego nie
   zweryfikowano wizualnie w przeglądarce w tym środowisku (strony za auth).
 

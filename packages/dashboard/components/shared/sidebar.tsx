@@ -204,20 +204,23 @@ export function Sidebar({ onMobileClose, mobile = false }: SidebarProps) {
 						<LayoutDashboard className="w-4 h-4 text-primary-foreground" />
 					</div>
 				)}
-				{!mobile && (
-					<Button
-						variant="ghost"
-						size="icon"
-						className="h-8 w-8 hover:bg-muted"
-						onClick={() => setIsCollapsed(!isCollapsed)}
-					>
-						{isCollapsed ? (
-							<ChevronRight className="h-4 w-4" />
-						) : (
-							<ChevronLeft className="h-4 w-4" />
-						)}
-					</Button>
-				)}
+				<div className="flex items-center gap-1">
+					<ThemeToggle />
+					{!mobile && (
+						<Button
+							variant="ghost"
+							size="icon"
+							className="h-8 w-8 hover:bg-muted"
+							onClick={() => setIsCollapsed(!isCollapsed)}
+						>
+							{isCollapsed ? (
+								<ChevronRight className="h-4 w-4" />
+							) : (
+								<ChevronLeft className="h-4 w-4" />
+							)}
+						</Button>
+					)}
+				</div>
 			</div>
 
 			{/* Navigation Groups */}
@@ -269,34 +272,28 @@ export function Sidebar({ onMobileClose, mobile = false }: SidebarProps) {
 						</div>
 					</div>
 				))}
-			</nav>
-
-			{/* Footer — theme toggle (topbar is hidden app-wide) + logout */}
-			<div className="border-t p-6 space-y-2">
-				<div
-					className={cn(
-						"flex items-center gap-2",
-						collapsed ? "justify-center" : "justify-between",
-					)}
-				>
-					{!collapsed && (
-						<span className="text-sm text-muted-foreground">Motyw</span>
-					)}
-					<ThemeToggle />
+				{/* Logout — a normal menu item inside the scrollable nav, not a
+				    fixed footer sitting above the menu. */}
+				<div className="space-y-2">
+					<button
+						type="button"
+						onClick={handleLogout}
+						title={collapsed ? "Wyloguj" : undefined}
+						className={cn(
+							"group flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-muted-foreground transition-all duration-200 hover:bg-muted hover:text-foreground",
+							collapsed && "justify-center px-3 py-4",
+						)}
+					>
+						<LogOut
+							className={cn(
+								"transition-all duration-200",
+								collapsed ? "h-5 w-5" : "h-4 w-4",
+							)}
+						/>
+						{!collapsed && <span>Wyloguj</span>}
+					</button>
 				</div>
-				<Button
-					variant="ghost"
-					className={cn(
-						"w-full justify-start gap-3 text-muted-foreground hover:text-foreground hover:bg-muted",
-						collapsed && "justify-center",
-					)}
-					onClick={handleLogout}
-					title={collapsed ? "Wyloguj" : undefined}
-				>
-					<LogOut className="h-4 w-4" />
-					{!collapsed && <span>Wyloguj</span>}
-				</Button>
-			</div>
+			</nav>
 		</div>
 	);
 }
