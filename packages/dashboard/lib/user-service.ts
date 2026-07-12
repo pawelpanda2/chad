@@ -5,7 +5,7 @@
  * using the Content Provider API (C# ASP.NET service) via the GetByNames method.
  *
  * The API is called with:
- *   POST /invoke { "args": ["IRepoService", "IItemWorker", "GetByNames", "root", "users", "chad_admin"] }
+ *   POST /invoke { "args": ["IRepoService", "IItemWorker", "GetByNames", "chad_admin", "users", "users-list"] }
  *
  * All user-related operations should use this service to ensure consistency
  * and to avoid duplicating the user fetching logic.
@@ -144,7 +144,7 @@ async function invokeSharp(args: string[]): Promise<string> {
  * Calls GetByNames method through the Sharp runner to fetch users.
  *
  * Equivalent C# call:
- *   IRepoService IItemWorker GetByNames root users chad_admin
+ *   IRepoService IItemWorker GetByNames chad_admin users users-list
  *
  * @returns Promise resolving to the raw string result from the runner
  */
@@ -153,9 +153,9 @@ export async function getUsersFromSharpRaw(): Promise<string> {
     'IRepoService',
     'IItemWorker',
     'GetByNames',
-    'root',
+    'chad_admin',
     'users',
-    'chad_admin'
+    'users-list'
   ];
 
   console.log('[UserService] Calling getUsersFromSharp with args:', args.join(' '));
@@ -178,7 +178,7 @@ export async function getUsersFromSharpRaw(): Promise<string> {
 export async function getUsersFromSharp(options?: { includeDebug?: boolean }): Promise<AppUser[] | { users: AppUser[]; debug: UserServiceDebugInfo }> {
   const debug: UserServiceDebugInfo = {
     runnerCalled: true,
-    arguments: ['IRepoService', 'IItemWorker', 'GetByNames', 'root', 'users', 'chad_admin'],
+    arguments: ['IRepoService', 'IItemWorker', 'GetByNames', 'chad_admin', 'users', 'users-list'],
     rawResult: '',
     usersCount: 0,
   };

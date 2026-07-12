@@ -24,10 +24,6 @@ import {
 	FileText,
 	UserPlus,
 	Table,
-	CalendarCheck,
-	Rows3,
-	CalendarPlus,
-	Heart,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -63,30 +59,6 @@ const sidebarGroups = [
 				title: "Forms",
 				href: "/dashboard/forms",
 				icon: ClipboardList,
-				badge: null,
-			},
-			{
-				title: "Daily Entry",
-				href: "/dashboard/daily-entry",
-				icon: CalendarCheck,
-				badge: null,
-			},
-			{
-				title: "Tracker",
-				href: "/dashboard/tracker",
-				icon: Rows3,
-				badge: null,
-			},
-			{
-				title: "Date Entry",
-				href: "/dashboard/date-entry",
-				icon: CalendarPlus,
-				badge: null,
-			},
-			{
-				title: "Dates",
-				href: "/dashboard/dates",
-				icon: Heart,
 				badge: null,
 			},
 			{

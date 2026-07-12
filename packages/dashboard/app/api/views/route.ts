@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import * as yaml from 'js-yaml';
-import { getAllDailyEntries, getAllDateEntries, runWithRepoContext } from 'dba';
+import { getAllDailyEntries, getAllDateEntries, runWithRepoContext, computeDailyAutoFieldsByDate } from 'dba';
 import { getCurrentUserFromCookies } from '@/lib/session';
 
 /**
@@ -100,16 +100,39 @@ export async function GET() {
       calls: cpCalls,
     };
 
-    // Parse YAML bodies in dashboard layer
+    // Parse YAML bodies in dashboard layer. Both entry.body values are raw
+    // YAML strings (see DailyEntryItem/DateEntryItem in dba) — previously
+    // dateEntriesRaw's body was cast straight to Record<string, unknown>
+    // without parsing, which (combined with a since-fixed dba bug that
+    // returned the wrong body entirely) meant Dates never actually showed
+    // real field values. Both are parsed the same way now.
     const dateEntries: DateEntryRecord[] = dateEntriesRaw.map(entry => ({
       itemName: entry.itemName,
-      body: entry.body as Record<string, unknown> | undefined,
+      body: entry.body ? (parseYaml(entry.body as string) || undefined) : undefined,
     }));
 
     const dailyEntries: DailyEntryRecord[] = dailyEntriesRaw.map(entry => ({
       itemName: entry.itemName,
       body: entry.body ? (parseYaml(entry.body as string) || undefined) : undefined,
     }));
+
+    // Compute "— AUTO" columns (PULLS/CLOSES/QUALITY D/P/QUALITY C) for the
+    // Tracker view from the same date entries just fetched — see
+    // computeDailyAutoFieldsByDate in dba for the rule.
+    const autoByDate = computeDailyAutoFieldsByDate(
+      dateEntries.map((e) => e.body || {})
+    );
+    for (const entry of dailyEntries) {
+      const date = String(entry.body?.["DATE"] ?? "").trim();
+      const auto = autoByDate.get(date);
+      entry.body = {
+        ...entry.body,
+        "PULLS AUTO": auto?.pullsAuto ?? "",
+        "CLOSES AUTO": auto?.closesAuto ?? "",
+        "QUALITY DP AUTO": auto?.qualityDpAuto ?? "",
+        "QUALITY C AUTO": auto?.qualityCAuto ?? "",
+      };
+    }
 
     // Debug: log first few entries
     if (dailyEntries.length > 0) {

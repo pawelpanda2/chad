@@ -1,16 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, ArrowLeft, Table as TableIcon } from "lucide-react";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Input } from "@/components/ui/input";
+import { RefreshCw, ArrowLeft, Table as TableIcon, Search, ArrowUp, ArrowDown } from "lucide-react";
 import { toast } from "sonner";
 
 // ============================================================================
@@ -28,40 +21,65 @@ interface DailyEntryRecord {
 }
 
 type ViewType = null | "dates" | "tracker";
+type SortDir = "asc" | "desc";
 
 // ============================================================================
-// Column definitions
+// Column definitions — mirror the Google Sheets exactly: order, grouping,
+// section colors. "— AUTO" columns are computed server-side in
+// /api/views (see computeDailyAutoFieldsByDate in dba) from Date entries
+// matched by day.
 // ============================================================================
 
-const DATE_COLUMNS = [
-  { key: "item", label: "item" },
-  { key: "DATA", label: "DATA" },
-  { key: "ŹRÓDŁO", label: "ŹRÓDŁO" },
-  { key: "NAZWA", label: "NAZWA" },
-  { key: "LINK", label: "LINK" },
-  { key: "PULL", label: "PULL" },
-  { key: "CLOSE", label: "CLOSE" },
-  { key: "JAKOŚĆ", label: "JAKOŚĆ" },
+type Group = "none" | "training" | "action" | "texting" | "results";
+
+const DATE_COLUMNS: Array<{ key: string; label: string; group: Group }> = [
+  { key: "DATA", label: "DATA", group: "none" },
+  { key: "ŹRÓDŁO", label: "ŹRÓDŁO", group: "none" },
+  { key: "NAZWA", label: "NAZWA", group: "none" },
+  { key: "LINK", label: "LINK", group: "none" },
+  { key: "PULL", label: "PULL", group: "none" },
+  { key: "CLOSE", label: "CLOSE", group: "none" },
+  { key: "JAKOŚĆ", label: "JAKOŚĆ", group: "none" },
 ];
 
-const DAILY_COLUMNS = [
-  { key: "item", label: "item" },
-  { key: "DATE", label: "DATE" },
-  { key: "STATE", label: "STATE" },
-  { key: "TRAINING TIME", label: "TRAINING TIME" },
-  { key: "VERBAL EXERCISES", label: "VERBAL EXERCISES" },
-  { key: "INFIELD", label: "INFIELD" },
-  { key: "THEORY", label: "THEORY" },
-  { key: "FIELD REVIEW", label: "FIELD REVIEW" },
-  { key: "ACTION TIME", label: "ACTION TIME" },
-  { key: "APPROACHES", label: "APPROACHES" },
-  { key: "LONG INTERACTIONS", label: "LONG INTERACTIONS" },
-  { key: "NUMBERS", label: "NUMBERS" },
-  { key: "FIRST MESSAGES", label: "FIRST MESSAGES" },
-  { key: "RESPONSES", label: "RESPONSES" },
-  { key: "DATES SET UP", label: "DATES SET UP" },
-  { key: "DATES", label: "DATES" },
+const DAILY_COLUMNS: Array<{ key: string; label: string; group: Group }> = [
+  { key: "DATE", label: "DATE", group: "none" },
+  { key: "STATE", label: "STATE", group: "training" },
+  { key: "TRAINING TIME", label: "TRAINING TIME", group: "training" },
+  { key: "VERBAL EXERCISES", label: "VERBAL EXERCISES", group: "training" },
+  { key: "INFIELD", label: "INFIELD", group: "training" },
+  { key: "THEORY", label: "THEORY", group: "training" },
+  { key: "FIELD REVIEW", label: "FIELD REVIEW", group: "training" },
+  { key: "ACTION TIME", label: "ACTION TIME", group: "action" },
+  { key: "APPROACHES", label: "APPROACHES", group: "action" },
+  { key: "LONG INTERACTIONS", label: "LONG INTERACTIONS", group: "action" },
+  { key: "NUMBERS", label: "NUMBERS", group: "action" },
+  { key: "PULLS AUTO", label: "PULLS — AUTO", group: "action" },
+  { key: "FIRST MESSAGES", label: "FIRST MESSAGES", group: "texting" },
+  { key: "RESPONSES", label: "RESPONSES", group: "texting" },
+  { key: "DATES SET UP", label: "DATES SET UP", group: "texting" },
+  { key: "DATES", label: "DATES", group: "texting" },
+  { key: "CLOSES AUTO", label: "CLOSES — AUTO", group: "results" },
+  { key: "QUALITY DP AUTO", label: "QUALITY D/P — AUTO", group: "results" },
+  { key: "QUALITY C AUTO", label: "QUALITY C — AUTO", group: "results" },
+  { key: "OUTINGS", label: "OUTINGS", group: "results" },
 ];
+
+const GROUP_HEADER_CLASS: Record<Group, string> = {
+  none: "bg-muted",
+  training: "bg-green-100 dark:bg-green-950/50",
+  action: "bg-amber-100 dark:bg-amber-950/50",
+  texting: "bg-blue-100 dark:bg-blue-950/50",
+  results: "bg-rose-100 dark:bg-rose-950/50",
+};
+
+const CELL_CLASS: Record<Group, string> = {
+  none: "",
+  training: "bg-green-50/60 dark:bg-green-950/20",
+  action: "bg-amber-50/60 dark:bg-amber-950/20",
+  texting: "bg-blue-50/60 dark:bg-blue-950/20",
+  results: "bg-rose-50/60 dark:bg-rose-950/20",
+};
 
 // ============================================================================
 // Main Component
@@ -74,6 +92,9 @@ export default function ViewsPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saveInfo, setSaveInfo] = useState<{ path: string; item: string } | null>(null);
+  const [filter, setFilter] = useState("");
+  const [sortKey, setSortKey] = useState<string>("");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
 
   const fetchData = useCallback(async () => {
     setIsLoading(true);
@@ -135,9 +156,43 @@ export default function ViewsPage() {
 
   const handleViewSelect = (view: ViewType) => {
     setSelectedView(view);
+    setFilter("");
+    setSortKey(view === "dates" ? "DATA" : "DATE");
+    setSortDir(view === "dates" ? "desc" : "asc");
     // Update URL with view param
     window.history.replaceState({}, "", `/dashboard/views?view=${view}`);
   };
+
+  const toggleSort = (key: string) => {
+    if (sortKey === key) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+  };
+
+  // Computed unconditionally (before any early return) — Rules of Hooks:
+  // useMemo can't be called after a conditional return.
+  const currentEntries = useMemo(() => {
+    const rawEntries = selectedView === "dates" ? dateEntries : selectedView === "tracker" ? dailyEntries : [];
+    let result = rawEntries;
+    if (filter.trim()) {
+      const f = filter.toLowerCase().trim();
+      result = result.filter(
+        (entry) =>
+          entry.itemName.toLowerCase().includes(f) ||
+          Object.values(entry.body || {}).some((v) => String(v ?? "").toLowerCase().includes(f))
+      );
+    }
+    if (!sortKey) return result;
+    return [...result].sort((a, b) => {
+      const av = String(a.body?.[sortKey] ?? "");
+      const bv = String(b.body?.[sortKey] ?? "");
+      const cmp = av.localeCompare(bv, undefined, { numeric: true });
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+  }, [selectedView, dateEntries, dailyEntries, filter, sortKey, sortDir]);
 
   // ============================================================================
   // Render: View Selection Menu
@@ -184,38 +239,48 @@ export default function ViewsPage() {
   // Render: Single View
   // ============================================================================
 
-  const currentEntries = selectedView === "dates" ? dateEntries : dailyEntries;
   const columns = selectedView === "dates" ? DATE_COLUMNS : DAILY_COLUMNS;
   const viewTitle = selectedView === "dates" ? "DATES" : "TRACKER";
+  const isTracker = selectedView === "tracker";
 
   return (
     <div className="space-y-3">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleBack}
-            className="gap-1 h-7 px-2"
-          >
-            <ArrowLeft className="h-3 w-3" />Back
-          </Button>
-          <div className="flex items-center gap-2">
-            <TableIcon className="h-4 w-4" />
-            <h2 className="text-lg font-bold">Views / {viewTitle}</h2>
-          </div>
+      <div className="flex flex-wrap items-center gap-3">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleBack}
+          className="gap-1 h-7 px-2"
+        >
+          <ArrowLeft className="h-3 w-3" />Back
+        </Button>
+        <div className="flex items-center gap-2">
+          <TableIcon className="h-4 w-4" />
+          <h2 className="text-lg font-bold">Views / {viewTitle}</h2>
+        </div>
+        <div className="relative">
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+          <Input
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            placeholder="Filter rows..."
+            className="pl-7 h-7 text-xs w-[220px]"
+          />
         </div>
         <Button
           variant="outline"
           size="sm"
           onClick={handleRefresh}
           disabled={isLoading}
-          className="gap-2 h-7 text-xs"
+          className="gap-2 h-7 text-xs ml-auto"
         >
           <RefreshCw className={`h-3 w-3 ${isLoading ? 'animate-spin' : ''}`} />
           Refresh
         </Button>
+        <span className="text-xs text-muted-foreground">
+          {currentEntries.length} of {(selectedView === "dates" ? dateEntries : dailyEntries).length}
+        </span>
       </div>
 
       {/* Save info display */}
@@ -228,52 +293,69 @@ export default function ViewsPage() {
       )}
 
       {/* Table */}
-      <div className="border rounded-lg overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow className="bg-muted/50">
+      <div className="border rounded-lg overflow-hidden max-h-[calc(100dvh-14rem)] overflow-auto">
+        <table className="w-full border-collapse text-xs">
+          <thead className="sticky top-0 z-10">
+            {isTracker && (
+              <tr>
+                <th
+                  className="border p-1 bg-muted"
+                  colSpan={columns.filter((c) => c.group === "none").length}
+                />
+                {(["training", "action", "texting", "results"] as const).map((g) => (
+                  <th
+                    key={g}
+                    colSpan={columns.filter((c) => c.group === g).length}
+                    className={`border p-1 text-center font-bold ${GROUP_HEADER_CLASS[g]}`}
+                  >
+                    {g.toUpperCase()}
+                  </th>
+                ))}
+              </tr>
+            )}
+            <tr>
               {columns.map((col) => (
-                <TableHead
+                <th
                   key={col.key}
-                  className="h-8 px-2 text-xs font-semibold whitespace-nowrap"
+                  onClick={() => toggleSort(col.key)}
+                  className={`border p-1.5 px-2 text-left font-semibold whitespace-nowrap cursor-pointer select-none hover:brightness-95 ${GROUP_HEADER_CLASS[col.group]}`}
                 >
-                  {col.label}
-                </TableHead>
+                  <span className="inline-flex items-center gap-1">
+                    {col.label}
+                    {sortKey === col.key && (sortDir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)}
+                  </span>
+                </th>
               ))}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
+            </tr>
+          </thead>
+          <tbody>
             {currentEntries.length === 0 ? (
-              <TableRow>
-                <TableCell
-                  colSpan={columns.length}
-                  className="h-8 text-center text-xs text-muted-foreground"
-                >
+              <tr>
+                <td colSpan={columns.length} className="border h-8 text-center text-muted-foreground">
                   No entries yet. Use Forms to add data.
-                </TableCell>
-              </TableRow>
+                </td>
+              </tr>
             ) : (
               currentEntries.map((entry) => (
-                <TableRow key={entry.itemName} className="hover:bg-muted/30">
+                <tr key={entry.itemName} className="hover:bg-accent/50">
                   {columns.map((col) => {
-                    const value =
-                      col.key === "item"
-                        ? entry.itemName
-                        : (entry.body?.[col.key as string] as string) || "";
+                    const raw = entry.body?.[col.key];
+                    const value = typeof raw === "number" ? (Number.isInteger(raw) ? String(raw) : raw.toFixed(1)) : String(raw ?? "");
                     return (
-                      <TableCell
+                      <td
                         key={col.key}
-                        className="p-1.5 px-2 text-xs whitespace-nowrap max-w-[150px] truncate"
+                        className={`border p-1.5 px-2 whitespace-nowrap max-w-[180px] truncate ${CELL_CLASS[col.group]}`}
+                        title={value}
                       >
                         {value}
-                      </TableCell>
+                      </td>
                     );
                   })}
-                </TableRow>
+                </tr>
               ))
             )}
-          </TableBody>
-        </Table>
+          </tbody>
+        </table>
       </div>
 
       {/* Error display */}

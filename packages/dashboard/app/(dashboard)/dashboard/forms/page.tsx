@@ -75,6 +75,7 @@ interface AddActionFormData {
   theory: string;
   fieldReview: string;
   actionTime: string;
+  outings: string;
   approaches: string;
   longInteractions: string;
   numbers: string;
@@ -217,11 +218,12 @@ export default function FormsPage() {
     date: getTodayDate(),
     state: "",
     trainingTime: "",
-    verbalExercises: "",
-    infield: "",
-    theory: "",
-    fieldReview: "",
+    verbalExercises: "NIE",
+    infield: "NIE",
+    theory: "NIE",
+    fieldReview: "NIE",
     actionTime: "",
+    outings: "",
     approaches: "",
     longInteractions: "",
     numbers: "",
@@ -294,11 +296,12 @@ export default function FormsPage() {
       date: getTodayDate(),
       state: "",
       trainingTime: "",
-      verbalExercises: "",
-      infield: "",
-      theory: "",
-      fieldReview: "",
+      verbalExercises: "NIE",
+      infield: "NIE",
+      theory: "NIE",
+      fieldReview: "NIE",
       actionTime: "",
+      outings: "",
       approaches: "",
       longInteractions: "",
       numbers: "",
@@ -435,6 +438,7 @@ export default function FormsPage() {
         "THEORY": addActionData.theory,
         "FIELD REVIEW": addActionData.fieldReview,
         "ACTION TIME": addActionData.actionTime,
+        "OUTINGS": addActionData.outings,
         "APPROACHES": addActionData.approaches,
         "LONG INTERACTIONS": addActionData.longInteractions,
         "NUMBERS": addActionData.numbers,
@@ -644,6 +648,25 @@ export default function FormsPage() {
   // ============================================================================
 
   if (selectedForm === "add_action") {
+    const dailyRows: Array<{ label: string; key: keyof AddActionFormData; type: "date" | "text" | "yesno" }> = [
+      { label: "DATE", key: "date", type: "date" },
+      { label: "STATE", key: "state", type: "text" },
+      { label: "TRAINING TIME", key: "trainingTime", type: "text" },
+      { label: "VERBAL EXERCISES", key: "verbalExercises", type: "yesno" },
+      { label: "INFIELD", key: "infield", type: "yesno" },
+      { label: "THEORY", key: "theory", type: "yesno" },
+      { label: "FIELD REVIEW", key: "fieldReview", type: "yesno" },
+      { label: "ACTION TIME", key: "actionTime", type: "text" },
+      { label: "OUTINGS", key: "outings", type: "text" },
+      { label: "APPROACHES", key: "approaches", type: "text" },
+      { label: "LONG INTERACTIONS", key: "longInteractions", type: "text" },
+      { label: "NUMBERS", key: "numbers", type: "text" },
+      { label: "FIRST MESSAGES", key: "firstMessages", type: "text" },
+      { label: "RESPONSES", key: "responses", type: "text" },
+      { label: "DATES SET UP", key: "datesSetUp", type: "text" },
+      { label: "DATES", key: "dates", type: "text" },
+    ];
+
     return (
       <div className="space-y-3">
         <div className="flex items-center gap-3">
@@ -652,144 +675,87 @@ export default function FormsPage() {
           </Button>
           <h2 className="text-lg font-bold">DAILY ENTRY</h2>
         </div>
-        <Card>
-          <CardContent className="p-2">
-            <form onSubmit={handleAddActionSubmit} className="space-y-2">
-              <div className="grid grid-cols-4 gap-2">
-                <div className="space-y-0.5">
-                  <Label className="text-xs font-semibold">DATE</Label>
-                  <Input
-                    type="date"
-                    value={addActionData.date}
-                    onChange={e => setAddActionData({ ...addActionData, date: e.target.value })}
-                    className="h-7 text-xs"
-                  />
-                </div>
-                <div className="space-y-0.5">
-                  <Label className="text-xs font-semibold">STATE</Label>
-                  <Input
-                    value={addActionData.state}
-                    onChange={e => setAddActionData({ ...addActionData, state: e.target.value })}
-                    className="h-7 text-xs"
-                  />
-                </div>
-                <div className="space-y-0.5">
-                  <Label className="text-xs font-semibold">TRAINING TIME</Label>
-                  <Input
-                    value={addActionData.trainingTime}
-                    onChange={e => setAddActionData({ ...addActionData, trainingTime: e.target.value })}
-                    className="h-7 text-xs"
-                  />
-                </div>
-                <div className="space-y-0.5">
-                  <Label className="text-xs font-semibold">VERBAL EXERCISES</Label>
-                  <Input
-                    value={addActionData.verbalExercises}
-                    onChange={e => setAddActionData({ ...addActionData, verbalExercises: e.target.value })}
-                    className="h-7 text-xs"
-                  />
-                </div>
-                <div className="space-y-0.5">
-                  <Label className="text-xs font-semibold">INFIELD</Label>
-                  <Input
-                    value={addActionData.infield}
-                    onChange={e => setAddActionData({ ...addActionData, infield: e.target.value })}
-                    className="h-7 text-xs"
-                  />
-                </div>
-                <div className="space-y-0.5">
-                  <Label className="text-xs font-semibold">THEORY</Label>
-                  <Input
-                    value={addActionData.theory}
-                    onChange={e => setAddActionData({ ...addActionData, theory: e.target.value })}
-                    className="h-7 text-xs"
-                  />
-                </div>
-                <div className="space-y-0.5">
-                  <Label className="text-xs font-semibold">FIELD REVIEW</Label>
-                  <Input
-                    value={addActionData.fieldReview}
-                    onChange={e => setAddActionData({ ...addActionData, fieldReview: e.target.value })}
-                    className="h-7 text-xs"
-                  />
-                </div>
-                <div className="space-y-0.5">
-                  <Label className="text-xs font-semibold">ACTION TIME</Label>
-                  <Input
-                    value={addActionData.actionTime}
-                    onChange={e => setAddActionData({ ...addActionData, actionTime: e.target.value })}
-                    className="h-7 text-xs"
-                  />
-                </div>
-                <div className="space-y-0.5">
-                  <Label className="text-xs font-semibold">APPROACHES</Label>
-                  <Input
-                    value={addActionData.approaches}
-                    onChange={e => setAddActionData({ ...addActionData, approaches: e.target.value })}
-                    className="h-7 text-xs"
-                  />
-                </div>
-                <div className="space-y-0.5">
-                  <Label className="text-xs font-semibold">LONG INTERACTIONS</Label>
-                  <Input
-                    value={addActionData.longInteractions}
-                    onChange={e => setAddActionData({ ...addActionData, longInteractions: e.target.value })}
-                    className="h-7 text-xs"
-                  />
-                </div>
-                <div className="space-y-0.5">
-                  <Label className="text-xs font-semibold">NUMBERS</Label>
-                  <Input
-                    value={addActionData.numbers}
-                    onChange={e => setAddActionData({ ...addActionData, numbers: e.target.value })}
-                    className="h-7 text-xs"
-                  />
-                </div>
-                <div className="space-y-0.5">
-                  <Label className="text-xs font-semibold">FIRST MESSAGES</Label>
-                  <Input
-                    value={addActionData.firstMessages}
-                    onChange={e => setAddActionData({ ...addActionData, firstMessages: e.target.value })}
-                    className="h-7 text-xs"
-                  />
-                </div>
-                <div className="space-y-0.5">
-                  <Label className="text-xs font-semibold">RESPONSES</Label>
-                  <Input
-                    value={addActionData.responses}
-                    onChange={e => setAddActionData({ ...addActionData, responses: e.target.value })}
-                    className="h-7 text-xs"
-                  />
-                </div>
-                <div className="space-y-0.5">
-                  <Label className="text-xs font-semibold">DATES SET UP</Label>
-                  <Input
-                    value={addActionData.datesSetUp}
-                    onChange={e => setAddActionData({ ...addActionData, datesSetUp: e.target.value })}
-                    className="h-7 text-xs"
-                  />
-                </div>
-                <div className="space-y-0.5">
-                  <Label className="text-xs font-semibold">DATES</Label>
-                  <Input
-                    value={addActionData.dates}
-                    onChange={e => setAddActionData({ ...addActionData, dates: e.target.value })}
-                    className="h-7 text-xs"
-                  />
-                </div>
-              </div>
-              <Button type="submit" className="w-full h-7 text-xs" disabled={isSubmitting}>
-                {isSubmitting ? "Saving..." : "Save"}
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
-        {submitResult && (
-          <div className={`p-2 rounded-lg flex items-center gap-2 text-xs ${submitResult.type === "success" ? "bg-green-50 text-green-700 border border-green-200" : "bg-red-50 text-red-700 border border-red-200"}`}>
-            {submitResult.type === "success" ? <CheckCircle2 className="h-3 w-3 flex-shrink-0" /> : <AlertCircle className="h-3 w-3 flex-shrink-0" />}
-            <span>{submitResult.message}</span>
-          </div>
-        )}
+        <div className="mx-auto max-w-xl">
+          <form onSubmit={handleAddActionSubmit}>
+            <table className="w-full border-collapse text-sm">
+              <thead>
+                <tr>
+                  <th colSpan={2} className="border bg-green-100 dark:bg-green-950/50 px-4 py-3 text-center text-lg font-bold">
+                    DAILY ENTRY
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {dailyRows.map((row) => (
+                  <tr key={row.key}>
+                    <td className="border bg-muted/60 px-3 py-2 font-semibold w-1/2">{row.label}</td>
+                    <td className="border bg-amber-50 dark:bg-amber-950/30 px-2 py-1.5">
+                      {row.type === "date" && (
+                        <Input
+                          type="date"
+                          value={addActionData[row.key]}
+                          onChange={(e) => setAddActionData({ ...addActionData, [row.key]: e.target.value })}
+                          className="h-8 border-0 bg-transparent shadow-none focus-visible:ring-1"
+                        />
+                      )}
+                      {row.type === "yesno" && (
+                        <select
+                          value={addActionData[row.key]}
+                          onChange={(e) => setAddActionData({ ...addActionData, [row.key]: e.target.value })}
+                          className="h-8 w-full rounded-md border-0 bg-transparent px-1 text-sm outline-none"
+                        >
+                          <option value="NIE">NIE</option>
+                          <option value="TAK">TAK</option>
+                        </select>
+                      )}
+                      {row.type === "text" && (
+                        <Input
+                          value={addActionData[row.key]}
+                          onChange={(e) => setAddActionData({ ...addActionData, [row.key]: e.target.value })}
+                          className="h-8 border-0 bg-transparent shadow-none text-right focus-visible:ring-1"
+                        />
+                      )}
+                    </td>
+                  </tr>
+                ))}
+                <tr>
+                  <td colSpan={2} className="border-0 h-2" />
+                </tr>
+                <tr>
+                  <td colSpan={2} className="border bg-green-200 dark:bg-green-900/60 p-0">
+                    <Button
+                      type="submit"
+                      disabled={isSubmitting}
+                      className="w-full rounded-none h-11 text-base font-semibold bg-transparent text-foreground hover:bg-green-300/60 dark:hover:bg-green-900 shadow-none"
+                      variant="ghost"
+                    >
+                      {isSubmitting ? "Saving..." : "SAVE DAY"}
+                    </Button>
+                  </td>
+                </tr>
+                <tr>
+                  <td className="border bg-muted/60 px-3 py-2 font-semibold align-top">STATUS</td>
+                  <td className="border px-3 py-2 text-sm">
+                    {submitResult ? (
+                      <span
+                        className={`flex items-center gap-2 ${submitResult.type === "success" ? "text-green-700 dark:text-green-400" : "text-red-700 dark:text-red-400"}`}
+                      >
+                        {submitResult.type === "success" ? (
+                          <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
+                        ) : (
+                          <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                        )}
+                        {submitResult.message}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">Fill in the form and click SAVE DAY.</span>
+                    )}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </form>
+        </div>
       </div>
     );
   }
@@ -807,84 +773,132 @@ export default function FormsPage() {
           </Button>
           <h2 className="text-lg font-bold">DATE ENTRY</h2>
         </div>
-        <Card>
-          <CardContent className="p-2">
-            <form onSubmit={handleDateEntrySubmit} className="space-y-2">
-              <div className="grid grid-cols-4 gap-2">
-                <div className="space-y-0.5">
-                  <Label className="text-xs font-semibold">DATA</Label>
-                  <Input
-                    type="date"
-                    value={dateEntryData.data}
-                    onChange={e => setDateEntryData({ ...dateEntryData, data: e.target.value })}
-                    className="h-7 text-xs"
-                  />
-                </div>
-                <div className="space-y-0.5">
-                  <Label className="text-xs font-semibold">ŹRÓDŁO</Label>
-                  <Input
-                    value={dateEntryData.zrodlo}
-                    onChange={e => setDateEntryData({ ...dateEntryData, zrodlo: e.target.value })}
-                    className="h-7 text-xs"
-                  />
-                </div>
-                <div className="space-y-0.5">
-                  <Label className="text-xs font-semibold">NAZWA</Label>
-                  <Input
-                    value={dateEntryData.nazwa}
-                    onChange={e => setDateEntryData({ ...dateEntryData, nazwa: e.target.value })}
-                    className="h-7 text-xs"
-                  />
-                </div>
-                <div className="space-y-0.5">
-                  <Label className="text-xs font-semibold">LINK</Label>
-                  <Input
-                    value={dateEntryData.link}
-                    onChange={e => setDateEntryData({ ...dateEntryData, link: e.target.value })}
-                    className="h-7 text-xs"
-                  />
-                </div>
-                <div className="space-y-0.5">
-                  <Label className="text-xs font-semibold">PULL</Label>
-                  <Select value={dateEntryData.pull} onValueChange={v => setDateEntryData({ ...dateEntryData, pull: v })}>
-                    <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="FALSE">FALSE</SelectItem>
-                      <SelectItem value="TRUE">TRUE</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-0.5">
-                  <Label className="text-xs font-semibold">CLOSE</Label>
-                  <Select value={dateEntryData.close} onValueChange={v => setDateEntryData({ ...dateEntryData, close: v })}>
-                    <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="NIE">NIE</SelectItem>
-                      <SelectItem value="TAK">TAK</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-0.5">
-                  <Label className="text-xs font-semibold">JAKOŚĆ</Label>
-                  <Input
-                    value={dateEntryData.jakosc}
-                    onChange={e => setDateEntryData({ ...dateEntryData, jakosc: e.target.value })}
-                    className="h-7 text-xs"
-                  />
-                </div>
-              </div>
-              <Button type="submit" className="w-full h-7 text-xs" disabled={isSubmitting}>
-                {isSubmitting ? "Saving..." : "Save"}
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
-        {submitResult && (
-          <div className={`p-2 rounded-lg flex items-center gap-2 text-xs ${submitResult.type === "success" ? "bg-green-50 text-green-700 border border-green-200" : "bg-red-50 text-red-700 border border-red-200"}`}>
-            {submitResult.type === "success" ? <CheckCircle2 className="h-3 w-3 flex-shrink-0" /> : <AlertCircle className="h-3 w-3 flex-shrink-0" />}
-            <span>{submitResult.message}</span>
-          </div>
-        )}
+        <div className="mx-auto max-w-xl">
+          <form onSubmit={handleDateEntrySubmit}>
+            <table className="w-full border-collapse text-sm">
+              <thead>
+                <tr>
+                  <th colSpan={2} className="border bg-blue-100 dark:bg-blue-950/50 px-4 py-3 text-center text-lg font-bold">
+                    DATE ENTRY
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td className="border bg-muted/60 px-3 py-2 font-semibold w-1/2">DATA</td>
+                  <td className="border bg-amber-50 dark:bg-amber-950/30 px-2 py-1.5">
+                    <Input
+                      type="date"
+                      value={dateEntryData.data}
+                      onChange={e => setDateEntryData({ ...dateEntryData, data: e.target.value })}
+                      className="h-8 border-0 bg-transparent shadow-none focus-visible:ring-1"
+                    />
+                  </td>
+                </tr>
+                <tr>
+                  <td className="border bg-muted/60 px-3 py-2 font-semibold">ŹRÓDŁO</td>
+                  <td className="border bg-amber-50 dark:bg-amber-950/30 px-2 py-1.5">
+                    <Input
+                      value={dateEntryData.zrodlo}
+                      onChange={e => setDateEntryData({ ...dateEntryData, zrodlo: e.target.value })}
+                      className="h-8 border-0 bg-transparent shadow-none text-right focus-visible:ring-1"
+                    />
+                  </td>
+                </tr>
+                <tr>
+                  <td className="border bg-muted/60 px-3 py-2 font-semibold">NAZWA</td>
+                  <td className="border bg-amber-50 dark:bg-amber-950/30 px-2 py-1.5">
+                    <Input
+                      value={dateEntryData.nazwa}
+                      onChange={e => setDateEntryData({ ...dateEntryData, nazwa: e.target.value })}
+                      className="h-8 border-0 bg-transparent shadow-none text-right focus-visible:ring-1"
+                    />
+                  </td>
+                </tr>
+                <tr>
+                  <td className="border bg-muted/60 px-3 py-2 font-semibold">LINK</td>
+                  <td className="border bg-amber-50 dark:bg-amber-950/30 px-2 py-1.5">
+                    <Input
+                      value={dateEntryData.link}
+                      onChange={e => setDateEntryData({ ...dateEntryData, link: e.target.value })}
+                      className="h-8 border-0 bg-transparent shadow-none text-right focus-visible:ring-1"
+                    />
+                  </td>
+                </tr>
+                <tr>
+                  <td className="border bg-muted/60 px-3 py-2 font-semibold">PULL</td>
+                  <td className="border bg-amber-50 dark:bg-amber-950/30 px-2 py-1.5 text-center">
+                    <input
+                      type="checkbox"
+                      checked={dateEntryData.pull === "TRUE"}
+                      onChange={e => setDateEntryData({ ...dateEntryData, pull: e.target.checked ? "TRUE" : "FALSE" })}
+                      className="h-4 w-4 rounded border-gray-400"
+                    />
+                  </td>
+                </tr>
+                <tr>
+                  <td className="border bg-muted/60 px-3 py-2 font-semibold">CLOSE</td>
+                  <td className="border bg-amber-50 dark:bg-amber-950/30 px-2 py-1.5">
+                    <select
+                      value={dateEntryData.close}
+                      onChange={e => setDateEntryData({ ...dateEntryData, close: e.target.value })}
+                      className="h-8 w-full rounded-md border-0 bg-transparent px-1 text-sm outline-none"
+                    >
+                      <option value="NIE">NIE</option>
+                      <option value="BLISKO">BLISKO</option>
+                      <option value="TAK">TAK</option>
+                    </select>
+                  </td>
+                </tr>
+                <tr>
+                  <td className="border bg-muted/60 px-3 py-2 font-semibold">JAKOŚĆ</td>
+                  <td className="border bg-amber-50 dark:bg-amber-950/30 px-2 py-1.5">
+                    <Input
+                      value={dateEntryData.jakosc}
+                      onChange={e => setDateEntryData({ ...dateEntryData, jakosc: e.target.value })}
+                      className="h-8 border-0 bg-transparent shadow-none text-right focus-visible:ring-1"
+                      placeholder="e.g. 8,0"
+                    />
+                  </td>
+                </tr>
+                <tr>
+                  <td colSpan={2} className="border-0 h-2" />
+                </tr>
+                <tr>
+                  <td colSpan={2} className="border bg-blue-200 dark:bg-blue-900/60 p-0">
+                    <Button
+                      type="submit"
+                      disabled={isSubmitting}
+                      className="w-full rounded-none h-11 text-base font-semibold bg-transparent text-foreground hover:bg-blue-300/60 dark:hover:bg-blue-900 shadow-none"
+                      variant="ghost"
+                    >
+                      {isSubmitting ? "Saving..." : "SAVE DATE"}
+                    </Button>
+                  </td>
+                </tr>
+                <tr>
+                  <td className="border bg-muted/60 px-3 py-2 font-semibold align-top">STATUS</td>
+                  <td className="border px-3 py-2 text-sm">
+                    {submitResult ? (
+                      <span
+                        className={`flex items-center gap-2 ${submitResult.type === "success" ? "text-green-700 dark:text-green-400" : "text-red-700 dark:text-red-400"}`}
+                      >
+                        {submitResult.type === "success" ? (
+                          <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
+                        ) : (
+                          <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                        )}
+                        {submitResult.message}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">Uzupełnij formularz i zaznacz SAVE DATE.</span>
+                    )}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </form>
+        </div>
       </div>
     );
   }

@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
 			service: "IRepoService",
 			worker: "IItemWorker",
 			method: "GetByNames",
-			args: ["root", "users", "chad_admin"]
+			args: ["chad_admin", "users", "users-list"]
 		};
 		debugInfo.contentProviderApiUrl = process.env.CONTENT_PROVIDER_API_URL;
 

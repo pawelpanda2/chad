@@ -1,76 +1,87 @@
 # Daily Entry / Tracker / Date Entry / Dates
 
-Status: Stage 1-3 done and verified against real data (2026-07-12). Stage 4
-(CSV/TSV importer with preview) **not built yet** — deferred until explicitly
-requested; no bulk import of real spreadsheet data has been run.
+Status: done and verified against real data, including a real CSV import
+(2026-07-12). Stage 4 (in-app CSV/TSV importer with a preview UI) **not
+built** — the one real import done so far was run as a one-off script after
+explicit user confirmation, not through an in-app importer.
 
 ## 1. What this is
 
-Four views, built to match Google Sheets screenshots supplied as the exact
-visual/structural spec (not inspiration) for the first real non-owner user,
-`kamil_s`:
+**Not standalone pages.** Tracker and Dates are menu-selectable views inside
+the existing `/dashboard/views` page (`app/(dashboard)/dashboard/views/page.tsx`);
+Daily Entry and Date Entry are menu-selectable forms inside the existing
+`/dashboard/forms` page (`app/(dashboard)/dashboard/forms/page.tsx`). An
+earlier pass in this session built these as four new standalone routes +
+sidebar entries — that was a misunderstanding of the existing structure,
+corrected: the standalone routes/sidebar entries were deleted, and the real
+work went into improving the existing pages' visual styling (more
+Google-Sheets-like, matching the screenshots supplied as the exact
+visual/structural spec for the first real non-owner user, `kamil_s`) and
+fixing bugs in them, in place.
 
-- **Daily Entry** (`/dashboard/daily-entry`) — two-column spreadsheet-style
-  form, saves one record per submit.
-- **Tracker** (`/dashboard/tracker`) — sortable/filterable table of all Daily
-  Entry records, grouped/colored to match the sheet (TRAINING/ACTION/TEXTING/
-  RESULTS), sticky header.
-- **Date Entry** (`/dashboard/date-entry`) — two-column form, same pattern.
-- **Dates** (`/dashboard/dates`) — sortable/filterable table of all Date Entry
-  records.
-
-Deliberately built as new standalone routes+sidebar entries rather than nested
-under the existing generic `/dashboard/forms` hub, to minimize clicks (sidebar
-→ view, one click) per the stated UX priority. The old Forms hub's own
-Daily/Date Entry tiles were left untouched (not removed) — this is the one
-intentional deviation from "don't touch existing functionality", justified by
-the explicit "minimum clicks" requirement; it's pure addition, not a removal.
+- **Forms → DAILY ENTRY**: two-column spreadsheet-style form (green header),
+  saves one record per submit.
+- **Views → TRACKER**: sortable/filterable table of all Daily Entry records,
+  grouped/colored to match the sheet (TRAINING/ACTION/TEXTING/RESULTS),
+  sticky header, group-color header row above the column headers. The
+  leftmost "item" column (internal item name) is not displayed — it's a
+  purely internal identifier.
+- **Forms → DATE ENTRY**: two-column form (blue header), same pattern.
+- **Views → DATES**: sortable/filterable table of all Date Entry records.
 
 ## 2. Data flow (audited and proven end-to-end, not just read from code)
 
 ```
-dashboard page (client)
-  → fetch /api/forms/daily-entry or /api/forms/date-entry (GET list, POST save)
-    → getCurrentUserFromCookies()  [packages/dashboard/lib/session.ts]
-      → resolveCurrentUser(repoGuidFromCookie), validated against the real
-        chad_admin user list — never trusts the cookie blindly
-    → runWithRepoContext(user, ...)  [packages/dba/src/repo-context.ts,
-      AsyncLocalStorage — no hardcoded repo GUID anywhere in this path]
-      → dba: saveDailyEntry / getAllDailyEntries / saveDateEntry /
-        getAllDateEntries  [packages/dba/src/leads.ts]
-        → invokeContentProvider([...])  [packages/dba/src/client.ts]
-          → HTTP POST to chad-content-provider-api's /invoke
+Views page (client)  → fetch /api/views (GET, combined dates+daily+AUTO)
+Forms page (client)  → fetch /api/forms/daily-entry or /api/forms/date-entry
+                         (POST save; GET also exists but /api/views is the
+                         real consumer the Views page renders from)
+  → getCurrentUserFromCookies()  [packages/dashboard/lib/session.ts]
+    → resolveCurrentUser(repoGuidFromCookie), validated against the real
+      chad_admin user list — never trusts the cookie blindly
+  → runWithRepoContext(user, ...)  [packages/dba/src/repo-context.ts,
+    AsyncLocalStorage — no hardcoded repo GUID anywhere in this path]
+    → dba: saveDailyEntry / getAllDailyEntries / saveDateEntry /
+      getAllDateEntries  [packages/dba/src/leads.ts]
+      → invokeContentProvider([...])  [packages/dba/src/client.ts]
+        → HTTP POST to chad-content-provider-api's /invoke
 ```
 
 No hardcoded `pawel_f` GUID or path found anywhere in this flow — confirmed
 by reading the code AND by a live test proving `kamil_s`'s session resolves
-to his own repo (`8b603669-f8e6-4224-bd78-a474998995fa`, logical name
-`chad_kamil_s`), never `pawel_f`'s.
+to his own repo (`8b603669-f8e6-4224-bd78-a474998995fa`), never `pawel_f`'s.
 
-### `chad_admin` — what it actually stores
+### `chad_admin` — what it actually stores (and a live login break caused by a restructure)
 
-repoGuid: `0fc7da8d-3466-4964-a24c-dfc0d0fef87c` (this is `pawel_f`'s own
-repo — the admin user list lives inside it as a Text item).
+`chad_admin` is its own repo (logical name `chad_admin`, resolved directly
+by that name — not nested inside `pawel_f`'s repo). Structure: folder `01`
+(logical name `users`) → `01/01` is a Text item (logical name `users-list`),
+body is a YAML `users:` list of `{repoGuid, username, email, passwordHash,
+createdAt, updatedAt}`. That's **all** it stores — no per-feature CP-path
+registry. The `actions/daily` and `actions/dates` logical paths used by this
+feature are hardcoded as string literals directly in `packages/dba/src/leads.ts`
+(`saveDailyEntry`, `saveDateEntry`, `getAllDailyEntries`, `getAllDateEntries`),
+same as every other CP path in this codebase (e.g. `leads`, `msg planner`).
 
-Structure found by direct inspection: folder `01` (logical name `users`) →
-`01/01` is the `chad_admin` Text item, body is a YAML `users:` list of
-`{repoGuid, username, email, passwordHash, createdAt, updatedAt}`. That's
-**all** it stores — there is no existing "logical CP paths per feature"
-registry in `chad_admin`. The `actions/daily` and `actions/dates` logical
-paths used by this feature are hardcoded as string literals directly in
-`packages/dba/src/leads.ts` (`saveDailyEntry`, `saveDateEntry`,
-`getAllDailyEntries`, `getAllDateEntries`), the same way every other CP path
-in this codebase is (e.g. `leads`, `msg planner`) — not read from any
-config/registry. If a real per-feature path registry is wanted inside
-`chad_admin`, that's a new mechanism to design, not something this task
-found already existing — flagging rather than inventing it.
+Mid-session, the user restructured this data on disk (Dropbox-synced repos
+folder) — the repo's logical name and the item's logical name both changed
+(previously resolved via a `"root"` alias + item literally named
+`chad_admin`; now the repo itself is named `chad_admin` and the item is
+named `users-list`). This broke login for **every** user, since
+`getUsersFromSharpRaw()` in `packages/dashboard/lib/user-service.ts` had the
+old args (`["root", "users", "chad_admin"]`) hardcoded. Fixed by updating the
+args to `["chad_admin", "users", "users-list"]` in `lib/user-service.ts`
+(`getUsersFromSharpRaw`, the `getUsersFromSharp` debug-info copy),
+`lib/chad-dba/client.ts` (`getUsersList`, unused dead code but same bug),
+and `app/api/auth/login/route.ts` (debug-info display only). Verified live:
+`POST /invoke` with the new args returns all 4 users (`pawel_f`, `kamil_s`,
+`test3`, `test2`); `pawel_f`'s repoGuid also changed as part of the same
+restructure (`21d11bdc-f1f4-44d1-b61a-3fa6b039c641`); `kamil_s`'s repoGuid
+did **not** change (`8b603669-f8e6-4224-bd78-a474998995fa`), confirmed
+before trusting the already-completed CSV import (below) still pointed at
+the right repo.
 
 ### Real bugs found and fixed along the way
-
-Two backend bugs were found by actually testing against real
-`kamil_s` data (not just reading code) — see
-`documentation/dba/bugs/getlist-valuetuple-and-date-entries-mismap.md` for
-full detail:
 
 1. `getAllDateEntries()` returned the parent folder's directory listing for
    every entry instead of each entry's own data.
@@ -79,9 +90,18 @@ full detail:
    any user (C# ValueTuple parameter, unsupported by the string-args
    resolver). Fixed by switching both functions to the documented,
    already-proven `GetByNames` + `Body`-map pattern (same one Msg Planner
-   uses) — no Content Provider C# changes.
+   uses) — no Content Provider C# changes. See
+   `documentation/dba/bugs/getlist-valuetuple-and-date-entries-mismap.md`.
+3. Tracker's group-color header row (`isTracker` block in
+   `app/(dashboard)/dashboard/views/page.tsx`) only emitted `<th>` cells for
+   the training/action/texting/results groups, never for the one
+   `group: "none"` column (`DATE`) — the two header rows had mismatched
+   total colspan (20 vs 21), misaligning every color band by one column.
+   Fixed by adding a placeholder `<th>` sized to the `"none"`-group column
+   count.
+4. Login broken by the `chad_admin` restructure — see above.
 
-Both fixes verified via a full save → read-back → field-by-field-compare
+Bugs 1-2 verified via a full save → read-back → field-by-field-compare
 round trip against `kamil_s`'s real repo, and via real HTTP requests to
 `GET /api/forms/daily-entry` / `GET /api/forms/date-entry`.
 
@@ -161,54 +181,92 @@ no client-side computation.
 
 ## 6. Testing performed (real, not just code reading)
 
-- Full daily-entry save → read-back → 16-field comparison: all matched.
-- `getAllDateEntries()` fix verified against `kamil_s`'s one pre-existing
-  real entry (previously returned garbage, now returns correct fields).
+- Full daily-entry and date-entry save → read-back → field comparison via
+  real HTTP requests through `/dashboard/forms`'s actual POST routes
+  (`/api/forms/daily-entry`, `/api/forms/date-entry`), with a `kamil_s`
+  session cookie built the same way the login route builds one.
+- `getAllDateEntries()`/`getAllDailyEntries()` fixes verified against real
+  data, including after the CSV import (below).
 - AUTO fields computed against a real 2-record same-day test case, matched
-  the project owner's worked example exactly.
-- `GET /api/forms/daily-entry` and `GET /api/forms/date-entry` tested via
-  real HTTP requests (not just the `dba` layer) with a `kamil_s` session —
-  both return correctly shaped, correctly computed data.
-- `pnpm --filter dba build` and `pnpm --filter dashboard exec tsc --noEmit`
-  both clean.
-- Full local Docker rebuild+redeploy (`03_local_mac_docker/06_deploy.sh`)
-  succeeded with the new pages/routes included; `next build` passed (no new
-  lint/type errors).
+  the project owner's worked example exactly; also verified via `/api/views`
+  after the real CSV import (24 real date entries feeding AUTO computation
+  for 83 real daily entries).
+- Tracker header colspan fix verified by recount (columns.length matches on
+  both header rows post-fix) and via `pnpm exec tsc --noEmit`/`eslint`.
+- Real browser-facing login flow tested via `POST /api/auth/login` after
+  the `chad_admin` restructure fix — confirmed all 4 users resolve and
+  password validation works (tested with a deliberately wrong password to
+  confirm the negative path too).
+- `pnpm --filter dba build`, `pnpm --filter dashboard exec tsc --noEmit`,
+  and `eslint` across all touched files: clean.
+- Full local Docker rebuild+redeploy (`03_local_mac_docker/06_deploy.sh`),
+  repeated after each fix in this session, each time re-verified live via
+  HTTP against the running stack (not assumed from a successful build).
 
 **Not done / explicitly deferred:**
-- Real browser login as `kamil_s` (no known password locally — tested via
-  a session cookie constructed the same way the login route does, not
-  through the login form itself).
 - Dark mode visual check, 13"/15" viewport check — pages use existing
   `dark:` Tailwind classes matching the rest of the app's convention, but
   not independently screenshotted.
 - Scenario C (Kamil never sees Pawel's data): follows structurally from
   the already-proven `AsyncLocalStorage` isolation (same mechanism proven
   for leads in the per-user-isolation feature), not re-tested end-to-end
-  specifically for these four new views.
-- Test data cleanup: a test Daily Entry (`26-07-12`, item loca `04/02/01`)
-  and two test Date Entries (`02`/`03`, `DATA: 2026-01-15`) were saved
-  under `kamil_s` during verification. No delete method was found/used
-  anywhere in this codebase's Content Provider client — leaving them in
-  place rather than guessing at an unverified deletion mechanism. They're
-  clearly identifiable as test data (`ŹRÓDŁO: TEST`, `NAZWA: test1/test2`).
+  specifically for these views/forms.
+- AUTO field averaging-for-3-or-more-qualifying-records-per-day: still only
+  verified against 2-record cases (the real imported data doesn't happen to
+  have a 3+-same-day case either).
 
-## 7. Manual import (Stage 4 — not built)
+## 7. Real CSV import performed (2026-07-12)
 
-Not implemented in this pass. When requested, the plan is: paste
-TSV (tab-separated, header row matching the exact column names above) →
-parse → normalize (comma-decimal → dot, `TAK`/`NIE`/`1`/`0` → whatever
-storage type is decided) → **preview only** (row count, per-row errors,
-duplicate detection) → explicit confirmation → then and only then save,
-scoped to the current session's user (never an arbitrary repoGuid from
-input text) → re-read to verify. No real data import has been run.
+The user provided two real files (`~/Downloads/forms/daily_tracker.csv`,
+83 real rows spanning 2026-04-19 to 2026-07-11; `~/Downloads/forms/dates.csv`,
+24 real rows spanning 2026-04-20 to 2026-07-07, followed by ~2000 empty
+template rows that were correctly skipped) and asked for them to be migrated
+in so he wouldn't have to retype the data by hand.
+
+This reversed an earlier instruction in the same session not to import any
+CSV data — proceeded only after the user's explicit follow-up request, and
+after showing a preview (parsed row counts, sample first/last rows, and the
+overwrite plan below) and getting explicit confirmation via a direct
+question, consistent with this project's established import-safety
+convention.
+
+Run as a one-off Node script (`packages/dashboard/import-csv.mjs`, deleted
+after use — not a permanent part of the codebase) using the same
+`runWithRepoContext` + `saveDailyEntry`/`saveDateEntry` functions the app
+itself uses, pointed at the local Content Provider API. No Content Provider
+capability was added or bypassed.
+
+**No delete method exists** (`DeleteWorker.Delete()` in the C# is an empty,
+unimplemented stub — confirmed by reading it), so junk test entries created
+during this session's own verification (`kamil_s`'s daily entries `01`/`02`
+and date entries `01`-`04`) were **overwritten in place** — same item name,
+real CSV data written via `Put` — rather than left mixed into the real
+dataset permanently. This included resolving a genuine same-date conflict:
+a test daily entry for `2026-07-10` would otherwise have duplicated the
+real CSV row for that same date. The AUTO/OUTINGS/etc. derived columns
+present in the sheet's own CSV export were **not** imported — only the raw
+columns each form actually stores are, since AUTO values are computed
+server-side from the Date Entry data on every read.
+
+Verified post-import via `/api/views`: 83 daily entries, 24 date entries, no
+leftover `ŹRÓDŁO: TEST`/`bjk` junk rows, no duplicate `DATE`/`DATA` values,
+date ranges match the source CSVs exactly.
+
+**Scope: local Docker dev environment only.** This data was not pushed to
+QNAP test or prod — those have their own separate `cp-root` volumes and
+would need the same import repeated there (or a proper data sync) if this
+data needs to exist in those environments too.
 
 ## 8. Known limitations
 
 - No typed model (everything is schema-less string YAML) — matches
   pre-existing convention elsewhere in this app, not a regression.
 - Time values are free text, not normalized to minutes.
-- AUTO field averaging-for-multiple-records-per-day is unverified against
-  a larger dataset.
+- AUTO field averaging-for-3+-records-per-day is unverified against a
+  larger dataset (only 2-record same-day cases confirmed, in both the
+  worked example and the real imported data).
 - `chad_admin` has no logical-path registry; paths are hardcoded in `dba`.
-- No importer yet.
+- No in-app importer with a preview UI yet — the one real import done was a
+  one-off script, not a reusable feature.
+- The imported real data exists only in the local Docker dev environment,
+  not QNAP test/prod.
