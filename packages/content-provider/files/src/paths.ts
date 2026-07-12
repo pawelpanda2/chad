@@ -83,6 +83,27 @@ export function segmentsToLoca(segments: string[]): string {
   return segments.join("/");
 }
 
+/**
+ * Matches .NET's `UniAddressOperations.CreateAddressFromString`
+ * (`Duplications/Operations/UniAddressOperations.cs:98-116`, confirmed by
+ * the 2026-07-12 SimpleRunTests audit): trims leading/trailing "/", strips
+ * a "https://" prefix if present, then splits on the FIRST "/" only —
+ * everything before it is `repo`, everything after is `loca`. No
+ * validation that `repo` is actually a valid GUID here (matches .NET,
+ * which happily "resolves" a stale/legacy address like "Active/05/18"
+ * into repo="Active" — that then fails downstream when used as a real
+ * repo GUID, exactly like real .NET does for stale `Ref` items, see
+ * README.md's "Ref dereferencing" section).
+ */
+export function parseAddressString(addressString: string): { repo: string; loca: string } {
+  const trimmed = addressString.replace(/^\/+|\/+$/g, "").replace(/^https:\/\//, "");
+  const slashIndex = trimmed.indexOf("/");
+  if (slashIndex === -1) {
+    return { repo: trimmed, loca: "" };
+  }
+  return { repo: trimmed.slice(0, slashIndex), loca: trimmed.slice(slashIndex + 1) };
+}
+
 export function validateSegments(segments: string[]): void {
   for (const segment of segments) {
     if (!isValidNumericSegment(segment)) {

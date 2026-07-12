@@ -25,8 +25,20 @@ Verified two ways: (1) reading the actual .NET source (`packages/net-content-pro
 
 - **Body file: `body.txt`, always, no fallback.** Settled definitively by reading `PathWorker.SetNames`/`GetBodyPath` (`SharpRepoServiceProg/Workers/System/PathWorker.cs:39-43,87-92`) — there is no extensionless `body` variant anywhere in the running .NET code, and zero of the 12630 real files on disk use one. This resolves the contradiction flagged in `documentation/content-provider/next-tasks/typescript-migration-plan.md` section 5.1 and in `packages/cp-plugin/README.md`'s "Known note" — both should be treated as closed now.
 - **`config.yaml` is not a closed schema.** .NET deserializes it as a loose dict (`ConfigWorker.cs`); required keys are `type`, `name`, `id`, `address` (enforced by `ItemModel.SetIndentificators`); `refAddress`/`refGuid` appear only on `type: Ref` items; `googleDocId` is a declared-but-unconsumed extra key. There is **no `created` field** — an earlier placeholder version of `cp-core`'s `CpConfig` required one; that was wrong and has been fixed.
-- **`address` is slash-joined** (`"<repoGuid>/01/02/03"`) and is read verbatim from config.yaml into `CpItem.Address` — never recomputed from the physical path. A dash-joined form exists in the .NET codebase too, but only in a separate class used for building outward-facing URLs (`SharpOperations` project) — not the persisted address.
-- **Children are strictly numeric.** `type: Ref` items point elsewhere via `refAddress`/`refGuid` and are **not dereferenced by cp-files yet** — `GetItem` on a `Ref` item returns its own config.yaml (with `Body: ""`) rather than following the reference. Flagged, not silently guessed at.
+- **`address` is slash-joined** (`"<repoGuid>/01/02/03"`) but is **ALWAYS RECOMPUTED**, never read verbatim from config.yaml — see "Address is always self-healed" below.
+- **Children are strictly numeric.** `type: Ref` items point elsewhere via `refAddress`/`refGuid` and **are dereferenced** — see "Ref dereferencing" below.
+
+## Address is always self-healed, never trusted from disk
+
+Confirmed two ways on 2026-07-12: live, comparing `cp-files` against the real running API (a real item's config.yaml on disk has a stale `address: "Active/06/64/01"`, but the real API returns `Settings.address: "21d11bdc-f1f4-44d1-b61a-3fa6b039c641/03/06/71/01"`); and via source (`MigrationWorker.TryMigrateConfig`, `SharpRepoServiceProg/Workers/CrudReads/MigrationWorker.cs:78-104`, overwrites the in-memory `address` unconditionally before any "did it change" check, so a stale on-disk value is never visible to a caller). `cp-files` replicates the *visible* behavior (always return `repoGuid + "/" + loca`) without replicating .NET's incidental never-actually-checks-for-staleness bug in whether the repair gets *written back* — moot here since `cp-files` never writes.
+
+## Ref dereferencing
+
+`GetItem`/`GetByNames`/`GetManyByName`/`FindRecursively` all fully dereference `type: Ref` items — the item you get back **is the target item** (config, body, address all become the target's), matching `ReadRefWorker.IfMineGetItem` (`SharpRepoServiceProg/Workers/CrudReads/ReadRefWorker.cs:19-71`, confirmed by source audit 2026-07-12). `refAddress` is parsed with the same "split on first `/`" rule .NET's `CreateAddressFromString` uses (`paths.ts`'s `parseAddressString`) — no validation that the resulting `repo` segment is an actual GUID.
+
+**In practice, every one of the 68 real `Ref` items in local data has a stale/legacy `refAddress`** (e.g. `"Active/05/18"` — a leftover from an old logical-naming scheme, not `<repoGuid>/<loca>`), so dereferencing always fails for real current data — and it fails **the same way real .NET does**: confirmed live, `GetItem` on a real Ref item throws on both `cp-files` and the actual running .NET API (`PathWorker.HandleError`, surfaced through `ReadFolderWorker.SelectIndexQName`/`ReadRefWorker.IfMineGetItem`). This was cross-checked as a compatibility-test case (`tests/compat-smoke.mjs`'s `testRefErrorParity`), not left as a guess — but the *successful* dereference path (a `Ref` with a genuinely resolvable target) couldn't be verified against any real data, since none exists locally. Not replicated: .NET's extra guid-staleness cross-check/self-heal (`GuidWorker.UpdateRefItemIfNeeded`) — `cp-files` dereferences by `refAddress` directly, a deliberate simplification (that logic is deep and unverifiable with zero real resolvable-Ref data to test against).
+
+**Folder body maps dereference Ref children too**, showing the target's name rather than the Ref's own (matches `ReadFolderWorker.SelectIndexQName`, confirmed by source). A Ref child that fails to dereference is skipped from the map rather than crashing the whole parent — see "Intentional divergences" below; confirmed live that real .NET crashes the *entire* parent Folder's `GetItem` in this exact scenario (stack trace through `SelectIndexQName` → `ListOfIndexesQNames` → `IfMineGetItem`).
 
 ## Config
 
@@ -44,16 +56,26 @@ Never hardcode `/Volumes/cp_1`, `/share/cp_1`, or any other legacy mount — alw
 
 **Not** `packages/cp-plugin`'s dash-joined form (`"01-02-003-02"`, see its `ADDRESS_FORMATS.md`) — that's a separate, unrelated convention cp-plugin uses for its own local HTTP URL path segments. An earlier draft of this package mistakenly copied cp-plugin's dash convention for the `loca` parameter itself; fixed after cross-checking `documentation/dba/resolve-paths.md`.
 
-## Known approximations (flagged, not guessed silently)
+## `GetByNames` and `GetManyByName`: exact matching semantics (source-confirmed, not approximated)
 
-- **`GetByNames` tie-breaking**: descends by matching each name against child `config.yaml` `name` fields, first match in ascending numeric folder order. The real .NET tie-breaking behavior (if two children share a logical name) wasn't confirmed by the 2026-07-12 audit.
-- **`FindRecursively` matching**: case-insensitive substring match against `config.yaml`'s `name` and `body.txt` content. Real .NET's exact matching semantics weren't part of the audit scope.
-- **`Ref` items**: detected (`type === "Ref"`) but not dereferenced. `packages/net-content-provider`'s `ReadRefWorker` does real reference-resolution logic not yet ported.
+Both confirmed 2026-07-12 by a full audit of `SharpRepoServiceProg` + its `SimpleRunTests` project (not guessed, not left as an approximation like an earlier version of this README claimed):
 
-Both approximations need a compatibility-test pass against real `/invoke` calls (via `cp-net-adapter`) before being trusted for anything beyond casual browsing.
+- **`GetByNames`** descends one name at a time, matching each against direct children's `config.yaml` `name` (case-sensitive, ordinal — plain C# `==`). If **more than one** direct child shares that exact name, .NET's `SingleOrDefault` throws `InvalidOperationException`, uncaught — `cp-files` replicates this: throws `ContentProviderError`, NOT "first match wins" (an earlier version of this package did pick the first match; fixed after the source audit).
+- **`GetManyByName(repo, parentLoca, name)`** searches **grandchildren** of `parentLoca`, not direct children — confirmed both live (against the real API) and via `ManyItemsWorker.GetManyByName`'s source: for each direct child of `parentLoca` (e.g. one lead folder among many), it looks at THAT child's own children for one item named `name`. A direct-child group whose grandchildren have more than one match is **skipped entirely**, not included with duplicates and not thrown as an error to the caller (.NET's inner `SingleOrDefault` throws, caught by `GetManyByName`'s own surrounding try/catch) — `cp-files` replicates this exactly.
 
-## Does NOT do
+## `FindRecursively`: body.txt only, never name (source-confirmed)
 
-- No writes (`Put`/`PostParentItem` throw).
-- No `config.yaml` self-healing (.NET's `MigrationWorker.TryMigrateConfig` auto-repairs missing `id`/`type`/`address` and writes the repair back — cp-files surfaces a `ContentProviderError` instead).
-- No repo-group discovery beyond one level under `repos/` (matches real local data; a QNAP-only two-level "group-guid" scheme mentioned in an earlier session's notes was not found in the actual `GuidGroupsHelper` code and is not implemented).
+Confirmed via `MethodWorker.FindRecursively`'s source and live-tested against real data (4/4 matching addresses on a real "//todo" search): searches **only `body.txt` file contents** (i.e. only `Text`-type items are ever candidates — `Folder`/`Ref` items are never matched), a plain case-insensitive substring match. **Does NOT match against `name`** — an earlier version of this package incorrectly also matched item names; fixed after the source audit. Throws on an empty phrase, matching .NET's `ArgumentException`.
+
+## Intentional divergences from .NET (not approximations — conscious choices for a read-only browsing tool)
+
+- **Missing/corrupt `config.yaml`**: `cp-files` throws `ContentProviderError` immediately. Real .NET silently degrades to an empty dict at the YAML-parse layer (`Custom03YamlOperations.DeserializeFile` swallows all exceptions) and then usually crashes anyway once required keys (`name` especially) turn out missing — throwing immediately is strictly more useful, not less faithful in any way that matters.
+- **Missing `body.txt` on a Text item**: `cp-files` returns `""`. Real .NET crashes with an uncaught `FileNotFoundException` (confirmed via a real captured production error in `packages/net-content-provider/architecture/features/devlogs-human-readable-backend-errors.md:113-123`). Softer on purpose.
+- **A child that can't be resolved when building a Folder's body map** (missing config, or a `Ref` whose target can't be dereferenced): `cp-files` skips it, the parent `GetItem` still succeeds. Real .NET lets that ONE bad child crash the ENTIRE parent Folder's `GetItem` (confirmed live: a real Folder containing one stale-`Ref` child throws all the way up through `ReadFolderWorker.SelectIndexQName`/`ListOfIndexesQNames`/`IfMineGetItem`). Softer on purpose — `cp-files` verified to return a normal, successful result for this exact real folder (`21d11bdc-f1f4-44d1-b61a-3fa6b039c641/03/18`) where the real API throws.
+- **`config.yaml` self-healing**: .NET auto-repairs missing `id`/`type`/`address` and (sometimes) writes the repair back to disk (`MigrationWorker.TryMigrateConfig`) — `cp-files` never writes, so a config missing `id`/`type`/`name` just throws `ContentProviderError` instead of being silently patched.
+- **No repo-group discovery beyond one level under `repos/`** (matches real local data and the actual `GuidGroupsHelper.IsUniRepoGroupFolder` code, which validates each direct child of `repos/` as itself being a GUID — no extra "group" layer; a QNAP-only two-level scheme mentioned in an earlier session's notes wasn't found in the real code).
+
+## What's still NOT implemented
+
+- No writes (`Put`/`PostParentItem` throw `ContentProviderError`) — Stage 3. Full write semantics (idempotent get-or-create for `PostParentItem`, a real `PutWriteFolderWorker` bug that mislabels a Folder as `type: Text` on `Put`, zero-padded numeric index allocation) are documented for future reference in `documentation/content-provider/next-tasks/typescript-migration-plan.md`.
+- No `refGuid` cross-check/self-heal on `Ref` dereferencing (see "Ref dereferencing" above).
