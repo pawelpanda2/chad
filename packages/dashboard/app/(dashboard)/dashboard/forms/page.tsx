@@ -695,95 +695,97 @@ function FormsPageContent() {
     ];
 
     return (
-      <div className="space-y-3">
-        <div className="flex items-center gap-3">
+      <EditorPageShell>
+        <div className="flex items-center gap-3 shrink-0">
           <Button variant="outline" size="sm" onClick={handleFormBack} className="gap-1 h-7 px-2">
             <ArrowLeft className="h-3 w-3" />Back
           </Button>
           <h2 className="text-lg font-bold">DAILY ENTRY</h2>
         </div>
-        <div className="mx-auto max-w-xl">
-          <form onSubmit={handleAddActionSubmit}>
-            <table className="w-full border-collapse text-sm">
-              <thead>
-                <tr>
-                  <th colSpan={2} className="border bg-green-100 dark:bg-green-950/50 px-4 py-3 text-center text-lg font-bold">
-                    DAILY ENTRY
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {dailyRows.map((row) => (
-                  <tr key={row.key}>
-                    <td className="border bg-muted/60 px-3 py-2 font-semibold w-1/2">{row.label}</td>
-                    <td className="border bg-amber-50 dark:bg-amber-950/30 px-2 py-1.5">
-                      {row.type === "date" && (
-                        <Input
-                          type="date"
-                          value={addActionData[row.key]}
-                          onChange={(e) => setAddActionData({ ...addActionData, [row.key]: e.target.value })}
-                          className="h-8 border-0 bg-transparent shadow-none focus-visible:ring-1"
-                        />
-                      )}
-                      {row.type === "yesno" && (
-                        <select
-                          value={addActionData[row.key]}
-                          onChange={(e) => setAddActionData({ ...addActionData, [row.key]: e.target.value })}
-                          className="h-8 w-full rounded-md border-0 bg-transparent px-1 text-sm outline-none"
+        <Card className="flex-1 gap-0 overflow-hidden py-0 max-w-xl">
+          <CardContent className="h-full min-h-0 overflow-auto p-0">
+            <form onSubmit={handleAddActionSubmit}>
+              <table className="w-full border-collapse text-sm">
+                <thead className="sticky top-0 z-10">
+                  <tr>
+                    <th colSpan={2} className="border bg-green-100 dark:bg-green-950/50 px-4 py-3 text-center text-lg font-bold">
+                      DAILY ENTRY
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {dailyRows.map((row) => (
+                    <tr key={row.key}>
+                      <td className="border bg-muted/60 px-3 py-2 font-semibold w-1/2">{row.label}</td>
+                      <td className="border bg-amber-50 dark:bg-amber-950/30 px-2 py-1.5">
+                        {row.type === "date" && (
+                          <Input
+                            type="date"
+                            value={addActionData[row.key]}
+                            onChange={(e) => setAddActionData({ ...addActionData, [row.key]: e.target.value })}
+                            className="h-8 border-0 bg-transparent shadow-none focus-visible:ring-1"
+                          />
+                        )}
+                        {row.type === "yesno" && (
+                          <select
+                            value={addActionData[row.key]}
+                            onChange={(e) => setAddActionData({ ...addActionData, [row.key]: e.target.value })}
+                            className="h-8 w-full rounded-md border-0 bg-transparent px-1 text-sm outline-none"
+                          >
+                            <option value="NIE">NIE</option>
+                            <option value="TAK">TAK</option>
+                          </select>
+                        )}
+                        {row.type === "text" && (
+                          <Input
+                            value={addActionData[row.key]}
+                            onChange={(e) => setAddActionData({ ...addActionData, [row.key]: e.target.value })}
+                            className="h-8 border-0 bg-transparent shadow-none text-right focus-visible:ring-1"
+                          />
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                  <tr>
+                    <td colSpan={2} className="border-0 h-2" />
+                  </tr>
+                  <tr>
+                    <td colSpan={2} className="border bg-green-200 dark:bg-green-900/60 p-0">
+                      <Button
+                        type="submit"
+                        disabled={isSubmitting}
+                        className="w-full rounded-none h-11 text-base font-semibold bg-transparent text-foreground hover:bg-green-300/60 dark:hover:bg-green-900 shadow-none"
+                        variant="ghost"
+                      >
+                        {isSubmitting ? "Saving..." : "SAVE DAY"}
+                      </Button>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="border bg-muted/60 px-3 py-2 font-semibold align-top">STATUS</td>
+                    <td className="border px-3 py-2 text-sm">
+                      {submitResult ? (
+                        <span
+                          className={`flex items-center gap-2 ${submitResult.type === "success" ? "text-green-700 dark:text-green-400" : "text-red-700 dark:text-red-400"}`}
                         >
-                          <option value="NIE">NIE</option>
-                          <option value="TAK">TAK</option>
-                        </select>
-                      )}
-                      {row.type === "text" && (
-                        <Input
-                          value={addActionData[row.key]}
-                          onChange={(e) => setAddActionData({ ...addActionData, [row.key]: e.target.value })}
-                          className="h-8 border-0 bg-transparent shadow-none text-right focus-visible:ring-1"
-                        />
+                          {submitResult.type === "success" ? (
+                            <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
+                          ) : (
+                            <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                          )}
+                          {submitResult.message}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">Fill in the form and click SAVE DAY.</span>
                       )}
                     </td>
                   </tr>
-                ))}
-                <tr>
-                  <td colSpan={2} className="border-0 h-2" />
-                </tr>
-                <tr>
-                  <td colSpan={2} className="border bg-green-200 dark:bg-green-900/60 p-0">
-                    <Button
-                      type="submit"
-                      disabled={isSubmitting}
-                      className="w-full rounded-none h-11 text-base font-semibold bg-transparent text-foreground hover:bg-green-300/60 dark:hover:bg-green-900 shadow-none"
-                      variant="ghost"
-                    >
-                      {isSubmitting ? "Saving..." : "SAVE DAY"}
-                    </Button>
-                  </td>
-                </tr>
-                <tr>
-                  <td className="border bg-muted/60 px-3 py-2 font-semibold align-top">STATUS</td>
-                  <td className="border px-3 py-2 text-sm">
-                    {submitResult ? (
-                      <span
-                        className={`flex items-center gap-2 ${submitResult.type === "success" ? "text-green-700 dark:text-green-400" : "text-red-700 dark:text-red-400"}`}
-                      >
-                        {submitResult.type === "success" ? (
-                          <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
-                        ) : (
-                          <AlertCircle className="h-4 w-4 flex-shrink-0" />
-                        )}
-                        {submitResult.message}
-                      </span>
-                    ) : (
-                      <span className="text-muted-foreground">Fill in the form and click SAVE DAY.</span>
-                    )}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </form>
-        </div>
-      </div>
+                </tbody>
+              </table>
+            </form>
+          </CardContent>
+        </Card>
+      </EditorPageShell>
     );
   }
 
@@ -793,24 +795,25 @@ function FormsPageContent() {
 
   if (selectedForm === "date_entry") {
     return (
-      <div className="space-y-3">
-        <div className="flex items-center gap-3">
+      <EditorPageShell>
+        <div className="flex items-center gap-3 shrink-0">
           <Button variant="outline" size="sm" onClick={handleFormBack} className="gap-1 h-7 px-2">
             <ArrowLeft className="h-3 w-3" />Back
           </Button>
           <h2 className="text-lg font-bold">DATE ENTRY</h2>
         </div>
-        <div className="mx-auto max-w-xl">
-          <form onSubmit={handleDateEntrySubmit}>
-            <table className="w-full border-collapse text-sm">
-              <thead>
-                <tr>
-                  <th colSpan={2} className="border bg-blue-100 dark:bg-blue-950/50 px-4 py-3 text-center text-lg font-bold">
-                    DATE ENTRY
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
+        <Card className="flex-1 gap-0 overflow-hidden py-0 max-w-xl">
+          <CardContent className="h-full min-h-0 overflow-auto p-0">
+            <form onSubmit={handleDateEntrySubmit}>
+              <table className="w-full border-collapse text-sm">
+                <thead className="sticky top-0 z-10">
+                  <tr>
+                    <th colSpan={2} className="border bg-blue-100 dark:bg-blue-950/50 px-4 py-3 text-center text-lg font-bold">
+                      DATE ENTRY
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
                 <tr>
                   <td className="border bg-muted/60 px-3 py-2 font-semibold w-1/2">DATA</td>
                   <td className="border bg-amber-50 dark:bg-amber-950/30 px-2 py-1.5">
@@ -922,11 +925,12 @@ function FormsPageContent() {
                     )}
                   </td>
                 </tr>
-              </tbody>
-            </table>
-          </form>
-        </div>
-      </div>
+                </tbody>
+              </table>
+            </form>
+          </CardContent>
+        </Card>
+      </EditorPageShell>
     );
   }
 
