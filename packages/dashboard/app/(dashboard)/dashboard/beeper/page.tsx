@@ -2,9 +2,11 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
+import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Search, MessageCircle, RefreshCw, Inbox, Users2 } from "lucide-react";
@@ -70,49 +72,42 @@ export default function BeeperContactsPage() {
 	const filtered = contacts.filter((c) => c.displayName.toLowerCase().includes(query.toLowerCase()));
 
 	return (
-		<div className="space-y-6">
-			<div className="flex items-center justify-between">
-				<div>
-					<h2 className="text-3xl font-bold tracking-tight">Beeper</h2>
-					<p className="text-muted-foreground">Contacts synced from Beeper (Telegram, WhatsApp, iMessage, Signal, ...).</p>
-				</div>
-				<div className="flex gap-2">
-					<Link
-						href="/dashboard/beeper/inbox"
-						className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm hover:bg-accent"
-					>
-						<Inbox className="h-4 w-4" /> Inbox
-					</Link>
-					<Link
-						href="/dashboard/beeper/merge"
-						className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm hover:bg-accent"
-					>
-						<Users2 className="h-4 w-4" /> Merge suggestions
-					</Link>
-				</div>
-			</div>
-
-			<div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-				<Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
-					<TabsList>
-						{TAB_OPTIONS.map((opt) => (
-							<TabsTrigger key={opt.value} value={opt.value}>
-								{opt.label}
-							</TabsTrigger>
-						))}
-					</TabsList>
-				</Tabs>
-				<div className="relative w-full sm:w-72">
-					<Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-					<Input
-						placeholder="Search contacts..."
-						className="pl-8"
-						value={query}
-						onChange={(e) => setQuery(e.target.value)}
-					/>
-				</div>
-			</div>
-
+		<DashboardPageShell
+			toolbar={
+				<>
+					<h2 className="text-lg font-bold">Beeper</h2>
+					<Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
+						<TabsList className="h-7">
+							{TAB_OPTIONS.map((opt) => (
+								<TabsTrigger key={opt.value} value={opt.value} className="text-xs">
+									{opt.label}
+								</TabsTrigger>
+							))}
+						</TabsList>
+					</Tabs>
+					<div className="relative">
+						<Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+						<Input
+							placeholder="Search contacts..."
+							className="pl-7 h-7 text-xs w-[200px]"
+							value={query}
+							onChange={(e) => setQuery(e.target.value)}
+						/>
+					</div>
+					<Button variant="outline" size="sm" className="gap-1 h-7 px-2 text-xs" asChild>
+						<Link href="/dashboard/beeper/inbox">
+							<Inbox className="h-3 w-3" /> Inbox
+						</Link>
+					</Button>
+					<Button variant="outline" size="sm" className="gap-1 h-7 px-2 text-xs" asChild>
+						<Link href="/dashboard/beeper/merge">
+							<Users2 className="h-3 w-3" /> Merge suggestions
+						</Link>
+					</Button>
+					<span className="ml-auto text-xs text-muted-foreground">{filtered.length} contacts</span>
+				</>
+			}
+		>
 			{loading ? (
 				<div className="flex items-center justify-center py-24 text-muted-foreground gap-2">
 					<RefreshCw className="h-4 w-4 animate-spin" /> Loading contacts...
@@ -163,6 +158,6 @@ export default function BeeperContactsPage() {
 					))}
 				</div>
 			)}
-		</div>
+		</DashboardPageShell>
 	);
 }

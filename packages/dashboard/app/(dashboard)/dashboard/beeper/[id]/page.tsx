@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, use } from "react";
 import Link from "next/link";
+import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -235,13 +236,35 @@ export default function BeeperContactDetailPage({ params }: { params: Promise<{ 
 
 	if (loading) {
 		return (
-			<div className="flex items-center justify-center py-24 text-muted-foreground gap-2">
-				<RefreshCw className="h-4 w-4 animate-spin" /> Loading contact...
-			</div>
+			<DashboardPageShell
+				toolbar={
+					<Button variant="outline" size="sm" className="gap-1 h-7 px-2" asChild>
+						<Link href="/dashboard/beeper">
+							<ArrowLeft className="h-3 w-3" />Back
+						</Link>
+					</Button>
+				}
+			>
+				<div className="flex items-center justify-center py-24 text-muted-foreground gap-2">
+					<RefreshCw className="h-4 w-4 animate-spin" /> Loading contact...
+				</div>
+			</DashboardPageShell>
 		);
 	}
 	if (!detail) {
-		return <div className="py-24 text-center text-muted-foreground">Contact not found.</div>;
+		return (
+			<DashboardPageShell
+				toolbar={
+					<Button variant="outline" size="sm" className="gap-1 h-7 px-2" asChild>
+						<Link href="/dashboard/beeper">
+							<ArrowLeft className="h-3 w-3" />Back
+						</Link>
+					</Button>
+				}
+			>
+				<div className="py-24 text-center text-muted-foreground">Contact not found.</div>
+			</DashboardPageShell>
+		);
 	}
 
 	const { contact, messages, timelineEvents } = detail;
@@ -257,17 +280,46 @@ export default function BeeperContactDetailPage({ params }: { params: Promise<{ 
 	let lastDay = "";
 
 	return (
-		<div className="space-y-6">
-			<div className="flex items-center gap-3">
-				<Link href="/dashboard/beeper" className="text-muted-foreground hover:text-foreground">
-					<ArrowLeft className="h-5 w-5" />
-				</Link>
-				<h2 className="text-2xl font-bold tracking-tight">{contact.displayName}</h2>
-			</div>
-
-			<div className="grid gap-6 lg:grid-cols-3">
+		<DashboardPageShell
+			scroll={false}
+			toolbar={
+				<>
+					<Button variant="outline" size="sm" className="gap-1 h-7 px-2" asChild>
+						<Link href="/dashboard/beeper">
+							<ArrowLeft className="h-3 w-3" />Back
+						</Link>
+					</Button>
+					<h2 className="text-lg font-bold">{contact.displayName}</h2>
+					<span className="ml-auto flex items-center gap-2">
+						<Button variant="outline" size="sm" className="gap-1 h-7 px-2 text-xs" onClick={copyForAI}>
+							<Copy className="h-3 w-3" /> Copy for AI
+						</Button>
+						<Button
+							variant="outline"
+							size="sm"
+							className="gap-1 h-7 px-2 text-xs"
+							onClick={() => setEventDialogOpen(true)}
+						>
+							<CalendarPlus className="h-3 w-3" /> Add event
+						</Button>
+						<Button
+							variant="outline"
+							size="sm"
+							className="gap-1 h-7 px-2 text-xs"
+							onClick={() => setMergeDialogOpen(true)}
+						>
+							<MergeIcon className="h-3 w-3" /> Merge
+						</Button>
+						<Button size="sm" className="gap-1 h-7 px-2 text-xs" onClick={saveProfile} disabled={saving}>
+							<Save className="h-3 w-3" /> {saving ? "Saving..." : "Save"}
+						</Button>
+					</span>
+				</>
+			}
+		>
+			<div className="grid h-full min-h-0 gap-4 lg:grid-cols-3">
 				{/* Profile column */}
-				<Card className="lg:col-span-1 h-fit">
+				<Card className="lg:col-span-1 overflow-y-auto">
 					<CardContent className="space-y-4 p-4">
 						<div className="flex flex-col items-center gap-2 text-center">
 							<Avatar className="h-20 w-20">
@@ -299,9 +351,6 @@ export default function BeeperContactDetailPage({ params }: { params: Promise<{ 
 							<label className="text-xs font-medium text-muted-foreground">Notes</label>
 							<Textarea rows={4} value={notes} onChange={(e) => setNotes(e.target.value)} />
 						</div>
-						<Button onClick={saveProfile} disabled={saving} className="w-full" size="sm">
-							<Save className="mr-2 h-4 w-4" /> {saving ? "Saving..." : "Save profile"}
-						</Button>
 
 						<div className="space-y-1">
 							<label className="text-xs font-medium text-muted-foreground">Tags</label>
@@ -341,23 +390,11 @@ export default function BeeperContactDetailPage({ params }: { params: Promise<{ 
 								</ul>
 							</div>
 						)}
-
-						<div className="flex flex-col gap-2 pt-2">
-							<Button variant="outline" size="sm" onClick={copyForAI}>
-								<Copy className="mr-2 h-4 w-4" /> Copy for AI
-							</Button>
-							<Button variant="outline" size="sm" onClick={() => setEventDialogOpen(true)}>
-								<CalendarPlus className="mr-2 h-4 w-4" /> Add timeline event
-							</Button>
-							<Button variant="outline" size="sm" onClick={() => setMergeDialogOpen(true)}>
-								<MergeIcon className="mr-2 h-4 w-4" /> Merge with another contact
-							</Button>
-						</div>
 					</CardContent>
 				</Card>
 
 				{/* Timeline column */}
-				<Card className="lg:col-span-2 flex max-h-[calc(100vh-220px)] flex-col">
+				<Card className="lg:col-span-2 flex min-h-0 flex-col">
 					<CardHeader className="border-b pb-3">
 						<span className="font-semibold">Conversation & timeline</span>
 					</CardHeader>
@@ -498,6 +535,6 @@ export default function BeeperContactDetailPage({ params }: { params: Promise<{ 
 					</div>
 				</DialogContent>
 			</Dialog>
-		</div>
+		</DashboardPageShell>
 	);
 }

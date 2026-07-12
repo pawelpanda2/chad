@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -93,20 +94,22 @@ export default function BeeperMergePage() {
 	}
 
 	return (
-		<div className="space-y-6">
-			<div className="flex items-center gap-3">
-				<Link href="/dashboard/beeper" className="text-muted-foreground hover:text-foreground">
-					<ArrowLeft className="h-5 w-5" />
-				</Link>
-				<div>
-					<h2 className="text-3xl font-bold tracking-tight">Merge suggestions</h2>
-					<p className="text-muted-foreground">
-						Fuzzy name matches among contacts with direct-message history. Review each pair — nothing is
-						merged automatically.
-					</p>
-				</div>
-			</div>
-
+		<DashboardPageShell
+			toolbar={
+				<>
+					<Button variant="outline" size="sm" className="gap-1 h-7 px-2" asChild>
+						<Link href="/dashboard/beeper">
+							<ArrowLeft className="h-3 w-3" />Back
+						</Link>
+					</Button>
+					<h2 className="text-lg font-bold">Merge suggestions</h2>
+					<span className="text-xs text-muted-foreground">
+						Fuzzy name matches among direct-DM contacts. Nothing is merged automatically.
+					</span>
+					<span className="ml-auto text-xs text-muted-foreground">{suggestions.length} pairs</span>
+				</>
+			}
+		>
 			{loading ? (
 				<div className="flex items-center justify-center py-24 text-muted-foreground gap-2">
 					<RefreshCw className="h-4 w-4 animate-spin" /> Computing suggestions...
@@ -144,6 +147,6 @@ export default function BeeperMergePage() {
 					))}
 				</div>
 			)}
-		</div>
+		</DashboardPageShell>
 	);
 }
