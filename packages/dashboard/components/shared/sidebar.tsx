@@ -29,6 +29,23 @@ import { Button } from "@/components/ui/button";
 
 const sidebarGroups = [
 	{
+		title: "ACTIONS",
+		items: [
+			{
+				title: "Forms",
+				href: "/dashboard/forms",
+				icon: ClipboardList,
+				badge: null,
+			},
+			{
+				title: "Views",
+				href: "/dashboard/views",
+				icon: Table,
+				badge: null,
+			},
+		],
+	},
+	{
 		title: "MESSAGES / LEADS",
 		items: [
 			{
@@ -53,18 +70,6 @@ const sidebarGroups = [
 				title: "Leads",
 				href: "/dashboard/leads",
 				icon: UserPlus,
-				badge: null,
-			},
-			{
-				title: "Forms",
-				href: "/dashboard/forms",
-				icon: ClipboardList,
-				badge: null,
-			},
-			{
-				title: "Views",
-				href: "/dashboard/views",
-				icon: Table,
 				badge: null,
 			},
 			{
