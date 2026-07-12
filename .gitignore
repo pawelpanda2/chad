@@ -183,3 +183,9 @@ Desktop.ini
 # `docker compose up` / `docker run` — never the source of truth, always
 # regenerated from the text embedded in that environment's 01_config.sh
 .runtime/
+
+# Per-host release-tag records for CHAD's own Docker images (chad-dashboard,
+# chad-content-provider-api) — written by each environment's 02_build.sh,
+# read by 03_begin.sh. State, not source of truth: never committed. See
+# documentation/ai-docs/deploy/image-tagging-standard.md.
+.image-tag.*.env

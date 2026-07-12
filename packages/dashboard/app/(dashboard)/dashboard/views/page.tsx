@@ -3,11 +3,12 @@
 import Link from "next/link";
 import { Suspense, useState, useEffect, useCallback, useMemo } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { EditorPageShell } from "@/components/shared/editor-page-shell";
+import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
 import { buildLeadDetailsHref, getLeadDetailsHref } from "@/lib/lead-links";
+import { ErrorBox } from "@/components/shared/error-box";
+import { PreviewContent } from "@/components/shared/headers-renderer";
 import {
   RefreshCw,
   ArrowLeft,
@@ -17,6 +18,7 @@ import {
   ArrowDown,
   User,
   CheckCircle2,
+  FileText,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -41,7 +43,13 @@ interface LeadDashboardItem {
   hasContacts: boolean;
 }
 
-type ViewType = null | "tracker" | "dates" | "leads";
+interface ReportEntry {
+  itemName: string;
+  loca: string;
+  body?: string;
+}
+
+type ViewType = null | "tracker" | "dates" | "leads" | "reports";
 type SortDir = "asc" | "desc";
 
 // ============================================================================
@@ -125,12 +133,17 @@ function ViewsPageContent() {
   // uses router.push (a new history entry), never replace.
   const viewParam = searchParams.get("view");
   const selectedView: ViewType =
-    viewParam === "tracker" || viewParam === "dates" || viewParam === "leads" ? viewParam : null;
+    viewParam === "tracker" || viewParam === "dates" || viewParam === "leads" || viewParam === "reports"
+      ? viewParam
+      : null;
   const returnTo = searchParams.toString() ? `${pathname}?${searchParams.toString()}` : pathname;
 
   const [dateEntries, setDateEntries] = useState<DateEntryRecord[]>([]);
   const [dailyEntries, setDailyEntries] = useState<DailyEntryRecord[]>([]);
   const [leads, setLeads] = useState<LeadDashboardItem[]>([]);
+  const [reports, setReports] = useState<ReportEntry[]>([]);
+  const [reportsError, setReportsError] = useState<string | null>(null);
+  const [selectedReportLoca, setSelectedReportLoca] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
@@ -140,13 +153,16 @@ function ViewsPageContent() {
   const fetchData = useCallback(async () => {
     setIsLoading(true);
     setError(null);
+    setReportsError(null);
     try {
-      const [viewsRes, leadsRes] = await Promise.all([
+      const [viewsRes, leadsRes, reportsRes] = await Promise.all([
         fetch("/api/views"),
         fetch("/api/leads-dashboard"),
+        fetch("/api/views/reports"),
       ]);
       const viewsResult = await viewsRes.json();
       const leadsResult = await leadsRes.json();
+      const reportsResult = await reportsRes.json();
 
       if (viewsResult.success) {
         setDateEntries(viewsResult.dateEntries || []);
@@ -158,6 +174,16 @@ function ViewsPageContent() {
 
       if (Array.isArray(leadsResult)) {
         setLeads(leadsResult);
+      }
+
+      // Reports errors are kept separate from the tracker/dates error above
+      // so a Reports-only failure (e.g. views/reports not found) doesn't
+      // block the other views, and is never silently shown as "no reports".
+      if (reportsResult.success) {
+        setReports(reportsResult.reports || []);
+      } else {
+        setReportsError(reportsResult.error || "Failed to fetch reports");
+        setReports([]);
       }
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : "Unknown error";
@@ -178,6 +204,7 @@ function ViewsPageContent() {
     setFilter("");
     setSortKey(selectedView === "dates" ? "DATA" : selectedView === "tracker" ? "DATE" : "");
     setSortDir(selectedView === "dates" ? "desc" : "asc");
+    setSelectedReportLoca(null);
   }, [selectedView]);
 
   const handleRefresh = () => {
@@ -232,19 +259,30 @@ function ViewsPageContent() {
     );
   }, [leads, filter]);
 
+  const filteredReports = useMemo(() => {
+    if (!filter.trim()) return reports;
+    const f = filter.toLowerCase().trim();
+    return reports.filter((r) => r.itemName.toLowerCase().includes(f));
+  }, [reports, filter]);
+
+  const selectedReport = useMemo(
+    () => reports.find((r) => r.loca === selectedReportLoca) || null,
+    [reports, selectedReportLoca]
+  );
+
   // ============================================================================
   // Render: View Selection Menu
   // ============================================================================
 
   if (!selectedView) {
     return (
-      <EditorPageShell>
-        <div>
-          <h2 className="text-xl font-bold tracking-tight">Views</h2>
-          <p className="text-sm text-muted-foreground">Select a view to display</p>
-        </div>
-
-        <div className="grid grid-cols-3 gap-2">
+      <DashboardPageShell toolbar={<h2 className="text-lg font-bold">Views</h2>}>
+        {/*
+          Fixed 4-column grid (same as Forms): the 3 buttons occupy 3 cells and
+          the 4th cell stays empty — buttons keep their column width instead of
+          stretching to fill the row.
+        */}
+        <div className="grid grid-cols-4 gap-2">
           <button
             type="button"
             onClick={() => handleViewSelect("tracker")}
@@ -269,8 +307,16 @@ function ViewsPageContent() {
             <span className="font-semibold text-sm">LEADS</span>
             <span className="text-xs text-muted-foreground mt-0.5">All leads</span>
           </button>
+          <button
+            type="button"
+            onClick={() => handleViewSelect("reports")}
+            className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
+          >
+            <span className="font-semibold text-sm">REPORTS</span>
+            <span className="text-xs text-muted-foreground mt-0.5">Saved reports</span>
+          </button>
         </div>
-      </EditorPageShell>
+      </DashboardPageShell>
     );
   }
 
@@ -281,64 +327,56 @@ function ViewsPageContent() {
 
   if (selectedView === "leads") {
     return (
-      <EditorPageShell>
-        <div className="flex flex-wrap items-center gap-3 shrink-0">
-          <Button variant="outline" size="sm" onClick={handleBack} className="gap-1 h-7 px-2">
-            <ArrowLeft className="h-3 w-3" />Back
-          </Button>
-          <div className="flex items-center gap-2">
-            <User className="h-4 w-4" />
-            <h2 className="text-lg font-bold">Views / LEADS</h2>
-          </div>
-          <div className="relative">
-            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-            <Input
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-              placeholder="Filter leads..."
-              className="pl-7 h-7 text-xs w-[220px]"
-            />
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleRefresh}
-            disabled={isLoading}
-            className="gap-2 h-7 text-xs ml-auto"
-          >
-            <RefreshCw className={`h-3 w-3 ${isLoading ? "animate-spin" : ""}`} />
-            Refresh
-          </Button>
-          <span className="text-xs text-muted-foreground">
-            {filteredLeads.length} of {leads.length} leads
-          </span>
-        </div>
+      <DashboardPageShell
+        toolbar={
+          <>
+            <Button variant="outline" size="sm" onClick={handleBack} className="gap-1 h-7 px-2">
+              <ArrowLeft className="h-3 w-3" />Back
+            </Button>
+            <div className="flex items-center gap-2">
+              <User className="h-4 w-4" />
+              <h2 className="text-lg font-bold">Views / LEADS</h2>
+            </div>
+            <div className="relative">
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+                placeholder="Filter leads..."
+                className="pl-7 h-7 text-xs w-[220px]"
+              />
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRefresh}
+              disabled={isLoading}
+              className="gap-2 h-7 text-xs ml-auto"
+            >
+              <RefreshCw className={`h-3 w-3 ${isLoading ? "animate-spin" : ""}`} />
+              Refresh
+            </Button>
+            <span className="text-xs text-muted-foreground">
+              {filteredLeads.length} of {leads.length} leads
+            </span>
+          </>
+        }
+      >
+        <ErrorBox message={error} className="mb-2" />
 
-        {error && (
-          <div className="p-2 rounded-lg bg-red-50 text-red-700 border border-red-200 text-xs shrink-0">
-            Error: {error}
+        {isLoading ? (
+          <div className="flex items-center gap-2 py-4 text-muted-foreground">
+            <RefreshCw className="h-4 w-4 animate-spin" />
+            <span>Loading leads...</span>
           </div>
-        )}
-
-        <Card className="flex-1 gap-0 overflow-hidden py-0">
-          <CardContent className="h-full min-h-0 p-[10px]">
-            <div className="h-full overflow-auto divide-y">
-              {isLoading ? (
-                <div className="flex items-center justify-center py-12">
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <RefreshCw className="h-4 w-4 animate-spin" />
-                    <span>Loading leads...</span>
-                  </div>
-                </div>
-              ) : filteredLeads.length === 0 ? (
-                <div className="flex items-center justify-center py-12">
-                  <div className="flex flex-col items-center gap-3 text-muted-foreground text-center px-4">
-                    <User className="h-12 w-12 opacity-20" />
-                    <span className="text-sm">No leads found</span>
-                  </div>
-                </div>
-              ) : (
-                filteredLeads.map((lead) => (
+        ) : filteredLeads.length === 0 ? (
+          <div className="flex items-center gap-3 py-4 text-muted-foreground">
+            <User className="h-8 w-8 opacity-20" />
+            <span className="text-sm">No leads found</span>
+          </div>
+        ) : (
+          <div className="divide-y">
+              {filteredLeads.map((lead) => (
                   <div
                     key={lead.leadKey}
                     className="flex items-center rounded-lg px-[10px] py-[10px] transition-colors group hover:bg-accent"
@@ -357,16 +395,15 @@ function ViewsPageContent() {
                         </span>
                       </Link>
                       <div className="flex items-center gap-2 min-w-0 flex-1">
-                        <span className="font-medium text-sm truncate select-text">{lead.leadName}</span>
                         <Link
                           href={buildLeadDetailsHref({
                             leadName: lead.leadName,
                             leadLoca: lead.loca,
                             returnTo,
                           })}
-                          className="text-xs text-primary underline underline-offset-4"
+                          className="font-medium text-sm truncate hover:text-primary hover:underline"
                         >
-                          info
+                          {lead.leadName}
                         </Link>
                         {lead.hasContacts ? (
                           <span className="flex items-center gap-1 text-xs text-green-600">
@@ -379,12 +416,99 @@ function ViewsPageContent() {
                       </div>
                     </div>
                   </div>
-                ))
-              )}
+                ))}
+          </div>
+        )}
+      </DashboardPageShell>
+    );
+  }
+
+  // ============================================================================
+  // Render: Reports
+  // ============================================================================
+
+  if (selectedView === "reports") {
+    return (
+      <DashboardPageShell
+        toolbar={
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={selectedReport ? () => setSelectedReportLoca(null) : handleBack}
+              className="gap-1 h-7 px-2"
+            >
+              <ArrowLeft className="h-3 w-3" />Back
+            </Button>
+            <div className="flex items-center gap-2">
+              <FileText className="h-4 w-4" />
+              <h2 className="text-lg font-bold">
+                Views / REPORTS{selectedReport ? ` / ${selectedReport.itemName}` : ""}
+              </h2>
             </div>
-          </CardContent>
-        </Card>
-      </EditorPageShell>
+            {!selectedReport && (
+              <div className="relative">
+                <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                <Input
+                  value={filter}
+                  onChange={(e) => setFilter(e.target.value)}
+                  placeholder="Filter reports..."
+                  className="pl-7 h-7 text-xs w-[220px]"
+                />
+              </div>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRefresh}
+              disabled={isLoading}
+              className="gap-2 h-7 text-xs ml-auto"
+            >
+              <RefreshCw className={`h-3 w-3 ${isLoading ? "animate-spin" : ""}`} />
+              Refresh
+            </Button>
+            {!selectedReport && (
+              <span className="text-xs text-muted-foreground">
+                {filteredReports.length} of {reports.length} reports
+              </span>
+            )}
+          </>
+        }
+      >
+        <ErrorBox message={reportsError} className="mb-2" />
+
+        {selectedReport ? (
+          <div className="h-full overflow-auto">
+            <PreviewContent body={selectedReport.body || ""} />
+          </div>
+        ) : isLoading ? (
+          <div className="flex items-center gap-2 py-4 text-muted-foreground">
+            <RefreshCw className="h-4 w-4 animate-spin" />
+            <span>Loading reports...</span>
+          </div>
+        ) : reportsError ? null : filteredReports.length === 0 ? (
+          <div className="flex items-center gap-3 py-4 text-muted-foreground">
+            <FileText className="h-8 w-8 opacity-20" />
+            <span className="text-sm">No reports yet. Use Forms to add one.</span>
+          </div>
+        ) : (
+          <div className="divide-y">
+            {filteredReports.map((report) => (
+              <button
+                key={report.loca}
+                type="button"
+                onClick={() => setSelectedReportLoca(report.loca)}
+                className="flex w-full items-center gap-3 rounded-lg px-[10px] py-[10px] text-left transition-colors hover:bg-accent"
+              >
+                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-primary">
+                  <FileText className="h-3.5 w-3.5" />
+                </span>
+                <span className="font-medium text-sm truncate">{report.itemName}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </DashboardPageShell>
     );
   }
 
@@ -397,56 +521,53 @@ function ViewsPageContent() {
   const isTracker = selectedView === "tracker";
 
   return (
-    <EditorPageShell>
-      {/* Header */}
-      <div className="flex flex-wrap items-center gap-3 shrink-0">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleBack}
-          className="gap-1 h-7 px-2"
-        >
-          <ArrowLeft className="h-3 w-3" />Back
-        </Button>
-        <div className="flex items-center gap-2">
-          <TableIcon className="h-4 w-4" />
-          <h2 className="text-lg font-bold">Views / {viewTitle}</h2>
-        </div>
-        <div className="relative">
-          <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-          <Input
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            placeholder="Filter rows..."
-            className="pl-7 h-7 text-xs w-[220px]"
-          />
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleRefresh}
-          disabled={isLoading}
-          className="gap-2 h-7 text-xs ml-auto"
-        >
-          <RefreshCw className={`h-3 w-3 ${isLoading ? 'animate-spin' : ''}`} />
-          Refresh
-        </Button>
-        <span className="text-xs text-muted-foreground">
-          {currentEntries.length} of {(selectedView === "dates" ? dateEntries : dailyEntries).length}
-        </span>
-      </div>
-
+    <DashboardPageShell
+      scroll={false}
+      padded={false}
+      toolbar={
+        <>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleBack}
+            className="gap-1 h-7 px-2"
+          >
+            <ArrowLeft className="h-3 w-3" />Back
+          </Button>
+          <div className="flex items-center gap-2">
+            <TableIcon className="h-4 w-4" />
+            <h2 className="text-lg font-bold">Views / {viewTitle}</h2>
+          </div>
+          <div className="relative">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <Input
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              placeholder="Filter rows..."
+              className="pl-7 h-7 text-xs w-[220px]"
+            />
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRefresh}
+            disabled={isLoading}
+            className="gap-2 h-7 text-xs ml-auto"
+          >
+            <RefreshCw className={`h-3 w-3 ${isLoading ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+          <span className="text-xs text-muted-foreground">
+            {currentEntries.length} of {(selectedView === "dates" ? dateEntries : dailyEntries).length}
+          </span>
+        </>
+      }
+    >
       {/* Error display */}
-      {error && (
-        <div className="p-2 rounded-lg bg-red-50 text-red-700 border border-red-200 text-xs shrink-0">
-          Error: {error}
-        </div>
-      )}
+      <ErrorBox message={error} className="mb-1 shrink-0" />
 
       {/* Table — fills remaining space, scrolls internally only */}
-      <Card className="flex-1 gap-0 overflow-hidden py-0">
-        <CardContent className="h-full min-h-0 p-0">
-          <div className="h-full overflow-auto">
+      <div className="min-h-0 flex-1 overflow-auto">
             <table className="w-full border-collapse text-xs">
               <thead className="sticky top-0 z-10">
                 {isTracker && (
@@ -509,9 +630,7 @@ function ViewsPageContent() {
                 )}
               </tbody>
             </table>
-          </div>
-        </CardContent>
-      </Card>
-    </EditorPageShell>
+      </div>
+    </DashboardPageShell>
   );
 }

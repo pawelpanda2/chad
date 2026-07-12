@@ -20,12 +20,17 @@ echo ""
 
 cd "$REPO_ROOT"
 
-# Plain date+time tag, same convention as 04_qnap_test/05_qnap_prod.
+# Plain date+time tag, same convention as 04_qnap_test/05_qnap_prod. Own CHAD
+# images never get a `:latest` tag (see
+# documentation/ai-docs/deploy/image-tagging-standard.md) — this is the ONLY
+# tag this build produces.
 IMAGE_TAG="$(date +'%y%m%d_%H%M%S')"
 export IMAGE_TAG
 
 docker compose -p "$COMPOSE_PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" build --pull
 
-docker tag "chad-content-provider-api:$IMAGE_TAG" "chad-content-provider-api:latest"
+# Only reached if `build` succeeded (set -e) — never records a tag for a
+# failed build.
+write_image_tag "$(content_provider_image_tag_file)" "$IMAGE_TAG"
 
-log_ok "Image built and tagged: latest, $IMAGE_TAG"
+log_ok "Image built: chad-content-provider-api:$IMAGE_TAG"

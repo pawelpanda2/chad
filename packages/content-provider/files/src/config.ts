@@ -21,9 +21,9 @@
  * read-only Stage 2 provider.
  */
 
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile, mkdir } from "node:fs/promises";
 import path from "node:path";
-import { parse as parseYaml } from "yaml";
+import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import type { CpConfig, CpItemType } from "cp-core";
 import { ContentProviderError } from "cp-core";
 
@@ -74,4 +74,14 @@ export async function readConfig(itemDir: string): Promise<CpConfig> {
   }
 
   return dict as CpConfig;
+}
+
+/**
+ * Stage 3 write. Creates `itemDir` (recursively) if it doesn't exist yet
+ * — matches .NET writing a fresh item's directory + config.yaml together
+ * (`PostWriteTextWorker`/`PostWriteFolderWorker`/`PutWriteTextWorker`).
+ */
+export async function writeConfig(itemDir: string, config: CpConfig): Promise<void> {
+  await mkdir(itemDir, { recursive: true });
+  await writeFile(getConfigPath(itemDir), stringifyYaml(config), "utf-8");
 }

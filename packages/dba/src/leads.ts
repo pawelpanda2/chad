@@ -970,7 +970,7 @@ export interface DailyEntryItem {
 
 /**
  * Gets every child Text-item of a single folder (identified by parent
- * logical-name path, e.g. ["actions", "dates"]), with each child's own
+ * logical-name path, e.g. ["views", "dates"]), with each child's own
  * body fetched individually.
  *
  * This mirrors the PROVEN working pattern from getMsgPlannerDateFolders
@@ -985,7 +985,7 @@ export interface DailyEntryItem {
  * (physicalKey -> logicalName), building each child's loca as
  * `${folderLoca}/${physicalKey}` — exactly what Msg Planner does.
  *
- * @param parentNames - logical-name path to the folder, e.g. ["actions", "dates"]
+ * @param parentNames - logical-name path to the folder, e.g. ["views", "dates"]
  */
 async function getAllChildTextItems(
   parentNames: string[]
@@ -1040,20 +1040,20 @@ async function getAllChildTextItems(
 }
 
 /**
- * Gets all date entries from the actions/dates folder.
+ * Gets all date entries from the views/dates folder.
  *
  * @returns Promise resolving to array of date entry items
  */
 export async function getAllDateEntries(): Promise<DateEntryItem[]> {
   try {
-    return await getAllChildTextItems(["actions", "dates"]);
+    return await getAllChildTextItems(["views", "dates"]);
   } catch {
     return [];
   }
 }
 
 /**
- * Gets all daily entries from the actions/daily folder.
+ * Gets all daily entries from the views/daily folder.
  *
  * Note: The body is returned as a raw string. YAML parsing should be done
  * in the dashboard layer where js-yaml is available.
@@ -1062,21 +1062,21 @@ export async function getAllDateEntries(): Promise<DateEntryItem[]> {
  */
 export async function getAllDailyEntries(): Promise<DailyEntryItem[]> {
   try {
-    return await getAllChildTextItems(["actions", "daily"]);
+    return await getAllChildTextItems(["views", "daily"]);
   } catch {
     return [];
   }
 }
 
 /**
- * Saves a date entry to the actions/dates folder.
- * 
+ * Saves a date entry to the views/dates folder.
+ *
  * Flow:
- * 1. Ensure actions folder exists (PostParentItem on root)
- * 2. Ensure dates folder exists under actions
+ * 1. Ensure views folder exists (PostParentItem on root)
+ * 2. Ensure dates folder exists under views
  * 3. Create text item with the entry name
  * 4. Put YAML body into the text item
- * 
+ *
  * @param itemName - The name of the entry (e.g., "26-07-10")
  * @param bodyYaml - The YAML body content
  * @returns Promise resolving to { itemName, loca, success }
@@ -1085,30 +1085,30 @@ export async function saveDateEntry(
   itemName: string,
   bodyYaml: string
 ): Promise<{ itemName: string; loca: string; success: boolean }> {
-  // Step 1: Get or create actions folder under root
-  const actionsResult = await invokeContentProvider([
+  // Step 1: Get or create views folder under root
+  const viewsResult = await invokeContentProvider([
     "IRepoService",
     "IItemWorker",
     "PostParentItem",
     getCurrentRepoGuid(),
     "",  // root loca
     "Folder",
-    "actions",
+    "views",
   ]);
 
-  if (!actionsResult?.Settings?.address) {
-    throw new Error("Failed to get or create actions folder");
+  if (!viewsResult?.Settings?.address) {
+    throw new Error("Failed to get or create views folder");
   }
 
-  const actionsLoca = actionsResult.Settings.address.replace(`${getCurrentRepoGuid()}/`, "");
+  const viewsLoca = viewsResult.Settings.address.replace(`${getCurrentRepoGuid()}/`, "");
 
-  // Step 2: Get or create dates folder under actions
+  // Step 2: Get or create dates folder under views
   const datesResult = await invokeContentProvider([
     "IRepoService",
     "IItemWorker",
     "PostParentItem",
     getCurrentRepoGuid(),
-    actionsLoca,
+    viewsLoca,
     "Folder",
     "dates",
   ]);
@@ -1156,14 +1156,14 @@ export async function saveDateEntry(
 }
 
 /**
- * Saves a daily entry to the actions/daily folder.
- * 
+ * Saves a daily entry to the views/daily folder.
+ *
  * Flow:
- * 1. Ensure actions folder exists (PostParentItem on root)
- * 2. Ensure daily folder exists under actions
+ * 1. Ensure views folder exists (PostParentItem on root)
+ * 2. Ensure daily folder exists under views
  * 3. Create text item with the entry name
  * 4. Put YAML body into the text item
- * 
+ *
  * @param itemName - The name of the entry (e.g., "26-07-10")
  * @param bodyYaml - The YAML body content
  * @returns Promise resolving to { itemName, loca, success }
@@ -1172,30 +1172,30 @@ export async function saveDailyEntry(
   itemName: string,
   bodyYaml: string
 ): Promise<{ itemName: string; loca: string; success: boolean }> {
-  // Step 1: Get or create actions folder under root
-  const actionsResult = await invokeContentProvider([
+  // Step 1: Get or create views folder under root
+  const viewsResult = await invokeContentProvider([
     "IRepoService",
     "IItemWorker",
     "PostParentItem",
     getCurrentRepoGuid(),
     "",  // root loca
     "Folder",
-    "actions",
+    "views",
   ]);
 
-  if (!actionsResult?.Settings?.address) {
-    throw new Error("Failed to get or create actions folder");
+  if (!viewsResult?.Settings?.address) {
+    throw new Error("Failed to get or create views folder");
   }
 
-  const actionsLoca = actionsResult.Settings.address.replace(`${getCurrentRepoGuid()}/`, "");
+  const viewsLoca = viewsResult.Settings.address.replace(`${getCurrentRepoGuid()}/`, "");
 
-  // Step 2: Get or create daily folder under actions
+  // Step 2: Get or create daily folder under views
   const dailyResult = await invokeContentProvider([
     "IRepoService",
     "IItemWorker",
     "PostParentItem",
     getCurrentRepoGuid(),
-    actionsLoca,
+    viewsLoca,
     "Folder",
     "daily",
   ]);
@@ -1418,6 +1418,104 @@ export async function getLeadMsgWorkoutsByLoca(leadLoca: string): Promise<MsgWor
 }
 
 /**
+ * Ensures a lead has its standard sub-items: a "contacts" Text item and a
+ * "msg workout" Folder.
+ *
+ * Uses PostParentItem, which is find-or-create (see
+ * documentation/dba/post-parent-item.md): for a lead that already has the
+ * items it returns the existing ones and creates nothing — so this is
+ * idempotent and safe to call repeatedly. The Content Provider stores the
+ * logical name ("contacts" / "msg workout") in each item's config while the
+ * physical child folders stay numeric; nothing here builds a domain-named
+ * physical folder by hand.
+ *
+ * Why this exists: leads created before the sub-items were guaranteed (or by
+ * other tools) lack the "msg workout" folder, and GetByNames2 then returns an
+ * empty HTTP body which surfaces as "Empty response body … 'msg workout'" in
+ * lead details. Ensuring the folder exists makes GetByNames2 return an empty
+ * (but valid) folder instead of an error.
+ *
+ * All raw CP access stays inside dba; callers pass only the numeric leadLoca.
+ */
+export async function ensureLeadSubItems(leadLoca: string): Promise<void> {
+  const repo = getCurrentRepoGuid();
+  if (leadLoca.includes(repo)) {
+    throw new Error(
+      `Invalid leadLoca for ensureLeadSubItems: must not contain repo GUID (got "${leadLoca}").`,
+    );
+  }
+
+  // find-or-create "contacts" (Text)
+  await invokeContentProvider([
+    "IRepoService",
+    "IItemWorker",
+    "PostParentItem",
+    repo,
+    leadLoca,
+    "Text",
+    "contacts",
+  ]);
+
+  // find-or-create "msg workout" (Folder)
+  await invokeContentProvider([
+    "IRepoService",
+    "IItemWorker",
+    "PostParentItem",
+    repo,
+    leadLoca,
+    "Folder",
+    "msg workout",
+  ]);
+}
+
+/** Result of a bulk sub-item backfill run. */
+export interface EnsureAllLeadsResult {
+  total: number;
+  ensured: number;
+  errors: Array<{ leadKey: string; leadLoca: string; error: string }>;
+}
+
+/**
+ * Backfills the standard sub-items ("contacts" + "msg workout") for EVERY lead.
+ * Idempotent (find-or-create), safe to run repeatedly. Iterates the same
+ * leads/all-items map used elsewhere and resolves each lead's numeric loca as
+ * `${leadsLoca}/${leadKey}`.
+ */
+export async function ensureAllLeadsSubItems(): Promise<EnsureAllLeadsResult> {
+  const repo = getCurrentRepoGuid();
+  const allLeadsResponse = await GetAllLeads();
+
+  const body =
+    allLeadsResponse?.Body && typeof allLeadsResponse.Body === "object"
+      ? (allLeadsResponse.Body as Record<string, unknown>)
+      : {};
+
+  const leadsLoca = allLeadsResponse?.Settings?.address
+    ? allLeadsResponse.Settings.address.replace(`${repo}/`, "")
+    : "";
+
+  const keys = Object.keys(body);
+  const errors: EnsureAllLeadsResult["errors"] = [];
+  let ensured = 0;
+
+  for (const leadKey of keys) {
+    const leadLoca = `${leadsLoca}/${leadKey}`;
+    try {
+      await ensureLeadSubItems(leadLoca);
+      ensured++;
+    } catch (e) {
+      errors.push({
+        leadKey,
+        leadLoca,
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
+
+  return { total: keys.length, ensured, errors };
+}
+
+/**
  * Extended lead details data including msg workouts
  */
 export interface LeadDetailsDataWithWorkouts extends LeadDetailsData {
@@ -1439,6 +1537,19 @@ export interface LeadDetailsDataWithWorkouts extends LeadDetailsData {
  * @returns Promise resolving to LeadDetailsDataWithWorkouts
  */
 export async function getLeadDetailsWithWorkouts(leadName: string, leadLoca: string): Promise<LeadDetailsDataWithWorkouts> {
+  // Auto-heal: make sure this lead has its "contacts" and "msg workout"
+  // sub-items before reading them (find-or-create, idempotent). Fixes leads
+  // created before the sub-items were guaranteed and avoids the "Empty response
+  // body … 'msg workout'" error. Never fail details just because heal failed.
+  try {
+    await ensureLeadSubItems(leadLoca);
+  } catch (e) {
+    console.error(
+      `[getLeadDetailsWithWorkouts] ensureLeadSubItems failed for "${leadLoca}":`,
+      e instanceof Error ? e.message : String(e),
+    );
+  }
+
   // Get basic lead details (contacts)
   const basicDetails = await getLeadDetails(leadName, leadLoca);
 

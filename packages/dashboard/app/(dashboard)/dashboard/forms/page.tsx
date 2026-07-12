@@ -1,12 +1,13 @@
 "use client";
 import { Suspense, useState, useEffect, useCallback, useMemo } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
 import { EditorPageShell } from "@/components/shared/editor-page-shell";
+import { TextEditorWithToolbar } from "@/components/shared/text-editor-with-toolbar";
 import { toast } from "sonner";
 import { ArrowLeft, Plus, X, CheckCircle2, AlertCircle } from "lucide-react";
 
@@ -97,7 +98,7 @@ interface DateEntryFormData {
   jakosc: string;
 }
 
-type FormType = null | "action" | "lead" | "add_action" | "date_entry";
+type FormType = null | "action" | "lead" | "add_action" | "date_entry" | "reports";
 
 // ============================================================================
 // Helper Functions
@@ -186,6 +187,18 @@ function generateActionTitle(date: Date, actionType: 'dg' | 'ng', suffix?: strin
   return title;
 }
 
+/**
+ * Generates the Reports form's read-only display name: {YY-MM-DD}_{kind}_{suffix}.
+ * Separate from generateActionTitle — that one belongs to the unrelated
+ * "Actions" form and only supports the 2-value dg/ng union.
+ */
+function generateReportName(dateStr: string, kind: "dg" | "ng" | "op" | "other", suffix: string): string {
+  const shortDate = dateStr.length === 10 ? dateStr.slice(2) : dateStr;
+  let name = `${shortDate}_${kind}`;
+  if (suffix.trim()) name += `_${suffix.trim()}`;
+  return name;
+}
+
 // ============================================================================
 // Main Component
 // ============================================================================
@@ -209,12 +222,38 @@ function FormsPageContent() {
   // replace, so back-navigation steps through each state in order.
   const formParam = searchParams.get("form");
   const selectedForm: FormType =
-    formParam === "action" || formParam === "lead" || formParam === "add_action" || formParam === "date_entry"
+    formParam === "action" || formParam === "lead" || formParam === "add_action" || formParam === "date_entry" || formParam === "reports"
       ? formParam
       : null;
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitResult, setSubmitResult] = useState<{ type: "success" | "error"; message: string } | null>(null);
+
+  // Reports form state — two stages. Stage 1 (reportLoca === null): the
+  // metadata panel is editable and the generated name recomputes live from
+  // date/kind/suffix. Create locks the metadata and reveals stage 2: the
+  // editor, saved via the same loca (never PostParentItem again) so
+  // repeated saves never create duplicate reports under views/reports.
+  const [reportDate, setReportDate] = useState(getTodayDate());
+  const [reportKind, setReportKind] = useState<"dg" | "ng" | "op" | "other">("dg");
+  const [reportSuffix, setReportSuffix] = useState("");
+  const [reportContent, setReportContent] = useState("");
+  const [reportLoca, setReportLoca] = useState<string | null>(null);
+  const [reportItemName, setReportItemName] = useState<string | null>(null);
+  const [reportSaving, setReportSaving] = useState(false);
+  const [reportSaved, setReportSaved] = useState(false);
+  const [reportError, setReportError] = useState<string | null>(null);
+
+  // Generated name is only "live" before Create — once reportItemName is
+  // set (Create succeeded), that locked, server-confirmed name is shown
+  // instead, and date/kind/suffix can no longer change it (see prompt: the
+  // generated name becomes the report's identity, not a display refreshed
+  // on every keystroke).
+  const generatedReportName = useMemo(
+    () => generateReportName(reportDate, reportKind, reportSuffix),
+    [reportDate, reportKind, reportSuffix]
+  );
+  const displayedReportName = reportItemName ?? generatedReportName;
 
   // Action form state
   const [actionData, setActionData] = useState<ActionFormData>({
@@ -347,11 +386,23 @@ function FormsPageContent() {
     });
   }, []);
 
+  const resetReportsForm = useCallback(() => {
+    setReportDate(getTodayDate());
+    setReportKind("dg");
+    setReportSuffix("");
+    setReportContent("");
+    setReportLoca(null);
+    setReportItemName(null);
+    setReportSaved(false);
+    setReportError(null);
+  }, []);
+
   const handleFormSelect = (form: FormType) => {
     if (form === "action") resetActionForm();
     else if (form === "lead") resetLeadForm();
     else if (form === "add_action") resetAddActionForm();
     else if (form === "date_entry") resetDateEntryForm();
+    else if (form === "reports") resetReportsForm();
     router.push(`${pathname}?form=${form}`);
   };
 
@@ -484,7 +535,7 @@ function FormsPageContent() {
       if (result.success) {
         setSubmitResult({ 
           type: "success", 
-          message: `DAILY ENTRY saved as "${result.itemName}"! Path: ${result.path || 'actions/daily'}` 
+          message: `DAILY ENTRY saved as "${result.itemName}"! Path: ${result.path || 'views/daily'}`
         });
         toast.success(`DAILY ENTRY saved as "${result.itemName}"!`);
         setTimeout(() => { setSubmitResult(null); resetAddActionForm(); router.push("/dashboard/views?view=tracker"); }, 1200);
@@ -524,7 +575,7 @@ function FormsPageContent() {
       if (result.success) {
         setSubmitResult({ 
           type: "success", 
-          message: `DATE ENTRY saved as "${result.itemName}"! Path: ${result.path || 'actions/dates'}` 
+          message: `DATE ENTRY saved as "${result.itemName}"! Path: ${result.path || 'views/dates'}`
         });
         toast.success(`DATE ENTRY saved as "${result.itemName}"!`);
         setTimeout(() => { setSubmitResult(null); resetDateEntryForm(); router.push("/dashboard/views?view=dates"); }, 1200);
@@ -540,17 +591,75 @@ function FormsPageContent() {
     }
   };
 
+  const handleReportCreate = async () => {
+    setReportSaving(true);
+    setReportError(null);
+    try {
+      const response = await fetch("/api/forms/reports", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: "", itemName: generatedReportName }),
+      });
+      const result = await response.json();
+      if (!result.success) {
+        throw new Error(result.error || "Unknown error");
+      }
+      setReportLoca(result.loca);
+      setReportItemName(result.itemName);
+      toast.success(`Report "${result.itemName}" created`);
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : "Unknown error";
+      setReportError(errorMsg);
+      toast.error(`Error: ${errorMsg}`);
+    } finally {
+      setReportSaving(false);
+    }
+  };
+
+  const handleReportSave = async () => {
+    if (!reportLoca) return;
+    setReportSaving(true);
+    setReportError(null);
+    try {
+      const response = await fetch("/api/forms/reports", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: reportContent, loca: reportLoca }),
+      });
+      const result = await response.json();
+      if (!result.success) {
+        throw new Error(result.error || "Unknown error");
+      }
+      setReportSaved(true);
+      toast.success("Report updated");
+      setTimeout(() => setReportSaved(false), 3000);
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : "Unknown error";
+      setReportError(errorMsg);
+      toast.error(`Error: ${errorMsg}`);
+    } finally {
+      setReportSaving(false);
+    }
+  };
+
+  const handleReportContentChange = (value: string) => {
+    setReportContent(value);
+    if (reportSaved) setReportSaved(false);
+  };
+
   // ============================================================================
   // Render: Form List View
   // ============================================================================
 
   if (!selectedForm) {
     return (
-      <EditorPageShell>
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight">Forms</h2>
-          <p className="text-sm text-muted-foreground">Select a form to fill out</p>
-        </div>
+      <DashboardPageShell toolbar={<h2 className="text-lg font-bold">Forms</h2>}>
+        {/*
+          Fixed 4-column grid: buttons always sit on a 4-wide grid. A partial
+          last row keeps each button at its column width and leaves the empty
+          cells blank (like a table slot with no button) instead of stretching
+          the remaining buttons across the row.
+        */}
         <div className="grid grid-cols-4 gap-2">
           <button
             type="button"
@@ -573,7 +682,7 @@ function FormsPageContent() {
             onClick={() => handleFormSelect("lead")}
             className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[70px]"
           >
-            <span className="font-semibold text-sm">Add Lead</span>
+            <span className="font-semibold text-sm">ADD LEAD</span>
             <span className="text-xs text-muted-foreground mt-1">New contact</span>
           </button>
           <button
@@ -581,10 +690,104 @@ function FormsPageContent() {
             onClick={() => handleFormSelect("action")}
             className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[70px]"
           >
-            <span className="font-semibold text-sm">Actions</span>
+            <span className="font-semibold text-sm">ACTIONS</span>
             <span className="text-xs text-muted-foreground mt-1">Log session</span>
           </button>
+          <button
+            type="button"
+            onClick={() => handleFormSelect("reports")}
+            className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[70px]"
+          >
+            <span className="font-semibold text-sm">REPORTS</span>
+            <span className="text-xs text-muted-foreground mt-1">Write a report</span>
+          </button>
         </div>
+      </DashboardPageShell>
+    );
+  }
+
+  // ============================================================================
+  // Render: Reports Form
+  // ============================================================================
+
+  if (selectedForm === "reports") {
+    const isReportCreated = reportLoca !== null;
+    return (
+      <EditorPageShell>
+        <div className="flex shrink-0 items-center gap-2 pl-14">
+          <Button variant="outline" size="icon" onClick={handleFormBack}>
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <span className="font-semibold">Reports</span>
+          {reportError && (
+            <span className="flex items-center gap-1 text-sm text-destructive">
+              <AlertCircle className="h-4 w-4" />
+              {reportError}
+            </span>
+          )}
+        </div>
+
+        <div className="shrink-0 rounded-xl border bg-card shadow-sm p-[10px]">
+          <div className="grid gap-3 md:grid-cols-[auto_auto_1fr] items-end">
+            <div className="space-y-1">
+              <Label>Date</Label>
+              <Input
+                type="date"
+                value={reportDate}
+                onChange={e => setReportDate(e.target.value)}
+                disabled={isReportCreated}
+                className="w-[160px]"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>Report kind</Label>
+              <Select
+                value={reportKind}
+                onValueChange={v => setReportKind(v as "dg" | "ng" | "op" | "other")}
+                disabled={isReportCreated}
+              >
+                <SelectTrigger className="w-[170px]"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="dg">Daygame</SelectItem>
+                  <SelectItem value="ng">Nightgame</SelectItem>
+                  <SelectItem value="op">Organized party</SelectItem>
+                  <SelectItem value="other">Other</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label>Rest of the name</Label>
+              <Input
+                placeholder="e.g. galeria mokotów"
+                value={reportSuffix}
+                onChange={e => setReportSuffix(e.target.value)}
+                disabled={isReportCreated}
+              />
+            </div>
+          </div>
+          <div className="flex gap-3 items-end mt-3">
+            <div className="space-y-1">
+              <Label>Generated name</Label>
+              <Input value={displayedReportName} readOnly className="bg-muted font-mono w-[320px]" />
+            </div>
+            {!isReportCreated && (
+              <Button onClick={handleReportCreate} disabled={reportSaving}>
+                {reportSaving ? "Creating..." : "Create"}
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {isReportCreated && (
+          <TextEditorWithToolbar
+            value={reportContent}
+            onChange={handleReportContentChange}
+            onSave={handleReportSave}
+            saving={reportSaving}
+            saved={reportSaved}
+            placeholder="Write your report..."
+          />
+        )}
       </EditorPageShell>
     );
   }
@@ -595,18 +798,18 @@ function FormsPageContent() {
 
   if (selectedForm === "action") {
     return (
-      <div className="space-y-4">
-        <div className="flex items-center gap-4">
-          <Button variant="outline" size="sm" onClick={handleFormBack} className="gap-2">
-            <ArrowLeft className="h-4 w-4" />Back
-          </Button>
-          <div className="flex items-center gap-3">
+      <DashboardPageShell
+        padded={false}
+        contentClassName="p-4"
+        toolbar={
+          <>
+            <Button variant="outline" size="sm" onClick={handleFormBack} className="gap-2">
+              <ArrowLeft className="h-4 w-4" />Back
+            </Button>
             <h2 className="text-xl font-bold">Action</h2>
-            <span className="text-sm text-muted-foreground">Log your session</span>
-          </div>
-        </div>
-        <Card>
-          <CardContent className="p-4">
+          </>
+        }
+      >
             <form onSubmit={handleActionSubmit} className="space-y-3">
               <div className="grid gap-3 md:grid-cols-[auto_auto_1fr_auto] items-end">
                 <div className="space-y-1">
@@ -654,19 +857,17 @@ function FormsPageContent() {
                 <Label>Notes</Label>
                 <Input value={actionData.notes} onChange={e => setActionData({ ...actionData, notes: e.target.value })} placeholder="Optional notes..." />
               </div>
-              <Button type="submit" className="w-full" disabled={isSubmitting}>
-                {isSubmitting ? "Saving..." : "Save to Content Provider"}
+              <Button type="submit" className="ml-3 mt-1" disabled={isSubmitting}>
+                {isSubmitting ? "Saving..." : "Save"}
               </Button>
             </form>
-          </CardContent>
-        </Card>
         {submitResult && (
-          <div className={`p-3 rounded-lg flex items-center gap-2 ${submitResult.type === "success" ? "bg-green-50 text-green-700 border border-green-200" : "bg-red-50 text-red-700 border border-red-200"}`}>
+          <div className={`mt-3 p-3 rounded-lg flex items-center gap-2 ${submitResult.type === "success" ? "bg-green-50 text-green-700 border border-green-200" : "bg-red-50 text-red-700 border border-red-200"}`}>
             {submitResult.type === "success" ? <CheckCircle2 className="h-5 w-5 flex-shrink-0" /> : <AlertCircle className="h-5 w-5 flex-shrink-0" />}
             <span className="text-sm">{submitResult.message}</span>
           </div>
         )}
-      </div>
+      </DashboardPageShell>
     );
   }
 
@@ -695,95 +896,73 @@ function FormsPageContent() {
     ];
 
     return (
-      <div className="space-y-3">
-        <div className="flex items-center gap-3">
-          <Button variant="outline" size="sm" onClick={handleFormBack} className="gap-1 h-7 px-2">
-            <ArrowLeft className="h-3 w-3" />Back
-          </Button>
-          <h2 className="text-lg font-bold">DAILY ENTRY</h2>
-        </div>
-        <div className="mx-auto max-w-xl">
-          <form onSubmit={handleAddActionSubmit}>
-            <table className="w-full border-collapse text-sm">
-              <thead>
-                <tr>
-                  <th colSpan={2} className="border bg-green-100 dark:bg-green-950/50 px-4 py-3 text-center text-lg font-bold">
-                    DAILY ENTRY
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {dailyRows.map((row) => (
-                  <tr key={row.key}>
-                    <td className="border bg-muted/60 px-3 py-2 font-semibold w-1/2">{row.label}</td>
-                    <td className="border bg-amber-50 dark:bg-amber-950/30 px-2 py-1.5">
-                      {row.type === "date" && (
-                        <Input
-                          type="date"
-                          value={addActionData[row.key]}
-                          onChange={(e) => setAddActionData({ ...addActionData, [row.key]: e.target.value })}
-                          className="h-8 border-0 bg-transparent shadow-none focus-visible:ring-1"
-                        />
-                      )}
-                      {row.type === "yesno" && (
-                        <select
-                          value={addActionData[row.key]}
-                          onChange={(e) => setAddActionData({ ...addActionData, [row.key]: e.target.value })}
-                          className="h-8 w-full rounded-md border-0 bg-transparent px-1 text-sm outline-none"
-                        >
-                          <option value="NIE">NIE</option>
-                          <option value="TAK">TAK</option>
-                        </select>
-                      )}
-                      {row.type === "text" && (
-                        <Input
-                          value={addActionData[row.key]}
-                          onChange={(e) => setAddActionData({ ...addActionData, [row.key]: e.target.value })}
-                          className="h-8 border-0 bg-transparent shadow-none text-right focus-visible:ring-1"
-                        />
-                      )}
-                    </td>
+      <DashboardPageShell
+        padded={false}
+        frameClassName="max-w-xl"
+        toolbar={
+          <>
+            <Button variant="outline" size="sm" onClick={handleFormBack} className="gap-1 h-7 px-2">
+              <ArrowLeft className="h-3 w-3" />Back
+            </Button>
+            <h2 className="text-lg font-bold">DAILY ENTRY</h2>
+          </>
+        }
+      >
+            <form onSubmit={handleAddActionSubmit}>
+              <table className="w-full border-collapse text-sm">
+                <thead className="sticky top-0 z-10">
+                  <tr>
+                    <th colSpan={2} className="border bg-green-100 dark:bg-green-950/50 px-4 py-3 text-center text-lg font-bold">
+                      DAILY ENTRY
+                    </th>
                   </tr>
-                ))}
-                <tr>
-                  <td colSpan={2} className="border-0 h-2" />
-                </tr>
-                <tr>
-                  <td colSpan={2} className="border bg-green-200 dark:bg-green-900/60 p-0">
-                    <Button
-                      type="submit"
-                      disabled={isSubmitting}
-                      className="w-full rounded-none h-11 text-base font-semibold bg-transparent text-foreground hover:bg-green-300/60 dark:hover:bg-green-900 shadow-none"
-                      variant="ghost"
-                    >
-                      {isSubmitting ? "Saving..." : "SAVE DAY"}
-                    </Button>
-                  </td>
-                </tr>
-                <tr>
-                  <td className="border bg-muted/60 px-3 py-2 font-semibold align-top">STATUS</td>
-                  <td className="border px-3 py-2 text-sm">
-                    {submitResult ? (
-                      <span
-                        className={`flex items-center gap-2 ${submitResult.type === "success" ? "text-green-700 dark:text-green-400" : "text-red-700 dark:text-red-400"}`}
-                      >
-                        {submitResult.type === "success" ? (
-                          <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
-                        ) : (
-                          <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                </thead>
+                <tbody>
+                  {dailyRows.map((row) => (
+                    <tr key={row.key}>
+                      <td className="border bg-muted/60 px-3 py-2 font-semibold w-1/2">{row.label}</td>
+                      <td className="border bg-amber-50 dark:bg-amber-950/30 px-2 py-1.5">
+                        {row.type === "date" && (
+                          <Input
+                            type="date"
+                            value={addActionData[row.key]}
+                            onChange={(e) => setAddActionData({ ...addActionData, [row.key]: e.target.value })}
+                            className="h-8 border-0 bg-transparent shadow-none focus-visible:ring-1"
+                          />
                         )}
-                        {submitResult.message}
-                      </span>
-                    ) : (
-                      <span className="text-muted-foreground">Fill in the form and click SAVE DAY.</span>
-                    )}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </form>
-        </div>
-      </div>
+                        {row.type === "yesno" && (
+                          <select
+                            value={addActionData[row.key]}
+                            onChange={(e) => setAddActionData({ ...addActionData, [row.key]: e.target.value })}
+                            className="h-8 w-full rounded-md border-0 bg-transparent px-1 text-sm outline-none"
+                          >
+                            <option value="NIE">NIE</option>
+                            <option value="TAK">TAK</option>
+                          </select>
+                        )}
+                        {row.type === "text" && (
+                          <Input
+                            value={addActionData[row.key]}
+                            onChange={(e) => setAddActionData({ ...addActionData, [row.key]: e.target.value })}
+                            className="h-8 border-0 bg-transparent shadow-none text-right focus-visible:ring-1"
+                          />
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <Button type="submit" className="ml-3 mt-3" disabled={isSubmitting}>
+                {isSubmitting ? "Saving..." : "Save"}
+              </Button>
+            </form>
+        {submitResult && (
+          <div className={`mt-3 p-3 rounded-lg flex items-center gap-2 ${submitResult.type === "success" ? "bg-green-50 text-green-700 border border-green-200" : "bg-red-50 text-red-700 border border-red-200"}`}>
+            {submitResult.type === "success" ? <CheckCircle2 className="h-5 w-5 flex-shrink-0" /> : <AlertCircle className="h-5 w-5 flex-shrink-0" />}
+            <span className="text-sm">{submitResult.message}</span>
+          </div>
+        )}
+      </DashboardPageShell>
     );
   }
 
@@ -793,24 +972,28 @@ function FormsPageContent() {
 
   if (selectedForm === "date_entry") {
     return (
-      <div className="space-y-3">
-        <div className="flex items-center gap-3">
-          <Button variant="outline" size="sm" onClick={handleFormBack} className="gap-1 h-7 px-2">
-            <ArrowLeft className="h-3 w-3" />Back
-          </Button>
-          <h2 className="text-lg font-bold">DATE ENTRY</h2>
-        </div>
-        <div className="mx-auto max-w-xl">
-          <form onSubmit={handleDateEntrySubmit}>
-            <table className="w-full border-collapse text-sm">
-              <thead>
-                <tr>
-                  <th colSpan={2} className="border bg-blue-100 dark:bg-blue-950/50 px-4 py-3 text-center text-lg font-bold">
-                    DATE ENTRY
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
+      <DashboardPageShell
+        padded={false}
+        frameClassName="max-w-xl"
+        toolbar={
+          <>
+            <Button variant="outline" size="sm" onClick={handleFormBack} className="gap-1 h-7 px-2">
+              <ArrowLeft className="h-3 w-3" />Back
+            </Button>
+            <h2 className="text-lg font-bold">DATE ENTRY</h2>
+          </>
+        }
+      >
+            <form onSubmit={handleDateEntrySubmit}>
+              <table className="w-full border-collapse text-sm">
+                <thead className="sticky top-0 z-10">
+                  <tr>
+                    <th colSpan={2} className="border bg-blue-100 dark:bg-blue-950/50 px-4 py-3 text-center text-lg font-bold">
+                      DATE ENTRY
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
                 <tr>
                   <td className="border bg-muted/60 px-3 py-2 font-semibold w-1/2">DATA</td>
                   <td className="border bg-amber-50 dark:bg-amber-950/30 px-2 py-1.5">
@@ -888,45 +1071,19 @@ function FormsPageContent() {
                     />
                   </td>
                 </tr>
-                <tr>
-                  <td colSpan={2} className="border-0 h-2" />
-                </tr>
-                <tr>
-                  <td colSpan={2} className="border bg-blue-200 dark:bg-blue-900/60 p-0">
-                    <Button
-                      type="submit"
-                      disabled={isSubmitting}
-                      className="w-full rounded-none h-11 text-base font-semibold bg-transparent text-foreground hover:bg-blue-300/60 dark:hover:bg-blue-900 shadow-none"
-                      variant="ghost"
-                    >
-                      {isSubmitting ? "Saving..." : "SAVE DATE"}
-                    </Button>
-                  </td>
-                </tr>
-                <tr>
-                  <td className="border bg-muted/60 px-3 py-2 font-semibold align-top">STATUS</td>
-                  <td className="border px-3 py-2 text-sm">
-                    {submitResult ? (
-                      <span
-                        className={`flex items-center gap-2 ${submitResult.type === "success" ? "text-green-700 dark:text-green-400" : "text-red-700 dark:text-red-400"}`}
-                      >
-                        {submitResult.type === "success" ? (
-                          <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
-                        ) : (
-                          <AlertCircle className="h-4 w-4 flex-shrink-0" />
-                        )}
-                        {submitResult.message}
-                      </span>
-                    ) : (
-                      <span className="text-muted-foreground">Uzupełnij formularz i zaznacz SAVE DATE.</span>
-                    )}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </form>
-        </div>
-      </div>
+                </tbody>
+              </table>
+              <Button type="submit" className="ml-3 mt-3" disabled={isSubmitting}>
+                {isSubmitting ? "Saving..." : "Save"}
+              </Button>
+            </form>
+        {submitResult && (
+          <div className={`mt-3 p-3 rounded-lg flex items-center gap-2 ${submitResult.type === "success" ? "bg-green-50 text-green-700 border border-green-200" : "bg-red-50 text-red-700 border border-red-200"}`}>
+            {submitResult.type === "success" ? <CheckCircle2 className="h-5 w-5 flex-shrink-0" /> : <AlertCircle className="h-5 w-5 flex-shrink-0" />}
+            <span className="text-sm">{submitResult.message}</span>
+          </div>
+        )}
+      </DashboardPageShell>
     );
   }
 
@@ -935,20 +1092,18 @@ function FormsPageContent() {
   // ============================================================================
 
   return (
-    <div className="space-y-3">
-      {/* Header */}
-      <div className="flex items-center gap-4">
-        <Button variant="outline" size="sm" onClick={handleFormBack} className="gap-2">
-          <ArrowLeft className="h-4 w-4" />Back
-        </Button>
-        <div className="flex items-center gap-3">
+    <DashboardPageShell
+      padded={false}
+      contentClassName="p-3"
+      toolbar={
+        <>
+          <Button variant="outline" size="sm" onClick={handleFormBack} className="gap-2">
+            <ArrowLeft className="h-4 w-4" />Back
+          </Button>
           <h2 className="text-xl font-bold">Add Lead</h2>
-          <span className="text-sm text-muted-foreground">Fill out and save to Content Provider</span>
-        </div>
-      </div>
-
-      <Card className="m-0">
-        <CardContent className="p-3 space-y-3">
+        </>
+      }
+    >
           <form onSubmit={handleLeadSubmit} className="space-y-3">
 
             {/* Lead Name/Id Section */}
@@ -1034,8 +1189,8 @@ function FormsPageContent() {
             </div>
 
             {/* Submit Button */}
-            <Button type="submit" className="w-full h-9" disabled={isSubmitting || !isLeadFormValid}>
-              {isSubmitting ? "Saving..." : "Save to Content Provider"}
+            <Button type="submit" className="ml-3" disabled={isSubmitting || !isLeadFormValid}>
+              {isSubmitting ? "Saving..." : "Save"}
             </Button>
 
             {/* Submit Result */}
@@ -1046,8 +1201,6 @@ function FormsPageContent() {
               </div>
             )}
           </form>
-        </CardContent>
-      </Card>
-    </div>
+    </DashboardPageShell>
   );
 }

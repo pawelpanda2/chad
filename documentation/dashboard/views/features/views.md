@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Views page provides a read-only tabular display of data saved by the DATE ENTRY and DAILY ENTRY forms. Data is stored in the Content Provider under the `actions/dates` and `actions/daily` paths as text-items with YAML body content.
+The Views page provides a read-only tabular display of data saved by the DATE ENTRY and DAILY ENTRY forms. Data is stored in the Content Provider under the `views/dates` and `views/daily` paths as text-items with YAML body content.
 
 ## Navigation
 
@@ -167,7 +167,7 @@ Saves a DATE ENTRY form submission.
 {
   "success": true,
   "itemName": "26-07-10",
-  "path": "actions/dates"
+  "path": "views/dates"
 }
 ```
 
@@ -190,7 +190,7 @@ Saves a DAILY ENTRY form submission.
 {
   "success": true,
   "itemName": "26-07-10",
-  "path": "actions/daily"
+  "path": "views/daily"
 }
 ```
 
@@ -200,29 +200,29 @@ Saves a DAILY ENTRY form submission.
 
 The save flow uses `PostParentItem` to properly create folders and text items. Note: `repoKey` (username like `kamil_s`) is used for all operations, not the user GUID.
 
-1. **Ensure "actions" folder exists**:
-   - Try `GetByNames(repoKey, "actions")` to get existing folder
-   - If not found, `PostParentItem(repoKey, "", "Folder", "actions")` to create it
-   - Get the LOCA (address) of the actions folder
+1. **Ensure "views" folder exists**:
+   - Try `GetByNames(repoKey, "views")` to get existing folder
+   - If not found, `PostParentItem(repoKey, "", "Folder", "views")` to create it
+   - Get the LOCA (address) of the views folder
 
 2. **Ensure "dates" folder exists**:
-   - Try `GetByNames(repoKey, "actions", "dates")` to get existing folder
-   - If not found, `PostParentItem(repoKey, actionsLoca, "Folder", "dates")` to create it
+   - Try `GetByNames(repoKey, "views", "dates")` to get existing folder
+   - If not found, `PostParentItem(repoKey, viewsLoca, "Folder", "dates")` to create it
    - Get the LOCA (address) of the dates folder
 
 3. **Create text item**:
    - `PostParentItem(repoKey, datesLoca, "Text", itemName)` - Creates the text item
 
 4. **Get item address**:
-   - `GetByNames(repoKey, "actions", "dates", itemName)` - Gets the item LOCA
+   - `GetByNames(repoKey, "views", "dates", itemName)` - Gets the item LOCA
 
 5. **Save body**:
    - `Put(repoKey, itemLoca, bodyYaml)` - Saves the YAML body
 
 ### Retrieving Entries
 
-1. `GetByNames(repoKey, "actions", "dates")` - Gets all items in the dates folder
-2. For each item: `GetByNames(repoKey, "actions", "dates", itemName)` - Gets the item body
+1. `GetByNames(repoKey, "views", "dates")` - Gets all items in the dates folder
+2. For each item: `GetByNames(repoKey, "views", "dates", itemName)` - Gets the item body
 
 ## UI Design
 
@@ -247,7 +247,7 @@ A refresh button in the top-right corner allows users to manually reload data. T
 
 After successfully saving a form, the success message includes:
 - The item name (e.g., `26-07-10`)
-- The path where it was saved (e.g., `actions/dates`)
+- The path where it was saved (e.g., `views/dates`)
 
 This helps users verify where their data was actually stored.
 
@@ -257,14 +257,14 @@ This helps users verify where their data was actually stored.
 2. Open DATE ENTRY form
 3. Fill in the form fields and submit
 4. Verify the success message shows item name and path
-5. Check in Content Provider that a text-item was created under `actions/dates`
+5. Check in Content Provider that a text-item was created under `views/dates`
 6. Navigate to Views page
 7. Select DATES view
 8. Verify the entry appears in the table
 9. Open DAILY ENTRY form
 10. Fill in the form fields and submit
 11. Verify the success message shows item name and path
-12. Check in Content Provider that a text-item was created under `actions/daily`
+12. Check in Content Provider that a text-item was created under `views/daily`
 13. Navigate to Views page
 14. Select TRACKER view
 15. Verify the entry appears in the table

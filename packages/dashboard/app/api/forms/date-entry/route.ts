@@ -46,7 +46,7 @@ export async function GET() {
 /**
  * POST /api/forms/date-entry
  * 
- * Saves a date entry form record to Content Provider under actions/dates.
+ * Saves a date entry form record to Content Provider under views/dates.
  * Uses chad-dba functions for all Content Provider operations.
  * 
  * Flow:
@@ -139,7 +139,7 @@ export async function POST(request: Request) {
       return NextResponse.json({
         success: true,
         itemName,
-        path: "actions/dates",
+        path: "views/dates",
         loca: result.loca,
         debug: debugResponse,
       });

@@ -2,7 +2,7 @@
 
 ## Overview
 
-The TRACKER view displays daily entries from the Content Provider in a tabular format. It reads data from the `actions/daily` folder structure.
+The TRACKER view displays daily entries from the Content Provider in a tabular format. It reads data from the `views/daily` folder structure (renamed from `actions/daily` in Story 53 — the repo owner manually renamed the top-level `actions` folder to `views`).
 
 ## Architecture
 
@@ -33,7 +33,7 @@ Content Provider API
 ## Content Provider Structure
 
 ```
-actions/                    (Folder)
+views/                       (Folder)
   daily/                    (Folder)
     26-07-10               (Text item with YAML body)
     26-07-10b              (Text item with YAML body)
@@ -45,7 +45,7 @@ actions/                    (Folder)
 ### Step 1: Get the daily folder loca
 
 ```json
-["IRepoService", "IItemWorker", "GetByNames", "21d11bdc-f1f4-44d1-b61a-3fa6b039c641", "actions", "daily"]
+["IRepoService", "IItemWorker", "GetByNames", "21d11bdc-f1f4-44d1-b61a-3fa6b039c641", "views", "daily"]
 ```
 
 Returns the folder item with `Settings.address` containing the numeric loca.
@@ -116,7 +116,7 @@ Both use `IManyItemsWorker` to fetch multiple items at once.
 The same pattern will be used for the DATES view:
 
 ```
-actions/
+views/
   dates/
     26-07-10
     26-07-10b

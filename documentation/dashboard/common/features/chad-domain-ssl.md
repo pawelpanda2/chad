@@ -30,7 +30,7 @@ kontenera/sieć Docker `chad-shared` — bo `npm` działa w `network_mode: host`
 i nie jest podłączony do żadnej sieci bridge Dockera. To odróżnia go od
 `chad-dashboard-test`/`chad-dashboard-prod`, które komunikują się z
 `chad-content-provider-api` przez `container_name` w sieci `chad-shared`
-(patrz `shared-qnap-services.md`) — dwa różne mechanizmy sieciowe
+(patrz `documentation/ai-docs/deploy/shared-qnap-services.md`) — dwa różne mechanizmy sieciowe
 współistniejące na tym samym hoście.
 
 ## 2. Mapowanie domen na kontenery

@@ -14,7 +14,7 @@
  * existence to infer Text vs Folder for config-less legacy items.
  */
 
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 const BODY_FILE_NAME = "body.txt";
@@ -51,4 +51,9 @@ export async function readBody(itemDir: string): Promise<string> {
   } catch {
     return "";
   }
+}
+
+/** Stage 3 write. Assumes `itemDir` already exists (writeConfig creates it first). */
+export async function writeBody(itemDir: string, content: string): Promise<void> {
+  await writeFile(getBodyPath(itemDir), content, "utf-8");
 }

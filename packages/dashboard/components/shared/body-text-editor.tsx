@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback } from "react";
+import { useTheme } from "next-themes";
 import { Extension, Prec } from "@codemirror/state";
 import CodeMirror from "@uiw/react-codemirror";
 import {
@@ -107,6 +108,11 @@ export function BodyTextEditor({
   onSaveShortcut,
   showWhitespace = false,
 }: BodyTextEditorProps) {
+  // Follow the app theme so text stays readable in dark mode (otherwise the
+  // default light CodeMirror theme keeps a white background).
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme === "dark";
+
   const containerRef = useCallback((node: HTMLDivElement | null) => {
     if (!node || !onSaveShortcut) return;
 
@@ -133,8 +139,9 @@ export function BodyTextEditor({
       <CodeMirror
         value={value}
         height="100%"
+        theme={isDark ? "dark" : "light"}
         basicSetup={{
-          lineNumbers: false,
+          lineNumbers: true,
           highlightActiveLineGutter: false,
           highlightActiveLine: false,
           highlightSelectionMatches: false,
@@ -171,8 +178,10 @@ export function BodyTextEditor({
               overflowY: "auto",
               overflowX: "hidden",
             },
-            ".cm-gutter": {
-              display: "none",
+            // Line-number gutter (left of each line): keep it subtle.
+            ".cm-gutters": {
+              border: "none",
+              backgroundColor: "transparent",
             },
           }),
           ...extraExtensions,

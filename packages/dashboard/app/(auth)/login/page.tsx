@@ -6,8 +6,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertCircle, Lock, User } from "lucide-react";
+import { ErrorBox } from "@/components/shared/error-box";
+import { Lock, User } from "lucide-react";
 
 export default function LoginPage() {
 	const router = useRouter();
@@ -63,20 +63,6 @@ export default function LoginPage() {
 					</CardDescription>
 				</CardHeader>
 				<CardContent>
-					{error && (
-						<Alert variant="destructive" className="mb-4">
-							<AlertCircle className="h-4 w-4" />
-							<AlertDescription>
-								<div className="font-bold mb-2">{error}</div>
-								{debugInfo && (
-									<pre className="text-xs bg-black/10 p-2 rounded mt-2 overflow-auto whitespace-pre-wrap">
-										{debugInfo}
-									</pre>
-								)}
-							</AlertDescription>
-						</Alert>
-					)}
-
 					<form onSubmit={handleSubmit} className="space-y-4" noValidate>
 						<div className="space-y-2">
 							<Label htmlFor="username">Username</Label>
@@ -118,6 +104,9 @@ export default function LoginPage() {
 							{loading ? "Signing in..." : "Sign in"}
 						</Button>
 					</form>
+
+					{/* Error indicator lives at the BOTTOM, below the form. */}
+					<ErrorBox message={error} details={debugInfo} className="mt-4" />
 				</CardContent>
 			</Card>
 		</div>

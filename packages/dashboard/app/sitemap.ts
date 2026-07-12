@@ -47,12 +47,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
 			priority: 0.7,
 		},
 		{
-			url: `${baseUrl}/dashboard/analytics`,
-			lastModified: new Date(),
-			changeFrequency: "monthly",
-			priority: 0.6,
-		},
-		{
 			url: `${baseUrl}/dashboard/users`,
 			lastModified: new Date(),
 			changeFrequency: "monthly",
@@ -71,31 +65,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
 			priority: 0.6,
 		},
 		{
-			url: `${baseUrl}/dashboard/calendar`,
-			lastModified: new Date(),
-			changeFrequency: "monthly",
-			priority: 0.6,
-		},
-		{
 			url: `${baseUrl}/dashboard/messages`,
-			lastModified: new Date(),
-			changeFrequency: "monthly",
-			priority: 0.6,
-		},
-		{
-			url: `${baseUrl}/dashboard/database`,
-			lastModified: new Date(),
-			changeFrequency: "monthly",
-			priority: 0.6,
-		},
-		{
-			url: `${baseUrl}/dashboard/security`,
-			lastModified: new Date(),
-			changeFrequency: "monthly",
-			priority: 0.6,
-		},
-		{
-			url: `${baseUrl}/dashboard/help`,
 			lastModified: new Date(),
 			changeFrequency: "monthly",
 			priority: 0.6,

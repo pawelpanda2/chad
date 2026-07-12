@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Ensures Content Provider API is reachable for local-mac (non-Docker
 # tmuxinator) dev. Uses the same chad-content-provider-api image built by
-# bash-scripts/dashboard/03_local_mac_docker/02_build.sh (or any other
+# bash-scripts/dashboard/03_local_mac_docker/03_build.sh (or any other
 # environment's 02_build.sh — same image everywhere), run directly via
 # `docker run` since this dev mode has no docker-compose stack of its own.
 # Tracks ownership (.tmp/dashboard/content-provider.owned) so end.sh only
@@ -10,7 +10,7 @@
 #
 # Content Provider has no .env of its own — its config module
 # (appsettings.json) is generated from the text embedded in
-# bash-scripts/dashboard/02_local_mac/01_config.sh, same pattern used by
+# bash-scripts/dashboard/02_local_mac_tmux/01_config.sh, same pattern used by
 # every other environment (03_local_mac_docker, 04_qnap_test, 05_qnap_prod).
 #
 # Modes:
@@ -28,7 +28,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel)"
 source "$REPO_ROOT/bash-scripts/common/lib.sh"
-source "$REPO_ROOT/bash-scripts/dashboard/02_local_mac/01_config.sh"
+source "$REPO_ROOT/bash-scripts/dashboard/02_local_mac_tmux/01_config.sh"
 
 CONTENT_PROVIDER_API_URL="http://localhost:$CONTENT_PROVIDER_API_PORT"
 
@@ -54,7 +54,7 @@ fi
 
 if ! docker image inspect "$CONTENT_PROVIDER_API_IMAGE" >/dev/null 2>&1; then
   log_error "Image $CONTENT_PROVIDER_API_IMAGE not found locally."
-  log_error "  Fix: bash bash-scripts/dashboard/03_local_mac_docker/02_build.sh"
+  log_error "  Fix: bash bash-scripts/dashboard/03_local_mac_docker/03_build.sh"
   exit 1
 fi
 

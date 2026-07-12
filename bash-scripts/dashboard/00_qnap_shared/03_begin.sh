@@ -25,6 +25,25 @@ echo ""
 
 cd "$REPO_ROOT"
 
+# No `:latest` fallback — refuses to start without a recorded release tag.
+require_image_tag "$(content_provider_image_tag_file)" "chad-content-provider-api" || exit 1
+
+# Preflight: QNAP_CONTAINER_DATA_PATH must point at a real, writable volume
+# with enough room — NOT a small tmpfs (see documentation/ai-docs/deploy/
+# qnap-data-path.md for the real incident this guards against: chad-mongodb
+# crash-looping with "No space left on device" because this path resolved
+# onto the 16MB /share tmpfs instead of the data volume). Same default as
+# docker-compose.qnap.shared.yml so this checks the exact path Compose will
+# mount. Also creates the three bind-mount subdirectories Compose expects —
+# no manual `mkdir`/`sed` on the QNAP needed.
+QNAP_CONTAINER_DATA_PATH="$(read_env_var "$ENV_FILE" QNAP_CONTAINER_DATA_PATH)"
+QNAP_CONTAINER_DATA_PATH="${QNAP_CONTAINER_DATA_PATH:-/share/ContainerData}"
+require_data_path_writable "$QNAP_CONTAINER_DATA_PATH/chad-shared/mongodb" || exit 1
+mkdir -p \
+  "$QNAP_CONTAINER_DATA_PATH/chad-shared/mongodb/db" \
+  "$QNAP_CONTAINER_DATA_PATH/chad-shared/mongodb/configdb" \
+  "$QNAP_CONTAINER_DATA_PATH/chad-shared/mongodb/backups"
+
 ensure_docker_network chad-shared
 
 write_content_provider_appsettings

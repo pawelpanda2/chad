@@ -1,8 +1,8 @@
 # cp-files
 
-Filesystem/Dropbox storage implementation of `cp-core`'s `ContentProviderStorage`. **Stage 2, read-only**: `GetItem`, `GetByNames`, `GetManyByName`, `FindRecursively` work; `Put`/`PostParentItem` throw (`ContentProviderError`) — Stage 3.
+Filesystem/Dropbox storage implementation of `cp-core`'s `ContentProviderStorage`. **Stage 2 (read) and Stage 3 (write) are both live**: `GetItem`, `GetByNames`, `GetManyByName`, `FindRecursively`, `Put`, `PostParentItem` all work. `Ref` variants of `Put`/`PostParentItem` throw — unconfirmed against real .NET behavior, not guessed.
 
-Reads the same on-disk structure the real .NET Content Provider writes. Never writes. Never modifies real data.
+Reads and writes the same on-disk structure the real .NET Content Provider uses. **Never tested against real Dropbox data with a write** — all write behavior (`tests/write-smoke.mjs`) is verified against a disposable `/tmp` fixture only, never the real repos this package also reads from for its (read-only) compatibility tests.
 
 ## Physical layout (verified 2026-07-12)
 
@@ -30,7 +30,7 @@ Verified two ways: (1) reading the actual .NET source (`packages/net-content-pro
 
 ## Address is always self-healed, never trusted from disk
 
-Confirmed two ways on 2026-07-12: live, comparing `cp-files` against the real running API (a real item's config.yaml on disk has a stale `address: "Active/06/64/01"`, but the real API returns `Settings.address: "21d11bdc-f1f4-44d1-b61a-3fa6b039c641/03/06/71/01"`); and via source (`MigrationWorker.TryMigrateConfig`, `SharpRepoServiceProg/Workers/CrudReads/MigrationWorker.cs:78-104`, overwrites the in-memory `address` unconditionally before any "did it change" check, so a stale on-disk value is never visible to a caller). `cp-files` replicates the *visible* behavior (always return `repoGuid + "/" + loca`) without replicating .NET's incidental never-actually-checks-for-staleness bug in whether the repair gets *written back* — moot here since `cp-files` never writes.
+Confirmed two ways on 2026-07-12: live, comparing `cp-files` against the real running API (a real item's config.yaml on disk has a stale `address: "Active/06/64/01"`, but the real API returns `Settings.address: "21d11bdc-f1f4-44d1-b61a-3fa6b039c641/03/06/71/01"`); and via source (`MigrationWorker.TryMigrateConfig`, `SharpRepoServiceProg/Workers/CrudReads/MigrationWorker.cs:78-104`, overwrites the in-memory `address` unconditionally before any "did it change" check, so a stale on-disk value is never visible to a caller). `cp-files` replicates the *visible* behavior (always return `repoGuid + "/" + loca`) on read, without replicating .NET's incidental self-heal-writes-back-on-read behavior — `cp-files` only ever writes `config.yaml` in response to an explicit `Put`/`PostParentItem` call (see below), never as a side effect of a read.
 
 ## Ref dereferencing
 
@@ -75,7 +75,17 @@ Confirmed via `MethodWorker.FindRecursively`'s source and live-tested against re
 - **`config.yaml` self-healing**: .NET auto-repairs missing `id`/`type`/`address` and (sometimes) writes the repair back to disk (`MigrationWorker.TryMigrateConfig`) — `cp-files` never writes, so a config missing `id`/`type`/`name` just throws `ContentProviderError` instead of being silently patched.
 - **No repo-group discovery beyond one level under `repos/`** (matches real local data and the actual `GuidGroupsHelper.IsUniRepoGroupFolder` code, which validates each direct child of `repos/` as itself being a GUID — no extra "group" layer; a QNAP-only two-level scheme mentioned in an earlier session's notes wasn't found in the real code).
 
-## What's still NOT implemented
+## `Put`/`PostParentItem`: exact write semantics (source-confirmed, 2026-07-12)
 
-- No writes (`Put`/`PostParentItem` throw `ContentProviderError`) — Stage 3. Full write semantics (idempotent get-or-create for `PostParentItem`, a real `PutWriteFolderWorker` bug that mislabels a Folder as `type: Text` on `Put`, zero-padded numeric index allocation) are documented for future reference in `documentation/content-provider/next-tasks/typescript-migration-plan.md`.
+- **`PostParentItem(repo, parentLoca, type, name)`** is idempotent get-or-create — matches `PostWriteTextWorker`/`PostWriteFolderWorker`'s source. If a direct child of `parentLoca` already has this `name`, its existing data is returned unchanged (no duplicate created, no error). Otherwise a new child is created at the next free numeric index (`max(existing numeric children) + 1`, `formatIndex` — zero-padded to 2 digits for 0-9, plain digits 10-999, matching `IndexOperations.IndexToString`), with a fresh `randomUUID()` as `id`. `Text` children get an empty `body.txt`; `Folder` children don't (matches source — `PostWriteFolderWorker` never writes a body). Validates every direct child of `parentLoca` is numeric BEFORE creating anything (`ValidationWorker.ValidateParentBeforeCreateChild`) — a stray logical-name folder blocks creation with `ContentProviderError`, not silent corruption.
+- **`Put(repo, loca, type, name, content)`** is NOT "find by name" — it targets an existing numeric `loca` directly and overwrites unconditionally, with a **fresh `id` every single call** (does not preserve whatever `id` was there before — matches source). Validates every segment of `loca` itself is numeric first (`ValidationWorker.ValidateItemLocaBeforePut`; empty `loca` is allowed).
+- **A real, confirmed .NET bug is faithfully replicated, not fixed**: `PutWriteFolderWorker.IfMinePut` hard-codes `type: "Text"` in the config it writes, regardless of the requested type. Calling `Put(..., "Folder", ...)` on an existing Folder **silently corrupts its `config.yaml` to `type: "Text"`** — and, matching that same source, does NOT write a `body.txt` either, leaving a directory whose config claims `Text` but has no body file at all. `cp-files` reproduces this exactly (see `storage.ts`'s `Put` implementation) rather than "fixing" it — the whole point of this package is behavioral parity, and fixing this here would make `cp-files` and `cp-net-adapter` (proxying the real, still-buggy .NET) disagree on a real write path. If this bug is ever fixed upstream, `cp-files` should follow, not lead.
+- **`Ref` variants of both throw `ContentProviderError`** — write behavior for `Ref` items wasn't part of the 2026-07-12 source audit's confirmed scope. Not guessed at.
+
+Verified against a disposable `/tmp` fixture (`tests/write-smoke.mjs`, 18/18 checks): idempotent create, duplicate-name get-or-create, fresh-id-on-Put, the Folder→Text bug reproduced exactly (including the missing body.txt), non-numeric-`loca` rejection, and the repo-corruption guard all behave as documented above.
+
+## Still NOT implemented / confirmed
+
 - No `refGuid` cross-check/self-heal on `Ref` dereferencing (see "Ref dereferencing" above).
+- `Put`/`PostParentItem` for `type: "Ref"` (see above).
+- No compatibility test comparing `cp-files`' writes against a real, disposable .NET instance — unlike the read operations, there's no safe way to write-test against the real API without either using real production data or standing up a separate, throwaway .NET+filesystem instance, which wasn't done this session.

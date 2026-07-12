@@ -1,5 +1,13 @@
 # Architecture Docs
 
+> **Zacznij od [`documentation/ai-docs/what-and-where.md`](ai-docs/what-and-where.md)**
+> — to jest aktualny indeks całej dokumentacji przeznaczonej dla AI (deploy,
+> dashboard, dba, Content Provider, console, Beeper, standardy). Treść
+> poniżej opisuje strukturę sprzed migracji do monorepo `chad` i jest w
+> dużej części nieaktualna (np. `general/SCREENS-ARCHITECTURE.md` nie
+> istnieje w tym repo) — zachowana jako zapis historyczny, nie jako źródło
+> prawdy o strukturze.
+
 ## Źródło projektu
 
 Ten projekt jest oparty na:
