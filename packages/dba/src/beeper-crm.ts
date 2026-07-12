@@ -360,7 +360,15 @@ export async function getBeeperContact(id: string): Promise<BeeperContactFullDet
     : [];
   const groupChannelMap = Object.fromEntries(groupChannels.map((c) => [c._id.toString(), c]));
 
-  const channelsAll = [...directChannels, ...groupChannels];
+  // groupChannelIds comes from any contactID-matching message, which also
+  // catches messages posted in the contact's own direct channel — dedupe by
+  // _id so a direct channel doesn't appear twice (once via directChannels,
+  // once via groupChannels).
+  const directChannelIdSet = new Set(directChannelIds.map((cid) => cid.toString()));
+  const channelsAll = [
+    ...directChannels,
+    ...groupChannels.filter((c) => !directChannelIdSet.has(c._id.toString())),
+  ];
 
   const directMessagesResult = await messages
     .find({
