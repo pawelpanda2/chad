@@ -23,6 +23,7 @@ import {
 	ListTodo,
 	FileText,
 	Table,
+	Contact,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -63,6 +64,12 @@ const sidebarGroups = [
 				title: "Msg Planner",
 				href: "/dashboard/msg-planner",
 				icon: Calendar,
+				badge: null,
+			},
+			{
+				title: "Beeper",
+				href: "/dashboard/beeper",
+				icon: Contact,
 				badge: null,
 			},
 			{
