@@ -1,0 +1,24 @@
+{
+  "name": "cp-api",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Single HTTP entry point for Content Provider. Routes operations to cp-entry (which picks a storage backend per repo) — no storage logic here. Read-only Stage 2 (GET only, no write endpoints yet — Stage 3).",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "dev": "node --watch dist/server.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "cp-core": "workspace:*",
+    "cp-entry": "workspace:*",
+    "cp-files": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "typescript": "^5.3.3"
+  }
+}

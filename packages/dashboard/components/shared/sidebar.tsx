@@ -22,7 +22,6 @@ import {
 	LogOut,
 	ListTodo,
 	FileText,
-	UserPlus,
 	Table,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -64,12 +63,6 @@ const sidebarGroups = [
 				title: "Msg Planner",
 				href: "/dashboard/msg-planner",
 				icon: Calendar,
-				badge: null,
-			},
-			{
-				title: "Leads",
-				href: "/dashboard/leads",
-				icon: UserPlus,
 				badge: null,
 			},
 			{

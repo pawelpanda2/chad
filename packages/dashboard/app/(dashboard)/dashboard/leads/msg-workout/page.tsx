@@ -134,7 +134,7 @@ function MsgWorkoutDetailsPageContent() {
     if (leadName && leadLoca) {
       router.push(`/dashboard/leads/details?leadName=${encodeURIComponent(leadName)}&leadLoca=${encodeURIComponent(leadLoca)}`);
     } else {
-      router.push("/dashboard/leads");
+      router.push("/dashboard/views?view=leads");
     }
   };
 

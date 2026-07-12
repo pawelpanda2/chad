@@ -3,37 +3,109 @@
  * directly from disk. Read-only in Stage 2: GetItem, GetByNames,
  * GetManyByName, FindRecursively. Put/PostParentItem throw — Stage 3.
  *
- * Two behaviors below were confirmed against the real, LIVE .NET API
- * (localhost:12024, mounted to the same real Dropbox data cp-files reads)
- * on 2026-07-12, and differ from an earlier, wrong assumption in this file:
+ * Behavior confirmed two ways: (1) live comparison against the real,
+ * running .NET API (localhost:12024, bind-mounted to the same real
+ * Dropbox data this file reads) on 2026-07-12; (2) a full audit of
+ * `packages/net-content-provider/api_charp/SharpRepoService/SharpRepoServiceProg`
+ * and its `SimpleRunTests` test project, same day. Where the two sources
+ * agreed, that's cited as "confirmed"; where this file intentionally
+ * diverges from .NET (see each note below), that's called out explicitly.
  *
- * 1. `CpItem.Address` is ALWAYS `repoGuid` + "/" + the physical loca path
- *    that was actually traversed to reach the item — NEVER config.yaml's
- *    own `address` field verbatim. .NET's `MigrationWorker.TryMigrateConfig`
- *    recomputes/self-heals `address` on every single read (not just for
- *    "legacy" items) and returns the corrected value — confirmed live:
- *    repo `21d11bdc-f1f4-44d1-b61a-3fa6b039c641`'s item at loca
- *    "03/06/71/01" has a stale `address: "Active/06/64/01"` literally
- *    stored in its config.yaml on disk, but the real API returns
- *    `Settings.address: "21d11bdc-f1f4-44d1-b61a-3fa6b039c641/03/06/71/01"`
- *    — the correct, recomputed physical address, not the stale stored one.
+ * Key behaviors:
  *
- * 2. `Folder`-type items' `Body` is a JSON object mapping each numeric
- *    child folder name to that child's logical `config.yaml` name (e.g.
- *    `{"06": "all items", "07": "all missing"}`) — confirmed live against
- *    a real "leads" folder, and matches `documentation/dba/resolve-paths.md`'s
- *    `leadsNameMap` example. `Text`-type items' `Body` is body.txt's raw
- *    content, confirmed live too. `CpItem.Body` is typed `string`
- *    (cp-core), so the Folder map is JSON-stringified — same convention
- *    `cp-net-adapter` already uses for non-string `/invoke` Body values.
+ * 1. `CpItem.Address`/`Config.address` is ALWAYS `repoGuid` + "/" + the
+ *    physical loca path actually traversed — NEVER config.yaml's own
+ *    `address` field verbatim. .NET's `MigrationWorker.TryMigrateConfig`
+ *    overwrites the in-memory `address` unconditionally on every read
+ *    (source-audit confirmed: the overwrite happens BEFORE the
+ *    "did it change" check, so a stale on-disk `address` is never visible
+ *    to callers, but — a real .NET quirk, not replicated here since it's
+ *    only about whether .NET rewrites the file, which cp-files never does
+ *    anyway — that same staleness is also never persisted back to disk
+ *    unless `id`/`type` were ALSO missing).
+ *
+ * 2. `Folder`-type items' `Body` is a `{childIndex: childName}` JSON map
+ *    (confirmed live and via `ReadFolderWorker.ListOfIndexesQNames`).
+ *    `Ref`-type children are dereferenced IN the map — the value shown is
+ *    the target's name, not the Ref's own (`SelectIndexQName`,
+ *    source-audit confirmed).
+ *
+ * 3. `GetManyByName(repo, parentLoca, name)` searches GRANDCHILDREN of
+ *    `parentLoca` (for each direct child, look at THAT child's own
+ *    children for one named `name`) — confirmed live AND via
+ *    `ManyItemsWorker.GetManyByName`'s source. A direct-child group whose
+ *    grandchildren have MORE THAN ONE match for `name` is silently
+ *    skipped entirely (.NET's inner `SingleOrDefault` throws, caught by
+ *    the surrounding try/catch in `GetManyByName` itself) — replicated
+ *    here exactly, not an approximation.
+ *
+ * 4. `GetByNames` descent uses `SingleOrDefault` semantics per source
+ *    audit: more than one direct child sharing the same logical `name`
+ *    at any level is NOT "first match wins" — it throws
+ *    `ContentProviderError`, matching .NET's uncaught
+ *    `InvalidOperationException`. Case-sensitive ordinal match, confirmed.
+ *
+ * 5. `FindRecursively(repo, loca, phrase)` — confirmed via
+ *    `MethodWorker.FindRecursively`'s source — searches ONLY `body.txt`
+ *    file contents (i.e. only Text-type items are ever candidates), a
+ *    plain case-insensitive substring match. It does NOT match against
+ *    `name` — an earlier version of this file incorrectly also matched
+ *    name, fixed after the source audit. Throws on an empty phrase,
+ *    matching .NET's `ArgumentException`.
+ *
+ * 6. `Ref`-type items are fully dereferenced on `GetItem`/anywhere else a
+ *    single item is read: the item you get back IS the target item
+ *    (config, body, address all become the target's) — confirmed via
+ *    `ReadRefWorker.IfMineGetItem`'s source. `refAddress` is parsed with
+ *    the same "split on first slash" rule .NET's
+ *    `CreateAddressFromString` uses (see `paths.ts`'s
+ *    `parseAddressString`) — no validation that the resulting `repo` is
+ *    an actual GUID, so a stale/legacy `refAddress` (the only kind found
+ *    in real local data — all 68 real Ref items use one) fails exactly
+ *    like real .NET does (confirmed live: the real API throws
+ *    `PathWorker.HandleError` on one of these). NOT replicated: .NET's
+ *    extra guid-staleness cross-check/self-heal
+ *    (`GuidWorker.UpdateRefItemIfNeeded`) — this file dereferences by
+ *    `refAddress` directly, a deliberate simplification flagged in
+ *    README.md, since that logic is deep, low-value for Stage 2's
+ *    read-only scope, and couldn't be verified against any real data
+ *    (no real Ref item in the local dataset has a resolvable target).
+ *
+ * Deliberate divergences from .NET (documented in README.md, not
+ * "approximations" — conscious choices for a read-only browsing tool):
+ * - A missing/corrupt config.yaml throws `ContentProviderError` here;
+ *   .NET silently degrades to an empty dict (swallowed at the YAML-parse
+ *   layer) and then usually crashes anyway once required keys turn out
+ *   missing — throwing immediately is more useful, not less faithful in
+ *   any way that matters for browsing.
+ * - A missing body.txt on a Text item returns `""` here; real .NET
+ *   crashes with an uncaught `FileNotFoundException`. Softer on purpose.
+ * - A single unreadable child is skipped (not fatal) when building a
+ *   Folder's child-name-map; real .NET lets one bad child crash the
+ *   entire parent Folder's `GetItem`. Softer on purpose.
  */
 
 import type { ContentProviderStorage, CpItem, CpConfig, CpItemType } from "cp-core";
 import { ContentProviderError } from "cp-core";
-import { getItemDir, getRepoDir, getStorageRoot, locaToSegments, segmentsToLoca } from "./paths.js";
+import {
+  getItemDir,
+  getRepoDir,
+  getStorageRoot,
+  locaToSegments,
+  segmentsToLoca,
+  parseAddressString,
+} from "./paths.js";
 import { readConfig } from "./config.js";
-import { readBody } from "./body.js";
-import { listChildNames, buildChildNameMap } from "./children.js";
+import { readBody, getBodyPath } from "./body.js";
+import { listChildNames } from "./children.js";
+import { access } from "node:fs/promises";
+
+interface ResolvedItem {
+  repoGuid: string;
+  loca: string;
+  itemDir: string;
+  config: CpConfig;
+}
 
 function computeAddress(repoGuid: string, loca: string): string {
   return loca ? `${repoGuid}/${loca}` : repoGuid;
@@ -43,6 +115,62 @@ function normalizeLoca(loca: string | undefined | null): string {
   return segmentsToLoca(locaToSegments(loca));
 }
 
+/**
+ * Reads config at (repoGuid, loca) and, if it's a `Ref`, follows
+ * `refAddress` to the real target — recursively, in case of a Ref
+ * pointing at another Ref (mirrors .NET's `ReadMultiWorker.GetItem`
+ * being re-invoked on the resolved target).
+ */
+async function resolveItem(repoGuid: string, loca: string, seen: Set<string> = new Set()): Promise<ResolvedItem> {
+  const key = `${repoGuid}/${loca}`;
+  if (seen.has(key)) {
+    throw new ContentProviderError(`Ref cycle detected while resolving "${key}"`);
+  }
+  seen.add(key);
+
+  const itemDir = getItemDir(repoGuid, loca);
+  const config = await readConfig(itemDir);
+
+  if (config.type !== "Ref") {
+    return { repoGuid, loca, itemDir, config };
+  }
+
+  if (!config.refAddress) {
+    throw new ContentProviderError(`Ref item at "${key}" has no refAddress`);
+  }
+  const { repo: targetRepo, loca: targetLocaRaw } = parseAddressString(config.refAddress);
+  const targetLoca = normalizeLoca(targetLocaRaw);
+  return resolveItem(targetRepo, targetLoca, seen);
+}
+
+/**
+ * Folder-type Body: `{childIndex: childName}`, dereferencing Ref children
+ * to the target's name (matches `ReadFolderWorker.SelectIndexQName`).
+ * A child that can't be resolved (missing config, or a Ref that fails to
+ * dereference) is skipped, not fatal — see this file's top comment.
+ */
+async function buildChildNameMap(itemDir: string): Promise<Record<string, string>> {
+  const childNames = await listChildNames(itemDir);
+  const map: Record<string, string> = {};
+  for (const childName of childNames) {
+    const childDir = `${itemDir}/${childName}`;
+    const config = await readConfig(childDir).catch(() => undefined);
+    if (!config) continue;
+
+    if (config.type === "Ref" && config.refAddress) {
+      const { repo: targetRepo, loca: targetLocaRaw } = parseAddressString(config.refAddress);
+      const resolved = await resolveItem(targetRepo, normalizeLoca(targetLocaRaw)).catch(() => undefined);
+      if (resolved) {
+        map[childName] = resolved.config.name;
+      }
+      continue;
+    }
+
+    map[childName] = config.name;
+  }
+  return map;
+}
+
 async function computeBody(config: CpConfig, itemDir: string): Promise<string> {
   if (config.type === "Text") {
     return readBody(itemDir);
@@ -50,17 +178,14 @@ async function computeBody(config: CpConfig, itemDir: string): Promise<string> {
   if (config.type === "Folder") {
     return JSON.stringify(await buildChildNameMap(itemDir));
   }
-  // type === "Ref": not dereferenced yet (see README.md's "Known approximations").
   return "";
 }
 
 /**
  * `config.address` is overridden with the computed (self-healed) address
- * before being returned — confirmed live that .NET's Settings.address in
- * the response is ALSO the recomputed value, not whatever's stale on disk
- * (e.g. repo 21d11bdc.../03/06/71/01 has address: "Active/06/64/01" on
- * disk, but the real API returns Settings.address matching the top-level,
- * recomputed Address). Raw disk config is never trusted for addressing.
+ * before being returned — confirmed live and via source that .NET's
+ * Settings.address in the response is ALSO the recomputed value, not
+ * whatever's stale on disk.
  */
 function toCpItem(config: CpConfig, body: string, address: string): CpItem {
   const healedConfig = { ...config, address };
@@ -72,43 +197,45 @@ function toCpItem(config: CpConfig, body: string, address: string): CpItem {
   };
 }
 
-async function readItemAt(repoGuid: string, itemDir: string, loca: string): Promise<CpItem> {
-  const config = await readConfig(itemDir);
-  const body = await computeBody(config, itemDir);
-  return toCpItem(config, body, computeAddress(repoGuid, loca));
+async function readItemAt(repoGuid: string, loca: string): Promise<CpItem> {
+  const resolved = await resolveItem(repoGuid, loca);
+  const body = await computeBody(resolved.config, resolved.itemDir);
+  return toCpItem(resolved.config, body, computeAddress(resolved.repoGuid, resolved.loca));
 }
 
 /**
  * Descends from `startDir` matching each `names` entry against child
- * config.yaml `name` fields (not physical folder names — logical names
- * live in config.yaml, per Content Provider's core invariant). First
- * matching child at each level wins; ties are broken by ascending numeric
- * folder order. Approximation: exact tie-breaking semantics of the real
- * .NET GetByNames aren't confirmed by the 2026-07-12 audit — flagged in
- * cp-files/README.md as needing a compatibility-test pass.
- *
- * Returns the resolved physical loca segments alongside the directory, so
- * callers can compute the correct (self-healed) Address.
+ * config.yaml `name` fields — logical names live in config.yaml, not on
+ * the physical (numeric) folder. Case-sensitive, ordinal match
+ * (`config?.name === name`), matching .NET. More than one direct child
+ * sharing the same name at any level throws `ContentProviderError`,
+ * matching .NET's uncaught `SingleOrDefault` exception — NOT "first
+ * match wins" (an earlier version of this file did that; fixed after the
+ * source audit).
  */
 async function resolveDirByNames(startDir: string, names: string[]): Promise<{ dir: string; segments: string[] }> {
   let currentDir = startDir;
   const segments: string[] = [];
   for (const name of names) {
     const childNames = await listChildNames(currentDir);
-    let matchedChildName: string | undefined;
+    const matches: string[] = [];
     for (const childName of childNames) {
       const childDir = `${currentDir}/${childName}`;
       const config = await readConfig(childDir).catch(() => undefined);
       if (config?.name === name) {
-        matchedChildName = childName;
-        break;
+        matches.push(childName);
       }
     }
-    if (!matchedChildName) {
+    if (matches.length === 0) {
       throw new ContentProviderError(`No child named "${name}" under "${currentDir}"`);
     }
-    segments.push(matchedChildName);
-    currentDir = `${currentDir}/${matchedChildName}`;
+    if (matches.length > 1) {
+      throw new ContentProviderError(
+        `Ambiguous: ${matches.length} children named "${name}" under "${currentDir}" — matches .NET's SingleOrDefault throwing on duplicate names.`
+      );
+    }
+    segments.push(matches[0]);
+    currentDir = `${currentDir}/${matches[0]}`;
   }
   return { dir: currentDir, segments };
 }
@@ -121,76 +248,76 @@ function notImplemented(operation: string): never {
 
 export const filesStorage: ContentProviderStorage = {
   async GetItem(repoGuid, loca) {
-    const normalizedLoca = normalizeLoca(loca);
-    const itemDir = getItemDir(repoGuid, loca);
-    return readItemAt(repoGuid, itemDir, normalizedLoca);
+    return readItemAt(repoGuid, normalizeLoca(loca));
   },
 
   async GetByNames(repoGuid, ...names) {
     const repoDir = getRepoDir(repoGuid, getStorageRoot());
-    const { dir, segments } = await resolveDirByNames(repoDir, names);
-    return readItemAt(repoGuid, dir, segmentsToLoca(segments));
+    const { segments } = await resolveDirByNames(repoDir, names);
+    return readItemAt(repoGuid, segmentsToLoca(segments));
   },
 
   /**
-   * Searches GRANDCHILDREN of `parentLoca`, not direct children — confirmed
-   * live: GetManyByName(repo, "03/06", "status") — "03/06" being the
-   * "leads" -> "all items" folder — returns one "status" item per lead
-   * folder directly under "03/06", i.e.
-   * for each direct child (a lead), it looks at THAT child's own children
-   * for one named `name`. Matches documentation/dba/resolve-paths.md's
-   * chad_GetLeadsStatuses() usage (leadsLoca + "status" -> one status per
-   * lead). An earlier version of this function searched direct children
-   * instead and returned zero results for real data — fixed after
-   * comparing against the live API's actual output.
+   * Searches GRANDCHILDREN of `parentLoca`, not direct children —
+   * confirmed live AND via `ManyItemsWorker.GetManyByName`'s source: for
+   * each direct child of `parentLoca` (e.g. a lead folder), look at THAT
+   * child's own children for one named `name`. A direct-child group with
+   * more than one matching grandchild is skipped entirely (matches
+   * .NET's inner SingleOrDefault-throws / outer try-catch-continue).
    */
   async GetManyByName(repoGuid, parentLoca, name) {
-    const parentDir = getItemDir(repoGuid, parentLoca);
-    const parentSegments = locaToSegments(parentLoca);
+    const normalizedParentLoca = normalizeLoca(parentLoca);
+    const parentDir = getItemDir(repoGuid, normalizedParentLoca);
+    const parentSegments = locaToSegments(normalizedParentLoca);
     const groupNames = await listChildNames(parentDir);
     const matches: CpItem[] = [];
     for (const groupName of groupNames) {
       const groupDir = `${parentDir}/${groupName}`;
       const grandchildNames = await listChildNames(groupDir);
+      const groupMatches: string[] = [];
       for (const grandchildName of grandchildNames) {
-        const grandchildDir = `${groupDir}/${grandchildName}`;
-        const config = await readConfig(grandchildDir).catch(() => undefined);
+        const config = await readConfig(`${groupDir}/${grandchildName}`).catch(() => undefined);
         if (config?.name === name) {
-          const body = await computeBody(config, grandchildDir);
-          const loca = segmentsToLoca([...parentSegments, groupName, grandchildName]);
-          matches.push(toCpItem(config, body, computeAddress(repoGuid, loca)));
+          groupMatches.push(grandchildName);
         }
       }
+      if (groupMatches.length !== 1) {
+        continue; // 0 matches: nothing to add. >1 matches: ambiguous, .NET skips the whole group.
+      }
+      const loca = segmentsToLoca([...parentSegments, groupName, groupMatches[0]]);
+      matches.push(await readItemAt(repoGuid, loca));
     }
     return matches;
   },
 
   /**
-   * Recursive name/body substring search under `loca`. Approximation —
-   * the exact real .NET FindRecursively matching semantics (case
-   * sensitivity, whether it searches Config.name, body.txt, computed
-   * Folder body maps, or some combination) weren't part of the
-   * 2026-07-12 audit scope; this implements the most literal reading
-   * (case-insensitive substring match on name OR raw body.txt content)
-   * and is flagged in cp-files/README.md as needing its own compatibility
-   * pass against a real /invoke FindRecursively call before being trusted.
+   * Searches only `body.txt` contents (Text items) — never item names —
+   * case-insensitive substring match, confirmed via
+   * `MethodWorker.FindRecursively`'s source. Throws on an empty phrase,
+   * matching .NET's `ArgumentException`.
    */
   async FindRecursively(repoGuid, loca, phrase) {
-    const startDir = getItemDir(repoGuid, loca);
-    const startSegments = locaToSegments(loca);
+    if (!phrase) {
+      throw new ContentProviderError("FindRecursively: phrase must not be empty");
+    }
+    const normalizedLoca = normalizeLoca(loca);
+    const startDir = getItemDir(repoGuid, normalizedLoca);
+    const startSegments = locaToSegments(normalizedLoca);
     const needle = phrase.toLowerCase();
     const results: CpItem[] = [];
 
     async function walk(dir: string, segments: string[]): Promise<void> {
-      const config = await readConfig(dir).catch(() => undefined);
-      if (!config) return;
-
-      const rawBody = config.type === "Text" ? await readBody(dir) : "";
-      const matches =
-        config.name.toLowerCase().includes(needle) || rawBody.toLowerCase().includes(needle);
-      if (matches) {
-        const body = await computeBody(config, dir);
-        results.push(toCpItem(config, body, computeAddress(repoGuid, segmentsToLoca(segments))));
+      const hasBody = await access(getBodyPath(dir)).then(() => true).catch(() => false);
+      if (hasBody) {
+        try {
+          const body = await readBody(dir);
+          if (body.toLowerCase().includes(needle)) {
+            const config = await readConfig(dir);
+            results.push(toCpItem(config, body, computeAddress(repoGuid, segmentsToLoca(segments))));
+          }
+        } catch {
+          // Matches .NET: a per-file error (unreadable/bad config) is skipped, not fatal to the whole search.
+        }
       }
 
       const childNames = await listChildNames(dir);
