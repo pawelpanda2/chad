@@ -1,0 +1,21 @@
+{
+  "name": "cp-mongo",
+  "version": "0.0.0",
+  "private": true,
+  "description": "MongoDB storage implementation of cp-core's ContentProviderStorage — basic skeleton only (document model + connection helper). NOT wired into cp-entry yet, NOT read/write-capable yet. See README.md.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "cp-core": "workspace:*",
+    "mongodb": "^6.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "typescript": "^5.3.3"
+  }
+}
