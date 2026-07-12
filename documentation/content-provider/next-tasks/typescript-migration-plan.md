@@ -153,10 +153,11 @@ pnpm-workspace.yaml zaktualizowany o `packages/content-provider/*` (dodatkowy gl
 ~~2. Obsługa `Ref`-type itemów~~ ✅ — pełna dereferencja zaimplementowana, zweryfikowana (zgodność błędu z realnym .NET na jedynych dostępnych, stale'owych danych).
 ~~3. `cp-mongo`~~ ✅ (jako podstawowy szkielet — model + connection helper + jedno prawdziwe `GetItem`; reszta świadomie nie zaimplementowana, patrz `packages/content-provider/mongo/README.md`).
 
+~~2. Wspólne API HTTP~~ ✅ — `packages/content-provider/api` (`cp-api`) dodane: `/health`, `/storage/status`, `/repos`, `/repos/:id/root`, `/repos/:id/items/<loca>`, `/repos/:id/by-names`, `/repos/:id/many-by-name`, `/repos/:id/find`. Zweryfikowane end-to-end (read-only) przez realny routing `cp-entry`→net-adapter→prawdziwe .NET API — wyniki `many-by-name`/`find` zgodne z wcześniej potwierdzonymi (64/4).
+
 Następny krok, gdy temat wróci:
 
-1. **`cp-gui` — implementacja komponentów** (FolderView/TextView/nav). Wzorzec Blazor w pełni zmapowany (sekcja 0 wyżej): `Repos.razor` (nav), `TextView.razor`/`FolderView.razor` (oba renderowane bezwarunkowo, każdy sam sprawdza `Item.Type`). `cp-gui`'s kontrakty (`BackendAdapter`/`PluginAdapter`/`RepoAdapter`) już istnieją — brakuje realnej implementacji `createHttpBackendAdapter`/`createHttpPluginAdapter` i komponentów.
-2. **Wspólne API HTTP** (sekcja 10 oryginalnego promptu migracji) — `cp-entry` istnieje jako wewnętrzny routing, ale nie ma jeszcze warstwy HTTP (`/health`, `/repos`, `/repos/:repoId/items/:loca` itd.) — potrzebne zanim `cp-gui`'s `createHttpBackendAdapter` będzie miał co wołać.
-3. `Put`/`PostParentItem` w `cp-files` (Etap 3) — obecnie rzucają `ContentProviderError`. Pełna specyfikacja (w tym prawdziwy bug `PutWriteFolderWorker` psujący typ Foldera) już udokumentowana w sekcji 0 wyżej.
-4. `cp-mongo`: rozbudowa poza `GetItem` — wymaga decyzji projektowych (indeksy pod `GetByNames`/`GetManyByName`/`FindRecursively` w Mongo) nieopisanych jeszcze nigdzie.
-5. Dopiero potem: oczyszczenie źródłowego repo `content-provider` + submodule (sekcja 6, punkty 1-5) — nadal nie wykonane, nie priorytet.
+1. **`cp-gui` — implementacja komponentów** (FolderView/TextView/nav). Wzorzec Blazor w pełni zmapowany (sekcja 0 wyżej): `Repos.razor` (nav), `TextView.razor`/`FolderView.razor` (oba renderowane bezwarunkowo, każdy sam sprawdza `Item.Type`). `cp-gui`'s kontrakty (`BackendAdapter`/`PluginAdapter`/`RepoAdapter`) już istnieją; `createHttpBackendAdapter`/`createHttpPluginAdapter` mają teraz co wołać (`cp-api`/`cp-plugin` oba działają) — następny krok to je zaimplementować, potem komponenty.
+2. `Put`/`PostParentItem` w `cp-files` (Etap 3) — obecnie rzucają `ContentProviderError`. Pełna specyfikacja (w tym prawdziwy bug `PutWriteFolderWorker` psujący typ Foldera) już udokumentowana w sekcji 0 wyżej.
+3. `cp-mongo`: rozbudowa poza `GetItem` — wymaga decyzji projektowych (indeksy pod `GetByNames`/`GetManyByName`/`FindRecursively` w Mongo) nieopisanych jeszcze nigdzie.
+4. Dopiero potem: oczyszczenie źródłowego repo `content-provider` + submodule (sekcja 6, punkty 1-5) — nadal nie wykonane, nie priorytet.
