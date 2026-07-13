@@ -49,6 +49,16 @@ RUN pnpm --filter dashboard exec prisma generate
 # Clean .next directory to avoid stale filesystem issues (especially on QNAP)
 RUN rm -rf packages/dashboard/.next
 
+# Compile-time feature flags (see packages/dashboard/lib/flags.ts). Default OFF
+# so test/prod images ship WITHOUT the Dev Panel and without diagnostic error
+# details. To build a one-off test image WITH the Dev Panel, pass e.g.
+#   docker compose build --build-arg ENABLE_DEV_PANEL=true
+# NEXT_PUBLIC_* must be set before `next build` so Next inlines it.
+ARG ENABLE_DEV_PANEL=false
+ARG ENABLE_DIAGNOSTICS=false
+ENV NEXT_PUBLIC_ENABLE_DEV_PANEL=$ENABLE_DEV_PANEL
+ENV NEXT_PUBLIC_ENABLE_DIAGNOSTICS=$ENABLE_DIAGNOSTICS
+
 RUN pnpm --filter dashboard build
 
 # ============================================

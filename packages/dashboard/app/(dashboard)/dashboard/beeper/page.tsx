@@ -8,7 +8,13 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
 import { Search, MessageCircle, RefreshCw, Inbox, Users2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -76,15 +82,18 @@ export default function BeeperContactsPage() {
 			toolbar={
 				<>
 					<h2 className="text-lg font-bold">Beeper</h2>
-					<Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
-						<TabsList className="h-7">
-							{TAB_OPTIONS.map((opt) => (
-								<TabsTrigger key={opt.value} value={opt.value} className="text-xs">
-									{opt.label}
-								</TabsTrigger>
-							))}
-						</TabsList>
-					</Tabs>
+					<Select value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
+							<SelectTrigger className="h-7 w-[130px] text-xs">
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								{TAB_OPTIONS.map((opt) => (
+									<SelectItem key={opt.value} value={opt.value}>
+										{opt.label}
+									</SelectItem>
+								))}
+							</SelectContent>
+						</Select>
 					<div className="relative">
 						<Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
 						<Input

@@ -66,11 +66,22 @@ layout różnicuje desktop i mobile.
 - **Wyloguj**: zwykła pozycja **wewnątrz** przewijanej nawigacji (`<nav>` z
   `overflow-y-auto`), nie osobna, przyklejona stopka. Gdy pozycji menu jest
   więcej niż mieści ekran, menu ma własny wewnętrzny scrollbar.
-- **Uchwyt menu (wszędzie)**: mały chevron przyklejony do lewej krawędzi,
-  wyśrodkowany w pionie (wzorowany na uchwycie Dev Panela). Przełącza menu i
-  „jedzie" do prawej krawędzi sidebara po otwarciu (`left-0` ↔ `left-72`,
-  `ChevronRight` ↔ `ChevronLeft`). Widoczny na każdym rozmiarze — nie ma
-  `md:hidden`. Nie zajmuje osobnego paska.
+- **Uchwyt menu (wszędzie)**: chevron w **lewym-górnym** rogu, w pierwszej
+  linii (tam gdzie są przyciski/tytuł), żeby nie zasłaniał zawartości ramki.
+  Szeroki i niski dla łatwego kliknięcia na telefonie (`w-12 h-9`, `top-1`).
+  Przełącza menu i „jedzie" do prawej krawędzi sidebara po otwarciu
+  (`left-1` ↔ `left-72`, `ChevronRight` ↔ `ChevronLeft`). Widoczny na każdym
+  rozmiarze.
+- **Zarezerwowane miejsce na uchwyt (standard)**: każdy widok zostawia na górze
+  z lewej miejsce na uchwyt. `DashboardPageShell` **zawsze** renderuje górny
+  wiersz toolbara z `pl-14 min-h-9`. Ekrany edytora (`EditorPageShell`) mają
+  `pl-14` na swoim wierszu nagłówka (`msg-planner`, `todo-msg/edit`,
+  `leads/msg-workout`).
+- **Sidebar — zakładki (2026-07-13)**: ACTIONS (Forms, Views) · MESSAGES/LEADS
+  (Statuses, Msg Todo, Msg Planner, Beeper, Folders, Messages) · Others
+  (Settings) · Admin (Users). Wyloguj to pozycja w przewijanym `<nav>` tuż pod
+  ostatnią grupą (`mt-4`, bez dużego odstępu). Motyw jest w Settings (nie w
+  nagłówku sidebara).
 - **Topbar**: ukryty na **każdym** rozmiarze przez flagę `SHOW_TOPBAR = false`
   (`{SHOW_TOPBAR && <Topbar />}`). Implementacja **pozostaje w drzewie** — żeby
   przywrócić topbar wszędzie, wystarczy zmienić flagę na `true`, bez innych

@@ -261,8 +261,9 @@ export default function MsgPlannerPage() {
 
   return (
     <EditorPageShell>
-      {/* Msg Planner toolbar — buttons above the framed editor (standard layout) */}
-      <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1">
+      {/* Msg Planner toolbar — buttons above the framed editor (standard layout).
+          pl-14 reserves the top-left slot for the fixed menu handle. */}
+      <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 pl-14">
         <Select value={selectedDate} onValueChange={handleDateChange}>
           <SelectTrigger className="w-[160px] h-8">
             <SelectValue placeholder="Select date" />

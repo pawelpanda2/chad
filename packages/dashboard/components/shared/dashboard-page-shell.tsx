@@ -61,16 +61,17 @@ export function DashboardPageShell({
   return (
     <div className={cn("flex h-full min-h-0 w-full flex-col gap-0.5", className)}>
       {/*
-        Controls sit ABOVE the frame, left-aligned to the same edge. They wrap
-        onto a second row automatically when they do not fit on one line. If a
-        title is shown it lives inline on this row with the buttons — no extra
-        descriptions/subtitles (matches the DAILY ENTRY layout).
+        Top row: controls sit ABOVE the frame, left-aligned. They wrap onto a
+        second row automatically when they do not fit. If a title is shown it
+        lives inline here with the buttons — no subtitles (DAILY ENTRY layout).
+
+        The row is ALWAYS rendered (even without a toolbar) and reserves left
+        space (`pl-14`) + a min height for the fixed menu handle that lives in
+        the top-left of every view, so the handle never covers frame content.
       */}
-      {toolbar ? (
-        <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1">
-          {toolbar}
-        </div>
-      ) : null}
+      <div className="flex min-h-9 shrink-0 flex-wrap items-center gap-x-3 gap-y-1 pl-14">
+        {toolbar}
+      </div>
 
       <div
         className={cn(

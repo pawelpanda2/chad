@@ -105,16 +105,17 @@ export function TextEditorWithToolbar({
             onValueChange={(v) => setActiveTab(v as "preview" | "editor")}
             className="shrink-0"
           >
-            <TabsList className="h-8 rounded-none border-0 bg-transparent">
+            {/* Segmented control matching the rest of the site (no icons). */}
+            <TabsList className="h-8 gap-1 rounded-lg border bg-card p-1">
               <TabsTrigger
                 value="preview"
-                className="h-7 text-xs rounded-none data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+                className="h-6 rounded-md px-3 text-xs font-medium text-muted-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
               >
                 Preview
               </TabsTrigger>
               <TabsTrigger
                 value="editor"
-                className="h-7 text-xs rounded-none data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+                className="h-6 rounded-md px-3 text-xs font-medium text-muted-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
               >
                 Editor
               </TabsTrigger>

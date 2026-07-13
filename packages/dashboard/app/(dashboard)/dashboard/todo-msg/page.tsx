@@ -194,20 +194,21 @@ function TodoMsgPageContent() {
                       </span>
                     </button>
                     <div className="flex items-center gap-2 min-w-0 flex-1">
-                      <span className="truncate text-sm font-medium select-text">
-                        {lead.leadName}
-                      </span>
-                      {lead.loca && (
+                      {lead.loca ? (
                         <Link
                           href={buildLeadDetailsHref({
                             leadName: lead.leadName,
                             leadLoca: lead.loca,
                             returnTo,
                           })}
-                          className="text-xs text-primary underline underline-offset-4"
+                          className="truncate text-sm font-medium hover:text-primary hover:underline"
                         >
-                          info
+                          {lead.leadName}
                         </Link>
+                      ) : (
+                        <span className="truncate text-sm font-medium select-text">
+                          {lead.leadName}
+                        </span>
                       )}
                       {lead.loca && (
                         <>

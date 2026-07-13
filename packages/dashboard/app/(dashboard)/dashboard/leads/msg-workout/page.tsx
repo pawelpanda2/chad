@@ -168,8 +168,9 @@ function MsgWorkoutDetailsPageContent() {
 
   return (
     <EditorPageShell>
-      {/* Compact Header with back button and label */}
-      <div className="flex shrink-0 items-center gap-2">
+      {/* Compact Header with back button and label. pl-14 reserves the
+          top-left slot for the fixed menu handle. */}
+      <div className="flex shrink-0 items-center gap-2 pl-14">
         <Button
           onClick={handleBack}
           variant="outline"

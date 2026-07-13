@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
 import { buildLeadDetailsHref, getLeadDetailsHref } from "@/lib/lead-links";
+import { ErrorBox } from "@/components/shared/error-box";
 import {
   RefreshCw,
   ArrowLeft,
@@ -315,11 +316,7 @@ function ViewsPageContent() {
           </>
         }
       >
-        {error && (
-          <div className="mb-2 p-2 rounded-lg bg-red-50 text-red-700 border border-red-200 text-xs">
-            Error: {error}
-          </div>
-        )}
+        <ErrorBox message={error} className="mb-2" />
 
         {isLoading ? (
           <div className="flex items-center gap-2 py-4 text-muted-foreground">
@@ -433,11 +430,7 @@ function ViewsPageContent() {
       }
     >
       {/* Error display */}
-      {error && (
-        <div className="mb-1 shrink-0 p-2 rounded-lg bg-red-50 text-red-700 border border-red-200 text-xs">
-          Error: {error}
-        </div>
-      )}
+      <ErrorBox message={error} className="mb-1 shrink-0" />
 
       {/* Table — fills remaining space, scrolls internally only */}
       <div className="min-h-0 flex-1 overflow-auto">

@@ -65,6 +65,19 @@ area) without forcing the editor into `DashboardPageShell`.
 - The **Preview** tab no longer shows the eye icon — plain "Preview" text only.
 - See [responsive-layout-standard.md](responsive-layout-standard.md).
 
+### Editor updates (2026-07-13)
+`components/shared/body-text-editor.tsx`:
+- **Dark mode**: the CodeMirror instance now follows the app theme via
+  `useTheme()` (`next-themes`) → `theme={isDark ? "dark" : "light"}`. Fixes
+  white-on-white unreadable text after switching to dark mode.
+- **Line numbers**: `basicSetup.lineNumbers: true` and the old
+  `.cm-gutter { display: none }` override was removed; the gutter is kept subtle
+  (transparent background, no border).
+
+`components/shared/text-editor-with-toolbar.tsx`:
+- Preview/Editor tabs restyled as a **segmented control** matching the rest of
+  the site (rounded box; active = primary bg). No icons.
+
 ## Features
 
 ### Save Button

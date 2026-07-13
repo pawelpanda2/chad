@@ -4,6 +4,7 @@ import "./globals.css";
 import "@/components/dev-panel/dev-panel.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { DevPanelProvider } from "@/components/dev-panel/dev-panel-provider";
+import { DEV_PANEL_ENABLED } from "@/lib/flags";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -107,7 +108,25 @@ export default function RootLayout({
 				<meta name="viewport" content="width=device-width, initial-scale=1" />
 			</head>
 			<body className={inter.className}>
-				<DevPanelProvider>
+				{/*
+					The Dev Panel (and its window.fetch/onerror patching) is mounted
+					ONLY when enabled at build time via NEXT_PUBLIC_ENABLE_DEV_PANEL
+					(inlined by Next). It defaults OFF for production builds, so on
+					test/prod the Dev Panel is never rendered or executed — no request
+					capture, no error overlay — unless explicitly built in.
+				*/}
+				{DEV_PANEL_ENABLED ? (
+					<DevPanelProvider>
+						<ThemeProvider
+							attribute="class"
+							defaultTheme="system"
+							enableSystem
+							disableTransitionOnChange
+						>
+							{children}
+						</ThemeProvider>
+					</DevPanelProvider>
+				) : (
 					<ThemeProvider
 						attribute="class"
 						defaultTheme="system"
@@ -116,7 +135,7 @@ export default function RootLayout({
 					>
 						{children}
 					</ThemeProvider>
-				</DevPanelProvider>
+				)}
 			</body>
 		</html>
 	);

@@ -1418,6 +1418,104 @@ export async function getLeadMsgWorkoutsByLoca(leadLoca: string): Promise<MsgWor
 }
 
 /**
+ * Ensures a lead has its standard sub-items: a "contacts" Text item and a
+ * "msg workout" Folder.
+ *
+ * Uses PostParentItem, which is find-or-create (see
+ * documentation/dba/post-parent-item.md): for a lead that already has the
+ * items it returns the existing ones and creates nothing — so this is
+ * idempotent and safe to call repeatedly. The Content Provider stores the
+ * logical name ("contacts" / "msg workout") in each item's config while the
+ * physical child folders stay numeric; nothing here builds a domain-named
+ * physical folder by hand.
+ *
+ * Why this exists: leads created before the sub-items were guaranteed (or by
+ * other tools) lack the "msg workout" folder, and GetByNames2 then returns an
+ * empty HTTP body which surfaces as "Empty response body … 'msg workout'" in
+ * lead details. Ensuring the folder exists makes GetByNames2 return an empty
+ * (but valid) folder instead of an error.
+ *
+ * All raw CP access stays inside dba; callers pass only the numeric leadLoca.
+ */
+export async function ensureLeadSubItems(leadLoca: string): Promise<void> {
+  const repo = getCurrentRepoGuid();
+  if (leadLoca.includes(repo)) {
+    throw new Error(
+      `Invalid leadLoca for ensureLeadSubItems: must not contain repo GUID (got "${leadLoca}").`,
+    );
+  }
+
+  // find-or-create "contacts" (Text)
+  await invokeContentProvider([
+    "IRepoService",
+    "IItemWorker",
+    "PostParentItem",
+    repo,
+    leadLoca,
+    "Text",
+    "contacts",
+  ]);
+
+  // find-or-create "msg workout" (Folder)
+  await invokeContentProvider([
+    "IRepoService",
+    "IItemWorker",
+    "PostParentItem",
+    repo,
+    leadLoca,
+    "Folder",
+    "msg workout",
+  ]);
+}
+
+/** Result of a bulk sub-item backfill run. */
+export interface EnsureAllLeadsResult {
+  total: number;
+  ensured: number;
+  errors: Array<{ leadKey: string; leadLoca: string; error: string }>;
+}
+
+/**
+ * Backfills the standard sub-items ("contacts" + "msg workout") for EVERY lead.
+ * Idempotent (find-or-create), safe to run repeatedly. Iterates the same
+ * leads/all-items map used elsewhere and resolves each lead's numeric loca as
+ * `${leadsLoca}/${leadKey}`.
+ */
+export async function ensureAllLeadsSubItems(): Promise<EnsureAllLeadsResult> {
+  const repo = getCurrentRepoGuid();
+  const allLeadsResponse = await GetAllLeads();
+
+  const body =
+    allLeadsResponse?.Body && typeof allLeadsResponse.Body === "object"
+      ? (allLeadsResponse.Body as Record<string, unknown>)
+      : {};
+
+  const leadsLoca = allLeadsResponse?.Settings?.address
+    ? allLeadsResponse.Settings.address.replace(`${repo}/`, "")
+    : "";
+
+  const keys = Object.keys(body);
+  const errors: EnsureAllLeadsResult["errors"] = [];
+  let ensured = 0;
+
+  for (const leadKey of keys) {
+    const leadLoca = `${leadsLoca}/${leadKey}`;
+    try {
+      await ensureLeadSubItems(leadLoca);
+      ensured++;
+    } catch (e) {
+      errors.push({
+        leadKey,
+        leadLoca,
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
+
+  return { total: keys.length, ensured, errors };
+}
+
+/**
  * Extended lead details data including msg workouts
  */
 export interface LeadDetailsDataWithWorkouts extends LeadDetailsData {
@@ -1439,6 +1537,19 @@ export interface LeadDetailsDataWithWorkouts extends LeadDetailsData {
  * @returns Promise resolving to LeadDetailsDataWithWorkouts
  */
 export async function getLeadDetailsWithWorkouts(leadName: string, leadLoca: string): Promise<LeadDetailsDataWithWorkouts> {
+  // Auto-heal: make sure this lead has its "contacts" and "msg workout"
+  // sub-items before reading them (find-or-create, idempotent). Fixes leads
+  // created before the sub-items were guaranteed and avoids the "Empty response
+  // body … 'msg workout'" error. Never fail details just because heal failed.
+  try {
+    await ensureLeadSubItems(leadLoca);
+  } catch (e) {
+    console.error(
+      `[getLeadDetailsWithWorkouts] ensureLeadSubItems failed for "${leadLoca}":`,
+      e instanceof Error ? e.message : String(e),
+    );
+  }
+
   // Get basic lead details (contacts)
   const basicDetails = await getLeadDetails(leadName, leadLoca);
 

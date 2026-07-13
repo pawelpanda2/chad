@@ -143,7 +143,7 @@ function StatusesPageContent() {
   const [saved, setSaved] = useState(false);
 
   // Matrix mode state
-  const [matrixFilter, setMatrixFilter] = useState("");
+  const [nameFilter, setNameFilter] = useState("");
   const [matrixData, setMatrixData] = useState<Map<string, StatusFields>>(new Map());
   const [matrixSaving, setMatrixSaving] = useState(false);
   const [matrixSaved, setMatrixSaved] = useState(false);
@@ -184,12 +184,6 @@ function StatusesPageContent() {
   useEffect(() => {
     loadLeads();
   }, [loadLeads]);
-
-  /** Handle range filter input on Enter key */
-  const handleRangeSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    loadLeads();
-  };
 
   /** Open editor for a specific lead */
   const openEditor = async (leadKey: string) => {
@@ -389,9 +383,9 @@ function StatusesPageContent() {
   };
 
   /** Filter leads for matrix view */
-  const filteredLeadsForMatrix = useMemo(() => {
-    if (!matrixFilter.trim()) return leads;
-    const filter = matrixFilter.toLowerCase().trim();
+  const visibleLeads = useMemo(() => {
+    if (!nameFilter.trim()) return leads;
+    const filter = nameFilter.toLowerCase().trim();
     return leads.filter((lead) => {
       // Filter by lead name
       if (lead.leadName.toLowerCase().includes(filter)) return true;
@@ -401,7 +395,60 @@ function StatusesPageContent() {
       if (lead.statusBody && lead.statusBody.toLowerCase().includes(filter)) return true;
       return false;
     });
-  }, [leads, matrixFilter]);
+  }, [leads, nameFilter]);
+
+  // ------------------------------------------------------------------
+  // Standardized toolbar controls — identical order in both modes:
+  // [mode combobox] [numeric range filter] [name filter]
+  // ------------------------------------------------------------------
+
+  /** Mode combobox — always first, left-aligned. */
+  const modeSelect = (
+    <Select value={mode} onValueChange={(v) => setMode(v as ViewMode)}>
+      <SelectTrigger className="w-[130px]">
+        <SelectValue placeholder="Select mode" />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="matrix">Matrix</SelectItem>
+        <SelectItem value="migration">Migration</SelectItem>
+      </SelectContent>
+    </Select>
+  );
+
+  /**
+   * Numeric range filter (server-side). Convention:
+   *   -10  → last 10 · 10 → first 10 · 1-3 → items 1..3 · 1,2,3 → items 1,2,3
+   * Small: ~5 digits wide. Applies on Enter.
+   */
+  const numericRangeInput = (
+    <Input
+      value={rangeFilter}
+      onChange={(e) => setRangeFilter(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          loadLeads();
+        }
+      }}
+      placeholder="-10"
+      title="Zakres: -10 = ostatnie 10, 10 = pierwsze 10, 1-3 = od 1 do 3, 1,2,3 = wybrane"
+      inputMode="numeric"
+      className="w-16 text-center"
+    />
+  );
+
+  /** Name filter (client-side). */
+  const nameFilterInput = (
+    <div className="relative">
+      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+      <Input
+        value={nameFilter}
+        onChange={(e) => setNameFilter(e.target.value)}
+        placeholder="Filtruj po nazwie..."
+        className="w-[180px] pl-8"
+      />
+    </div>
+  );
 
   /** Save all matrix changes */
   const saveMatrixChanges = async () => {
@@ -410,7 +457,7 @@ function StatusesPageContent() {
     setMatrixError(null);
 
     try {
-      const savePromises = filteredLeadsForMatrix.map(async (lead) => {
+      const savePromises = visibleLeads.map(async (lead) => {
         const fields = matrixData.get(lead.leadKey);
         if (!fields) return;
 
@@ -686,45 +733,23 @@ function StatusesPageContent() {
         padded={false}
         toolbar={
           <>
-            {/* Filter input */}
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              value={matrixFilter}
-              onChange={(e) => setMatrixFilter(e.target.value)}
-              placeholder="Filter: -10, name, city..."
-              className="pl-9 w-[280px]"
-            />
-          </div>
-
-          {/* Mode selector */}
-          <Select value={mode} onValueChange={(v) => setMode(v as ViewMode)}>
-            <SelectTrigger className="w-[140px]">
-              <SelectValue placeholder="Select mode" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="matrix">Matrix</SelectItem>
-              <SelectItem value="migration">Migration</SelectItem>
-            </SelectContent>
-          </Select>
-
-          {/* Status messages */}
-          {matrixSaved && (
-            <span className="text-sm text-green-600 flex items-center gap-1">
-              <CheckCircle2 className="h-4 w-4" />
-              Saved!
-            </span>
-          )}
-          {matrixError && (
-            <span className="text-sm text-red-500 flex items-center gap-1">
-              <AlertCircle className="h-4 w-4" />
-              {matrixError}
-            </span>
-          )}
-
-            {/* Lead count */}
-            <span className="text-sm text-muted-foreground ml-auto">
-              {filteredLeadsForMatrix.length} of {leads.length} leads
+            {modeSelect}
+            {numericRangeInput}
+            {nameFilterInput}
+            {matrixSaved && (
+              <span className="text-sm text-green-600 flex items-center gap-1">
+                <CheckCircle2 className="h-4 w-4" />
+                Saved!
+              </span>
+            )}
+            {matrixError && (
+              <span className="text-sm text-red-500 flex items-center gap-1">
+                <AlertCircle className="h-4 w-4" />
+                {matrixError}
+              </span>
+            )}
+            <span className="ml-auto text-sm text-muted-foreground">
+              {visibleLeads.length} of {leads.length} leads
             </span>
           </>
         }
@@ -735,7 +760,7 @@ function StatusesPageContent() {
             <RefreshCw className="h-4 w-4 animate-spin" />
             <span>Loading leads...</span>
           </div>
-        ) : filteredLeadsForMatrix.length === 0 ? (
+        ) : visibleLeads.length === 0 ? (
           <div className="flex items-center gap-3 py-4 text-muted-foreground">
             <User className="h-8 w-8 opacity-20" />
             <span className="text-sm">No leads found</span>
@@ -787,7 +812,7 @@ function StatusesPageContent() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredLeadsForMatrix.map((lead) => {
+                    {visibleLeads.map((lead) => {
                       const fields = matrixData.get(lead.leadKey) || {
                         city: "",
                         "only-friends": false,
@@ -833,7 +858,7 @@ function StatusesPageContent() {
                                 href={buildLeadDetailsHref({
                                   leadName: lead.leadName,
                                   leadLoca: lead.leadLoca,
-                                  returnTo: `${pathname}?mode=matrix${matrixFilter ? `&filter=${encodeURIComponent(matrixFilter)}` : ''}`,
+                                  returnTo: `${pathname}?mode=matrix${nameFilter ? `&filter=${encodeURIComponent(nameFilter)}` : ''}`,
                                 })}
                                 className="text-sm font-medium truncate block hover:text-primary hover:underline"
                                 title={lead.leadName}
@@ -971,39 +996,11 @@ function StatusesPageContent() {
     <DashboardPageShell
       toolbar={
         <>
-          {/* Mode selector */}
-          <Select value={mode} onValueChange={(v) => setMode(v as ViewMode)}>
-          <SelectTrigger className="w-[140px]">
-            <SelectValue placeholder="Select mode" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="matrix">Matrix</SelectItem>
-            <SelectItem value="migration">Migration</SelectItem>
-          </SelectContent>
-        </Select>
-
-        <form onSubmit={handleRangeSubmit} className="flex items-center gap-[10px]">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              value={rangeFilter}
-              onChange={(e) => setRangeFilter(e.target.value)}
-              placeholder="Filter: -10, 1-20, 1,2,3"
-              className="pl-9 w-[280px]"
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={loading}
-            className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground disabled:opacity-50"
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
-            Apply
-          </button>
-        </form>
-
-          <span className="text-sm text-muted-foreground">
-            {leads.length} leads
+          {modeSelect}
+          {numericRangeInput}
+          {nameFilterInput}
+          <span className="ml-auto text-sm text-muted-foreground">
+            {visibleLeads.length} of {leads.length} leads
           </span>
         </>
       }
@@ -1027,14 +1024,14 @@ function StatusesPageContent() {
             Retry
           </button>
         </div>
-      ) : leads.length === 0 ? (
+      ) : visibleLeads.length === 0 ? (
         <div className="flex items-center gap-3 py-4 text-muted-foreground">
           <User className="h-8 w-8 opacity-20" />
           <span className="text-sm">No leads found</span>
         </div>
       ) : (
         <div className="divide-y">
-              {leads.map((lead) => (
+              {visibleLeads.map((lead) => (
                 <div
                   key={lead.leadKey}
                   className="flex items-center rounded-lg px-[10px] py-[10px] transition-colors group hover:bg-accent"

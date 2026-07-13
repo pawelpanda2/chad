@@ -9,15 +9,11 @@ import {
 	LayoutDashboard,
 	Settings,
 	Users,
-	BarChart3,
 	ClipboardList,
 	ChevronLeft,
 	ChevronRight,
 	Calendar,
-	Database,
 	MessageSquare,
-	Shield,
-	HelpCircle,
 	FolderKanban,
 	LogOut,
 	ListTodo,
@@ -26,128 +22,36 @@ import {
 	Contact,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { ThemeToggle } from "@/components/theme-toggle";
 
 const sidebarGroups = [
 	{
 		title: "ACTIONS",
 		items: [
-			{
-				title: "Forms",
-				href: "/dashboard/forms",
-				icon: ClipboardList,
-				badge: null,
-			},
-			{
-				title: "Views",
-				href: "/dashboard/views",
-				icon: Table,
-				badge: null,
-			},
+			{ title: "Forms", href: "/dashboard/forms", icon: ClipboardList, badge: null },
+			{ title: "Views", href: "/dashboard/views", icon: Table, badge: null },
 		],
 	},
 	{
 		title: "MESSAGES / LEADS",
 		items: [
-			{
-				title: "Statuses",
-				href: "/dashboard/statuses",
-				icon: FileText,
-				badge: null,
-			},
-			{
-				title: "Msg Todo",
-				href: "/dashboard/todo-msg",
-				icon: ListTodo,
-				badge: null,
-			},
-			{
-				title: "Msg Planner",
-				href: "/dashboard/msg-planner",
-				icon: Calendar,
-				badge: null,
-			},
-			{
-				title: "Beeper",
-				href: "/dashboard/beeper",
-				icon: Contact,
-				badge: null,
-			},
-			{
-				title: "Folders",
-				href: "/dashboard/folders",
-				icon: FolderKanban,
-				badge: null,
-			},
-			{
-				title: "Messages",
-				href: "/dashboard/messages",
-				icon: MessageSquare,
-				badge: "5",
-			},
-			{
-				title: "Calendar",
-				href: "/dashboard/calendar",
-				icon: Calendar,
-				badge: "3",
-			},
-		],
-	},
-	{
-		title: "General",
-		items: [
-			{
-				title: "Dashboard",
-				href: "/dashboard",
-				icon: LayoutDashboard,
-				badge: null,
-			},
-			{
-				title: "Analytics",
-				href: "/dashboard/analytics",
-				icon: BarChart3,
-				badge: "New",
-			},
-			{
-				title: "Settings",
-				href: "/dashboard/settings",
-				icon: Settings,
-				badge: null,
-			},
-		],
-	},
-	{
-		title: "Admin",
-		items: [
-			{
-				title: "Users",
-				href: "/dashboard/users",
-				icon: Users,
-				badge: null,
-			},
+			{ title: "Statuses", href: "/dashboard/statuses", icon: FileText, badge: null },
+			{ title: "Msg Todo", href: "/dashboard/todo-msg", icon: ListTodo, badge: null },
+			{ title: "Msg Planner", href: "/dashboard/msg-planner", icon: Calendar, badge: null },
+			{ title: "Beeper", href: "/dashboard/beeper", icon: Contact, badge: null },
+			{ title: "Folders", href: "/dashboard/folders", icon: FolderKanban, badge: null },
+			{ title: "Messages", href: "/dashboard/messages", icon: MessageSquare, badge: null },
 		],
 	},
 	{
 		title: "Others",
 		items: [
-			{
-				title: "Database",
-				href: "/dashboard/database",
-				icon: Database,
-				badge: null,
-			},
-			{
-				title: "Security",
-				href: "/dashboard/security",
-				icon: Shield,
-				badge: "!",
-			},
-			{
-				title: "Help",
-				href: "/dashboard/help",
-				icon: HelpCircle,
-				badge: null,
-			},
+			{ title: "Settings", href: "/dashboard/settings", icon: Settings, badge: null },
+		],
+	},
+	{
+		title: "Admin",
+		items: [
+			{ title: "Users", href: "/dashboard/users", icon: Users, badge: null },
 		],
 	},
 ];
@@ -204,27 +108,25 @@ export function Sidebar({ onMobileClose, mobile = false }: SidebarProps) {
 						<LayoutDashboard className="w-4 h-4 text-primary-foreground" />
 					</div>
 				)}
-				<div className="flex items-center gap-1">
-					<ThemeToggle />
-					{!mobile && (
-						<Button
-							variant="ghost"
-							size="icon"
-							className="h-8 w-8 hover:bg-muted"
-							onClick={() => setIsCollapsed(!isCollapsed)}
-						>
-							{isCollapsed ? (
-								<ChevronRight className="h-4 w-4" />
-							) : (
-								<ChevronLeft className="h-4 w-4" />
-							)}
-						</Button>
-					)}
-				</div>
+				{!mobile && (
+					<Button
+						variant="ghost"
+						size="icon"
+						className="h-8 w-8 hover:bg-muted"
+						onClick={() => setIsCollapsed(!isCollapsed)}
+					>
+						{isCollapsed ? (
+							<ChevronRight className="h-4 w-4" />
+						) : (
+							<ChevronLeft className="h-4 w-4" />
+						)}
+					</Button>
+				)}
 			</div>
 
 			{/* Navigation Groups */}
-			<nav className="flex-1 overflow-y-auto space-y-8 p-6">
+			<nav className="flex-1 overflow-y-auto p-6">
+				<div className="space-y-8">
 				{sidebarGroups.map((group) => (
 					<div key={group.title} className="space-y-3">
 						{/* Group Title */}
@@ -272,9 +174,10 @@ export function Sidebar({ onMobileClose, mobile = false }: SidebarProps) {
 						</div>
 					</div>
 				))}
-				{/* Logout — a normal menu item inside the scrollable nav, not a
-				    fixed footer sitting above the menu. */}
-				<div className="space-y-2">
+				</div>
+				{/* Logout — a normal menu item inside the scrollable nav (not a
+				    fixed footer), kept close under the last group. */}
+				<div className="mt-4">
 					<button
 						type="button"
 						onClick={handleLogout}

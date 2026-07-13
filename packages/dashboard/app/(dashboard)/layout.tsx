@@ -80,19 +80,23 @@ export default function DashboardLayout({
 			{/* Menu handle — a small chevron pinned to the left edge; it rides to
 			    the sidebar's right edge when open and toggles the menu. Same
 			    handle on desktop and mobile. */}
+			{/* Menu handle — sits in the TOP-LEFT, in the first (toolbar) line of
+			    every view, so it never covers the frame's content. Wide and
+			    short for an easy tap target (esp. on phone). Every page shell
+			    reserves matching left space at the top for it. */}
 			<button
 				type="button"
 				onClick={() => setMenuOpen((open) => !open)}
 				aria-label={menuOpen ? "Zamknij menu" : "Otwórz menu"}
 				className={cn(
-					"fixed top-1/2 z-40 flex -translate-y-1/2 items-center rounded-r-md border border-l-0 bg-card/90 px-0.5 py-3 text-muted-foreground shadow-md backdrop-blur transition-[left] duration-300 ease-in-out hover:text-foreground",
-					menuOpen ? "left-72" : "left-0",
+					"fixed top-1 z-40 flex h-9 w-12 items-center justify-center rounded-md border bg-card/95 text-muted-foreground shadow-md backdrop-blur transition-[left] duration-300 ease-in-out hover:text-foreground",
+					menuOpen ? "left-72" : "left-1",
 				)}
 			>
 				{menuOpen ? (
-					<ChevronLeft className="h-4 w-4" />
+					<ChevronLeft className="h-5 w-5" />
 				) : (
-					<ChevronRight className="h-4 w-4" />
+					<ChevronRight className="h-5 w-5" />
 				)}
 			</button>
 		</div>

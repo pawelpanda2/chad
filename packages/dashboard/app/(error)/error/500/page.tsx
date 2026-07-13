@@ -65,7 +65,7 @@ export default function ServerErrorPage() {
 								asChild
 								className="text-red-600 hover:text-red-800 hover:bg-red-50"
 							>
-								<Link href="/dashboard/help">
+								<Link href="/dashboard">
 									<Mail className="mr-2 h-4 w-4" />
 									Contact Support
 								</Link>
