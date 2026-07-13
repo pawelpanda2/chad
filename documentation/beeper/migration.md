@@ -144,7 +144,17 @@ repo's standard local → local Docker → QNAP test → QNAP prod rollout order
 6. **`beeper-sync`'s many one-off diagnostic/repair scripts**
    (`fix-senderid-index.mjs`, `cleanup-ghosts.mjs`,
    `fix-image-attachments.mjs`, etc.) were migrated verbatim (env-path
-   fixed) but not individually re-audited beyond the syntax check — they
-   were already working, narrowly-scoped tools in the source project, and
-   the scope of this migration was structural (moving + rewiring), not a
-   line-by-line rewrite of every script.
+   fixed). **Re-audited 2026-07-13** beyond the syntax check: checked every
+   script for `dotenv.config()` path correctness, hardcoded
+   URIs/paths-that-should-be-env, and the `__dirname`-in-ESM bug class found
+   earlier — no further issues found. `enrich-contacts.mjs`,
+   `diag-setup.mjs`, `inspect-api.mjs`, and `inspect-empty-response.mjs`
+   hardcode `http://localhost:23373` rather than reading `BEEPER_REST_URL`;
+   left as-is since it matches this repo's documented same-machine
+   assumption for Beeper Desktop (these run by hand, on the Mac, next to
+   Beeper Desktop). Note `dedup-messages.mjs` defaults to **live** mode
+   (deletes duplicates unless `--dry-run` is passed) — the inverse of this
+   migration's own `migrate-contacts-to-chad.mjs` convention — but that's
+   inherited verbatim from the source project's own tool semantics, not
+   something introduced here, and changing a manually-run Mac-side tool's
+   default behavior out from under the owner wasn't part of this pass.
