@@ -8,30 +8,20 @@ echo "SCRIPT_DIR: $SCRIPT_DIR"
 REPO_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 echo "REPO_ROOT: $REPO_ROOT"
 
-# Ścieżka do pliku .env
-ENV_FILE="$REPO_ROOT/.env"
-
-# Sprawdź czy plik .env istnieje
-if [ ! -f "$ENV_FILE" ]; then
-    echo "❌ Błąd: Plik .env nie istnieje w $ENV_FILE"
-    echo "   Skopiuj .env.local-mac.docker.example do .env i dostosuj konfigurację:"
-    echo "   cp $REPO_ROOT/.env.local-mac.docker.example $ENV_FILE"
-    exit 1
-fi
-
-# Załaduj zmienne z .env
-set -a
-source "$ENV_FILE"
-set +a
-echo "✅ Załadono zmienne z .env"
-
-# Ustaw domyślne wartości jeśli nie są ustawione
-CONTENT_PROVIDER_API_PORT=${CONTENT_PROVIDER_API_PORT:-12024}
-CONTENT_PROVIDER_STORAGE_HOST=${CONTENT_PROVIDER_STORAGE_HOST:-/Volumes/cp_1/repos}
-CONTENT_PROVIDER_STORAGE_CONTAINER=${CONTENT_PROVIDER_STORAGE_CONTAINER:-/data/repos}
-CONTENT_PROVIDER_API_IMAGE_PREFIX=${CONTENT_PROVIDER_API_IMAGE_PREFIX:-cp_webapi}
-CONTENT_PROVIDER_API_CONTAINER_NAME=${CONTENT_PROVIDER_API_CONTAINER_NAME:-cp_api_csharp}
-CONTENT_PROVIDER_APP_SETTINGS_NAME=${CONTENT_PROVIDER_APP_SETTINGS_NAME:-appsettings.Production.Macbook.json}
+# Stałe dla lokalnego środowiska docker na Macu.
+# Brak pliku .env celowo — appsettings.json (SharpContainerApi/appsettings.json,
+# baked do obrazu) już poprawnie wskazuje PreparerModule:NoSqlRepoSearchPaths =
+# /Users/pawelfluder/Dropbox (aplikacja sama doszukuje się podfolderu "repos"
+# pod tą ścieżką — patrz Helpers/GuidGroupsHelper.cs). Nie ma tu żadnego
+# /data/repos ani /Volumes/cp_1 — ten stary mount + AppSettingsName= był
+# martwym kodem (appsettings.Production.Macbook.json nigdy nie trafia do
+# obrazu poza katalogiem backup/, więc AppSettingsName nic nie robi; sam kod
+# .cs nigdzie tej zmiennej nie czyta) i tylko wywalał `docker run`, gdy dysk
+# cp_1 nie był podpięty. Port 12004 (nie 12024) żeby nie kolidować z nowym
+# stackiem bash-scripts/dashboard/03_local_mac_docker.
+CONTENT_PROVIDER_API_PORT=12004
+CONTENT_PROVIDER_API_IMAGE_PREFIX=cp_webapi
+CONTENT_PROVIDER_API_CONTAINER_NAME=cp_api_csharp
 
 NAME="$CONTENT_PROVIDER_API_CONTAINER_NAME"
 
@@ -84,14 +74,11 @@ fi
 
 echo "🚀 Uruchamiam kontener $NAME z obrazu: $IMAGE"
 echo "   Port: $CONTENT_PROVIDER_API_PORT:$CONTENT_PROVIDER_API_PORT"
-echo "   Storage: $CONTENT_PROVIDER_STORAGE_HOST -> $CONTENT_PROVIDER_STORAGE_CONTAINER"
 echo "   Dropbox: /Users/pawelfluder/Dropbox -> /Users/pawelfluder/Dropbox"
 docker run -d --rm \
   --name $NAME \
   -p $CONTENT_PROVIDER_API_PORT:$CONTENT_PROVIDER_API_PORT \
   -e ASPNETCORE_URLS="http://+:$CONTENT_PROVIDER_API_PORT" \
-  -e ContentProviderApiUrl="http://localhost:$CONTENT_PROVIDER_API_PORT" \
-  -e AppSettingsName="$CONTENT_PROVIDER_APP_SETTINGS_NAME" \
-  -v "$CONTENT_PROVIDER_STORAGE_HOST:$CONTENT_PROVIDER_STORAGE_CONTAINER" \
+  -e ApiUrls="http://0.0.0.0:$CONTENT_PROVIDER_API_PORT" \
   -v "/Users/pawelfluder/Dropbox:/Users/pawelfluder/Dropbox" \
   $IMAGE

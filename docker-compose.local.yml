@@ -27,7 +27,11 @@ services:
   # tested this session for QNAP TEST (packages/net-content-provider/
   # 03_scripts/qnap/build_qnap_test.sh uses the identical Dockerfile).
   content-provider-api:
-    image: chad-content-provider-api:${IMAGE_TAG:-latest}
+    # No ":latest" fallback - own CHAD images must be deployed by an explicit
+    # release tag (see documentation/ai-docs/deploy/image-tagging-standard.md).
+    # 03_local_mac_docker/03_begin.sh sets IMAGE_TAG before calling this; the
+    # required-var syntax below is a defense-in-depth backstop.
+    image: "chad-content-provider-api:${IMAGE_TAG:?IMAGE_TAG is required, see documentation/ai-docs/deploy/image-tagging-standard.md}"
     build:
       context: packages/net-content-provider
       dockerfile: 04_dockerfiles/webapi
@@ -56,7 +60,11 @@ services:
     # after `up -d`, so depends_on below only needs the container started.
 
   dashboard:
-    image: chad-dashboard:${IMAGE_TAG:-latest}
+    # No ":latest" fallback - own CHAD images must be deployed by an explicit
+    # release tag (see documentation/ai-docs/deploy/image-tagging-standard.md).
+    # 03_local_mac_docker/03_begin.sh sets IMAGE_TAG before calling this; the
+    # required-var syntax below is a defense-in-depth backstop.
+    image: "chad-dashboard:${IMAGE_TAG:?IMAGE_TAG is required, see documentation/ai-docs/deploy/image-tagging-standard.md}"
     build:
       context: .
       dockerfile: packages/dashboard/Dockerfile

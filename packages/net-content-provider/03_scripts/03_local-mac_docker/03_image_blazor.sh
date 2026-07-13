@@ -48,6 +48,13 @@ IMAGE_NAME="cp_blazor"
 TAG=$(date +"%y%m%d_%H%M%S")
 FULL_IMAGE_NAME="$IMAGE_NAME:$TAG"
 
+# URL API zapiekany do wwwroot/appsettings.json w obrazie (WASM czyta go w
+# przeglądarce, nie ma dostępu do zmiennych środowiskowych po deployu — zob.
+# 04_dockerfiles/assembly). Port 12004, żeby pasował do 02_run_api_charp.sh
+# przesuniętego z 12024, tak żeby lokalny Blazor nie kolidował portami z
+# nowym stackiem bash-scripts/dashboard/03_local_mac_docker.
+CONTENT_PROVIDER_API_URL="http://localhost:12004"
+
 echo "============================================"
 echo "🔨 Build obrazu Docker"
 echo "============================================"
@@ -60,12 +67,13 @@ echo "Remote URL:    $GIT_REMOTE_URL"
 echo "============================================"
 
 # Budowanie obrazu dla wykrytej architektury
-echo "🚀 docker buildx build --platform $DETECTED_PLATFORM -f $DOCKERFILE_DIR/assembly -t $FULL_IMAGE_NAME --build-arg GIT_COMMIT=$GIT_COMMIT --build-arg GIT_COMMIT_SHORT=$GIT_COMMIT_SHORT --build-arg BUILD_DATE=$BUILD_DATE --build-arg GIT_REMOTE_URL=$GIT_REMOTE_URL --load $REPO_ROOT"
+echo "🚀 docker buildx build --platform $DETECTED_PLATFORM -f $DOCKERFILE_DIR/assembly -t $FULL_IMAGE_NAME --build-arg CONTENT_PROVIDER_API_URL=$CONTENT_PROVIDER_API_URL --build-arg GIT_COMMIT=$GIT_COMMIT --build-arg GIT_COMMIT_SHORT=$GIT_COMMIT_SHORT --build-arg BUILD_DATE=$BUILD_DATE --build-arg GIT_REMOTE_URL=$GIT_REMOTE_URL --load $REPO_ROOT"
 
 docker buildx build \
   --platform "$DETECTED_PLATFORM" \
   -f "$DOCKERFILE_DIR/assembly" \
   -t "$FULL_IMAGE_NAME" \
+  --build-arg CONTENT_PROVIDER_API_URL="$CONTENT_PROVIDER_API_URL" \
   --build-arg GIT_COMMIT="$GIT_COMMIT" \
   --build-arg GIT_COMMIT_SHORT="$GIT_COMMIT_SHORT" \
   --build-arg BUILD_DATE="$BUILD_DATE" \

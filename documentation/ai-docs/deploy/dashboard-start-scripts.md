@@ -114,3 +114,40 @@ Cienkie (kilka linii), tylko `exec` do właściwego skryptu w `bash-scripts/dash
 - **Content Provider nie startuje** → sprawdź `packages/net-content-provider/.env` istnieje (gitignored, nie ma go automatycznie po subtree — skopiuj z `.env.local-mac.docker.example` albo z działającej wcześniej konfiguracji lokalnej). Sprawdź `docker images | grep cp_webapi` — potrzebny wcześniej zbudowany obraz (`01_image_api_charp.sh`, jeśli brak).
 - **Nie wiem, czy `end.sh` zatrzyma mój ręcznie uruchomiony CP** → nie zatrzyma, chyba że `.tmp/dashboard/content-provider.owned` istnieje (sprawdź `bash status.sh` — pokaże "started by this session" albo "running independently").
 - **`tmuxinator: command not found`** → `brew install tmuxinator`.
+
+## Turbopack dev crash (2026-07-13) — disabled, diagnosis confirmed by A/B test
+
+`packages/dashboard`'s `dev` script used `next dev --turbopack`. Under real usage
+this repeatedly crashed the Next.js process with `ENOENT: no such file or
+directory, open '.../.next/static/development/_buildManifest.js.tmp.*'` and
+`.../app-build-manifest.json` — and because `bash-scripts/dashboard/02_local_mac_tmux/tmuxinator.dashboard.yml`
+had no `remain-on-exit`, the dead pane closed, taking the whole tmuxinator
+session down with it (looked like "everything just vanished").
+
+**Root cause, confirmed by controlled reproduction, not assumed**: ran two
+identical `pnpm --filter dashboard exec next dev` instances (one with
+`--turbopack`, one without) against the exact same `next.config.ts`
+(`output: "standalone"` included — ruled out as a cause), same load pattern
+(concurrent requests to all `/dashboard/*` routes + `touch`ing a page file
+mid-flight to force recompilation while requests were in-flight, repeated
+several times). Turbopack: **3000 ENOENT errors**, matching the production
+signature exactly. Plain webpack, identical everything else: **0 errors**,
+server stayed up. This matches a documented, still-open class of upstream
+issues (e.g. [vercel/next.js#76766](https://github.com/vercel/next.js/issues/76766) —
+manifest ENOENT in `next dev`, absent in `next build && next start`) —
+Turbopack dev is why the Docker stack (`next build`+`next start`, no dev
+manifest machinery at all) never sees this.
+
+**Fix applied**: `packages/dashboard/package.json` `dev` script changed from
+`next dev --turbopack` back to plain `next dev`. `remain-on-exit on` was
+also added to `tmuxinator.dashboard.yml` regardless (cheap, generally useful
+safety net for any future crash, not specific to this bug) — the dashboard
+pane's earlier `until pnpm dashboard; do ...; done` auto-restart wrapper was
+removed again once Turbopack was confirmed and removed as the actual cause;
+keeping it around would have masked a real regression next time one occurs
+instead of surfacing it.
+
+**When to re-enable Turbopack**: once the upstream issue is fixed in a
+released Next.js version — re-run the same A/B reproduction (hammer all
+`/dashboard/*` routes while touching a page file mid-flight) before
+switching back, don't just flip the flag on trust.

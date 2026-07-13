@@ -8,29 +8,18 @@ echo "SCRIPT_DIR: $SCRIPT_DIR"
 REPO_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 echo "REPO_ROOT: $REPO_ROOT"
 
-# Ścieżka do pliku .env
-ENV_FILE="$REPO_ROOT/.env"
-
-# Sprawdź czy plik .env istnieje
-if [ ! -f "$ENV_FILE" ]; then
-    echo "❌ Błąd: Plik .env nie istnieje w $ENV_FILE"
-    echo "   Skopiuj .env.local-mac.docker.example do .env i dostosuj konfigurację:"
-    echo "   cp $REPO_ROOT/.env.local-mac.docker.example $ENV_FILE"
-    exit 1
-fi
-
-# Załaduj zmienne z .env
-set -a
-source "$ENV_FILE"
-set +a
-echo "✅ Załadono zmienne z .env"
-
-# Ustaw domyślne wartości jeśli nie są ustawione
-CONTENT_PROVIDER_API_PORT=${CONTENT_PROVIDER_API_PORT:-12024}
-CONTENT_PROVIDER_ASSEMBLY_IMAGE_PREFIX=${CONTENT_PROVIDER_ASSEMBLY_IMAGE_PREFIX:-cp_blazor}
-CONTENT_PROVIDER_ASSEMBLY_CONTAINER_NAME=${CONTENT_PROVIDER_ASSEMBLY_CONTAINER_NAME:-cp_blazor}
-CONTENT_PROVIDER_ASSEMBLY_HOST_PORT=${CONTENT_PROVIDER_ASSEMBLY_HOST_PORT:-12020}
-CONTENT_PROVIDER_ASSEMBLY_CONTAINER_PORT=${CONTENT_PROVIDER_ASSEMBLY_CONTAINER_PORT:-80}
+# Stałe dla lokalnego środowiska docker na Macu.
+# Brak pliku .env celowo — konfiguracja aplikacji .NET idzie przez appsettings.
+# Porty przesunięte (12001/12004 zamiast 12020/12024), żeby nie kolidować z
+# nowym stackiem bash-scripts/dashboard/03_local_mac_docker (dashboard
+# Next.js + content-provider-api na 12020/12024). CONTENT_PROVIDER_API_PORT
+# tu tylko do wyświetlenia w logu — realny URL API jest zapieczony w obrazie
+# Blazor przy buildzie (zob. 03_image_blazor.sh, ARG CONTENT_PROVIDER_API_URL).
+CONTENT_PROVIDER_API_PORT=12004
+CONTENT_PROVIDER_ASSEMBLY_IMAGE_PREFIX=cp_blazor
+CONTENT_PROVIDER_ASSEMBLY_CONTAINER_NAME=cp_blazor
+CONTENT_PROVIDER_ASSEMBLY_HOST_PORT=12001
+CONTENT_PROVIDER_ASSEMBLY_CONTAINER_PORT=80
 
 NAME="$CONTENT_PROVIDER_ASSEMBLY_CONTAINER_NAME"
 

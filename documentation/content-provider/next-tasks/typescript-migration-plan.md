@@ -40,10 +40,15 @@ Zrobione:
 - **Widok Text-item**: `.../Components/ItemModels/TextView.razor` — renderuje się tylko gdy `Item?.Type == "Text"`. Toolbar (Folder/Content/Config/Terminal, GoogleDoc/Tts, formularz "Add"), `<CodeEditorTabs>` bindowany do `Item.Body`.
 - **Widok Folder-item**: `.../Components/ItemModels/FolderView.razor` — renderuje się tylko gdy `Item?.Type == "Folder"`. Deserializuje `Item.Body` jako mapę index→name (dokładnie ten format, który `cp-files` teraz też zwraca), jeden przycisk na dziecko, formularz "Add" (selektor typu Text/Folder/Ref + nazwa) wołający `Repo.PostParentItem`.
 
-### Specyfikacja `Put`/`PostParentItem` (Etap 3, udokumentowana teraz na przyszłość)
+### Etap 3 (`Put`/`PostParentItem`) — ZAIMPLEMENTOWANY (2026-07-12, kontynuacja tej samej sesji)
 
-- **`PostParentItem`**: idempotentny get-or-create — jeśli dziecko o danej `name` już istnieje pod `parentLoca`, zwraca JEGO dane (bez duplikatu); jeśli nie, tworzy nowe pod kolejnym wolnym numerycznym indeksem (`max(istniejące)+1`, zero-padded do 2 cyfr dla 0-9). Walidacja numerycznych folderów rodzica wykonywana PRZED tworzeniem — nie-numeryczny folder rzuca błąd integralności repo.
-- **`Put`**: NIE jest "znajdź po nazwie" — celuje bezpośrednio w istniejący numeryczny `loca` i nadpisuje bezwarunkowo, z ŚWIEŻYM GUID-em za każdym razem (nie zachowuje poprzedniego `id`). **Prawdziwy bug w .NET**: `PutWriteFolderWorker.IfMinePut` (Folder writer) twardo koduje `type: "Text"` w zapisywanym configu, niezależnie od żądanego typu — wywołanie `Put` na Folderze z `type="Folder"` **po cichu psuje jego typ na "Text"**. Do rozstrzygnięcia przy Etapie 3: replikować wiernie czy naprawić (i udokumentować odstępstwo).
+Specyfikacja poniżej opisana wcześniej w tej sesji jako "na przyszłość" — **teraz faktycznie zaimplementowana w `cp-files`** i przetestowana (18/18 sprawdzeń) wyłącznie na jednorazowej fixture w `/tmp/cp-files-write-test`, **nigdy na prawdziwych danych Dropbox**:
+
+- **`PostParentItem`**: idempotentny get-or-create — jeśli dziecko o danej `name` już istnieje pod `parentLoca`, zwraca JEGO dane (bez duplikatu); jeśli nie, tworzy nowe pod kolejnym wolnym numerycznym indeksem (`max(istniejące)+1`, zero-padded do 2 cyfr dla 0-9), ze świeżym `randomUUID()` jako `id`. Walidacja numerycznych folderów rodzica wykonywana PRZED tworzeniem (`validateAllChildrenNumeric`) — nie-numeryczny folder rzuca `ContentProviderError`.
+- **`Put`**: NIE jest "znajdź po nazwie" — celuje bezpośrednio w istniejący numeryczny `loca` i nadpisuje bezwarunkowo, z ŚWIEŻYM GUID-em za każdym razem (nie zachowuje poprzedniego `id`). Waliduje że każdy segment `loca` jest numeryczny (pusty `loca` dozwolony).
+- **Prawdziwy bug w .NET wiernie zreplikowany, nie naprawiony**: `PutWriteFolderWorker.IfMinePut` (Folder writer) twardo koduje `type: "Text"` w zapisywanym configu, niezależnie od żądanego typu — wywołanie `Put` na Folderze z `type="Folder"` **po cichu psuje jego typ na "Text"** (i, zgodnie z tym samym źródłem, NIE zapisuje `body.txt`). **Decyzja**: zreplikowane wiernie, nie naprawione — celem `cp-files` jest wierność zachowania, a naprawienie tego tutaj rozjechałoby `cp-files` z `cp-net-adapter` (proxy do wciąż-wadliwego realnego .NET) na tej samej operacji zapisu. Jeśli bug zostanie kiedyś naprawiony w .NET, `cp-files` powinien pójść za tą zmianą, nie wyprzedzać jej.
+- **`type: "Ref"` w obu operacjach zapisu rzuca `ContentProviderError`** — zachowanie zapisu dla `Ref` nie było częścią potwierdzonego zakresu audytu z 2026-07-12. Nie zgadywane.
+- Bez testu zgodności live (w przeciwieństwie do operacji odczytu) — nie ma bezpiecznego sposobu przetestować zapis względem prawdziwego .NET bez użycia prawdziwych danych produkcyjnych albo postawienia osobnej, jednorazowej instancji .NET+filesystem, co nie zostało zrobione w tej sesji.
 
 ---
 
@@ -162,10 +167,12 @@ pnpm-workspace.yaml zaktualizowany o `packages/content-provider/*` (dodatkowy gl
 ~~3. `cp-gui`'s `createHttpBackendAdapter`/`createHttpPluginAdapter`~~ ✅ — zaimplementowane, zweryfikowane na żywo (sekcja 0).
 ~~4. `cp-gui` pierwsza wersja komponentów~~ ✅ — `TextView`/`FolderView`/`ContentProviderBrowser` dodane (sekcja 0), **ale nie zweryfikowane wizualnie w przeglądarce — patrz sekcja 0's uwaga, zrobić to jako pierwsze przy powrocie do tematu.**
 
+~~5. `Put`/`PostParentItem` w `cp-files`~~ ✅ — zaimplementowane, przetestowane na jednorazowej fixture (18/18), patrz sekcja "Etap 3" wyżej. **Nadal nie podłączone do żadnego zapisującego endpointu `cp-api`** (który pozostaje GET-only) ani do `cp-gui`'s Add-formularzy (nadal celowo pominięte, patrz `packages/cp-gui/README.md`).
+
 Następny krok, gdy temat wróci:
 
 1. **Odpalić `cp-gui` w przeglądarce i faktycznie kliknąć przez prawdziwe repo** — jeszcze nie zrobione (patrz "Verification status" w `packages/cp-gui/README.md`). Najprostsza droga: mały Vite dev harness importujący `cp-gui`'s zbudowany `dist/`, wskazujący na realnie odpalone `cp-api` (port 12027, wymaga `CP_FILES_STORAGE_ROOT`+`CONTENT_PROVIDER_API_URL`) i `cp-plugin` (port 12026).
-2. `Put`/`PostParentItem` w `cp-files` (Etap 3) — obecnie rzucają `ContentProviderError`. Pełna specyfikacja (w tym prawdziwy bug `PutWriteFolderWorker` psujący typ Foldera) już udokumentowana w sekcji 0 wyżej.
+2. **Endpointy zapisu w `cp-api`** (`PUT`/`POST`) wołające teraz-działające `cp-files.Put`/`PostParentItem` — decyzja do podjęcia: czy i kiedy przełączyć jakiekolwiek prawdziwe repo z `net-adapter` na `files`/`mongo` w `cp-entry`'s routingu (obecnie routing nadal domyślnie pusty — wszystko na `net-adapter`, dashboard/console bez zmian).
 3. `cp-mongo`: rozbudowa poza `GetItem` — wymaga decyzji projektowych (indeksy pod `GetByNames`/`GetManyByName`/`FindRecursively` w Mongo) nieopisanych jeszcze nigdzie.
 4. Dopiero potem: oczyszczenie źródłowego repo `content-provider` + submodule (sekcja 6, punkty 1-5) — nadal nie wykonane, nie priorytet.
 

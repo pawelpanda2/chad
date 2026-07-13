@@ -17,7 +17,7 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel)"
 source "$REPO_ROOT/bash-scripts/common/lib.sh"
 
-FRONTEND_PORT=12080
+FRONTEND_PORT=12020
 
 SESSION="chad-dashboard"
 OWNERSHIP_FILE="$REPO_ROOT/.tmp/dashboard/content-provider.owned"
@@ -49,8 +49,4 @@ else
 fi
 
 echo ""
-if port_in_use "$FRONTEND_PORT"; then
-  log_warn "Port $FRONTEND_PORT is still in use by something (not necessarily an error if you have other services)."
-else
-  log_ok "Port $FRONTEND_PORT is free."
-fi
+kill_process_on_port "$FRONTEND_PORT"

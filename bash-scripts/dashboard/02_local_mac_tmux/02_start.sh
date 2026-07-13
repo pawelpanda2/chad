@@ -8,8 +8,8 @@
 # it for several views.
 #
 # Usage:
-#   ./bash-scripts/dashboard/02_local_mac/02_start.sh            # normal start
-#   ./bash-scripts/dashboard/02_local_mac/02_start.sh --install  # also run pnpm install first
+#   ./bash-scripts/dashboard/02_local_mac_tmux/02_start.sh            # normal start
+#   ./bash-scripts/dashboard/02_local_mac_tmux/02_start.sh --install  # also run pnpm install first
 #
 # Works from any cwd — resolves the repo root from this script's own
 # location via git, not from $PWD.
@@ -22,7 +22,7 @@ REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel)"
 source "$REPO_ROOT/bash-scripts/common/lib.sh"
 source "$SCRIPT_DIR/01_config.sh"
 
-FRONTEND_PORT=12080
+FRONTEND_PORT=12020
 CONTENT_PROVIDER_API_URL="http://localhost:$CONTENT_PROVIDER_API_PORT"
 
 DO_INSTALL=false
@@ -80,7 +80,7 @@ if [ ! -d "$REPO_ROOT/node_modules" ]; then
     pnpm install
   else
     log_error "node_modules is missing at repo root."
-    log_error "  Fix: ./bash-scripts/dashboard/02_local_mac/02_start.sh --install"
+    log_error "  Fix: ./bash-scripts/dashboard/02_local_mac_tmux/02_start.sh --install"
     log_error "  or:  pnpm install   (from $REPO_ROOT)"
     exit 1
   fi
@@ -147,12 +147,12 @@ echo ""
 if [ -t 1 ]; then
   # Real interactive terminal — attach normally, the whole point of using
   # tmuxinator, so the user lands inside the session.
-  tmuxinator start -p "$REPO_ROOT/bash-scripts/dashboard/02_local_mac/tmuxinator.dashboard.yml"
+  tmuxinator start -p "$REPO_ROOT/bash-scripts/dashboard/02_local_mac_tmux/tmuxinator.dashboard.yml"
 else
   # No controlling terminal (e.g. invoked from CI, another script, or an
   # agent) — tmux cannot attach here ("open terminal failed: not a
   # terminal"). Start detached instead and tell the caller how to attach.
-  tmuxinator start -p "$REPO_ROOT/bash-scripts/dashboard/02_local_mac/tmuxinator.dashboard.yml" --no-attach
+  tmuxinator start -p "$REPO_ROOT/bash-scripts/dashboard/02_local_mac_tmux/tmuxinator.dashboard.yml" --no-attach
   log_ok "Session started in the background (no TTY available to attach here)."
   log_info "Attach with: tmux attach -t chad-dashboard"
 fi

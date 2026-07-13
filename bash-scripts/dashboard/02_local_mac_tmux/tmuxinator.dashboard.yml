@@ -14,12 +14,18 @@
 name: chad-dashboard
 root: ./
 
-pre_window: tmux set -g pane-border-status top
+pre_window: tmux set -g pane-border-status top && tmux set -g remain-on-exit on
 
 windows:
   - dashboard:
       layout: even-horizontal
       panes:
         - tmux select-pane -t "$TMUX_PANE" -T "DBA (tsc --watch)" && pnpm dba
+        # Root cause of the 2026-07-13 crash (dashboard/package.json's
+        # --turbopack) was fixed at the source, not masked here — see
+        # dashboard-start-scripts.md "Turbopack dev crash". `remain-on-exit`
+        # above stays regardless, as a cheap safety net for any future
+        # crash: a dead pane now stays visible instead of silently
+        # collapsing the whole tmuxinator session.
         - tmux select-pane -t "$TMUX_PANE" -T "Dashboard (next dev)" && pnpm dashboard
         - tmux select-pane -t "$TMUX_PANE" -T "Content Provider" && ./bash-scripts/content-provider/run-content-provider-if-needed.sh

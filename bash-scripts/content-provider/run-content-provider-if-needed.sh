@@ -10,7 +10,7 @@
 #
 # Content Provider has no .env of its own — its config module
 # (appsettings.json) is generated from the text embedded in
-# bash-scripts/dashboard/02_local_mac/01_config.sh, same pattern used by
+# bash-scripts/dashboard/02_local_mac_tmux/01_config.sh, same pattern used by
 # every other environment (03_local_mac_docker, 04_qnap_test, 05_qnap_prod).
 #
 # Modes:
@@ -28,7 +28,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel)"
 source "$REPO_ROOT/bash-scripts/common/lib.sh"
-source "$REPO_ROOT/bash-scripts/dashboard/02_local_mac/01_config.sh"
+source "$REPO_ROOT/bash-scripts/dashboard/02_local_mac_tmux/01_config.sh"
 
 CONTENT_PROVIDER_API_URL="http://localhost:$CONTENT_PROVIDER_API_PORT"
 

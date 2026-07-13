@@ -168,30 +168,43 @@ Nie może:
 - wykonywać `docker compose up`,
 - usuwać wolumenów ani danych.
 
-Każdy build tworzy obrazy z dwoma tagami: `latest` i tag czasowy
-`YYMMDD_HHMMSS`. Celowo bez nazwy środowiska/architektury w tagu — środowisko
-jest rozróżniane przez nazwę projektu Compose, porty i nazwy kontenerów.
+**Aktualizacja 2026-07-13:** każdy build tworzy obraz z **jednym** tagiem —
+znacznikiem czasowym `YYMMDD_HHMMSS`. Własne obrazy CHAD (`chad-dashboard`,
+`chad-content-provider-api`) **nigdy nie dostają tagu `latest`**. Celowo bez
+nazwy środowiska/architektury w tagu — środowisko jest rozróżniane przez
+nazwę projektu Compose, porty i nazwy kontenerów. Po udanym buildzie skrypt
+zapisuje ten tag do gitignored pliku `.image-tag.<image>.env` w rootcie repo —
+pełny standard i uzasadnienie: [image-tagging-standard.md](image-tagging-standard.md).
 
 ### `03_begin.sh`
 
 Służy **wyłącznie** do uruchamiania już zbudowanych obrazów. Nie buduje.
 
-`00_qnap_shared/03_begin.sh`:
-1. `ensure_docker_network chad-shared` (idempotentne).
-2. `write_content_provider_appsettings`.
-3. Jeśli już działa: `04_end.sh`, potem start od nowa.
-4. Preflight portu `12024` (`ensure_port_available`).
-5. `docker compose up -d`.
-6. Czeka na `chad-mongodb` `healthy` i `content-provider-api` `/health`
+`00_qnap_shared/03_begin.sh` (zaktualizowane 2026-07-13):
+1. `require_image_tag` dla `chad-content-provider-api` — **odmawia startu**
+   bez zapisanego tagu, nigdy fallback do `latest`.
+2. `require_data_path_writable` na `$QNAP_CONTAINER_DATA_PATH/chad-shared/mongodb`
+   — odmawia startu, jeśli ścieżka jest niezapisywalna albo ma za mało wolnego
+   miejsca (tripwire na tmpfs); tworzy brakujące podkatalogi `db`/`configdb`/`backups`.
+   Pełny opis: [qnap-data-path.md](qnap-data-path.md).
+3. `ensure_docker_network chad-shared` (idempotentne).
+4. `write_content_provider_appsettings`.
+5. Jeśli już działa: `04_end.sh`, potem start od nowa.
+6. Preflight portu `12024` (`ensure_port_available`).
+7. `docker compose up -d`.
+8. Czeka na `chad-mongodb` `healthy` i `content-provider-api` `/health`
    (`anyRepoFound:true`).
 
-`04_qnap_test/03_begin.sh` / `05_qnap_prod/03_begin.sh`:
+`04_qnap_test/03_begin.sh` / `05_qnap_prod/03_begin.sh` (zaktualizowane 2026-07-13):
 1. `require_shared_services_healthy` — **odmawia startu**, jeśli shared nie
    działa.
-2. Jeśli dashboard już działa: `04_end.sh`, potem start od nowa.
-3. Preflight portu dashboardu.
-4. `docker compose up -d`.
-5. Czeka na odpowiedź HTTP dashboardu.
+2. `require_image_tag` dla `chad-dashboard` — **odmawia startu** bez
+   zapisanego tagu, nigdy fallback do `latest`. TEST i PROD czytają ten sam
+   plik, więc uruchamiają dokładnie ten sam obraz.
+3. Jeśli dashboard już działa: `04_end.sh`, potem start od nowa.
+4. Preflight portu dashboardu.
+5. `docker compose up -d`.
+6. Czeka na odpowiedź HTTP dashboardu.
 
 Żaden z tych skryptów nigdy nie używa `docker compose down -v`, `docker
 system prune`, ani szerokiego usuwania obrazów/kontenerów — i nigdy nie
@@ -272,4 +285,4 @@ odpowiadają HTTP i wskazują na dokładnie ten sam `chad-mongodb` +
 `chad-content-provider-api`. Legacy `personal-dashboard-prod` +
 `content-provider-api-prod` (stary, niepowiązany deployment na `/share/cp_1`,
 zastąpiony tą architekturą) zatrzymane. Pełne wyniki:
-`documentation/dashboard/common/features/shared-qnap-services.md`.
+`documentation/ai-docs/deploy/shared-qnap-services.md`.

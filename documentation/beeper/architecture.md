@@ -2,7 +2,7 @@
 
 Status: implemented in this monorepo (2026-07-12), not yet deployed to a real
 Mac/QNAP runtime. Supersedes/implements the plan in
-`documentation/ai-docs/2026-07-10_decision-beeper-mac-qnap-architecture.md`
+`documentation/ai-docs/deploy/2026-07-10_decision-beeper-mac-qnap-architecture.md`
 and the "migracja modułów contacts" item that document explicitly deferred.
 
 ## What this is
@@ -31,7 +31,7 @@ it.
 |---|---|---|
 | `packages/beeper-ws` | **Mac only**, long-lived | WebSocket listener: Beeper Desktop → `beeper_events` collection. Requires a local Beeper Desktop instance. Never deployed to QNAP. |
 | `packages/beeper-sync` | **Mac only**, manual/cron | Historical importer: Beeper's local SQLite (`BeeperTexts/index.db`/`account.db`) + Beeper's local REST API → `contacts`/`channels`/`messages`/`sync_state`. Run by hand or via cron, not long-lived. |
-| `packages/beeper-oplog` | **QNAP** (once replica set exists), long-lived | MongoDB change-stream consumer: normalizes raw `beeper_events` into `contacts`/`channels`/`messages`. Depends only on MongoDB, never on Beeper Desktop (a REST metadata-enrichment call to Beeper's local API is best-effort and no-ops gracefully when unreachable, e.g. on QNAP). **Requires a MongoDB replica set** (`db.watch()` / change streams) — not deployable until that migration lands (see `documentation/ai-docs/2026-07-10_mongodb-replica-set-migration-plan.md`). |
+| `packages/beeper-oplog` | **QNAP** (once replica set exists), long-lived | MongoDB change-stream consumer: normalizes raw `beeper_events` into `contacts`/`channels`/`messages`. Depends only on MongoDB, never on Beeper Desktop (a REST metadata-enrichment call to Beeper's local API is best-effort and no-ops gracefully when unreachable, e.g. on QNAP). **Requires a MongoDB replica set** (`db.watch()` / change streams) — not deployable until that migration lands (see `documentation/ai-docs/deploy/2026-07-10_mongodb-replica-set-migration-plan.md`). |
 | `packages/dba` (`beeper-crm.ts`, `mongo.ts`) | wherever the dashboard runs | The *only* code allowed to open a MongoDB connection for this feature. All contact/message/timeline/merge logic lives here, ported 1:1 from the standalone project's `db.mjs`/`db.js` and SvelteKit route handlers. |
 | `packages/dashboard` (`app/api/beeper-crm/*`, `app/(dashboard)/dashboard/beeper/*`) | **QNAP** (dashboard's normal runtime) | UI + thin API routes. Calls `dba` functions only — never imports the `mongodb` driver directly. |
 

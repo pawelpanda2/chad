@@ -31,6 +31,11 @@ require_shared_services_healthy "$CONTENT_PROVIDER_API_PORT" || {
   exit 1
 }
 
+# No `:latest` fallback — refuses to start without a recorded release tag.
+# Same tag-record file as 04_qnap_test, so this deploys the EXACT same image
+# TEST is running, without a second build — that's how a release is promoted.
+require_image_tag "$(dashboard_image_tag_file)" "chad-dashboard" || exit 1
+
 if docker compose -p "$COMPOSE_PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps --format json 2>/dev/null | grep -q '"State":"running"'; then
   log_warn "chad-prod stack is already running — stopping it first, then starting fresh."
   bash "$SCRIPT_DIR/04_end.sh"

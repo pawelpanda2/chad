@@ -53,7 +53,7 @@ Wszystkie trzy: `enabled:true`, `access:Public`, brak certyfikatu SSL
 ## Migracja 2026-07-12: chad.biz.pl / test.chad.biz.pl
 
 Wpisy #1 i #3 (faktyczny stary Content Provider) usunięte — zastąpione przez
-monorepo `chad` (patrz `shared-qnap-services.md`). Wpis #2 (Jellyfin pod
+monorepo `chad` (patrz `documentation/ai-docs/deploy/shared-qnap-services.md`). Wpis #2 (Jellyfin pod
 myląco podobną domeną) pozostawiony bez zmian.
 
 Nowe wpisy:

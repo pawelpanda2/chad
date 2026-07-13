@@ -104,6 +104,24 @@ export function parseAddressString(addressString: string): { repo: string; loca:
   return { repo: trimmed.slice(0, slashIndex), loca: trimmed.slice(slashIndex + 1) };
 }
 
+/**
+ * Matches .NET's `IndexOperations.IndexToString`
+ * (`Duplications/Operations/IndexOperations.cs:77-93`, confirmed by the
+ * 2026-07-12 source audit): zero-padded to 2 digits for 0-9, plain digits
+ * for 10-999, throws for >=1000. This is the ONLY index-formatting rule
+ * .NET's write path actually uses — real 3-digit folders that exist on
+ * disk are historical/manual, never produced by this formatting.
+ */
+export function formatIndex(index: number): string {
+  if (index < 0 || index >= 1000) {
+    throw new ContentProviderPathError(`Index ${index} out of range (must be 0-999)`);
+  }
+  if (index < 10) {
+    return `0${index}`;
+  }
+  return String(index);
+}
+
 export function validateSegments(segments: string[]): void {
   for (const segment of segments) {
     if (!isValidNumericSegment(segment)) {

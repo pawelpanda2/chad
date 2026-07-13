@@ -1,7 +1,8 @@
 /**
- * cp-files — implements cp-core's ContentProviderStorage by reading
- * directly from disk. Read-only in Stage 2: GetItem, GetByNames,
- * GetManyByName, FindRecursively. Put/PostParentItem throw — Stage 3.
+ * cp-files — implements cp-core's ContentProviderStorage by reading from
+ * and writing to disk. Stage 2 (read: GetItem, GetByNames, GetManyByName,
+ * FindRecursively) and Stage 3 (write: Put, PostParentItem — both `Ref`
+ * variants throw, unconfirmed against real .NET behavior) are both live.
  *
  * Behavior confirmed two ways: (1) live comparison against the real,
  * running .NET API (localhost:12024, bind-mounted to the same real
@@ -95,10 +96,11 @@ import {
   segmentsToLoca,
   parseAddressString,
 } from "./paths.js";
-import { readConfig } from "./config.js";
-import { readBody, getBodyPath } from "./body.js";
-import { listChildNames } from "./children.js";
+import { readConfig, writeConfig } from "./config.js";
+import { readBody, writeBody, getBodyPath } from "./body.js";
+import { listChildNames, validateAllChildrenNumeric, getNextChildIndex } from "./children.js";
 import { access } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 
 interface ResolvedItem {
   repoGuid: string;
@@ -240,12 +242,6 @@ async function resolveDirByNames(startDir: string, names: string[]): Promise<{ d
   return { dir: currentDir, segments };
 }
 
-function notImplemented(operation: string): never {
-  throw new ContentProviderError(
-    `cp-files.${operation} is not implemented — Stage 2 scope is read-only (GetItem, GetByNames, GetManyByName, FindRecursively).`
-  );
-}
-
 export const filesStorage: ContentProviderStorage = {
   async GetItem(repoGuid, loca) {
     return readItemAt(repoGuid, normalizeLoca(loca));
@@ -330,11 +326,111 @@ export const filesStorage: ContentProviderStorage = {
     return results;
   },
 
-  async Put(_repoGuid, _loca, _type: CpItemType, _name, _content) {
-    notImplemented("Put");
+  /**
+   * Idempotent get-or-create, matching `PostWriteTextWorker`/
+   * `PostWriteFolderWorker`'s source: if a direct child of `parentLoca`
+   * already has this `name`, its existing data is returned (no
+   * duplicate created); otherwise a new child is created at the next
+   * free numeric index (`max(existing)+1`, via `getNextChildIndex`) with
+   * a fresh GUID `id`. `Text` children get an empty `body.txt`; `Folder`
+   * children don't (matches source). `Ref` PostParentItem wasn't part of
+   * the 2026-07-12 source audit — throws rather than guessing.
+   *
+   * Validates every direct child of `parentLoca` is numeric before
+   * creating anything (`ValidationWorker.ValidateParentBeforeCreateChild`).
+   */
+  async PostParentItem(repoGuid, parentLoca, type: CpItemType, name) {
+    if (type === "Ref") {
+      throw new ContentProviderError(
+        "PostParentItem for type Ref was not confirmed against real .NET behavior (out of the 2026-07-12 source audit's scope) — not implemented rather than guessed."
+      );
+    }
+    if (type !== "Text" && type !== "Folder") {
+      throw new ContentProviderError(`PostParentItem: unknown type "${type}"`);
+    }
+
+    const normalizedParentLoca = normalizeLoca(parentLoca);
+    const parentDir = getItemDir(repoGuid, normalizedParentLoca);
+    await validateAllChildrenNumeric(parentDir);
+
+    const parentSegments = locaToSegments(normalizedParentLoca);
+    const childNames = await listChildNames(parentDir);
+    const existingMatches: string[] = [];
+    for (const childName of childNames) {
+      const config = await readConfig(`${parentDir}/${childName}`).catch(() => undefined);
+      if (config?.name === name) {
+        existingMatches.push(childName);
+      }
+    }
+    if (existingMatches.length > 1) {
+      throw new ContentProviderError(
+        `Ambiguous: ${existingMatches.length} children named "${name}" already exist under "${parentDir}"`
+      );
+    }
+    if (existingMatches.length === 1) {
+      const existingLoca = segmentsToLoca([...parentSegments, existingMatches[0]]);
+      return readItemAt(repoGuid, existingLoca);
+    }
+
+    const newIndex = await getNextChildIndex(parentDir);
+    const newLoca = segmentsToLoca([...parentSegments, newIndex]);
+    const newItemDir = getItemDir(repoGuid, newLoca);
+    const config: CpConfig = { id: randomUUID(), type, name, address: computeAddress(repoGuid, newLoca) };
+    await writeConfig(newItemDir, config);
+    if (type === "Text") {
+      await writeBody(newItemDir, "");
+    }
+    return readItemAt(repoGuid, newLoca);
   },
 
-  async PostParentItem(_repoGuid, _parentLoca, _type: CpItemType, _name) {
-    notImplemented("PostParentItem");
+  /**
+   * NOT "find by name" — targets an existing numeric `loca` directly and
+   * overwrites unconditionally with a FRESH GUID `id` every time (does
+   * NOT preserve a previous id), matching `PutWriteTextWorker`/
+   * `PutWriteFolderWorker`'s source. Validates every segment of `loca`
+   * itself is numeric first (`ValidationWorker.ValidateItemLocaBeforePut`).
+   *
+   * FAITHFULLY REPLICATES A REAL, CONFIRMED .NET BUG: `PutWriteFolderWorker.IfMinePut`
+   * hard-codes `type: "Text"` in the written config regardless of the
+   * requested type — calling `Put(..., "Folder", ...)` on an existing
+   * Folder silently corrupts its type to "Text" (and, matching that same
+   * source, does NOT write a body.txt — so the result is a directory
+   * whose config.yaml claims `type: "Text"` but has no body.txt at all).
+   * Replicated deliberately, not accidentally: cp-files' whole purpose is
+   * behavioral parity, and "fixing" this here would make cp-files and
+   * cp-net-adapter (proxying the real, still-buggy .NET) disagree on a
+   * real write path. See README.md's "Put/PostParentItem" section.
+   *
+   * `Ref` Put wasn't part of the 2026-07-12 source audit's confirmed
+   * scope — throws rather than guessing.
+   */
+  async Put(repoGuid, loca, type: CpItemType, name, content) {
+    if (type === "Ref") {
+      throw new ContentProviderError(
+        "Put for type Ref was not confirmed against real .NET behavior (out of the 2026-07-12 source audit's scope) — not implemented rather than guessed."
+      );
+    }
+    if (type !== "Text" && type !== "Folder") {
+      throw new ContentProviderError(`Put: unknown type "${type}"`);
+    }
+
+    const normalizedLoca = normalizeLoca(loca);
+    const itemDir = getItemDir(repoGuid, normalizedLoca); // throws on a non-numeric loca segment, matching ValidateItemLocaBeforePut
+
+    // The real .NET bug: the Folder writer always persists type: "Text", never "Folder".
+    const persistedType: CpItemType = "Text";
+    const config: CpConfig = {
+      id: randomUUID(),
+      type: type === "Folder" ? persistedType : type,
+      name,
+      address: computeAddress(repoGuid, normalizedLoca),
+    };
+    await writeConfig(itemDir, config);
+    if (type === "Text") {
+      await writeBody(itemDir, content);
+    }
+    // type === "Folder": matches source — no body.txt written, even though config now says type: "Text".
+
+    return readItemAt(repoGuid, normalizedLoca);
   },
 };

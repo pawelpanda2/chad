@@ -11,8 +11,8 @@ MongoDB `chad-mongodb` + jeden wspólny Content Provider
 dashboard). Zastrzeżenie o replica set poniżej pozostaje w mocy bez zmian —
 standalone `mongod` z auth, bez `--replSet`/`--keyFile`, teraz w
 `docker-compose.qnap.shared.yml`. Patrz
-`documentation/dashboard/common/features/dashboard-deployment-scripts.md` i
-`documentation/dashboard/common/features/shared-qnap-services.md`.
+`documentation/ai-docs/deploy/dashboard-deployment-scripts.md` i
+`documentation/ai-docs/deploy/shared-qnap-services.md`.
 
 **Aktualizacja 2026-07-11:** próba realnego wdrożenia na QNAP TEST
 (`docker-compose.qnap.yml`) trafiła dokładnie na zastrzeżenie z tego

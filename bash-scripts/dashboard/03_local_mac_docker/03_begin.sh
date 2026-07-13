@@ -20,6 +20,10 @@ echo ""
 
 cd "$REPO_ROOT"
 
+# No `:latest` fallback — refuses to start without recorded release tags.
+require_image_tag "$(dashboard_image_tag_file)" "chad-dashboard" || exit 1
+require_image_tag "$(content_provider_image_tag_file)" "chad-content-provider-api" || exit 1
+
 write_content_provider_appsettings
 
 if docker compose -p "$COMPOSE_PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps --format json 2>/dev/null | grep -q '"State":"running"'; then

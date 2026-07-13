@@ -5,7 +5,14 @@
 # only ever invoked from this directory today).
 
 CONTENT_PROVIDER_API_PORT=12024
-CONTENT_PROVIDER_API_CONTAINER_NAME="cp_api_csharp"
+# NIE "cp_api_csharp" — to jest nazwa kontenera legacy stacku
+# (packages/net-content-provider/03_scripts/03_local-mac_docker/02_run_api_charp.sh,
+# port 12004, dla Blazor). Ta sama nazwa kolidowała z tym kontenerem: gdy oba
+# stacki były uruchamiane w różnym czasie, `docker rm -f "$NAME"` w
+# run-content-provider-if-needed.sh kasował legacy kontener zamiast swojego
+# (potwierdzone realnym incydentem 2026-07-12 — ubiło to Blazor). Nazwa
+# poniżej zgodna z konwencją reszty tego stacku (chad-*-local-mac-*).
+CONTENT_PROVIDER_API_CONTAINER_NAME="chad-content-provider-api-local-mac-tmux"
 CONTENT_PROVIDER_API_IMAGE="chad-content-provider-api:latest"
 
 # Content Provider's own config module (appsettings.json) — not a secret,

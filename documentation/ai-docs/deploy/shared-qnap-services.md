@@ -59,7 +59,7 @@ idempotentnie przez `ensure_docker_network()` w `bash-scripts/common/lib.sh`).
 Pełny opis konwencji skryptów (`build`/`begin`/`end`/`status`/`deploy`,
 `require_shared_services_healthy` preflight, DNS przez `container_name`
 zamiast nazwy serwisu) w
-`documentation/dashboard/common/features/dashboard-deployment-scripts.md`.
+`documentation/ai-docs/deploy/dashboard-deployment-scripts.md`.
 
 ## 4. Sieć, mounty, porty (bez sekretów)
 
@@ -72,7 +72,7 @@ zamiast nazwy serwisu) w
 
 | Kontener | Bind mount |
 |---|---|
-| `chad-mongodb` | `/share/ContainerData/chad-shared/mongodb/db:/data/db`, `.../configdb:/data/configdb`, `.../backups:/backups` |
+| `chad-mongodb` | `$QNAP_CONTAINER_DATA_PATH/chad-shared/mongodb/db:/data/db`, `.../configdb:/data/configdb`, `.../backups:/backups` — `$QNAP_CONTAINER_DATA_PATH` MUST resolve onto the real data volume, not `/share` itself (a 16MB tmpfs on this QNAP); see [qnap-data-path.md](qnap-data-path.md) for the incident and the validation `03_begin.sh` now runs before every start |
 | `chad-content-provider-api` | `/share/Dropbox:/data/repos:rw` (potwierdzone: `repoCount:36`), `.runtime/shared/content-provider/appsettings.json:/app/appsettings.json:ro` |
 | `chad-dashboard-test` | named volume `chad-dashboard-qnap-test-data:/app/data` (SQLite Prisma, per-dashboard, nie Mongo) |
 | `chad-dashboard-prod` | named volume `chad-dashboard-qnap-prod-data:/app/data` (osobny od test — świadomie, to lokalna baza sesji dashboardu, nie "prawdziwe dane" biznesowe) |
@@ -93,7 +93,7 @@ Providerem przez `CONTENT_PROVIDER_API_URL=http://chad-content-provider-api:1202
 Compose"). MongoDB: standalone z auth
 (`MONGO_INITDB_ROOT_USERNAME`/`PASSWORD` z `.env.qnap`), **bez** replica set,
 **bez** `--keyFile`, **bez** `replicaSet=rs0` w connection stringu — patrz
-`documentation/ai-docs/2026-07-10_mongodb-replica-set-migration-plan.md`
+`documentation/ai-docs/deploy/2026-07-10_mongodb-replica-set-migration-plan.md`
 (replica set pozostaje nieużywany, gated za osobną zgodą).
 
 Na dzień wdrożenia (2026-07-11) `packages/dashboard`/`packages/dba` **jeszcze
@@ -123,20 +123,29 @@ zdrowy — zamiast próbować go naprawić samodzielnie.
 
 ## 6. Procedura promocji obrazu TEST → PROD
 
-Obecnie: `02_build.sh` w `04_qnap_test`/`05_qnap_prod` tagują obraz jako
-`chad-dashboard:latest` + znacznik czasowy — bez rozróżnienia
-środowiska/architektury w tagu (środowisko rozróżnia projekt Compose, nie
-tag). Promocja "sprawdzonego" obrazu TEST na PROD = odtagowanie konkretnego
-znacznika czasowego z TEST jako `chad-dashboard:latest` przed uruchomieniem
-`05_qnap_prod/03_begin.sh` (bez rebuildu):
+**Status (2026-07-13): zautomatyzowane przez skrypty, bez `:latest`.** Pełny
+standard: [image-tagging-standard.md](image-tagging-standard.md). Skrót:
+
+- `04_qnap_test/02_build.sh` i `05_qnap_prod/02_build.sh` budują dokładnie ten
+  sam obraz `chad-dashboard` (identyczny Dockerfile/context/target) i po
+  udanym buildzie zapisują znacznik czasowy do jednego, wspólnego pliku
+  `.image-tag.chad-dashboard.env` (gitignored, na hoście QNAP).
+- `03_begin.sh` w obu katalogach **odmawia startu**, jeśli ten plik nie
+  istnieje albo jest pusty — nigdy nie ma fallbacku do `chad-dashboard:latest`
+  (własne obrazy CHAD w ogóle nie dostają już tagu `latest`).
+- Promocja "sprawdzonego" obrazu TEST na PROD = **bez rebuildu**, po prostu:
 
 ```bash
-docker tag chad-dashboard:<TEST-timestamp-tag> chad-dashboard:latest
-bash bash-scripts/dashboard/06_qnap_ssh/begin_prod.sh
+# 1) zbuduj i uruchom TEST (albo tylko zbuduj, jeśli chcesz najpierw sprawdzić)
+bash bash-scripts/dashboard/06_qnap_ssh/deploy_test.sh
+
+# 2) wypromuj DOKŁADNIE ten sam obraz na PROD — czyta ten sam zapisany tag,
+#    nie buduje nic ponownie
+bash bash-scripts/dashboard/06_qnap_ssh/begin_prod.sh   # wymaga wpisania PROD
 ```
 
-To nie zostało jeszcze zautomatyzowane osobnym skryptem — do rozważenia w
-przyszłości, jeśli częstotliwość promocji to uzasadni.
+Po tym `docker inspect chad-dashboard-test`/`chad-dashboard-prod` pokazują
+identyczny `Image` (ten sam tag, ten sam ID).
 
 ## 7. Procedura rollbacku
 
@@ -188,10 +197,21 @@ widoczna w PROD. TEST służy wyłącznie do:
 | Legacy `personal-dashboard-prod`/`content-provider-api-prod` | zatrzymane i usunięte, dane na dysku (`personal-dashboard-qnap-prod-data`, `/share/cp_1`) nienaruszone |
 | Stary stack `chad-test` (osobne mongo/CP na środowisko) | usunięty przez `docker compose down --remove-orphans` (dane na bind moуncie `chad-test/mongodb/db` nienaruszone, ale porzucone — było puste: 0 aplikacyjnych baz) |
 
+**Aktualizacja 2026-07-13:** powyższy wiersz "Mount `chad-mongodb`" odzwierciedla
+stan z 2026-07-11 (`QNAP_CONTAINER_DATA_PATH=/share/ContainerData`) —
+zachowany jako historyczny zapis testu. Ten konkretny katalog okazał się leżeć
+na 16MB tmpfs (`/share` samo w sobie), co spowodowało crash-loop
+`chad-mongodb` (`WT_PANIC: No space left on device`). Naprawione zmianą
+`QNAP_CONTAINER_DATA_PATH` na `/share/CACHEDEV1_DATA/ContainerData` (prawdziwy
+wolumen 4.5TB) — pełny opis incydentu, przyczyny i skryptowej walidacji, która
+teraz to wykrywa przed startem: [qnap-data-path.md](qnap-data-path.md).
+
 ## 10. Znane ograniczenia / co zostało do decyzji
 
-- Promocja obrazu TEST→PROD jest ręczna (retag), bez dedykowanego skryptu —
-  patrz sekcja 6.
+- ~~Promocja obrazu TEST→PROD jest ręczna (retag), bez dedykowanego skryptu~~
+  — **zrobione 2026-07-13**: `02_build.sh`/`03_begin.sh` zapisują i czytają
+  wspólny plik ze znacznikiem release'u, bez `:latest`, bez ponownego builda
+  przy promocji. Patrz sekcja 6 i [image-tagging-standard.md](image-tagging-standard.md).
 - MongoDB nie jest jeszcze konsumowane przez kod dashboardu/`dba` — "wspólna
   baza danych" jest dziś prawdą infrastrukturalną (jeden kontener), nie
   jeszcze zweryfikowaną w działającym feature'rze aplikacyjnym.
@@ -201,7 +221,7 @@ widoczna w PROD. TEST służy wyłącznie do:
   QNAP jako nieużywane resztki — świadomie nieusunięte (nie były w zakresie
   tego zadania, dane nie są kasowane bez wyraźnej potrzeby).
 - Replica set MongoDB pozostaje niewdrożony — patrz
-  `documentation/ai-docs/2026-07-10_mongodb-replica-set-migration-plan.md`.
+  `documentation/ai-docs/deploy/2026-07-10_mongodb-replica-set-migration-plan.md`.
 - Brak zautomatyzowanego dyskretnego oznaczenia "TEST UI — LIVE DATA" w
   samym UI dashboardu — to zmiana w kodzie frontendu, świadomie pominięta w
   tym zadaniu (zakres: architektura deploymentu, nie UI), do rozważenia jako

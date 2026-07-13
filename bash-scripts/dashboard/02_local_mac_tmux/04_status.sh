@@ -9,7 +9,7 @@ REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel)"
 source "$REPO_ROOT/bash-scripts/common/lib.sh"
 source "$SCRIPT_DIR/01_config.sh"
 
-FRONTEND_PORT=12080
+FRONTEND_PORT=12020
 CONTENT_PROVIDER_API_URL="http://localhost:$CONTENT_PROVIDER_API_PORT"
 
 SESSION="chad-dashboard"

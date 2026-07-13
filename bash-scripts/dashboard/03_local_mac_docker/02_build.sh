@@ -22,13 +22,18 @@ cd "$REPO_ROOT"
 
 # Plain date+time tag (no environment/arch suffix) — environment is already
 # distinguished by compose project name, ports, and container names, not by
-# the image tag. Every build gets both :latest and this timestamp tag.
+# the image tag. Own CHAD images never get a `:latest` tag (see
+# documentation/ai-docs/deploy/image-tagging-standard.md) — this is the ONLY
+# tag this build produces, for BOTH images (they share one timestamp since
+# they're built in the same invocation here).
 IMAGE_TAG="$(date +'%y%m%d_%H%M%S')"
 export IMAGE_TAG
 
 docker compose -p "$COMPOSE_PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" build --pull
 
-docker tag "chad-dashboard:$IMAGE_TAG" "chad-dashboard:latest"
-docker tag "chad-content-provider-api:$IMAGE_TAG" "chad-content-provider-api:latest"
+# Only reached if `build` succeeded (set -e) — never records a tag for a
+# failed build.
+write_image_tag "$(dashboard_image_tag_file)" "$IMAGE_TAG"
+write_image_tag "$(content_provider_image_tag_file)" "$IMAGE_TAG"
 
-log_ok "Images built and tagged: latest, $IMAGE_TAG"
+log_ok "Images built: chad-dashboard:$IMAGE_TAG, chad-content-provider-api:$IMAGE_TAG"

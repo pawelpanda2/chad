@@ -23,12 +23,22 @@ cd "$REPO_ROOT"
 
 # Plain date+time tag (no environment/arch suffix) — environment is already
 # distinguished by compose project name, ports, and container names, not by
-# the image tag. Every build gets both :latest and this timestamp tag.
+# the image tag. Own CHAD images never get a `:latest` tag (see
+# documentation/ai-docs/deploy/image-tagging-standard.md) — this is the ONLY
+# tag this build produces. 04_qnap_test and 05_qnap_prod build the exact same
+# chad-dashboard image (same Dockerfile/context/target — see
+# docker-compose.qnap.{test,prod}.yml), so they share ONE canonical tag-record
+# file: build once (from either environment), then `begin` in both to deploy
+# the identical image without a second build. Normal promotion TEST -> PROD
+# does NOT run this script again — it just runs 05_qnap_prod/03_begin.sh,
+# which reads the same tag-record file 04_qnap_test/02_build.sh already wrote.
 IMAGE_TAG="$(date +'%y%m%d_%H%M%S')"
 export IMAGE_TAG
 
 docker compose -p "$COMPOSE_PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" build --pull
 
-docker tag "chad-dashboard:$IMAGE_TAG" "chad-dashboard:latest"
+# Only reached if `build` succeeded (set -e) — never records a tag for a
+# failed build.
+write_image_tag "$(dashboard_image_tag_file)" "$IMAGE_TAG"
 
-log_ok "Image built and tagged: latest, $IMAGE_TAG"
+log_ok "Image built: chad-dashboard:$IMAGE_TAG"

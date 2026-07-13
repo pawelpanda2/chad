@@ -1,15 +1,30 @@
 # Struktura `bash-scripts/`
 
-Status: aktualne (2026-07-11).
+Status: **CZĘŚCIOWO PRZESTARZAŁE (od 2026-07-13)** — poniższe drzewo
+katalogów i lista skryptów (`bash-scripts/dashboard/{begin,end,restart,
+status,logs,build}.sh` bezpośrednio w `dashboard/`) opisuje strukturę SPRZED
+przejścia na numerowane pod-katalogi per-środowisko
+(`00_qnap_shared/03_local_mac_docker/04_qnap_test/05_qnap_prod/06_qnap_ssh`,
+każdy z `01_config/02_build/03_begin/04_end/05_status/06_deploy.sh`) i sprzed
+`02_local_mac` → `02_local_mac_tmux` (w trakcie, jeszcze nie scommitowane).
+Nie ufaj poniższemu drzewu jako aktualnemu stanowi repo — użyj
+`ls bash-scripts/dashboard/` do sprawdzenia rzeczywistej struktury. Aktualny,
+autorytatywny opis konwencji skryptów: [dashboard-deployment-scripts.md](dashboard-deployment-scripts.md)
+(Docker/QNAP) i [dashboard-start-scripts.md](dashboard-start-scripts.md)
+(lokalny tmux, bez Dockera). Zachowane poniżej jako zapis historyczny
+uzasadnienia nazewnictwa (`begin`/`end` zamiast `start`/`stop` — patrz akapit
+niżej), nie jako źródło prawdy o strukturze.
+
+Status (historyczny): aktualne (2026-07-11).
 
 **Aktualizacja 2026-07-11**: `packages/dashboard/03_scripts/nodejs/` (stary,
 odziedziczony z samodzielnego repo `chad-dashbord` katalog SSH/Docker-QNAP
 deployu, opisany w poprzednim akapicie jako "celowo pozostawiony") **został
 usunięty** — w pełni zastąpiony przez `bash-scripts/dashboard/{02_local_mac,
 03_local_mac_docker,04_qnap_test,05_qnap_prod,06_qnap_ssh}/`. Zobacz
-[dashboard-deployment-scripts.md](../../dashboard/common/features/dashboard-deployment-scripts.md)
+[dashboard-deployment-scripts.md](dashboard-deployment-scripts.md)
 dla pełnego kontraktu tych skryptów (build/start/end/deploy/status) i
-[dashboard-start-scripts.md](../../dashboard/common/features/dashboard-start-scripts.md)
+[dashboard-start-scripts.md](dashboard-start-scripts.md)
 dla `02_local_mac` (tmux/pnpm, bez Dockera).
 
 Status: aktualne (2026-07-10). Katalog był wcześniej nazwany `03_scripts` — zmieniono nazwę i zaktualizowano wszystkie aktywne odwołania (root `package.json`, `.tmuxinator.yml`, `docker-compose*.yml`, własna dokumentacja). Pre-istniejące, historyczne odwołania do starego `03_scripts/nodejs/...` w `documentation/nodejs-style.md`, `packages/console/README.md` dotyczą innej, starej struktury i pozostają bez zmian jako dokumentacja historyczna.
