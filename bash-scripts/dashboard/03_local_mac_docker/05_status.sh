@@ -13,6 +13,13 @@ log_info "chad local-mac-docker — status"
 echo ""
 
 cd "$REPO_ROOT"
+# `ps` still needs the compose file's `image:` fields to interpolate, but
+# doesn't need real tags (never pulls/runs them) — use recorded tags if
+# present, otherwise a harmless placeholder (see image_tag_for_readonly).
+# Both images share one IMAGE_TAG var here (docker-compose.local.yml builds
+# them together), so read whichever tag file exists — they're written
+# together by 02_build.sh.
+export IMAGE_TAG="$(image_tag_for_readonly "$(dashboard_image_tag_file)")"
 docker compose -p "$COMPOSE_PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps
 
 echo ""

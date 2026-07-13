@@ -20,6 +20,10 @@ log_warn "chad QNAP SHARED — end (this stops MongoDB + Content Provider API us
 echo ""
 
 cd "$REPO_ROOT"
+# `down` still needs the compose file's `image:` field to interpolate, but
+# doesn't need a real tag (never pulls/runs it) — use the recorded tag if
+# present, otherwise a harmless placeholder (see image_tag_for_readonly).
+export IMAGE_TAG="$(image_tag_for_readonly "$(content_provider_image_tag_file)")"
 docker compose -p "$COMPOSE_PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" down --remove-orphans
 
 log_ok "chad-shared stack stopped. Data (MongoDB bind mount) and images preserved."

@@ -177,6 +177,22 @@ pełni własnością zautomatyzowanego mechanizmu (`write_image_tag`/
 `require_image_tag`) — to była naprawa startowa tego jednego przejścia, nie
 równoległy, ukryty proces.
 
+## `05_status.sh` i `04_end.sh` — te same compose pliki, inny wymóg
+
+`docker compose ps` i `docker compose down` też muszą zinterpolować cały plik
+compose (w tym pole `image:`), mimo że w przeciwieństwie do `up`/`build` NIE
+potrzebują, żeby obraz istniał albo miał sensowny tag — `ps`/`down` nigdy go
+nie pobierają ani nie uruchamiają. Twardy wymóg `require_image_tag` w tych
+skryptach zablokowałby np. sprawdzenie statusu stacka, który nigdy nie został
+zbudowany, albo zatrzymanie stacka, któremu ktoś ręcznie usunął plik tagu.
+
+Dlatego `05_status.sh`/`04_end.sh` we wszystkich czterech środowiskach
+(`00_qnap_shared`, `03_local_mac_docker`, `04_qnap_test`, `05_qnap_prod`) używają
+łagodniejszego `image_tag_for_readonly()` zamiast `require_image_tag()`:
+zwraca zapisany tag, jeśli istnieje, w przeciwnym razie nieszkodliwy
+placeholder `"none"` — wystarczający, żeby `docker compose` się nie wywalił,
+nigdy nie używany do faktycznego builda/startu.
+
 ## Znane ograniczenia
 
 - Brak dedykowanego skryptu do "wymuś rebuild z powodem X" — `06_deploy.sh`

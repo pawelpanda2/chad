@@ -59,9 +59,27 @@ done
 
 SSH_TARGET="${QNAP_SSH_USERNAME}@${QNAP_SSH_HOST}"
 
-# Runs one remote command over SSH, with a live pseudo-TTY so output streams
-# as it happens. Password (if set) via sshpass > expect > plain ssh
-# (interactive prompt) fallback — same order as the proven old script.
+# SSH options shared by every path below:
+#   - ConnectTimeout/ServerAlive*: bound how long a stuck/dropped connection
+#     can hang instead of failing (or, worse, sitting open indefinitely) —
+#     see documentation/ai-docs/deploy/ for the incident this fixes.
+#   - StrictHostKeyChecking=accept-new: auto-trust a NEW host key (this is a
+#     single known Tailscale-only host) without prompting, but still reject a
+#     CHANGED key (protects against a swapped/MITM host) — safe for
+#     non-interactive automation.
+SSH_OPTS=(-o ConnectTimeout=10 -o ServerAliveInterval=5 -o ServerAliveCountMax=3 -o StrictHostKeyChecking=accept-new)
+
+# Runs one remote command over SSH. Password (if set) via sshpass > expect >
+# plain ssh (interactive prompt) fallback — same order as the proven old
+# script.
+#
+# No `-tt` (forced pseudo-TTY): confirmed by real reproduction (2026-07-13)
+# that `-tt` through sshpass in this non-interactive tool environment can
+# hang indefinitely after the remote command finishes — the PTY never
+# signals close, so the local ssh process just sits there. Plain ssh (no -t
+# at all) still streams output live for a human watching a real terminal;
+# it just doesn't force PTY allocation when stdin isn't one, which is
+# exactly the safe behavior here.
 run_remote() {
   local label="$1" remote_cmd="$2"
   echo ""
@@ -69,12 +87,12 @@ run_remote() {
   echo "\$ $remote_cmd"
 
   if [ -n "$QNAP_SSH_PASSWORD" ] && command_exists sshpass; then
-    SSHPASS="$QNAP_SSH_PASSWORD" sshpass -e ssh -tt -p "$QNAP_SSH_PORT" "$SSH_TARGET" "bash -lc $(printf '%q' "$remote_cmd")"
+    SSHPASS="$QNAP_SSH_PASSWORD" sshpass -e ssh "${SSH_OPTS[@]}" -p "$QNAP_SSH_PORT" "$SSH_TARGET" "bash -lc $(printf '%q' "$remote_cmd")"
   elif [ -n "$QNAP_SSH_PASSWORD" ] && command_exists expect; then
     EXPECT_QNAP_PASSWORD="$QNAP_SSH_PASSWORD" expect <<EOF
-set timeout -1
+set timeout 120
 log_user 1
-spawn ssh -tt -p $QNAP_SSH_PORT $SSH_TARGET "bash -lc $(printf '%q' "$remote_cmd")"
+spawn ssh -o ConnectTimeout=10 -o ServerAliveInterval=5 -o ServerAliveCountMax=3 -o StrictHostKeyChecking=accept-new -p $QNAP_SSH_PORT $SSH_TARGET "bash -lc $(printf '%q' "$remote_cmd")"
 expect {
   -re {(?i)yes/no} { send -- "yes\r"; exp_continue }
   -re {(?i)password:} { send -- "$env(EXPECT_QNAP_PASSWORD)\r"; exp_continue }
@@ -84,7 +102,7 @@ catch wait result
 exit [lindex \$result 3]
 EOF
   else
-    ssh -tt -p "$QNAP_SSH_PORT" "$SSH_TARGET" "bash -lc $(printf '%q' "$remote_cmd")"
+    ssh "${SSH_OPTS[@]}" -p "$QNAP_SSH_PORT" "$SSH_TARGET" "bash -lc $(printf '%q' "$remote_cmd")"
   fi
 
   log_ok "Done: $label"

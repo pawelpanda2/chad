@@ -273,6 +273,27 @@ require_image_tag() {
   return 0
 }
 
+# Usage: export IMAGE_TAG="$(image_tag_for_readonly "$(dashboard_image_tag_file)")"
+# For status/end scripts: `docker compose ps`/`down` still need the compose
+# file's `image:` field to interpolate successfully, but — unlike
+# `up`/`build` — don't need the image to exist or be correct (`ps` and `down`
+# never pull/run it). Returns the recorded tag if present, otherwise the
+# harmless placeholder "none" so `docker compose` doesn't hard-fail on a
+# stack that was never built/deployed. `require_image_tag` (used by
+# build/begin) is what actually enforces a real, valid tag.
+image_tag_for_readonly() {
+  local tag_file="$1"
+  if [ -f "$tag_file" ]; then
+    # shellcheck disable=SC1090
+    source "$tag_file"
+    if [ -n "${IMAGE_TAG:-}" ]; then
+      echo "$IMAGE_TAG"
+      return 0
+    fi
+  fi
+  echo "none"
+}
+
 # Usage: value="$(read_env_var "$ENV_FILE" QNAP_CONTAINER_DATA_PATH)"
 # Minimal .env-style parser (KEY=value, ignores comments/blank lines, strips
 # surrounding quotes). Prints an empty string if the file or key is missing —

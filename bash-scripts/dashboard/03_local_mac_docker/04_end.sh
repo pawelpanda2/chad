@@ -17,6 +17,10 @@ log_info "chad local-mac-docker — end"
 echo ""
 
 cd "$REPO_ROOT"
+# `down` still needs the compose file's `image:` fields to interpolate, but
+# doesn't need real tags (never pulls/runs them) — use the recorded tag if
+# present, otherwise a harmless placeholder (see image_tag_for_readonly).
+export IMAGE_TAG="$(image_tag_for_readonly "$(dashboard_image_tag_file)")"
 docker compose -p "$COMPOSE_PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" down --remove-orphans
 
 log_ok "chad-local stack stopped. Data volumes and images preserved."
