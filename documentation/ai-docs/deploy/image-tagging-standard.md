@@ -166,16 +166,32 @@ zbudowany obraz `chad-dashboard` z poprawnym tagiem czasowym
 (`260713_134936`, potwierdzone `docker inspect` — `RepoTags` zawierał
 zarówno `260713_134936` jak i `latest`, oba wskazujące na ten sam `Image ID`).
 Zamiast rebuildować (którego użytkownik wyraźnie zabronił, skoro tag już
-istniał), wykonano **jednorazową naprawę awaryjną**: ręcznie zapisano plik
-`.image-tag.chad-dashboard.env` z zawartością `IMAGE_TAG=260713_134936` na
-QNAP-ie, odzwierciedlającą stan już zbudowanego obrazu — bez `docker tag`,
-bez rebuildu. Analogicznie dla `chad-content-provider-api`, który miał tylko
-`:latest` (brak zachowanego tagu czasowego) — otagowano istniejący obraz
-(`docker tag`, bez rebuildu) znacznikiem odpowiadającym jego rzeczywistej
-dacie budowy, i zapisano ten tag w pliku. Od tego momentu oba pliki są w
-pełni własnością zautomatyzowanego mechanizmu (`write_image_tag`/
-`require_image_tag`) — to była naprawa startowa tego jednego przejścia, nie
-równoległy, ukryty proces.
+istniał), naprawa **NIE** została wykonana jako ręczne polecenia SSH —
+zgodnie z zasadą "każda operacja musi być powtarzalna przez skrypt",
+powstał dedykowany, jednorazowy, jasno oznaczony w nazwie i nagłówku skrypt:
+`bash-scripts/dashboard/bootstrap-2026-07-13-legacy-image-tags.sh`
+(scommitowany, celowo NIE ponumerowany jak `01_config.sh`.../`06_deploy.sh`,
+żeby nie sugerować, że to stały krok procesu). Uruchomiony raz przez
+sankcjonowany `run_remote` (ten sam mechanizm SSH, którego używają
+`06_qnap_ssh/*.sh`):
+
+- dla `chad-dashboard`: zapisał `.image-tag.chad-dashboard.env` z
+  `IMAGE_TAG=260713_134936` — obraz już miał ten tag (potwierdzone
+  `docker inspect` — `RepoTags` zawierał zarówno `260713_134936` jak i
+  `latest`, oba wskazujące na ten sam `Image ID`) — **bez** `docker tag`,
+  **bez** rebuildu.
+- dla `chad-content-provider-api`, który miał tylko `:latest` (brak
+  zachowanego tagu czasowego): otagował **istniejący** obraz (`docker tag`,
+  bez rebuildu) znacznikiem odpowiadającym jego rzeczywistej dacie budowy
+  (`docker inspect --format {{.Created}}`, sparsowane czystym bashem — QNAP-owy
+  BusyBox `date` nie ma `-d`), i zapisał ten tag w pliku.
+
+Od tego momentu oba pliki są w pełni własnością zautomatyzowanego mechanizmu
+(`write_image_tag`/`require_image_tag`). Skrypt bootstrapujący spełnił swoje
+zadanie i został usunięty z repo po potwierdzeniu, że
+`begin_shared.sh`/`begin_test.sh`/`begin_prod.sh` działają poprawnie z nowym
+mechanizmem (zgodnie z jego własnym nagłówkiem) — pozostaje w historii git,
+gdyby kiedyś potrzebny był wzorzec do analogicznego bootstrapu.
 
 ## `05_status.sh` i `04_end.sh` — te same compose pliki, inny wymóg
 
