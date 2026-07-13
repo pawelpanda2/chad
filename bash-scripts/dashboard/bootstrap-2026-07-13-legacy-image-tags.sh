@@ -49,9 +49,15 @@ CP_TAG_FILE="$(content_provider_image_tag_file)"
 if [ -f "$CP_TAG_FILE" ]; then
   log_ok "Already present, nothing to do: $CP_TAG_FILE ($(cat "$CP_TAG_FILE"))"
 elif docker image inspect chad-content-provider-api:latest >/dev/null 2>&1; then
+  # Pure-bash RFC3339 parsing ("2026-07-11T16:08:39.06...+02:00" ->
+  # "260711_160839") — no `date -d` (GNU-only; QNAP's BusyBox date doesn't
+  # support it, confirmed by a real failure here).
   CREATED="$(docker inspect chad-content-provider-api:latest --format '{{.Created}}')"
-  TS="$(date -u -d "$CREATED" +'%y%m%d_%H%M%S' 2>/dev/null || true)"
-  if [ -z "$TS" ]; then
+  DATE_PART="${CREATED%%T*}"
+  TIME_PART="${CREATED#*T}"
+  TIME_PART="${TIME_PART%%.*}"
+  TS="${DATE_PART:2:2}${DATE_PART:5:2}${DATE_PART:8:2}_${TIME_PART:0:2}${TIME_PART:3:2}${TIME_PART:6:2}"
+  if ! [[ "$TS" =~ ^[0-9]{6}_[0-9]{6}$ ]]; then
     log_error "Could not parse image Created date ('$CREATED') into a tag. Bootstrap this one manually or rebuild via 00_qnap_shared/02_build.sh."
     exit 1
   fi
