@@ -16,26 +16,64 @@ danych, używany do weryfikacji wyglądu, layoutu, scrollbarów, edytorów,
 formularzy i integracji dashboardu bez ryzyka dla dostępności PROD. Zmiana
 danych wykonana przez dashboard TEST jest widoczna również w PROD.
 
-Struktura katalogów:
+Struktura katalogów (potwierdzona `ls bash-scripts/dashboard/`, 2026-07-13):
 
 ```
 bash-scripts/dashboard/
-├── 02_local_mac/          # tmux/pnpm, BEZ Dockera (istniejące, nie-Compose)
-├── 03_local_mac_docker/   # docker-compose.local.yml (mongo+CP+dashboard razem, tylko lokalnie)
 ├── 00_qnap_shared/        # docker-compose.qnap.shared.yml (mongo + content-provider-api, wspólne dla TEST i PROD)
+├── 02_local_mac_tmux/     # tmux/pnpm, BEZ Dockera — NIESCOMMITOWANE w trakcie tej sesji (patrz niżej)
+├── 03_local_mac_docker/   # docker-compose.local.yml (mongo+CP+dashboard razem, tylko lokalnie)
 ├── 04_qnap_test/          # docker-compose.qnap.test.yml (TYLKO dashboard TEST)
 ├── 05_qnap_prod/          # docker-compose.qnap.prod.yml (TYLKO dashboard PROD, wymaga osobnej zgody na realny deploy)
 └── 06_qnap_ssh/           # cienkie wrappery SSH nad 00_qnap_shared / 04_qnap_test / 05_qnap_prod
 ```
 
-Każdy z `00_qnap_shared`, `04_qnap_test`, `05_qnap_prod` ma identyczny
-zestaw 6 plików: `01_config.sh`, `02_build.sh`, `03_begin.sh`, `04_end.sh`,
-`05_status.sh`, `06_deploy.sh`. Konwencja nazw skryptów to **build / begin /
-end / status / deploy** — nigdy `start_*`/`stop_*`.
+Każdy z `00_qnap_shared`, `03_local_mac_docker`, `04_qnap_test`, `05_qnap_prod`
+ma identyczny zestaw 6 plików: `01_config.sh`, `02_build.sh`, `03_begin.sh`,
+`04_end.sh`, `05_status.sh`, `06_deploy.sh`. Konwencja nazw skryptów w TEJ
+rodzinie (Docker Compose) to **build / begin / end / status / deploy** —
+nigdy `start_*`/`stop_*`. Uzasadnienie historyczne (2026-07-10):
+`start.sh`/`status.sh`/`stop.sh` wszystkie zaczynały się na literę `s`, co
+psuło autouzupełnianie w terminalu (`bash s<TAB>` niejednoznaczne) — stąd
+`b`egin / `e`nd / `s`tatus, jednoznaczne skróty.
 
 Lokalny `docker-compose.local.yml` (`03_local_mac_docker`) łączy mongo + CP +
 dashboard w jednym pliku, bo lokalnie nie ma potrzeby rozdzielać TEST/PROD —
 ten podział dotyczy wyłącznie QNAP.
+
+### Niespójność nazewnictwa: `begin/end` (Docker) vs `start/end` (tmux) — ustalone, NIE naprawiane w tym zadaniu
+
+Cała rodzina skryptów opartych o Docker Compose (`00_qnap_shared`,
+`03_local_mac_docker`, `04_qnap_test`, `05_qnap_prod`, `06_qnap_ssh`) używa
+konsekwentnie **`begin`/`end`** (nigdy `start`/`stop`) — potwierdzone w
+każdym z tych katalogów i udokumentowane od 2026-07-10 (patrz akapit wyżej).
+
+Osobny, niepowiązany z Dockerem system — lokalne środowisko dev oparte o
+`tmux`/`tmuxinator` (bez kontenerów, do jednoczesnego uruchamiania `dba`
+watch + `next dev` + Content Provider w panelach terminala) — ma inną,
+udokumentowaną historię: `git log` pokazuje, że `begin.sh`/`stop.sh` zostały
+najpierw zmienione na `begin.sh`/`end.sh` (2026-07-10, ten sam powód co
+wyżej), a NASTĘPNIE (commit `c21233e`, ten sam dzień) świadomie
+przemianowane z powrotem na `01_build.sh`/`02_start.sh`/`03_end.sh` w samym
+`02_local_mac/`, z uzasadnieniem: *"build" i "begin" oba zaczynały się na tę
+samą literę, myląco w listingu katalogu* — inny problem niż oryginalny (tam
+kolidowały trzy nazwy zaczynające się na `s`; tu dwie zaczynające się na `b`).
+
+Stan na 2026-07-13 (repo, `git status`): katalog `02_local_mac/` został
+usunięty, a w jego miejsce powstał **nieescommitowany** `02_local_mac_tmux/`
+z tym samym wzorcem `01_build.sh`/`02_start.sh`/`03_end.sh`/`04_status.sh`/
+`05_logs.sh`. Root-level wrappery `begin.sh`/`end.sh`/`status.sh` (repo root)
+zostały zaktualizowane, by wskazywać na ten nowy katalog. To jest praca w
+toku innej osoby/sesji, nie część tego zadania.
+
+**Wniosek:** obecna, faktyczna konwencja NIE jest jednolita w całym repo —
+Docker-owa rodzina konsekwentnie używa `begin`/`end`, a lokalny,
+tmux-owy dev-flow używa `start`/`end` (z innym, osobnym uzasadnieniem
+historycznym). Zgodnie z instrukcją zadania: **nazwy NIE zostały tu
+zmienione automatycznie** — to wymagałoby większej migracji i dotyczy
+osobnego, aktualnie niescommitowanego obszaru pracy. Jeśli planujesz
+ujednolicić nazewnictwo, zrób to jako osobne, świadome zadanie, nie przy
+okazji czegoś innego.
 
 ## Dlaczego shared/test/prod, a nie jeden plik na środowisko
 
