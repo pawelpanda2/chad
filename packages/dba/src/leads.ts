@@ -970,7 +970,7 @@ export interface DailyEntryItem {
 
 /**
  * Gets every child Text-item of a single folder (identified by parent
- * logical-name path, e.g. ["actions", "dates"]), with each child's own
+ * logical-name path, e.g. ["views", "dates"]), with each child's own
  * body fetched individually.
  *
  * This mirrors the PROVEN working pattern from getMsgPlannerDateFolders
@@ -985,7 +985,7 @@ export interface DailyEntryItem {
  * (physicalKey -> logicalName), building each child's loca as
  * `${folderLoca}/${physicalKey}` — exactly what Msg Planner does.
  *
- * @param parentNames - logical-name path to the folder, e.g. ["actions", "dates"]
+ * @param parentNames - logical-name path to the folder, e.g. ["views", "dates"]
  */
 async function getAllChildTextItems(
   parentNames: string[]
@@ -1040,20 +1040,20 @@ async function getAllChildTextItems(
 }
 
 /**
- * Gets all date entries from the actions/dates folder.
+ * Gets all date entries from the views/dates folder.
  *
  * @returns Promise resolving to array of date entry items
  */
 export async function getAllDateEntries(): Promise<DateEntryItem[]> {
   try {
-    return await getAllChildTextItems(["actions", "dates"]);
+    return await getAllChildTextItems(["views", "dates"]);
   } catch {
     return [];
   }
 }
 
 /**
- * Gets all daily entries from the actions/daily folder.
+ * Gets all daily entries from the views/daily folder.
  *
  * Note: The body is returned as a raw string. YAML parsing should be done
  * in the dashboard layer where js-yaml is available.
@@ -1062,21 +1062,21 @@ export async function getAllDateEntries(): Promise<DateEntryItem[]> {
  */
 export async function getAllDailyEntries(): Promise<DailyEntryItem[]> {
   try {
-    return await getAllChildTextItems(["actions", "daily"]);
+    return await getAllChildTextItems(["views", "daily"]);
   } catch {
     return [];
   }
 }
 
 /**
- * Saves a date entry to the actions/dates folder.
- * 
+ * Saves a date entry to the views/dates folder.
+ *
  * Flow:
- * 1. Ensure actions folder exists (PostParentItem on root)
- * 2. Ensure dates folder exists under actions
+ * 1. Ensure views folder exists (PostParentItem on root)
+ * 2. Ensure dates folder exists under views
  * 3. Create text item with the entry name
  * 4. Put YAML body into the text item
- * 
+ *
  * @param itemName - The name of the entry (e.g., "26-07-10")
  * @param bodyYaml - The YAML body content
  * @returns Promise resolving to { itemName, loca, success }
@@ -1085,30 +1085,30 @@ export async function saveDateEntry(
   itemName: string,
   bodyYaml: string
 ): Promise<{ itemName: string; loca: string; success: boolean }> {
-  // Step 1: Get or create actions folder under root
-  const actionsResult = await invokeContentProvider([
+  // Step 1: Get or create views folder under root
+  const viewsResult = await invokeContentProvider([
     "IRepoService",
     "IItemWorker",
     "PostParentItem",
     getCurrentRepoGuid(),
     "",  // root loca
     "Folder",
-    "actions",
+    "views",
   ]);
 
-  if (!actionsResult?.Settings?.address) {
-    throw new Error("Failed to get or create actions folder");
+  if (!viewsResult?.Settings?.address) {
+    throw new Error("Failed to get or create views folder");
   }
 
-  const actionsLoca = actionsResult.Settings.address.replace(`${getCurrentRepoGuid()}/`, "");
+  const viewsLoca = viewsResult.Settings.address.replace(`${getCurrentRepoGuid()}/`, "");
 
-  // Step 2: Get or create dates folder under actions
+  // Step 2: Get or create dates folder under views
   const datesResult = await invokeContentProvider([
     "IRepoService",
     "IItemWorker",
     "PostParentItem",
     getCurrentRepoGuid(),
-    actionsLoca,
+    viewsLoca,
     "Folder",
     "dates",
   ]);
@@ -1156,14 +1156,14 @@ export async function saveDateEntry(
 }
 
 /**
- * Saves a daily entry to the actions/daily folder.
- * 
+ * Saves a daily entry to the views/daily folder.
+ *
  * Flow:
- * 1. Ensure actions folder exists (PostParentItem on root)
- * 2. Ensure daily folder exists under actions
+ * 1. Ensure views folder exists (PostParentItem on root)
+ * 2. Ensure daily folder exists under views
  * 3. Create text item with the entry name
  * 4. Put YAML body into the text item
- * 
+ *
  * @param itemName - The name of the entry (e.g., "26-07-10")
  * @param bodyYaml - The YAML body content
  * @returns Promise resolving to { itemName, loca, success }
@@ -1172,30 +1172,30 @@ export async function saveDailyEntry(
   itemName: string,
   bodyYaml: string
 ): Promise<{ itemName: string; loca: string; success: boolean }> {
-  // Step 1: Get or create actions folder under root
-  const actionsResult = await invokeContentProvider([
+  // Step 1: Get or create views folder under root
+  const viewsResult = await invokeContentProvider([
     "IRepoService",
     "IItemWorker",
     "PostParentItem",
     getCurrentRepoGuid(),
     "",  // root loca
     "Folder",
-    "actions",
+    "views",
   ]);
 
-  if (!actionsResult?.Settings?.address) {
-    throw new Error("Failed to get or create actions folder");
+  if (!viewsResult?.Settings?.address) {
+    throw new Error("Failed to get or create views folder");
   }
 
-  const actionsLoca = actionsResult.Settings.address.replace(`${getCurrentRepoGuid()}/`, "");
+  const viewsLoca = viewsResult.Settings.address.replace(`${getCurrentRepoGuid()}/`, "");
 
-  // Step 2: Get or create daily folder under actions
+  // Step 2: Get or create daily folder under views
   const dailyResult = await invokeContentProvider([
     "IRepoService",
     "IItemWorker",
     "PostParentItem",
     getCurrentRepoGuid(),
-    actionsLoca,
+    viewsLoca,
     "Folder",
     "daily",
   ]);

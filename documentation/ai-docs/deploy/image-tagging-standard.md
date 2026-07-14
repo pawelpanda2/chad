@@ -142,9 +142,9 @@ mimo to.
 
 ## Local Mac Docker
 
-`03_local_mac_docker/02_build.sh` buduje OBA obrazy w jednym wywołaniu i
+`03_local_mac_docker/03_build.sh` buduje OBA obrazy w jednym wywołaniu i
 zapisuje OBA pliki tagów (ten sam znacznik czasowy dla obu, bo budowane razem).
-`03_begin.sh` wymaga obu przed `docker compose up`.
+`04_begin.sh` wymaga obu przed `docker compose up`.
 
 ## Jak wymusić rebuild zamiast promocji
 

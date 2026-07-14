@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
 import { buildLeadDetailsHref, getLeadDetailsHref } from "@/lib/lead-links";
 import { ErrorBox } from "@/components/shared/error-box";
+import { PreviewContent } from "@/components/shared/headers-renderer";
 import {
   RefreshCw,
   ArrowLeft,
@@ -17,6 +18,7 @@ import {
   ArrowDown,
   User,
   CheckCircle2,
+  FileText,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -41,7 +43,13 @@ interface LeadDashboardItem {
   hasContacts: boolean;
 }
 
-type ViewType = null | "tracker" | "dates" | "leads";
+interface ReportEntry {
+  itemName: string;
+  loca: string;
+  body?: string;
+}
+
+type ViewType = null | "tracker" | "dates" | "leads" | "reports";
 type SortDir = "asc" | "desc";
 
 // ============================================================================
@@ -125,12 +133,17 @@ function ViewsPageContent() {
   // uses router.push (a new history entry), never replace.
   const viewParam = searchParams.get("view");
   const selectedView: ViewType =
-    viewParam === "tracker" || viewParam === "dates" || viewParam === "leads" ? viewParam : null;
+    viewParam === "tracker" || viewParam === "dates" || viewParam === "leads" || viewParam === "reports"
+      ? viewParam
+      : null;
   const returnTo = searchParams.toString() ? `${pathname}?${searchParams.toString()}` : pathname;
 
   const [dateEntries, setDateEntries] = useState<DateEntryRecord[]>([]);
   const [dailyEntries, setDailyEntries] = useState<DailyEntryRecord[]>([]);
   const [leads, setLeads] = useState<LeadDashboardItem[]>([]);
+  const [reports, setReports] = useState<ReportEntry[]>([]);
+  const [reportsError, setReportsError] = useState<string | null>(null);
+  const [selectedReportLoca, setSelectedReportLoca] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
@@ -140,13 +153,16 @@ function ViewsPageContent() {
   const fetchData = useCallback(async () => {
     setIsLoading(true);
     setError(null);
+    setReportsError(null);
     try {
-      const [viewsRes, leadsRes] = await Promise.all([
+      const [viewsRes, leadsRes, reportsRes] = await Promise.all([
         fetch("/api/views"),
         fetch("/api/leads-dashboard"),
+        fetch("/api/views/reports"),
       ]);
       const viewsResult = await viewsRes.json();
       const leadsResult = await leadsRes.json();
+      const reportsResult = await reportsRes.json();
 
       if (viewsResult.success) {
         setDateEntries(viewsResult.dateEntries || []);
@@ -158,6 +174,16 @@ function ViewsPageContent() {
 
       if (Array.isArray(leadsResult)) {
         setLeads(leadsResult);
+      }
+
+      // Reports errors are kept separate from the tracker/dates error above
+      // so a Reports-only failure (e.g. views/reports not found) doesn't
+      // block the other views, and is never silently shown as "no reports".
+      if (reportsResult.success) {
+        setReports(reportsResult.reports || []);
+      } else {
+        setReportsError(reportsResult.error || "Failed to fetch reports");
+        setReports([]);
       }
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : "Unknown error";
@@ -178,6 +204,7 @@ function ViewsPageContent() {
     setFilter("");
     setSortKey(selectedView === "dates" ? "DATA" : selectedView === "tracker" ? "DATE" : "");
     setSortDir(selectedView === "dates" ? "desc" : "asc");
+    setSelectedReportLoca(null);
   }, [selectedView]);
 
   const handleRefresh = () => {
@@ -232,6 +259,17 @@ function ViewsPageContent() {
     );
   }, [leads, filter]);
 
+  const filteredReports = useMemo(() => {
+    if (!filter.trim()) return reports;
+    const f = filter.toLowerCase().trim();
+    return reports.filter((r) => r.itemName.toLowerCase().includes(f));
+  }, [reports, filter]);
+
+  const selectedReport = useMemo(
+    () => reports.find((r) => r.loca === selectedReportLoca) || null,
+    [reports, selectedReportLoca]
+  );
+
   // ============================================================================
   // Render: View Selection Menu
   // ============================================================================
@@ -268,6 +306,14 @@ function ViewsPageContent() {
           >
             <span className="font-semibold text-sm">LEADS</span>
             <span className="text-xs text-muted-foreground mt-0.5">All leads</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => handleViewSelect("reports")}
+            className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
+          >
+            <span className="font-semibold text-sm">REPORTS</span>
+            <span className="text-xs text-muted-foreground mt-0.5">Saved reports</span>
           </button>
         </div>
       </DashboardPageShell>
@@ -349,16 +395,15 @@ function ViewsPageContent() {
                         </span>
                       </Link>
                       <div className="flex items-center gap-2 min-w-0 flex-1">
-                        <span className="font-medium text-sm truncate select-text">{lead.leadName}</span>
                         <Link
                           href={buildLeadDetailsHref({
                             leadName: lead.leadName,
                             leadLoca: lead.loca,
                             returnTo,
                           })}
-                          className="text-xs text-primary underline underline-offset-4"
+                          className="font-medium text-sm truncate hover:text-primary hover:underline"
                         >
-                          info
+                          {lead.leadName}
                         </Link>
                         {lead.hasContacts ? (
                           <span className="flex items-center gap-1 text-xs text-green-600">
@@ -372,6 +417,95 @@ function ViewsPageContent() {
                     </div>
                   </div>
                 ))}
+          </div>
+        )}
+      </DashboardPageShell>
+    );
+  }
+
+  // ============================================================================
+  // Render: Reports
+  // ============================================================================
+
+  if (selectedView === "reports") {
+    return (
+      <DashboardPageShell
+        toolbar={
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={selectedReport ? () => setSelectedReportLoca(null) : handleBack}
+              className="gap-1 h-7 px-2"
+            >
+              <ArrowLeft className="h-3 w-3" />Back
+            </Button>
+            <div className="flex items-center gap-2">
+              <FileText className="h-4 w-4" />
+              <h2 className="text-lg font-bold">
+                Views / REPORTS{selectedReport ? ` / ${selectedReport.itemName}` : ""}
+              </h2>
+            </div>
+            {!selectedReport && (
+              <div className="relative">
+                <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                <Input
+                  value={filter}
+                  onChange={(e) => setFilter(e.target.value)}
+                  placeholder="Filter reports..."
+                  className="pl-7 h-7 text-xs w-[220px]"
+                />
+              </div>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRefresh}
+              disabled={isLoading}
+              className="gap-2 h-7 text-xs ml-auto"
+            >
+              <RefreshCw className={`h-3 w-3 ${isLoading ? "animate-spin" : ""}`} />
+              Refresh
+            </Button>
+            {!selectedReport && (
+              <span className="text-xs text-muted-foreground">
+                {filteredReports.length} of {reports.length} reports
+              </span>
+            )}
+          </>
+        }
+      >
+        <ErrorBox message={reportsError} className="mb-2" />
+
+        {selectedReport ? (
+          <div className="h-full overflow-auto">
+            <PreviewContent body={selectedReport.body || ""} />
+          </div>
+        ) : isLoading ? (
+          <div className="flex items-center gap-2 py-4 text-muted-foreground">
+            <RefreshCw className="h-4 w-4 animate-spin" />
+            <span>Loading reports...</span>
+          </div>
+        ) : reportsError ? null : filteredReports.length === 0 ? (
+          <div className="flex items-center gap-3 py-4 text-muted-foreground">
+            <FileText className="h-8 w-8 opacity-20" />
+            <span className="text-sm">No reports yet. Use Forms to add one.</span>
+          </div>
+        ) : (
+          <div className="divide-y">
+            {filteredReports.map((report) => (
+              <button
+                key={report.loca}
+                type="button"
+                onClick={() => setSelectedReportLoca(report.loca)}
+                className="flex w-full items-center gap-3 rounded-lg px-[10px] py-[10px] text-left transition-colors hover:bg-accent"
+              >
+                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-primary">
+                  <FileText className="h-3.5 w-3.5" />
+                </span>
+                <span className="font-medium text-sm truncate">{report.itemName}</span>
+              </button>
+            ))}
           </div>
         )}
       </DashboardPageShell>

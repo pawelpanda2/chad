@@ -1,7 +1,19 @@
 # What and where — AI documentation index
 
-Status: utworzone 2026-07-13. To jest **punkt startowy** dla AI przed
-większym zadaniem w tym repo.
+Status: utworzone 2026-07-13, zaktualizowane 2026-07-14 (kolejność czytania
++ globalne Knowledge). To jest **punkt startowy** dla AI przed większym
+zadaniem w tym repo.
+
+## Kolejność czytania dokumentacji przez AI (czytaj to najpierw)
+
+1. **Najpierw** przeczytaj `documentation/ai-docs/knowledge/` **w
+   kolejności numeracji plików** (`01_...`, `02_...`, ...) — to jest
+   globalna baza wiedzy obowiązująca dla całego projektu, niezależnie od
+   tego, jakie konkretnie zadanie jest realizowane (np. standard Story,
+   zasady deploymentu). Krótka, ma być czytana w całości, za każdym razem.
+2. **Dopiero potem** wróć do reszty tego pliku (sekcja "Zasada" niżej) i
+   użyj go jako indeksu do pozostałej dokumentacji projektu — per-kategoria,
+   otwieraj tylko to, co potrzebne do aktualnego zadania.
 
 ## Zasada
 
@@ -88,6 +100,11 @@ kategoria "Beeper" niżej, która opisuje sync/integrację).
   standardowy `ErrorBox` (bezpieczeństwo: co jest widoczne na test/prod).
 - `common/features/chad-user-data-isolation.md`, `chad-domain-ssl.md`,
   `nginx-proxy-manager-domains.md` — auth/multi-user, SSL, domeny publiczne.
+- `forms/features/reports-form.md` (2026-07-13, przebudowany w Story 53) —
+  formularz "Reports" (Forms, dwuetapowy panel danych + edytor) i widok
+  "Reports" (Views): lista + podgląd zapisanych raportów pod `views/reports`
+  (przemianowane z `actions/reports` w Story 53). Zawiera też opis wywołań
+  Content Providera i wynik testu ręcznego względem realnego CP.
 
 **Uwaga o duplikacji:** `documentation/features/*.md` (katalog w rootcie
 `documentation/`, BEZ `dashboard/`) zawiera starsze dokumenty o tych samych
@@ -125,6 +142,13 @@ bezpośrednio.
   `loca`, jak pobiera/zapisuje dane.
 - `features/`, `bugs/` — konkretne funkcje domenowe (statusy, msg workout,
   konwersacje, AI prompt) i znane błędy.
+- `features/report-entries.md` (2026-07-13, przemianowany z
+  `actions-reports.md` w Story 53) — feature "Reports" pod `views / reports`
+  (dawniej `actions / reports`; GetByNames2 z pustego loca startowego i dwie
+  nazwy logiczne naraz); NIE mylić z istniejącym, osobnym, root-level
+  folderem `reports` (`reports.ts` — `GetReports`/`GetReportByName`), który
+  ma już realne, niezwiązane dane — to jest właśnie dlaczego plik dba nazywa
+  się `report-entries.ts`, nie `reports.ts`.
 
 **Zasada Content Providera (obowiązkowa, patrz też
 `documentation/ai-docs/feature-documentation-rules.md`):** fizyczne foldery
@@ -209,6 +233,29 @@ zapisywanych do Content Providera i renderowanych w dashboardzie.
 
 ---
 
+## Knowledge (globalna baza wiedzy — czytaj pierwsza, patrz sekcja na
+samej górze tego pliku)
+
+**Opis:** Krótkie, obowiązujące dla całego projektu zasady, niezależne od
+konkretnego zadania/Story. Numerowane wg ważności/kolejności czytania.
+
+**Lokalizacja:** `documentation/ai-docs/knowledge/`
+
+**Pliki (2026-07-14):**
+- [knowledge/01_story-standard.md](knowledge/01_story-standard.md) —
+  standard numerowanych katalogów Story (`documentation/stories/<N>/`,
+  6 plików `01_input.md`...`06_propositions.md`), obowiązkowa Checklist na
+  początku `05_report.md`, zasada "puste `04_todos.md` = Story bez
+  nierozwiązanych wątków", i rozróżnienie względem per-Story
+  `03_knowledge.md`.
+- [knowledge/02_deployment-rules.md](knowledge/02_deployment-rules.md) —
+  build/start/stop/deploy wyłącznie oficjalnymi skryptami projektu; dlaczego
+  `docker-compose.*.yml` nie jest źródłem wiedzy o procesie deploymentu
+  (IMAGE_TAG, generowany appsettings, health-checki, port ownership).
+
+**Czytać gdy:** zawsze, na samym początku pracy w tym repo — nie tylko przy
+zadaniach dotyczących akurat Story albo deploymentu.
+
 ## Standardy dla AI (meta)
 
 **Opis:** Zasady, którym samo AI ma podlegać przy pisaniu dokumentacji i
@@ -232,6 +279,38 @@ katalogu, nie w podkatalogach kategorii)
 
 **Czytać gdy:** tworzysz nową dokumentację feature'a/buga w dowolnej
 kategorii — sprawdź wymaganą zawartość sekcji.
+
+---
+
+## Stories (numerowane katalogi, historia całego zadania)
+
+**Opis:** Od Story 53 (2026-07-14) każde większe zadanie ("story" — feature,
+migracja, poprawki, zmiany w kilku warstwach, testy, dokumentacja i
+świadomie odłożone follow-upy razem) dostaje kolejny numer i katalog z
+pełną historią zadania: dokładny wejściowy prompt użytkownika, plan,
+potrzebna wiedza, końcowy raport, odłożone tematy.
+
+**Lokalizacja:** `documentation/stories/<numer>/` — katalog nazwany
+WYŁĄCZNIE numerem (nigdy `53_reports` ani `Story 53`; nazwa story to
+metadana w nagłówku pliku, nie część nazwy katalogu — tak jak w Content
+Providerze fizyczne foldery są numeryczne, a nazwa logiczna żyje w
+`config.yaml`). Pliki wewnątrz mają numeryczny prefiks:
+`01_input.md`, `02_plan.md`, `03_knowledge.md`, `04_todos.md`,
+`05_report.md`, `06_propositions.md`.
+
+**Standard opisany raz w:** `documentation/ai-docs/knowledge/01_story-standard.md`
+(część globalnej bazy wiedzy — patrz sekcja "Knowledge" na samym początku
+tego pliku) — przeczytaj go przed założeniem nowego story albo
+kontynuacją istniejącego, zamiast zgadywać konwencję z przykładu.
+
+**Nie zastępuje** dokumentacji per-funkcjonalność (`documentation/dashboard/<zakładka>/features/`,
+`documentation/dba/features/`, ...) — ta nadal żyje i jest aktualizowana w
+swoim miejscu; katalog story dokumentuje historię zadania i może
+obejmować/aktualizować kilka takich plików naraz.
+
+**Czytać gdy:** zaczynasz nowe większe zadanie (żeby założyć story
+poprawnie) albo wracasz do poprawki w obrębie istniejącego story (zacznij
+od `03_knowledge.md` tego story, żeby nie odkrywać kontekstu od zera).
 
 ---
 

@@ -401,8 +401,8 @@ export async function saveLeadForm(
 /**
  * Get all date entry records for a user
  * Flow:
- * 1. GetByNames(repoKey, "actions", "dates") - get list of records
- * 2. For each record: GetByNames(repoKey, "actions", "dates", itemName) - get body
+ * 1. GetByNames(repoKey, "views", "dates") - get list of records
+ * 2. For each record: GetByNames(repoKey, "views", "dates", itemName) - get body
  */
 export async function getDateEntryRecords(repoKey: string): Promise<{ records: DateEntryRecord[]; cpCalls: CpCallTrace[] }> {
   const cpCalls: CpCallTrace[] = [];
@@ -410,8 +410,8 @@ export async function getDateEntryRecords(repoKey: string): Promise<{ records: D
   // Step 1: Get dates folder
   const datesResult = await invokeCpWithTrace(
     cpCalls,
-    'Get actions/dates folder',
-    ['IRepoService', 'IItemWorker', 'GetByNames', repoKey, 'actions', 'dates']
+    'Get views/dates folder',
+    ['IRepoService', 'IItemWorker', 'GetByNames', repoKey, 'views', 'dates']
   );
 
   const records: DateEntryRecord[] = [];
@@ -428,7 +428,7 @@ export async function getDateEntryRecords(repoKey: string): Promise<{ records: D
           const recordResult = await invokeCpWithTrace(
             cpCalls,
             `Get date entry: ${itemName}`,
-            ['IRepoService', 'IItemWorker', 'GetByNames', repoKey, 'actions', 'dates', itemName]
+            ['IRepoService', 'IItemWorker', 'GetByNames', repoKey, 'views', 'dates', itemName]
           );
 
           records.push({
@@ -446,8 +446,8 @@ export async function getDateEntryRecords(repoKey: string): Promise<{ records: D
 /**
  * Get all daily entry records for a user
  * Flow:
- * 1. GetByNames(repoKey, "actions", "daily") - get list of records
- * 2. For each record: GetByNames(repoKey, "actions", "daily", itemName) - get body
+ * 1. GetByNames(repoKey, "views", "daily") - get list of records
+ * 2. For each record: GetByNames(repoKey, "views", "daily", itemName) - get body
  */
 export async function getDailyEntryRecords(repoKey: string): Promise<{ records: DailyEntryRecord[]; cpCalls: CpCallTrace[] }> {
   const cpCalls: CpCallTrace[] = [];
@@ -455,8 +455,8 @@ export async function getDailyEntryRecords(repoKey: string): Promise<{ records: 
   // Step 1: Get daily folder
   const dailyResult = await invokeCpWithTrace(
     cpCalls,
-    'Get actions/daily folder',
-    ['IRepoService', 'IItemWorker', 'GetByNames', repoKey, 'actions', 'daily']
+    'Get views/daily folder',
+    ['IRepoService', 'IItemWorker', 'GetByNames', repoKey, 'views', 'daily']
   );
 
   const records: DailyEntryRecord[] = [];
@@ -473,7 +473,7 @@ export async function getDailyEntryRecords(repoKey: string): Promise<{ records: 
           const recordResult = await invokeCpWithTrace(
             cpCalls,
             `Get daily entry: ${itemName}`,
-            ['IRepoService', 'IItemWorker', 'GetByNames', repoKey, 'actions', 'daily', itemName]
+            ['IRepoService', 'IItemWorker', 'GetByNames', repoKey, 'views', 'daily', itemName]
           );
 
           records.push({
@@ -491,10 +491,10 @@ export async function getDailyEntryRecords(repoKey: string): Promise<{ records: 
 /**
  * Save date entry form to Content Provider
  * Flow:
- * 1. Ensure folder "actions" exists under root (using PostParentItem or GetByNames)
- * 2. Ensure folder "dates" exists under actions
+ * 1. Ensure folder "views" exists under root (using PostParentItem or GetByNames)
+ * 2. Ensure folder "dates" exists under views
  * 3. PostParentItem(repoGuid, datesLoca, "Text", itemName) - create text item
- * 4. GetByNames(repoGuid, "actions", "dates", itemName) - get item address
+ * 4. GetByNames(repoGuid, "views", "dates", itemName) - get item address
  * 5. Put(repoGuid, itemLoca, bodyYaml)
  */
 export async function saveDateEntryForm(
@@ -506,47 +506,47 @@ export async function saveDateEntryForm(
   const cpCalls: CpCallTrace[] = [];
 
   try {
-    // Step 1: Ensure "actions" folder exists under root
+    // Step 1: Ensure "views" folder exists under root
     // First try to get it
-    let actionsLoca = '';
-    const actionsResult = await invokeCpWithTrace(
+    let viewsLoca = '';
+    const viewsResult = await invokeCpWithTrace(
       cpCalls,
-      'Get actions folder',
-      ['IRepoService', 'IItemWorker', 'GetByNames', repoGuid, 'actions']
+      'Get views folder',
+      ['IRepoService', 'IItemWorker', 'GetByNames', repoGuid, 'views']
     );
     
-    if (actionsResult) {
-      const parsed = parseYaml(actionsResult);
-      actionsLoca = (parsed?.address as string) || '';
+    if (viewsResult) {
+      const parsed = parseYaml(viewsResult);
+      viewsLoca = (parsed?.address as string) || '';
     }
     
     // If not found, create it
-    if (!actionsLoca) {
-      const createActionsResult = await invokeCpWithTrace(
+    if (!viewsLoca) {
+      const createViewsResult = await invokeCpWithTrace(
         cpCalls,
-        'Create actions folder',
-        ['IRepoService', 'IItemWorker', 'PostParentItem', repoGuid, '', 'Folder', 'actions']
+        'Create views folder',
+        ['IRepoService', 'IItemWorker', 'PostParentItem', repoGuid, '', 'Folder', 'views']
       );
-      if (createActionsResult) {
+      if (createViewsResult) {
         // PostParentItem returns JSON, not YAML
-        actionsLoca = extractLocaFromJson(createActionsResult) || '';
+        viewsLoca = extractLocaFromJson(createViewsResult) || '';
       }
     }
 
-    if (!actionsLoca) {
+    if (!viewsLoca) {
       return {
         success: false,
         cpCalls,
-        error: 'Failed to get or create actions folder',
+        error: 'Failed to get or create views folder',
       };
     }
 
-    // Step 2: Ensure "dates" folder exists under actions
+    // Step 2: Ensure "dates" folder exists under views
     let datesLoca = '';
     const datesResult = await invokeCpWithTrace(
       cpCalls,
       'Get dates folder',
-      ['IRepoService', 'IItemWorker', 'GetByNames', repoGuid, 'actions', 'dates']
+      ['IRepoService', 'IItemWorker', 'GetByNames', repoGuid, 'views', 'dates']
     );
     
     if (datesResult) {
@@ -559,7 +559,7 @@ export async function saveDateEntryForm(
       const createDatesResult = await invokeCpWithTrace(
         cpCalls,
         'Create dates folder',
-        ['IRepoService', 'IItemWorker', 'PostParentItem', repoGuid, actionsLoca, 'Folder', 'dates']
+        ['IRepoService', 'IItemWorker', 'PostParentItem', repoGuid, viewsLoca, 'Folder', 'dates']
       );
       if (createDatesResult) {
         // PostParentItem returns JSON, not YAML
@@ -586,7 +586,7 @@ export async function saveDateEntryForm(
     const getResult = await invokeCpWithTrace(
       cpCalls,
       'Get date entry item after PostParentItem',
-      ['IRepoService', 'IItemWorker', 'GetByNames', repoGuid, 'actions', 'dates', itemName]
+      ['IRepoService', 'IItemWorker', 'GetByNames', repoGuid, 'views', 'dates', itemName]
     );
 
     // Step 5: Put body
@@ -614,10 +614,10 @@ export async function saveDateEntryForm(
 /**
  * Save daily entry form to Content Provider
  * Flow:
- * 1. Ensure folder "actions" exists under root (using PostParentItem or GetByNames)
- * 2. Ensure folder "daily" exists under actions
+ * 1. Ensure folder "views" exists under root (using PostParentItem or GetByNames)
+ * 2. Ensure folder "daily" exists under views
  * 3. PostParentItem(repoKey, dailyLoca, "Text", itemName) - create text item
- * 4. GetByNames(repoKey, "actions", "daily", itemName) - get item address
+ * 4. GetByNames(repoKey, "views", "daily", itemName) - get item address
  * 5. Put(repoKey, itemLoca, bodyYaml)
  */
 export async function saveDailyEntryForm(
@@ -637,46 +637,46 @@ export async function saveDailyEntryForm(
   const cpCalls: CpCallTrace[] = [];
 
   try {
-    // Step 1: Ensure "actions" folder exists under root
-    let actionsLoca = '';
-    const actionsResult = await invokeCpWithTrace(
+    // Step 1: Ensure "views" folder exists under root
+    let viewsLoca = '';
+    const viewsResult = await invokeCpWithTrace(
       cpCalls,
-      'Get actions folder',
-      ['IRepoService', 'IItemWorker', 'GetByNames', repoGuid, 'actions']
+      'Get views folder',
+      ['IRepoService', 'IItemWorker', 'GetByNames', repoGuid, 'views']
     );
     
-    if (actionsResult) {
-      const parsed = parseYaml(actionsResult);
-      actionsLoca = (parsed?.address as string) || '';
+    if (viewsResult) {
+      const parsed = parseYaml(viewsResult);
+      viewsLoca = (parsed?.address as string) || '';
     }
     
     // If not found, create it
-    if (!actionsLoca) {
-      const createActionsResult = await invokeCpWithTrace(
+    if (!viewsLoca) {
+      const createViewsResult = await invokeCpWithTrace(
         cpCalls,
-        'Create actions folder',
-        ['IRepoService', 'IItemWorker', 'PostParentItem', repoGuid, '', 'Folder', 'actions']
+        'Create views folder',
+        ['IRepoService', 'IItemWorker', 'PostParentItem', repoGuid, '', 'Folder', 'views']
       );
-      if (createActionsResult) {
+      if (createViewsResult) {
         // PostParentItem returns JSON, not YAML
-        actionsLoca = extractLocaFromJson(createActionsResult) || '';
+        viewsLoca = extractLocaFromJson(createViewsResult) || '';
       }
     }
 
-    if (!actionsLoca) {
+    if (!viewsLoca) {
       return {
         success: false,
         cpCalls,
-        error: 'Failed to get or create actions folder',
+        error: 'Failed to get or create views folder',
       };
     }
 
-    // Step 2: Ensure "daily" folder exists under actions
+    // Step 2: Ensure "daily" folder exists under views
     let dailyLoca = '';
     const dailyResult = await invokeCpWithTrace(
       cpCalls,
       'Get daily folder',
-      ['IRepoService', 'IItemWorker', 'GetByNames', repoGuid, 'actions', 'daily']
+      ['IRepoService', 'IItemWorker', 'GetByNames', repoGuid, 'views', 'daily']
     );
     
     if (dailyResult) {
@@ -689,7 +689,7 @@ export async function saveDailyEntryForm(
       const createDailyResult = await invokeCpWithTrace(
         cpCalls,
         'Create daily folder',
-        ['IRepoService', 'IItemWorker', 'PostParentItem', repoGuid, actionsLoca, 'Folder', 'daily']
+        ['IRepoService', 'IItemWorker', 'PostParentItem', repoGuid, viewsLoca, 'Folder', 'daily']
       );
       if (createDailyResult) {
         // PostParentItem returns JSON, not YAML
@@ -716,7 +716,7 @@ export async function saveDailyEntryForm(
     const getResult = await invokeCpWithTrace(
       cpCalls,
       'Get daily entry item after PostParentItem',
-      ['IRepoService', 'IItemWorker', 'GetByNames', repoGuid, 'actions', 'daily', itemName]
+      ['IRepoService', 'IItemWorker', 'GetByNames', repoGuid, 'views', 'daily', itemName]
     );
 
     // Step 5: Put body
@@ -747,7 +747,7 @@ export async function saveDailyEntryForm(
  */
 export async function generateDateItemName(
   repoKey: string,
-  folderPath: string[], // e.g., ['actions', 'dates'] or ['actions', 'daily']
+  folderPath: string[], // e.g., ['views', 'dates'] or ['views', 'daily']
   dateStr: string // YYYY-MM-DD format
 ): Promise<{ itemName: string; cpCalls: CpCallTrace[] }> {
   const cpCalls: CpCallTrace[] = [];

@@ -77,10 +77,10 @@ stop_docker_container_using_port() {
   fi
   local container_name
   container_name="$(docker inspect -f '{{.Name}}' "$container_id" 2>/dev/null | sed 's#^/##')"
-  log_warn "Port $port is in use by Docker container '${container_name:-$container_id}' — stopping and removing it."
+  log_warn "Port $port is in use by Docker container '${container_name:-unknown}' (ID: $container_id) — stopping and removing it."
   docker stop "$container_id" >/dev/null
   docker rm "$container_id" >/dev/null 2>&1 || true
-  log_ok "Stopped and removed container '${container_name:-$container_id}' (was using port $port)."
+  log_ok "Stopped and removed container '${container_name:-unknown}' (ID: $container_id) (was using port $port)."
 }
 
 # Usage: ensure_port_available 12020 || exit 1
@@ -150,13 +150,15 @@ require_shared_services_healthy() {
 }
 
 # Usage: kill_process_on_port 12080
-# For "end"/cleanup scripts, where — unlike ensure_port_available's startup
-# preflight — the caller genuinely wants the port free, not just a report.
-# Docker-first (same reasoning as ensure_port_available: authoritative on
-# both platforms): if a container publishes this port, stops+removes ONLY
-# that container. Otherwise sends SIGTERM to the PID(s) found by `lsof -ti
-# :port` (targeted by port, never a broad pkill/killall/kill-by-name),
-# waits, then SIGKILL if still alive. No-op if the port is already free.
+# For "end"/cleanup scripts (and 03_local_mac_docker/01_port_kill.sh, the CLI
+# wrapper around this one function — see that file, don't reimplement this
+# logic there) — where, unlike ensure_port_available's startup preflight,
+# the caller genuinely wants the port free, not just a report. Docker-first
+# (same reasoning as ensure_port_available: authoritative on both
+# platforms): if a container publishes this port, stops+removes ONLY that
+# container. Otherwise sends SIGTERM to the PID(s) found by `lsof -ti :port`
+# (targeted by port, never a broad pkill/killall/kill-by-name), waits, then
+# SIGKILL if still alive. No-op if the port is already free.
 kill_process_on_port() {
   local port="$1"
   local container_id
@@ -177,11 +179,18 @@ kill_process_on_port() {
     return 0
   fi
 
-  log_warn "Port $port is in use by PID(s) $pids — killing."
+  local pid pname
+  for pid in $pids; do
+    pname="$(ps -p "$pid" -o comm= 2>/dev/null | sed 's#.*/##')"
+    log_info "Port $port is in use by process '${pname:-unknown}' (PID $pid)."
+  done
+
+  log_warn "Sending SIGTERM to PID(s): $pids"
   kill $pids 2>/dev/null || true
   sleep 1
 
   if port_in_use "$port"; then
+    log_warn "Still running after SIGTERM — sending SIGKILL to PID(s): $pids"
     kill -9 $pids 2>/dev/null || true
     sleep 1
   fi

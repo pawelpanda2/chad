@@ -58,7 +58,8 @@ by that name — not nested inside `pawel_f`'s repo). Structure: folder `01`
 (logical name `users`) → `01/01` is a Text item (logical name `users-list`),
 body is a YAML `users:` list of `{repoGuid, username, email, passwordHash,
 createdAt, updatedAt}`. That's **all** it stores — no per-feature CP-path
-registry. The `actions/daily` and `actions/dates` logical paths used by this
+registry. The `views/daily` and `views/dates` logical paths (renamed from
+`actions/daily`/`actions/dates` in Story 53) used by this
 feature are hardcoded as string literals directly in `packages/dba/src/leads.ts`
 (`saveDailyEntry`, `saveDateEntry`, `getAllDailyEntries`, `getAllDateEntries`),
 same as every other CP path in this codebase (e.g. `leads`, `msg planner`).

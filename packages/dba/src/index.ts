@@ -11,6 +11,7 @@ export * from './client.js';
 export * from './repo-context.js';
 export * from './leads.js';
 export * from './reports.js';
+export * from './report-entries.js';
 export * from './beeper.js';
 export * from './mongo.js';
 export * from './beeper-crm.js';
