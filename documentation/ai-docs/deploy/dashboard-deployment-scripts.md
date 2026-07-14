@@ -37,6 +37,36 @@ nigdy `start_*`/`stop_*`. Uzasadnienie historyczne (2026-07-10):
 psuło autouzupełnianie w terminalu (`bash s<TAB>` niejednoznaczne) — stąd
 `b`egin / `e`nd / `s`tatus, jednoznaczne skróty.
 
+**Wyjątek (2026-07-14): `03_local_mac_docker` ma 7 plików, nie 6.** Dodano
+`01_port_kill.sh` (patrz niżej), więc pozostałe przesunęły się o jeden numer:
+`02_config.sh`, `03_build.sh`, `04_begin.sh`, `05_end.sh`, `06_status.sh`,
+`07_deploy.sh`. `00_qnap_shared`/`04_qnap_test`/`05_qnap_prod` NIE zostały
+tknięte — nadal mają dokładnie 6 plików w oryginalnej numeracji `01`-`06`
+opisanej wyżej. To drugi udokumentowany wyjątek od wspólnej numeracji obok
+`02_local_mac_tmux`'s `01_build.sh`/`02_start.sh` (patrz
+dashboard-start-scripts.md) — sprawdzaj zawsze `ls` realnego katalogu, nie
+zakładaj numeracji z pamięci.
+
+### `01_port_kill.sh` — automatyczne zwalnianie zajętego portu
+
+CLI: `./01_port_kill.sh <port>`. Cienki wrapper nad `kill_process_on_port()`
+z `bash-scripts/common/lib.sh` (logika żyje tam, nie duplikowana tutaj) —
+obsługuje oba przypadki: port zajęty przez kontener Docker (zatrzymuje +
+usuwa TYLKO ten kontener) albo przez zwykły proces (SIGTERM, odczekanie,
+ponowna weryfikacja, SIGKILL dopiero gdy nadal żyje). Zero interaktywnych
+pytań — wywoływany automatycznie. Nigdy nie dotyka niczego niezwiązanego z
+podanym portem (brak `docker system prune`, brak `pkill`/`killall`).
+
+`04_begin.sh` wywołuje go automatycznie dla każdego portu z `REQUIRED_PORTS`
+(zbudowanego z `DASHBOARD_PORT`/`CONTENT_PROVIDER_API_PORT`/`MONGODB_PORT` w
+`02_config.sh` — nigdy nie hardkoduje numerów portów samo) PRZED próbą startu,
+zamiast (jak wcześniej) twardo kończyć się błędem `ensure_port_available`
+("Not killing it automatically — stop it yourself"). Po zwolnieniu portów
+`04_begin.sh` wywołuje `ensure_port_available` ponownie jako końcową
+weryfikację, dopiero potem `docker compose up -d`. `07_deploy.sh` (build →
+begin → status) tej logiki nie duplikuje — dziedziczy ją przez wywołanie
+`04_begin.sh`.
+
 Lokalny `docker-compose.local.yml` (`03_local_mac_docker`) łączy mongo + CP +
 dashboard w jednym pliku, bo lokalnie nie ma potrzeby rozdzielać TEST/PROD —
 ten podział dotyczy wyłącznie QNAP.

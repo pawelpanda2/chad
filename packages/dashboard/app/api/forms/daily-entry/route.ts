@@ -68,7 +68,7 @@ export async function GET() {
 /**
  * POST /api/forms/daily-entry
  * 
- * Saves a daily entry form record to Content Provider under actions/daily.
+ * Saves a daily entry form record to Content Provider under views/daily.
  * Uses chad-dba functions for all Content Provider operations.
  * 
  * Flow:
@@ -161,7 +161,7 @@ export async function POST(request: Request) {
       return NextResponse.json({
         success: true,
         itemName,
-        path: "actions/daily",
+        path: "views/daily",
         loca: result.loca,
         debug: debugResponse,
       });

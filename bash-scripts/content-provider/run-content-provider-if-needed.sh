@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Ensures Content Provider API is reachable for local-mac (non-Docker
 # tmuxinator) dev. Uses the same chad-content-provider-api image built by
-# bash-scripts/dashboard/03_local_mac_docker/02_build.sh (or any other
+# bash-scripts/dashboard/03_local_mac_docker/03_build.sh (or any other
 # environment's 02_build.sh — same image everywhere), run directly via
 # `docker run` since this dev mode has no docker-compose stack of its own.
 # Tracks ownership (.tmp/dashboard/content-provider.owned) so end.sh only
@@ -54,7 +54,7 @@ fi
 
 if ! docker image inspect "$CONTENT_PROVIDER_API_IMAGE" >/dev/null 2>&1; then
   log_error "Image $CONTENT_PROVIDER_API_IMAGE not found locally."
-  log_error "  Fix: bash bash-scripts/dashboard/03_local_mac_docker/02_build.sh"
+  log_error "  Fix: bash bash-scripts/dashboard/03_local_mac_docker/03_build.sh"
   exit 1
 fi
 
