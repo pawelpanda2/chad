@@ -58,3 +58,19 @@ gdzies tez zostal usuniety dev panel z prawej krawedzi strony powienine na srodk
 Ramka — panel Repo/Loca/przyciski jest teraz we własnej, zagnieżdżonej ramce z obramowaniem.
 chcialem zeby razem z edytorem calosc byla w ramce dodatkowej wiec rozszrz ta ramke na dol dodajac reszte elemetow
 dalej jest pusty combobox poszukaj metody IMethodWorker GetAllRepoNames czy cos podobnego dodaj ja do dba czy raczej ukryj w tej wartstwie wywowalenie z content providera
+
+## Input 7
+
+combobox jest dalej pusty i takie info jest na poczatku:
+error: Unexpected token '<', "<!DOCTYPE "... is not valid JSON
+Repo::
+
+Loca::
+03/06
+
+GO
+
+Nie udało się załadować żadnego itemu — sprawdź błąd powyżej i spróbuj ponownie (np. przyciskiem GO).
+
+uzyj Playwright do zalogowania sie dane: pawel_f i haslo: changeme
+i wyklikaj zeby odtworzyc blad
