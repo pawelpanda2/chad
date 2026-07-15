@@ -199,51 +199,52 @@ export default function FoldersPage() {
     setNav((prev) => (prev.index < prev.items.length - 1 ? { ...prev, index: prev.index + 1 } : prev));
   }
 
-  const toolbar = (
-    <>
-      <span className="text-sm text-muted-foreground whitespace-nowrap">Repo::</span>
-      {repos.length > 1 ? (
-        <Select value={selectedRepoGuid} onValueChange={handleRepoChange}>
-          <SelectTrigger className="w-[200px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {repos.map((r) => (
-              <SelectItem key={r.id} value={r.id}>
-                {r.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      ) : (
-        <span className="text-sm font-mono">{repos[0]?.name ?? "…"}</span>
-      )}
-      <span className="text-sm text-muted-foreground whitespace-nowrap">Loca::</span>
-      <Input
-        value={locaInput}
-        onChange={(e) => setLocaInput(e.target.value)}
-        placeholder="03/06"
-        className="w-[180px] font-mono"
-        onKeyDown={(e) => {
-          if (e.key === "Enter") handleGo();
-        }}
-      />
-      <Button variant="outline" size="sm" onClick={goBack} disabled={nav.index <= 0} title="Wstecz">
-        <ArrowLeft className="h-4 w-4" />
-      </Button>
-      <Button variant="outline" size="sm" onClick={handleGo}>
-        GO
-      </Button>
-      <Button variant="outline" size="sm" onClick={goForward} disabled={nav.index >= nav.items.length - 1} title="Naprzód">
-        <ArrowRight className="h-4 w-4" />
-      </Button>
-      {loading && <RefreshCw className="h-4 w-4 animate-spin text-muted-foreground" />}
-    </>
-  );
-
   return (
-    <DashboardPageShell toolbar={toolbar}>
+    <DashboardPageShell>
       <ErrorBox message={error} className="mb-3" />
+
+      {/* Repo/Loca/nav — rendered INSIDE the frame, matching the Blazor screenshot layout (previously this lived above the frame in DashboardPageShell's toolbar row). */}
+      <div className="mb-3 space-y-2 border-b pb-3">
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground whitespace-nowrap">Repo::</span>
+          <Select value={selectedRepoGuid} onValueChange={handleRepoChange}>
+            <SelectTrigger className="w-[220px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {repos.map((r) => (
+                <SelectItem key={r.id} value={r.id}>
+                  {r.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground whitespace-nowrap">Loca::</span>
+          <Input
+            value={locaInput}
+            onChange={(e) => setLocaInput(e.target.value)}
+            placeholder="03/06"
+            className="w-[220px] font-mono"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") handleGo();
+            }}
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={goBack} disabled={nav.index <= 0} title="Wstecz">
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleGo}>
+            GO
+          </Button>
+          <Button variant="outline" size="sm" onClick={goForward} disabled={nav.index >= nav.items.length - 1} title="Naprzód">
+            <ArrowRight className="h-4 w-4" />
+          </Button>
+          {loading && <RefreshCw className="h-4 w-4 animate-spin text-muted-foreground" />}
+        </div>
+      </div>
 
       {!currentItem ? (
         <div className="flex items-center gap-2 py-4 text-muted-foreground">
