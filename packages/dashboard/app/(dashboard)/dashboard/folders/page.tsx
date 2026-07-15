@@ -1,275 +1,235 @@
 "use client";
-import { useState, useEffect } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+
+import { useCallback, useEffect, useState } from "react";
+import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
+import { ErrorBox } from "@/components/shared/error-box";
 import { Button } from "@/components/ui/button";
-import { FolderOpen, FileText, ChevronDown, ChevronRight, RefreshCw } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { ArrowLeft, ArrowRight, RefreshCw } from "lucide-react";
 
-interface ActionRecord {
-  recordKey: string;
-  body?: Record<string, unknown>;
+/**
+ * Content Provider browser, ported from
+ * packages/net-content-provider/front_blazor/BlazorApp/Pages/Repos.razor
+ * (+ TextView.razor/FolderView.razor) — see documentation/stories/57.
+ *
+ * Scoped to the current authenticated user's own repoGuid ONLY. Blazor's
+ * Repos.razor has a repo combobox over ALL repos because it's a
+ * single-operator desktop tool; this dashboard has an established
+ * per-user Content Provider data isolation model
+ * (documentation/dashboard/common/features/chad-user-data-isolation.md),
+ * so "repo" here is a read-only label, not a switchable picker.
+ *
+ * Per-item toolbar buttons from the Blazor source (Folder/Content/Config/
+ * Terminal — all talk to cp-plugin, a local desktop helper with no
+ * meaning in a web dashboard; GoogleDoc/Tts; "Add" child-creation forms —
+ * a write operation, not wired into cp-api yet) are deliberately omitted,
+ * per the Story 57 request ("buttons below are unnecessary here").
+ */
+
+interface CpConfig {
+  id: string;
+  type: string;
+  name: string;
+  address: string;
+  [key: string]: unknown;
 }
 
-interface LeadRecord {
-  recordKey: string;
-  body?: Record<string, unknown>;
+interface CpItem {
+  Body: string;
+  Config: CpConfig;
+  Settings: CpConfig;
+  Address: string;
 }
 
-interface CpCallTrace {
-  step: string;
-  args: string[];
-  rawRequest: Record<string, unknown>;
-  rawResponse: string;
-  parsedResponse: Record<string, unknown> | null;
-  parseError: string | null;
-  error: string | null;
-}
-
-interface FolderData {
-  userGuid: string;
+interface FolderApiResponse {
+  item?: CpItem;
+  repoGuid?: string;
   username?: string;
-  repoKey?: string;
-  actionRecords?: ActionRecord[];
-  leadRecords?: LeadRecord[];
-  cpCalls?: CpCallTrace[];
   error?: string;
-  details?: string;
-  debug?: {
-    CONTENT_PROVIDER_API_URL: string;
-    sessionDebug?: { hasCookie: boolean; cookieValue?: string; parsedUserId?: string };
-  };
 }
 
-// Expanded record detail component
-function RecordDetail({ recordKey, body }: { recordKey: string; body?: Record<string, unknown> }) {
-  const [expanded, setExpanded] = useState(false);
-  
-  const getSummary = () => {
-    if (!body) return null;
-    if (body.formName === 'action') {
-      return `${body.actionTitle || recordKey} | ${(body.actionTypeLabel || body.actionType) as string} | ${(body.actionStartTime || '—') as string}`;
-    }
-    if (body.formName === 'lead') {
-      return `${body.name || recordKey} | ${(body.source || '—') as string} | ${(body.status || '—') as string}`;
-    }
-    return recordKey;
-  };
-
-  return (
-    <div className="border rounded-md bg-muted/20">
-      <button
-        onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-2 p-3 text-left hover:bg-muted/50 transition-colors"
-      >
-        {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-        <span className="font-mono text-sm">{recordKey}</span>
-        <span className="text-sm text-muted-foreground flex-1 text-right">{getSummary()}</span>
-      </button>
-      {expanded && body && (
-        <div className="p-3 border-t bg-background">
-          <pre className="text-xs font-mono overflow-auto max-h-64 whitespace-pre-wrap break-all">
-            {JSON.stringify(body, null, 2)}
-          </pre>
-        </div>
-      )}
-    </div>
-  );
+function relativeLoca(address: string, repoGuid: string): string {
+  if (address === repoGuid) return "";
+  const prefix = `${repoGuid}/`;
+  return address.startsWith(prefix) ? address.slice(prefix.length) : "";
 }
 
-// Developer logs section
-function DeveloperLogs({ data }: { data: FolderData }) {
-  return (
-    <Card className="mt-8">
-      <CardHeader>
-        <CardTitle className="text-sm font-semibold text-muted-foreground">Developer logs</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {/* Session & Config Info */}
-        <div>
-          <h4 className="text-xs font-semibold text-muted-foreground mb-2">Session & Config</h4>
-          <pre className="bg-muted p-3 rounded-md text-xs font-mono overflow-auto max-h-48">
-            {JSON.stringify({
-              userGuid: data.userGuid,
-              username: data.username,
-              repoKey: data.repoKey,
-              apiUrl: data.debug?.CONTENT_PROVIDER_API_URL,
-              sessionDebug: data.debug?.sessionDebug,
-            }, null, 2)}
-          </pre>
-        </div>
-
-        {/* CP Calls */}
-        {data.cpCalls && data.cpCalls.length > 0 && (
-          <div>
-            <h4 className="text-xs font-semibold text-muted-foreground mb-2">
-              Content Provider Calls ({data.cpCalls.length})
-            </h4>
-            <div className="space-y-2">
-              {data.cpCalls.map((call, index) => (
-                <Card key={index} className={call.error ? "bg-red-50 border-red-200" : ""}>
-                  <CardContent className="p-3 space-y-2">
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="text-xs">#{index + 1}</Badge>
-                      <span className="text-xs font-semibold">{call.step}</span>
-                      {call.error && <Badge variant="destructive" className="text-xs">ERROR</Badge>}
-                    </div>
-                    <div>
-                      <div className="text-xs text-muted-foreground mb-1">Args:</div>
-                      <pre className="bg-muted p-2 rounded text-xs font-mono overflow-auto">
-                        {JSON.stringify(call.args)}
-                      </pre>
-                    </div>
-                    {call.rawResponse && (
-                      <div>
-                        <div className="text-xs text-muted-foreground mb-1">Raw Response:</div>
-                        <pre className="bg-muted p-2 rounded text-xs font-mono overflow-auto max-h-32 whitespace-pre-wrap break-all">
-                          {call.rawResponse}
-                        </pre>
-                      </div>
-                    )}
-                    {call.parsedResponse && (
-                      <div>
-                        <div className="text-xs text-muted-foreground mb-1">Parsed Response:</div>
-                        <pre className="bg-muted p-2 rounded text-xs font-mono overflow-auto max-h-32">
-                          {JSON.stringify(call.parsedResponse, null, 2)}
-                        </pre>
-                      </div>
-                    )}
-                    {call.error && (
-                      <div className="text-xs text-red-600">
-                        <div className="text-muted-foreground">Error:</div>
-                        <pre className="bg-red-50 p-2 rounded">{call.error}</pre>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
+function parseChildNameMap(body: string): Array<{ index: string; name: string }> {
+  try {
+    const parsed: unknown = JSON.parse(body);
+    if (parsed && typeof parsed === "object") {
+      return Object.entries(parsed as Record<string, string>)
+        .map(([index, name]) => ({ index, name }))
+        .sort((a, b) => Number(a.index) - Number(b.index));
+    }
+  } catch {
+    // Falls through to [] — an unparseable Body shows no children rather than crashing the page.
+  }
+  return [];
 }
 
 export default function FoldersPage() {
-  const [data, setData] = useState<FolderData | null>(null);
+  const [repoGuid, setRepoGuid] = useState<string | null>(null);
+  const [repoName, setRepoName] = useState<string>("");
+  const [nav, setNav] = useState<{ items: CpItem[]; index: number }>({ items: [], index: -1 });
+  const [locaInput, setLocaInput] = useState("");
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const fetchData = async () => {
-    setLoading(true);
+  const currentItem = nav.index >= 0 ? nav.items[nav.index] : null;
+
+  const fetchItem = useCallback(async (loca: string): Promise<{ item: CpItem; repoGuid: string } | null> => {
+    setError(null);
     try {
-      const res = await fetch("/api/folders");
-      const result = await res.json();
-      setData(result);
-    } catch (error) {
-      setData({
-        error: "Failed to fetch data",
-        details: error instanceof Error ? error.message : "Unknown error",
-        debug: {
-          CONTENT_PROVIDER_API_URL: process.env.CONTENT_PROVIDER_API_URL || "not set",
-        },
-      } as unknown as FolderData);
-    } finally {
-      setLoading(false);
+      const res = await fetch(`/api/folders?loca=${encodeURIComponent(loca)}`);
+      const data: FolderApiResponse = await res.json();
+      if (!res.ok || !data.item || !data.repoGuid) {
+        setError(data.error ?? `Request failed (${res.status})`);
+        return null;
+      }
+      return { item: data.item, repoGuid: data.repoGuid };
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to reach Content Provider");
+      return null;
     }
-  };
-
-  useEffect(() => {
-    fetchData();
   }, []);
 
-  if (loading) {
-    return (
-      <div className="space-y-6">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight">Folders</h2>
-          <p className="text-muted-foreground">Przeglądanie struktury Content Provider</p>
-        </div>
-        <div className="flex items-center justify-center py-12">
-          <div className="text-muted-foreground">Ładowanie...</div>
-        </div>
-      </div>
-    );
+  const pushItem = useCallback((item: CpItem) => {
+    setNav((prev) => {
+      const truncated = prev.items.slice(0, prev.index + 1);
+      return { items: [...truncated, item], index: truncated.length };
+    });
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      const result = await fetchItem("");
+      if (result) {
+        setRepoGuid(result.repoGuid);
+        setRepoName(result.item.Config.name);
+        pushItem(result.item);
+      }
+      setLoading(false);
+    })();
+    // Load the repo root once on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (currentItem && repoGuid) {
+      setLocaInput(relativeLoca(currentItem.Address, repoGuid));
+    }
+  }, [currentItem, repoGuid]);
+
+  async function handleGo() {
+    setLoading(true);
+    const result = await fetchItem(locaInput);
+    if (result) pushItem(result.item);
+    setLoading(false);
   }
 
-  const actionCount = data?.actionRecords?.length || 0;
-  const leadCount = data?.leadRecords?.length || 0;
+  async function handleChildClick(childIndex: string) {
+    const parentLoca = currentItem && repoGuid ? relativeLoca(currentItem.Address, repoGuid) : "";
+    const childLoca = parentLoca ? `${parentLoca}/${childIndex}` : childIndex;
+    setLoading(true);
+    const result = await fetchItem(childLoca);
+    if (result) pushItem(result.item);
+    setLoading(false);
+  }
+
+  function goBack() {
+    setNav((prev) => (prev.index > 0 ? { ...prev, index: prev.index - 1 } : prev));
+  }
+
+  function goForward() {
+    setNav((prev) => (prev.index < prev.items.length - 1 ? { ...prev, index: prev.index + 1 } : prev));
+  }
+
+  const toolbar = (
+    <>
+      <span className="text-sm text-muted-foreground">
+        Repo: <span className="font-mono">{repoName || "…"}</span>
+      </span>
+      <Input
+        value={locaInput}
+        onChange={(e) => setLocaInput(e.target.value)}
+        placeholder="loca (np. 03/06)"
+        className="w-[220px] font-mono"
+        onKeyDown={(e) => {
+          if (e.key === "Enter") handleGo();
+        }}
+      />
+      <Button variant="outline" size="sm" onClick={goBack} disabled={nav.index <= 0}>
+        <ArrowLeft className="h-4 w-4" />
+        Wstecz
+      </Button>
+      <Button variant="outline" size="sm" onClick={goForward} disabled={nav.index >= nav.items.length - 1}>
+        Naprzód
+        <ArrowRight className="h-4 w-4" />
+      </Button>
+      <Button variant="outline" size="sm" onClick={handleGo}>
+        GO
+      </Button>
+      {loading && <RefreshCw className="h-4 w-4 animate-spin text-muted-foreground" />}
+    </>
+  );
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight">Folders</h2>
-          <p className="text-muted-foreground">Przeglądanie struktury Content Provider</p>
+    <DashboardPageShell toolbar={toolbar}>
+      <ErrorBox message={error} className="mb-3" />
+
+      {!currentItem ? (
+        <div className="flex items-center gap-2 py-4 text-muted-foreground">
+          <RefreshCw className="h-4 w-4 animate-spin" />
+          <span>Ładowanie...</span>
         </div>
-        <Button variant="outline" size="sm" onClick={fetchData} className="gap-2 ml-auto">
-          <RefreshCw className="h-4 w-4" />
-          Refresh
-        </Button>
-      </div>
-
-      {/* Error state */}
-      {data?.error ? (
-        <Card className="border-destructive">
-          <CardHeader>
-            <CardTitle className="text-destructive">Error</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-muted-foreground">{data.details || data.error}</p>
-          </CardContent>
-        </Card>
-      ) : null}
-
-      {/* Forms folder tree */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <FolderOpen className="h-5 w-5" />
-            forms
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {/* Actions folder */}
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <FileText className="h-4 w-4 text-muted-foreground" />
-              <h3 className="font-semibold">actions</h3>
-              <Badge variant="secondary" className="ml-2">{actionCount}</Badge>
+      ) : (
+        <div className="space-y-4">
+          <div className="text-sm text-muted-foreground">
+            <div>
+              Address: <span className="font-mono">{currentItem.Address}</span>
             </div>
-            {actionCount > 0 ? (
-              <div className="space-y-2 pl-6">
-                {data?.actionRecords?.map((record, index) => (
-                  <RecordDetail key={`${record.recordKey}-${index}`} recordKey={record.recordKey} body={record.body} />
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground italic pl-6">No action records found</p>
-            )}
+            <div>
+              Type: <span className="font-mono">{currentItem.Config.type}</span>
+            </div>
+            <div>
+              Name: <span className="font-mono">{currentItem.Config.name}</span>
+            </div>
           </div>
 
-          {/* Leads folder */}
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <FileText className="h-4 w-4 text-muted-foreground" />
-              <h3 className="font-semibold">leads</h3>
-              <Badge variant="secondary" className="ml-2">{leadCount}</Badge>
-            </div>
-            {leadCount > 0 ? (
-              <div className="space-y-2 pl-6">
-                {data?.leadRecords?.map((record, index) => (
-                  <RecordDetail key={`${record.recordKey}-${index}`} recordKey={record.recordKey} body={record.body} />
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground italic pl-6">No lead records found</p>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+          {currentItem.Config.type === "Text" && (
+            <pre className="whitespace-pre-wrap break-words rounded-md border bg-muted/20 p-3 font-mono text-sm">
+              {currentItem.Body || <span className="italic text-muted-foreground">(empty)</span>}
+            </pre>
+          )}
 
-      {/* Developer logs - always shown */}
-      {data && <DeveloperLogs data={data} />}
-    </div>
+          {currentItem.Config.type === "Folder" && (
+            <div className="space-y-1">
+              {parseChildNameMap(currentItem.Body).map(({ index, name }) => (
+                <Button
+                  key={index}
+                  variant="ghost"
+                  className="w-full justify-start gap-2"
+                  onClick={() => handleChildClick(index)}
+                >
+                  <span className="font-mono text-xs text-muted-foreground">{index}</span>
+                  {name}
+                </Button>
+              ))}
+              {parseChildNameMap(currentItem.Body).length === 0 && (
+                <p className="text-sm italic text-muted-foreground">Brak elementów</p>
+              )}
+            </div>
+          )}
+
+          {currentItem.Config.type !== "Text" && currentItem.Config.type !== "Folder" && (
+            <p className="text-sm italic text-muted-foreground">
+              Nieobsługiwany typ itemu: {currentItem.Config.type}
+            </p>
+          )}
+        </div>
+      )}
+    </DashboardPageShell>
   );
 }

@@ -255,6 +255,12 @@ importers:
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
+      cp-core:
+        specifier: workspace:*
+        version: link:../content-provider/core
+      cp-entry:
+        specifier: workspace:*
+        version: link:../content-provider/entry
       dba:
         specifier: workspace:*
         version: link:../dba
