@@ -2,18 +2,19 @@
 
 | # | Ai Status | Real Status | Task |
 |---|-----------|-------------|------|
-| 1 | DONE      |             | Folders tab shows a Content Provider nav panel: read-only repo label, loca input, Wstecz/Naprzód/GO buttons, no Logout |
+| 1 | DONE      |             | Folders tab shows a Content Provider nav panel: repo dropdown, loca input, Wstecz/Naprzód/GO buttons, no Logout |
 | 2 | DONE      |             | Opening a Folder item lists its children as clickable buttons; clicking one navigates into it |
-| 3 | DONE      |             | Opening a Text item shows its body content, read-only, no per-item toolbar buttons |
+| 3 | DONE      |             | Opening a Text item shows its body content, with Blazor-matching button rows (disabled — no backend yet) and Podgląd/Edytor tabs |
 | 4 | DONE      |             | Wstecz/Naprzód move through already-visited items instantly, without a network refetch |
 | 5 | DONE      |             | Typing a loca and pressing GO (or Enter) jumps directly to that item |
-| 6 | DONE      |             | Only the current logged-in user's own repo is ever shown — no cross-user repo picker |
+| 6 | DONE      |             | Repo dropdown lists ALL repos for `pawel_f` only; every other user sees only their own repo |
+| 7 | DONE      |             | Folder-type items' `Body` (a raw JSON object from the real API, not a string) parses and renders correctly |
 
-# Task 1 — Nav panel: repo label, loca input, Wstecz/Naprzód/GO, no Logout
+# Task 1 — Nav panel: repo dropdown, loca input, Wstecz/Naprzód/GO, no Logout
 
-**Requested:** A navigation panel matching Blazor's `Repos.razor` — repo, loca, back, forward, GO — but without Logout, and without a repo picker (per Story 57's autonomous scope decision, see `02_plan.md`).
+**Requested:** A navigation panel matching Blazor's `Repos.razor` — repo, loca, back, forward, GO — but without Logout. First pass made "repo" a read-only label (autonomous scope decision); corrected (Input 3/4) to a real dropdown after the user pasted reference screenshots and said the first pass was wrong — see `02_plan.md`'s "Correction 2".
 
-**Done:** `packages/dashboard/app/(dashboard)/dashboard/folders/page.tsx` — toolbar row (via `DashboardPageShell`'s `toolbar` prop) with a read-only `Repo: <name>` label, a loca `Input`, `Wstecz`/`Naprzód` buttons (disabled at the ends of history), and a `GO` button. No Logout button anywhere on the page (the dashboard already has its own, unrelated Logout in the sidebar).
+**Done:** `packages/dashboard/app/(dashboard)/dashboard/folders/page.tsx` — toolbar row (via `DashboardPageShell`'s `toolbar` prop) with a real repo `Select` (or plain text when there's only one option), a loca `Input`, `Wstecz`/`Naprzód` buttons (disabled at the ends of history), and a `GO` button. No Logout button anywhere on the page — kept deliberately even after the screenshots showed one, per the user's own ORIGINAL Input 1 ("bez logout"); the dashboard already has its own, unrelated Logout in the sidebar.
 
 **Files changed:** `packages/dashboard/app/(dashboard)/dashboard/folders/page.tsx` (full rewrite), `packages/dashboard/app/api/folders/route.ts` (full rewrite, then corrected — see below), `packages/dashboard/app/api/flow/cp-flow.ts` (new `getItemByLoca` export). `next.config.ts`/`package.json` were touched then reverted — see `02_plan.md`'s "Correction" section: a first pass added `cp-entry`/`cp-core` as a new dashboard dependency, which broke the Docker build (never gets its `dist/` built inside the container) and was explicitly rejected in favor of reusing the dashboard's existing `cp-flow.ts` → `.NET Content Provider` path, which every other endpoint already relies on.
 
@@ -37,15 +38,15 @@
 
 **Status: DONE**
 
-# Task 3 — Text item: read-only body, no per-item toolbar
+# Task 3 — Text item: body + Blazor-matching button rows (disabled) + Podgląd/Edytor tabs
 
-**Requested:** Below the nav, a panel for Text-type items showing the body — but WITHOUT the buttons Blazor's `TextView.razor` has below its own toolbar (Folder/Content/Config/Terminal/GoogleDoc/Tts/Add), since the user said those are unnecessary here.
+**Requested:** First pass omitted `TextView.razor`'s button rows entirely, on the user's own words ("buttons below are unnecessary here"). Corrected (Input 3) after the user pasted a reference screenshot and said the omission was wrong — they wanted the full layout, just not necessarily functional.
 
-**Done:** Text-type items render their `Body` in a plain, read-only `<pre>` block. No toolbar, no Add form, no `cp-plugin` integration of any kind.
+**Done:** Text-type items now render, matching the screenshot: a Folder/Content/Config/Terminal row, an Open▾/GoogleDoc/Tts row, an Add/type▾/name row, and a Podgląd/Edytor `Tabs` pair (Podgląd = read-only `<pre>`, Edytor = a `Textarea` pre-filled with the body). Folder/Content/Config/Terminal and GoogleDoc/Tts are `disabled` (no `cp-plugin` bridge reachable from a web dashboard, no GoogleDoc integration exists in this codebase). Add and the Edytor `Textarea` are also `disabled` — a real write path exists (`cp-flow.ts`'s already-used `Put`) but wiring it here means answering "which repos can a given user WRITE to," a separate decision not made in this Story (see `06_others_from_report.md`'s follow-up proposal). Every disabled control has a `title` tooltip explaining why.
 
 **Files changed:** `packages/dashboard/app/(dashboard)/dashboard/folders/page.tsx`.
 
-**Tested:** `curl` against `GET /api/folders?loca=03/06/71/01` (a real "contacts" Text item) returned the real raw body content (`instagram:\n  - https://...`) — confirmed the fetch/shape works for a real Text item.
+**Tested:** `curl` against `GET /api/folders?repoGuid=f8da1e9a-...&loca=28/02` (the exact Text item from the user's Input 3/4 reference — "pierwsza wizyta / weryfikacja psychoterapety") returned body content byte-for-byte matching the user's pasted reference JSON (Input 4).
 
 **Status: DONE**
 
@@ -73,14 +74,26 @@
 
 **Status: DONE**
 
-# Task 6 — Repo locked to the current user, no cross-user picker
+# Task 6 — Repo dropdown: ALL repos for `pawel_f` only, own repo for everyone else
 
-**Requested:** Implicit in "repo" being a toolbar element, but resolved by this Story's own autonomous scope decision (see `02_plan.md` point 1) in favor of NOT porting Blazor's all-repos combobox, since this dashboard has an established per-user data-isolation model Blazor's single-operator tool doesn't need.
+**Requested:** First pass locked "repo" to a read-only label for every user (autonomous scope decision). Corrected (Input 3) — the user's reference screenshots show a real dropdown over ALL repos (36 real repos, including clearly personal ones like "EmotionalThings", "Persistency"). Since this codebase has no admin/role flag, gating was done by username rather than silently exposing all repos to every logged-in user — flagged to the user in-conversation, not decided silently.
 
-**Done:** `/api/folders` resolves `repoGuid` exclusively via `getCurrentUserFromCookies()` server-side; the client never sends or receives any other repo's GUID. The UI shows the resolved repo's own logical `name` as plain text, not a `<select>`.
+**Done:** New `GET /api/folders/repos` returns the full `getAllRepos()` list (`cp-flow.ts`, `["IRepoService","IMethodWorker","GetAllReposNames"]`) only when `user.username === 'pawel_f'`; otherwise a single-item list with just the caller's own repo. `GET /api/folders` accepts an optional `?repoGuid=` that's only honored under the same condition (own repo, or `pawel_f` requesting any repo) — any other value is `403`, never silently substituted.
 
-**Files changed:** `packages/dashboard/app/api/folders/route.ts`.
+**Files changed:** `packages/dashboard/app/api/folders/repos/route.ts` (new), `packages/dashboard/app/api/folders/route.ts`, `packages/dashboard/app/api/flow/cp-flow.ts` (new `getAllRepos` export).
 
-**Tested:** `curl` without a session cookie against `GET /api/folders` correctly returned `401` (blocked before reaching the route handler, by the dashboard's own auth middleware/layout) — confirms the endpoint isn't reachable unauthenticated. Logged-in `pawel_f` correctly only ever saw `pawel_f`'s own repo (`21d11bdc-...`) in every test call.
+**Tested:** `curl` without a session cookie against `GET /api/folders` still correctly returns `401`. Logged in as `pawel_f`: `GET /api/folders/repos` returned all 36 real repos (verified count + sample). `GET /api/folders?repoGuid=f8da1e9a-...` (a different, real repo — "EmotionalThings") correctly returned that repo's real data, not `pawel_f`'s own. The `403`-for-non-owner path was not exercised against a second real non-`pawel_f` login in this round (would need `kamil_s`'s real password, not available) — verified by code review of the exact same condition already proven correct in `/api/folders/repos`.
+
+**Status: DONE**
+
+# Task 7 — Folder `Body` shape bug
+
+**Requested:** Not explicitly requested as a task — found independently via live testing, then confirmed by the user pasting real reference JSON (Input 4) showing the exact same issue.
+
+**Done:** `getItemByLoca` required `raw.Body` to already be a `string`, but the real .NET API returns `Body` as a raw JSON object for Folder items (only Text items get a plain string). Fixed to normalize: `typeof raw.Body === 'string' ? raw.Body : JSON.stringify(raw.Body ?? '')` — same normalization `cp-net-adapter` (an earlier, separate TS-rewrite session) already applied for the identical reason.
+
+**Files changed:** `packages/dashboard/app/api/flow/cp-flow.ts`.
+
+**Tested:** `curl` against `GET /api/folders?repoGuid=f8da1e9a-...&loca=28` (the exact folder from the user's Input 3/4 reference — "wiedza moja") returned the exact same children as the user's pasted reference JSON, after the fix. Before the fix, this same call failed with `"returned an unexpected shape"`.
 
 **Status: DONE**

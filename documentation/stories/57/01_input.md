@@ -26,3 +26,18 @@ no to blad
 Nie, nic więcej nie wdrożyłem — to tylko brakujący fragment w Dockerfile dashboardu. Dodałem cp-entry/cp-core jako zależności (potrzebne dla zakładki Folders), ale build Dockera nie kopiuje jeszcze folderu packages/content-provider/* do obrazu, więc pnpm nie może ich rozwiązać. Sprawdzam Dockerfile i naprawiam.
 cp-entry i cp-core nie dodwaj
 to guid ma dzialac wciaz ze starym net-content-provider
+
+## Input 3
+
+[Pasted two reference screenshots of the real, running standalone Blazor app: a Text-item view (repo "chad_admin", loca "03/04", full toolbar including Folder/Content/Config/Terminal, Open▾/GoogleDoc/Tts, Add/Up▾/input, Podgląd/Edytor tabs) and a Folder-item view (repo "EmotionalThings", loca "28", Folder/Config/Terminal, Add/Text▾/input, then a list of index+name child buttons).]
+
+wklejam ci screeny jak wygladac powinine widok dla dla text-item (a1) i jak powiniene wygladac dla folder-item (a2) i wez przeanalizuj ten blazor projekt dokladnie bo cos dziwnie to zrobiles
+popraw to zeby bylo tak jka na screenach
+
+## Input 4
+
+[Pasted two real, raw `/invoke` GetItem JSON responses as reference: a Text item (`Body` as a plain string) and a Folder item (`Body` as a raw JSON object `{"02": "...", "04": "...", ...}`, NOT a pre-stringified string) from repo `f8da1e9a-0462-4850-8194-bdee67e15c58` ("EmotionalThings"), loca `28/02` and `28` respectively.]
+
+to jest przykladowa poprawna odpowiedz dla text item: [...]
+a to dla folder-item: [...]
+widzialem ze pisales wyzej jakas glupote ze to nie poprawne

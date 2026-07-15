@@ -3,13 +3,16 @@ import { getCurrentUserFromCookies } from '@/lib/session';
 import { getItemByLoca } from '@/app/api/flow/cp-flow';
 
 /**
- * GET /api/folders?loca=<slash-joined loca, omit or "" for repo root>
+ * GET /api/folders?loca=<slash-joined loca, omit or "" for repo root>&repoGuid=<optional>
  *
  * Generic Content Provider item fetch for the dashboard's Folders tab
- * (see documentation/stories/57). Scoped strictly to the current
- * authenticated user's own repoGuid — repoGuid is never accepted from the
- * client, matching every other Content-Provider-touching endpoint in this
- * app (documentation/dashboard/common/features/chad-user-data-isolation.md).
+ * (see documentation/stories/57). `repoGuid` is optional and defaults to
+ * the current user's own repo. An explicit `repoGuid` is only honored for
+ * the `pawel_f` login (matching /api/folders/repos' same gate — see that
+ * route's comment) or when it equals the caller's own repoGuid; any other
+ * value is rejected with 403, never silently substituted — matching every
+ * other Content-Provider-touching endpoint's per-user data isolation
+ * (documentation/dashboard/common/features/chad-user-data-isolation.md).
  *
  * Uses cp-flow's invokeCp (the SAME direct-to-.NET-API mechanism every
  * other endpoint in this dashboard already uses), not the separate
@@ -37,16 +40,25 @@ export async function GET(request: Request) {
 
   const { searchParams } = new URL(request.url);
   const loca = searchParams.get('loca') ?? '';
+  const requestedRepoGuid = searchParams.get('repoGuid');
+
+  let repoGuid = user.repoGuid;
+  if (requestedRepoGuid && requestedRepoGuid !== user.repoGuid) {
+    if (user.username !== 'pawel_f') {
+      return NextResponse.json({ error: 'FORBIDDEN_REPO' }, { status: 403 });
+    }
+    repoGuid = requestedRepoGuid;
+  }
 
   try {
-    const raw = await getItemByLoca(user.repoGuid, loca);
+    const raw = await getItemByLoca(repoGuid, loca);
     const item = {
       Body: raw.Body,
       Config: raw.Settings,
       Settings: raw.Settings,
       Address: raw.Settings.address,
     };
-    return NextResponse.json({ item, repoGuid: user.repoGuid, username: user.username });
+    return NextResponse.json({ item, repoGuid, username: user.username });
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'UNKNOWN_ERROR' },

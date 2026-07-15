@@ -92,13 +92,50 @@ export interface CpRawItem {
  * above), so this reads the real shape directly rather than going
  * through `invokeCpWithTrace` (which only extracts a `.result` string,
  * built for the Body-only forms/leads flows above).
+ *
+ * `Body` is a STRING for Text items but a raw JSON OBJECT (an
+ * `{index: name}` map) for Folder items — confirmed live (a Folder GetItem
+ * returned `Body: {"23": "...", "25": "...", ...}` directly, not a
+ * pre-stringified string). Normalized to always be a string here via
+ * `JSON.stringify` for non-string values, matching the exact same
+ * normalization `cp-net-adapter` (an earlier, separate TypeScript rewrite
+ * session) already does for the same reason.
  */
 export async function getItemByLoca(repoGuid: string, loca: string): Promise<CpRawItem> {
-  const raw = (await invokeCp(['IRepoService', 'IItemWorker', 'GetItem', repoGuid, loca])) as unknown as CpRawItem;
-  if (!raw || typeof raw.Body !== 'string' || !raw.Settings || typeof raw.Settings !== 'object') {
+  const raw = (await invokeCp(['IRepoService', 'IItemWorker', 'GetItem', repoGuid, loca])) as unknown as {
+    Body?: unknown;
+    Settings?: CpRawItem['Settings'];
+  };
+  if (!raw || raw.Body === undefined || !raw.Settings || typeof raw.Settings !== 'object') {
     throw new Error(`GetItem(${repoGuid}, "${loca}") returned an unexpected shape: ${JSON.stringify(raw)}`);
   }
-  return raw;
+  const body = typeof raw.Body === 'string' ? raw.Body : JSON.stringify(raw.Body ?? '');
+  return { Body: body, Settings: raw.Settings };
+}
+
+/**
+ * Lists every repo (used by the Folders tab's repo picker — matches
+ * Blazor's `RepoAdapter.GetAllReposNames`, `["IRepoService",
+ * "IMethodWorker", "GetAllReposNames"]`). Real response verified live:
+ * `[{Body: null, Settings: {id, name, type, address}}, ...]`.
+ *
+ * Gated to the `pawel_f` login only at the route level
+ * (app/api/folders/repos/route.ts) — this function itself has no
+ * per-user restriction, it genuinely lists ALL repos, exactly like the
+ * standalone Blazor admin tool this Story ports. There is no admin/role
+ * flag anywhere in this codebase's user model (checked lib/user-service.ts,
+ * lib/session.ts) to gate this more precisely than by username.
+ */
+export async function getAllRepos(): Promise<Array<{ id: string; name: string }>> {
+  const raw = (await invokeCp(['IRepoService', 'IMethodWorker', 'GetAllReposNames'])) as unknown;
+  if (!Array.isArray(raw)) {
+    throw new Error(`GetAllReposNames returned an unexpected shape: ${JSON.stringify(raw)}`);
+  }
+  return raw
+    .map((entry) => (entry as { Settings?: { id?: string; name?: string } }).Settings)
+    .filter((settings): settings is { id: string; name: string } => !!settings?.id && !!settings?.name)
+    .map(({ id, name }) => ({ id, name }))
+    .sort((a, b) => a.name.localeCompare(b.name));
 }
 
 /**
