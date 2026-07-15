@@ -45,14 +45,38 @@ export interface DailyEntryRecord {
 }
 
 /**
- * Invoke Content Provider API and return raw response
+ * Invoke Content Provider API and return raw response.
+ *
+ * 15s timeout (Correction 3, documentation/stories/57) — this fetch
+ * previously had NONE, so a slow/unreachable .NET API (confirmed
+ * plausible: `GetAllReposNames` walks all 36 repos) could hang the
+ * request indefinitely, which is the most likely explanation for the
+ * "everything spins forever until I click GO" report — clicking GO
+ * fires a brand new request/render cycle that can succeed independently,
+ * masking rather than fixing a genuinely stuck first request. Matches
+ * the timeout `cp-net-adapter` (an earlier, separate TS-rewrite session)
+ * already uses for the same reason.
  */
 async function invokeCp(args: string[]): Promise<{ success: boolean; result?: string; error?: { message?: string } }> {
-  const response = await fetch(`${CP_API_URL}/invoke`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(args),
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15_000);
+
+  let response: Response;
+  try {
+    response = await fetch(`${CP_API_URL}/invoke`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(args),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new Error(`CP request timed out after 15s: ${JSON.stringify(args)}`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   // Get response text first to handle both JSON and non-JSON responses
   const responseText = await response.text();
@@ -69,6 +93,61 @@ async function invokeCp(args: string[]): Promise<{ success: boolean; result?: st
     // Return as result if it's a plain string
     return { success: true, result: responseText };
   }
+}
+
+/** Raw GetItem shape — Body + Settings (config), matching the real .NET /invoke response verbatim. */
+export interface CpRawItem {
+  Body: string;
+  Settings: {
+    id: string;
+    type: string;
+    name: string;
+    address: string;
+    [key: string]: unknown;
+  };
+}
+
+/**
+ * GetItem by loca — used by the Folders tab's generic browser
+ * (documentation/stories/57). `invokeCp`'s declared return type
+ * (`{success, result, error}`) does NOT match the real .NET /invoke
+ * response for GetItem, which is `{Body, Settings}` directly — `invokeCp`
+ * just returns whatever JSON it parsed (see its own `return json;`
+ * above), so this reads the real shape directly rather than going
+ * through `invokeCpWithTrace` (which only extracts a `.result` string,
+ * built for the Body-only forms/leads flows above).
+ *
+ * `Body` is a STRING for Text items but a raw JSON OBJECT (an
+ * `{index: name}` map) for Folder items — confirmed live (a Folder GetItem
+ * returned `Body: {"23": "...", "25": "...", ...}` directly, not a
+ * pre-stringified string). Normalized to always be a string here via
+ * `JSON.stringify` for non-string values, matching the exact same
+ * normalization `cp-net-adapter` (an earlier, separate TypeScript rewrite
+ * session) already does for the same reason.
+ */
+export async function getItemByLoca(repoGuid: string, loca: string): Promise<CpRawItem> {
+  const raw = (await invokeCp(['IRepoService', 'IItemWorker', 'GetItem', repoGuid, loca])) as unknown as {
+    success?: boolean;
+    result?: string;
+    Body?: unknown;
+    Settings?: CpRawItem['Settings'];
+  };
+
+  // Real .NET behavior (confirmed against this exact error live): GetItem on
+  // a loca with no config.yaml (nothing there — not corrupt, just doesn't
+  // exist) returns an EMPTY response body, not an error. invokeCp's own
+  // fallback wraps that as {success: true, result: ""} (see its own
+  // "Return as result if it's a plain string" branch) — surfaced here as a
+  // clean "not found", not a raw shape dump.
+  if (raw && raw.success === true && raw.result === '' && raw.Body === undefined) {
+    throw new Error(`Item not found: repo "${repoGuid}", loca "${loca}"`);
+  }
+
+  if (!raw || raw.Body === undefined || !raw.Settings || typeof raw.Settings !== 'object') {
+    throw new Error(`GetItem(${repoGuid}, "${loca}") returned an unexpected shape: ${JSON.stringify(raw)}`);
+  }
+  const body = typeof raw.Body === 'string' ? raw.Body : JSON.stringify(raw.Body ?? '');
+  return { Body: body, Settings: raw.Settings };
 }
 
 /**

@@ -1,275 +1,421 @@
 "use client";
-import { useState, useEffect } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+
+import { useCallback, useEffect, useState } from "react";
+import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
+import { ErrorBox } from "@/components/shared/error-box";
 import { Button } from "@/components/ui/button";
-import { FolderOpen, FileText, ChevronDown, ChevronRight, RefreshCw } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ArrowLeft, ArrowRight, RefreshCw } from "lucide-react";
 
-interface ActionRecord {
-  recordKey: string;
-  body?: Record<string, unknown>;
+/**
+ * Content Provider browser, ported from
+ * packages/net-content-provider/front_blazor/BlazorApp/Pages/Repos.razor
+ * (+ TextView.razor/FolderView.razor) — see documentation/stories/57,
+ * corrected against real reference screenshots of the running Blazor app
+ * (Input 3 in 01_input.md) after a first pass omitted too much.
+ *
+ * Deviations from the screenshots, both deliberate and documented:
+ * - No Logout button — the user's ORIGINAL request explicitly said "bez
+ *   logout" (the dashboard already has its own, separate Logout in the
+ *   sidebar); the screenshot just happens to be of the standalone Blazor
+ *   app, which has its own.
+ * - Only ONE back button (Wstecz), not Blazor's two (←/↶) — confirmed by
+ *   reading the real Blazor source that both call the exact same handler
+ *   (dead/duplicate code), not two different features worth replicating.
+ * - Folder/Content/Config/Terminal (cp-plugin — local file/terminal
+ *   opening) and GoogleDoc/Tts buttons are rendered for visual parity but
+ *   disabled — there is no cp-plugin bridge reachable from this web
+ *   dashboard's deployment. Add / body-editing Save are rendered but also
+ *   disabled — a real write path exists (cp-flow.ts's Put, already used
+ *   elsewhere) but wiring it here is a bigger, separate decision (which
+ *   repos a given user may WRITE to, not just browse) not yet made.
+ * - Repo picker: a real dropdown over ALL repos, but ONLY for the
+ *   `pawel_f` login (see /api/folders/repos) — every other user still
+ *   only ever sees their own repo, preserving this dashboard's existing
+ *   per-user data isolation model, which has no admin/role flag to gate
+ *   this more precisely.
+ */
+
+interface CpConfig {
+  id: string;
+  type: string;
+  name: string;
+  address: string;
+  [key: string]: unknown;
 }
 
-interface LeadRecord {
-  recordKey: string;
-  body?: Record<string, unknown>;
+interface CpItem {
+  Body: string;
+  Config: CpConfig;
+  Settings: CpConfig;
+  Address: string;
 }
 
-interface CpCallTrace {
-  step: string;
-  args: string[];
-  rawRequest: Record<string, unknown>;
-  rawResponse: string;
-  parsedResponse: Record<string, unknown> | null;
-  parseError: string | null;
-  error: string | null;
-}
-
-interface FolderData {
-  userGuid: string;
+interface FolderApiResponse {
+  item?: CpItem;
+  repoGuid?: string;
   username?: string;
-  repoKey?: string;
-  actionRecords?: ActionRecord[];
-  leadRecords?: LeadRecord[];
-  cpCalls?: CpCallTrace[];
   error?: string;
-  details?: string;
-  debug?: {
-    CONTENT_PROVIDER_API_URL: string;
-    sessionDebug?: { hasCookie: boolean; cookieValue?: string; parsedUserId?: string };
-  };
 }
 
-// Expanded record detail component
-function RecordDetail({ recordKey, body }: { recordKey: string; body?: Record<string, unknown> }) {
-  const [expanded, setExpanded] = useState(false);
-  
-  const getSummary = () => {
-    if (!body) return null;
-    if (body.formName === 'action') {
-      return `${body.actionTitle || recordKey} | ${(body.actionTypeLabel || body.actionType) as string} | ${(body.actionStartTime || '—') as string}`;
-    }
-    if (body.formName === 'lead') {
-      return `${body.name || recordKey} | ${(body.source || '—') as string} | ${(body.status || '—') as string}`;
-    }
-    return recordKey;
-  };
-
-  return (
-    <div className="border rounded-md bg-muted/20">
-      <button
-        onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-2 p-3 text-left hover:bg-muted/50 transition-colors"
-      >
-        {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-        <span className="font-mono text-sm">{recordKey}</span>
-        <span className="text-sm text-muted-foreground flex-1 text-right">{getSummary()}</span>
-      </button>
-      {expanded && body && (
-        <div className="p-3 border-t bg-background">
-          <pre className="text-xs font-mono overflow-auto max-h-64 whitespace-pre-wrap break-all">
-            {JSON.stringify(body, null, 2)}
-          </pre>
-        </div>
-      )}
-    </div>
-  );
+interface RepoOption {
+  id: string;
+  name: string;
 }
 
-// Developer logs section
-function DeveloperLogs({ data }: { data: FolderData }) {
-  return (
-    <Card className="mt-8">
-      <CardHeader>
-        <CardTitle className="text-sm font-semibold text-muted-foreground">Developer logs</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {/* Session & Config Info */}
-        <div>
-          <h4 className="text-xs font-semibold text-muted-foreground mb-2">Session & Config</h4>
-          <pre className="bg-muted p-3 rounded-md text-xs font-mono overflow-auto max-h-48">
-            {JSON.stringify({
-              userGuid: data.userGuid,
-              username: data.username,
-              repoKey: data.repoKey,
-              apiUrl: data.debug?.CONTENT_PROVIDER_API_URL,
-              sessionDebug: data.debug?.sessionDebug,
-            }, null, 2)}
-          </pre>
-        </div>
+function relativeLoca(address: string, repoGuid: string): string {
+  if (address === repoGuid) return "";
+  const prefix = `${repoGuid}/`;
+  return address.startsWith(prefix) ? address.slice(prefix.length) : "";
+}
 
-        {/* CP Calls */}
-        {data.cpCalls && data.cpCalls.length > 0 && (
-          <div>
-            <h4 className="text-xs font-semibold text-muted-foreground mb-2">
-              Content Provider Calls ({data.cpCalls.length})
-            </h4>
-            <div className="space-y-2">
-              {data.cpCalls.map((call, index) => (
-                <Card key={index} className={call.error ? "bg-red-50 border-red-200" : ""}>
-                  <CardContent className="p-3 space-y-2">
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="text-xs">#{index + 1}</Badge>
-                      <span className="text-xs font-semibold">{call.step}</span>
-                      {call.error && <Badge variant="destructive" className="text-xs">ERROR</Badge>}
-                    </div>
-                    <div>
-                      <div className="text-xs text-muted-foreground mb-1">Args:</div>
-                      <pre className="bg-muted p-2 rounded text-xs font-mono overflow-auto">
-                        {JSON.stringify(call.args)}
-                      </pre>
-                    </div>
-                    {call.rawResponse && (
-                      <div>
-                        <div className="text-xs text-muted-foreground mb-1">Raw Response:</div>
-                        <pre className="bg-muted p-2 rounded text-xs font-mono overflow-auto max-h-32 whitespace-pre-wrap break-all">
-                          {call.rawResponse}
-                        </pre>
-                      </div>
-                    )}
-                    {call.parsedResponse && (
-                      <div>
-                        <div className="text-xs text-muted-foreground mb-1">Parsed Response:</div>
-                        <pre className="bg-muted p-2 rounded text-xs font-mono overflow-auto max-h-32">
-                          {JSON.stringify(call.parsedResponse, null, 2)}
-                        </pre>
-                      </div>
-                    )}
-                    {call.error && (
-                      <div className="text-xs text-red-600">
-                        <div className="text-muted-foreground">Error:</div>
-                        <pre className="bg-red-50 p-2 rounded">{call.error}</pre>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+function parseChildNameMap(body: string): Array<{ index: string; name: string }> {
+  try {
+    const parsed: unknown = JSON.parse(body);
+    if (parsed && typeof parsed === "object") {
+      return Object.entries(parsed as Record<string, string>)
+        .map(([index, name]) => ({ index, name }))
+        .sort((a, b) => Number(a.index) - Number(b.index));
+    }
+  } catch {
+    // Falls through to [] — an unparseable Body shows no children rather than crashing the page.
+  }
+  return [];
+}
+
+/** Disabled button matching the Blazor screenshot's layout for an action this dashboard can't perform yet (cp-plugin/write). */
+function InertButton({ children, title }: { children: React.ReactNode; title: string }) {
+  return (
+    <Button variant="outline" size="sm" disabled title={title}>
+      {children}
+    </Button>
   );
 }
 
 export default function FoldersPage() {
-  const [data, setData] = useState<FolderData | null>(null);
+  const [repos, setRepos] = useState<RepoOption[]>([]);
+  const [selectedRepoGuid, setSelectedRepoGuid] = useState<string>("");
+  const [nav, setNav] = useState<{ items: CpItem[]; index: number }>({ items: [], index: -1 });
+  const [locaInput, setLocaInput] = useState("");
+  const [addName, setAddName] = useState("");
+  const [addType, setAddType] = useState("Text");
+  const [editorBody, setEditorBody] = useState("");
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const fetchData = async () => {
+  const currentItem = nav.index >= 0 ? nav.items[nav.index] : null;
+
+  const fetchItem = useCallback(async (repoGuid: string, loca: string): Promise<{ item: CpItem; repoGuid: string } | null> => {
+    setError(null);
+    try {
+      const query = new URLSearchParams({ loca });
+      if (repoGuid) query.set("repoGuid", repoGuid);
+      const res = await fetch(`/api/folders?${query}`);
+      const data: FolderApiResponse = await res.json();
+      if (!res.ok || !data.item || !data.repoGuid) {
+        setError(data.error ?? `Request failed (${res.status})`);
+        return null;
+      }
+      return { item: data.item, repoGuid: data.repoGuid };
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to reach Content Provider");
+      return null;
+    }
+  }, []);
+
+  const pushItem = useCallback((item: CpItem) => {
+    setNav((prev) => {
+      const truncated = prev.items.slice(0, prev.index + 1);
+      return { items: [...truncated, item], index: truncated.length };
+    });
+  }, []);
+
+  // Load the repo list once, then the initial (first/own) repo's root.
+  // Wrapped in try/finally — a bare `await` sequence with no catch meant
+  // any failure here (repos fetch throwing, non-JSON response, etc.) left
+  // `loading` stuck `true` forever with no item ever pushed, which is
+  // what actually caused the reported "spins forever until I click GO"
+  // (GO starts a fresh, independent request/render cycle that can
+  // succeed even if the mount-time one got stuck) — NOT a rendering bug,
+  // a swallowed exception. Also now surfaces reposRes' own error instead
+  // of silently leaving the repo list empty.
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      try {
+        const reposRes = await fetch("/api/folders/repos");
+        const reposData: { repos?: RepoOption[]; error?: string } = await reposRes.json();
+        if (!reposRes.ok || !reposData.repos) {
+          setError(reposData.error ?? `Failed to load repo list (${reposRes.status})`);
+          return;
+        }
+        setRepos(reposData.repos);
+
+        const initialRepoGuid = reposData.repos[0]?.id ?? "";
+        setSelectedRepoGuid(initialRepoGuid);
+
+        const result = await fetchItem(initialRepoGuid, "");
+        if (result) pushItem(result.item);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load Folders tab");
+      } finally {
+        setLoading(false);
+      }
+    })();
+    // Run once on mount only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (currentItem && selectedRepoGuid) {
+      setLocaInput(relativeLoca(currentItem.Address, selectedRepoGuid));
+      setEditorBody(currentItem.Body);
+    }
+  }, [currentItem, selectedRepoGuid]);
+
+  async function handleRepoChange(repoGuid: string) {
+    setSelectedRepoGuid(repoGuid);
+    setNav({ items: [], index: -1 });
     setLoading(true);
     try {
-      const res = await fetch("/api/folders");
-      const result = await res.json();
-      setData(result);
-    } catch (error) {
-      setData({
-        error: "Failed to fetch data",
-        details: error instanceof Error ? error.message : "Unknown error",
-        debug: {
-          CONTENT_PROVIDER_API_URL: process.env.CONTENT_PROVIDER_API_URL || "not set",
-        },
-      } as unknown as FolderData);
+      const result = await fetchItem(repoGuid, "");
+      if (result) pushItem(result.item);
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    fetchData();
-  }, []);
-
-  if (loading) {
-    return (
-      <div className="space-y-6">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight">Folders</h2>
-          <p className="text-muted-foreground">Przeglądanie struktury Content Provider</p>
-        </div>
-        <div className="flex items-center justify-center py-12">
-          <div className="text-muted-foreground">Ładowanie...</div>
-        </div>
-      </div>
-    );
   }
 
-  const actionCount = data?.actionRecords?.length || 0;
-  const leadCount = data?.leadRecords?.length || 0;
+  async function handleGo() {
+    setLoading(true);
+    try {
+      const result = await fetchItem(selectedRepoGuid, locaInput);
+      if (result) pushItem(result.item);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleChildClick(childIndex: string) {
+    const parentLoca = currentItem ? relativeLoca(currentItem.Address, selectedRepoGuid) : "";
+    const childLoca = parentLoca ? `${parentLoca}/${childIndex}` : childIndex;
+    setLoading(true);
+    try {
+      const result = await fetchItem(selectedRepoGuid, childLoca);
+      if (result) pushItem(result.item);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function goBack() {
+    setNav((prev) => (prev.index > 0 ? { ...prev, index: prev.index - 1 } : prev));
+  }
+
+  function goForward() {
+    setNav((prev) => (prev.index < prev.items.length - 1 ? { ...prev, index: prev.index + 1 } : prev));
+  }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight">Folders</h2>
-          <p className="text-muted-foreground">Przeglądanie struktury Content Provider</p>
+    <DashboardPageShell>
+      <ErrorBox message={error} className="mb-3" />
+
+      {/* Single nested frame wrapping nav + info + item content — previously nav had its own frame separate from the rest, extended per explicit request to cover everything down through the editor. */}
+      <div className="space-y-3 rounded-lg border bg-muted/10 p-3">
+        <div className="space-y-2 border-b pb-3">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground whitespace-nowrap">Repo::</span>
+            <Select value={selectedRepoGuid} onValueChange={handleRepoChange}>
+              <SelectTrigger className="w-[220px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {repos.map((r) => (
+                  <SelectItem key={r.id} value={r.id}>
+                    {r.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground whitespace-nowrap">Loca::</span>
+            <Input
+              value={locaInput}
+              onChange={(e) => setLocaInput(e.target.value)}
+              placeholder="03/06"
+              className="w-[220px] font-mono"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleGo();
+              }}
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={goBack} disabled={nav.index <= 0} title="Wstecz">
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleGo}>
+              GO
+            </Button>
+            <Button variant="outline" size="sm" onClick={goForward} disabled={nav.index >= nav.items.length - 1} title="Naprzód">
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+            {loading && <RefreshCw className="h-4 w-4 animate-spin text-muted-foreground" />}
+          </div>
         </div>
-        <Button variant="outline" size="sm" onClick={fetchData} className="gap-2 ml-auto">
-          <RefreshCw className="h-4 w-4" />
-          Refresh
-        </Button>
+
+        {!currentItem && loading ? (
+          <div className="flex items-center gap-2 py-4 text-muted-foreground">
+            <RefreshCw className="h-4 w-4 animate-spin" />
+            <span>Ładowanie...</span>
+          </div>
+        ) : !currentItem ? (
+          <p className="py-4 text-sm italic text-muted-foreground">
+            Nie udało się załadować żadnego itemu — sprawdź błąd powyżej i spróbuj ponownie (np. przyciskiem GO).
+          </p>
+        ) : (
+          <div className="space-y-3">
+            <div className="text-sm text-muted-foreground">
+              <div>
+                Address: <span className="font-mono">{currentItem.Address}</span>
+              </div>
+              <div>
+                Type: <span className="font-mono">{currentItem.Config.type}</span>
+              </div>
+              <div>
+                Name: <span className="font-mono">{currentItem.Config.name}</span>
+              </div>
+            </div>
+
+            {currentItem.Config.type === "Text" && (
+            <div className="space-y-2">
+              <div className="flex flex-wrap gap-2">
+                <InertButton title="Wymaga cp-plugin — niedostępne w dashboardzie">Folder</InertButton>
+                <InertButton title="Wymaga cp-plugin — niedostępne w dashboardzie">Content</InertButton>
+                <InertButton title="Wymaga cp-plugin — niedostępne w dashboardzie">Config</InertButton>
+                <InertButton title="Wymaga cp-plugin — niedostępne w dashboardzie">Terminal</InertButton>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Select defaultValue="Open" disabled>
+                  <SelectTrigger className="w-[140px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Open">Open</SelectItem>
+                    <SelectItem value="Recreate">Recreate</SelectItem>
+                  </SelectContent>
+                </Select>
+                <InertButton title="GoogleDoc — niepodłączone w dashboardzie">GoogleDoc</InertButton>
+                <InertButton title="Tts — niepodłączone w dashboardzie">Tts</InertButton>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <InertButton title="Zapis nie jest jeszcze obsługiwany w dashboardzie">Add</InertButton>
+                <Select value={addType} onValueChange={setAddType} disabled>
+                  <SelectTrigger className="w-[100px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Text">Up</SelectItem>
+                    <SelectItem value="Folder">Down</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Input
+                  value={addName}
+                  onChange={(e) => setAddName(e.target.value)}
+                  placeholder="nazwa"
+                  disabled
+                  className="w-[200px]"
+                />
+              </div>
+
+              <Tabs defaultValue="preview">
+                <TabsList>
+                  <TabsTrigger value="preview">Podgląd</TabsTrigger>
+                  <TabsTrigger value="editor">Edytor</TabsTrigger>
+                </TabsList>
+                <TabsContent value="preview">
+                  <pre className="whitespace-pre-wrap break-words rounded-md border bg-muted/20 p-3 font-mono text-sm">
+                    {currentItem.Body || <span className="italic text-muted-foreground">(empty)</span>}
+                  </pre>
+                </TabsContent>
+                <TabsContent value="editor">
+                  <Textarea
+                    value={editorBody}
+                    onChange={(e) => setEditorBody(e.target.value)}
+                    className="min-h-[300px] font-mono text-sm"
+                    disabled
+                    title="Zapis nie jest jeszcze obsługiwany w dashboardzie"
+                  />
+                </TabsContent>
+              </Tabs>
+            </div>
+          )}
+
+          {currentItem.Config.type === "Folder" && (
+            <div className="space-y-2">
+              <div className="flex flex-wrap gap-2">
+                <InertButton title="Wymaga cp-plugin — niedostępne w dashboardzie">Folder</InertButton>
+                <InertButton title="Wymaga cp-plugin — niedostępne w dashboardzie">Config</InertButton>
+                <InertButton title="Wymaga cp-plugin — niedostępne w dashboardzie">Terminal</InertButton>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <InertButton title="Zapis nie jest jeszcze obsługiwany w dashboardzie">Add</InertButton>
+                <Select value={addType} onValueChange={setAddType} disabled>
+                  <SelectTrigger className="w-[100px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Text">Text</SelectItem>
+                    <SelectItem value="Folder">Folder</SelectItem>
+                    <SelectItem value="Ref">Ref</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Input
+                  value={addName}
+                  onChange={(e) => setAddName(e.target.value)}
+                  placeholder="nazwa"
+                  disabled
+                  className="w-[200px]"
+                />
+              </div>
+
+              <div className="space-y-1">
+                {parseChildNameMap(currentItem.Body).map(({ index, name }) => (
+                  <div key={index} className="flex items-center gap-2">
+                    <span className="w-8 shrink-0 font-mono text-xs text-muted-foreground">{index}</span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="justify-start"
+                      onClick={() => handleChildClick(index)}
+                    >
+                      {name}
+                    </Button>
+                  </div>
+                ))}
+                {parseChildNameMap(currentItem.Body).length === 0 && (
+                  <p className="text-sm italic text-muted-foreground">Brak elementów</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {currentItem.Config.type !== "Text" && currentItem.Config.type !== "Folder" && (
+            <p className="text-sm italic text-muted-foreground">
+              Nieobsługiwany typ itemu: {currentItem.Config.type}
+            </p>
+          )}
+          </div>
+        )}
       </div>
-
-      {/* Error state */}
-      {data?.error ? (
-        <Card className="border-destructive">
-          <CardHeader>
-            <CardTitle className="text-destructive">Error</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-muted-foreground">{data.details || data.error}</p>
-          </CardContent>
-        </Card>
-      ) : null}
-
-      {/* Forms folder tree */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <FolderOpen className="h-5 w-5" />
-            forms
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {/* Actions folder */}
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <FileText className="h-4 w-4 text-muted-foreground" />
-              <h3 className="font-semibold">actions</h3>
-              <Badge variant="secondary" className="ml-2">{actionCount}</Badge>
-            </div>
-            {actionCount > 0 ? (
-              <div className="space-y-2 pl-6">
-                {data?.actionRecords?.map((record, index) => (
-                  <RecordDetail key={`${record.recordKey}-${index}`} recordKey={record.recordKey} body={record.body} />
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground italic pl-6">No action records found</p>
-            )}
-          </div>
-
-          {/* Leads folder */}
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <FileText className="h-4 w-4 text-muted-foreground" />
-              <h3 className="font-semibold">leads</h3>
-              <Badge variant="secondary" className="ml-2">{leadCount}</Badge>
-            </div>
-            {leadCount > 0 ? (
-              <div className="space-y-2 pl-6">
-                {data?.leadRecords?.map((record, index) => (
-                  <RecordDetail key={`${record.recordKey}-${index}`} recordKey={record.recordKey} body={record.body} />
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground italic pl-6">No lead records found</p>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Developer logs - always shown */}
-      {data && <DeveloperLogs data={data} />}
-    </div>
+    </DashboardPageShell>
   );
 }
