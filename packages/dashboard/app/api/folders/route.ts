@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUserFromCookies } from '@/lib/session';
-import { entry } from 'cp-entry';
-import { ContentProviderError } from 'cp-core';
+import { getItemByLoca } from '@/app/api/flow/cp-flow';
 
 /**
  * GET /api/folders?loca=<slash-joined loca, omit or "" for repo root>
@@ -11,10 +10,13 @@ import { ContentProviderError } from 'cp-core';
  * authenticated user's own repoGuid — repoGuid is never accepted from the
  * client, matching every other Content-Provider-touching endpoint in this
  * app (documentation/dashboard/common/features/chad-user-data-isolation.md).
- * cp-entry's methods already take repoGuid as an explicit parameter, so
- * this follows the same safe pattern app/api/flow/cp-flow.ts uses — no
- * dba runWithRepoContext needed (that's dba's own AsyncLocalStorage
- * pattern for its ~70 SHARED_REPO_ID call sites, a different module).
+ *
+ * Uses cp-flow's invokeCp (the SAME direct-to-.NET-API mechanism every
+ * other endpoint in this dashboard already uses), not the separate
+ * cp-entry/cp-files/cp-mongo TypeScript rewrite packages — deliberately,
+ * per explicit correction: this tab must keep working against the
+ * existing, already-deployed .NET Content Provider, not a new dependency
+ * that isn't part of the dashboard's Docker build.
  */
 export async function GET(request: Request) {
   const cpApiUrl = process.env.CONTENT_PROVIDER_API_URL;
@@ -37,13 +39,18 @@ export async function GET(request: Request) {
   const loca = searchParams.get('loca') ?? '';
 
   try {
-    const item = await entry.GetItem(user.repoGuid, loca);
+    const raw = await getItemByLoca(user.repoGuid, loca);
+    const item = {
+      Body: raw.Body,
+      Config: raw.Settings,
+      Settings: raw.Settings,
+      Address: raw.Settings.address,
+    };
     return NextResponse.json({ item, repoGuid: user.repoGuid, username: user.username });
   } catch (err) {
-    const status = err instanceof ContentProviderError ? 404 : 400;
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'UNKNOWN_ERROR' },
-      { status }
+      { status: 404 }
     );
   }
 }
