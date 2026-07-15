@@ -79,7 +79,7 @@ services:
   content-provider-api:
     # No ":latest" fallback - own CHAD images must be deployed by an explicit
     # release tag (see documentation/ai-docs/deploy/image-tagging-standard.md).
-    # 00_qnap_shared/03_begin.sh sets IMAGE_TAG before calling this; the
+    # 00_qnap_shared/03_re-start.sh sets IMAGE_TAG before calling this; the
     # required-var syntax below is a defense-in-depth backstop.
     image: "chad-content-provider-api:${IMAGE_TAG:?IMAGE_TAG is required, see documentation/ai-docs/deploy/image-tagging-standard.md}"
     build:
@@ -99,7 +99,7 @@ services:
       # every `up -d`.
       - "./.runtime/shared/content-provider/appsettings.json:/app/appsettings.json:ro"
     # No Docker-level healthcheck: mcr.microsoft.com/dotnet/aspnet:8.0 has
-    # neither wget nor curl. 00_qnap_shared/03_begin.sh polls /health from
+    # neither wget nor curl. 00_qnap_shared/03_re-start.sh polls /health from
     # the host after `up -d` instead.
 
 networks:

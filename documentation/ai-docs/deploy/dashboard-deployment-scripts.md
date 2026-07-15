@@ -29,17 +29,20 @@ bash-scripts/dashboard/
 ```
 
 Każdy z `00_qnap_shared`, `03_local_mac_docker`, `04_qnap_test`, `05_qnap_prod`
-ma identyczny zestaw 6 plików: `01_config.sh`, `02_build.sh`, `03_begin.sh`,
+ma identyczny zestaw 6 plików: `01_config.sh`, `02_build.sh`, `03_re-start.sh`,
 `04_end.sh`, `05_status.sh`, `06_deploy.sh`. Konwencja nazw skryptów w TEJ
-rodzinie (Docker Compose) to **build / begin / end / status / deploy** —
+rodzinie (Docker Compose) to **build / re-start / end / status / deploy** —
 nigdy `start_*`/`stop_*`. Uzasadnienie historyczne (2026-07-10):
 `start.sh`/`status.sh`/`stop.sh` wszystkie zaczynały się na literę `s`, co
 psuło autouzupełnianie w terminalu (`bash s<TAB>` niejednoznaczne) — stąd
-`b`egin / `e`nd / `s`tatus, jednoznaczne skróty.
+`b`egin / `e`nd / `s`tatus, jednoznaczne skróty. **Zmiana (2026-07-14,
+poprawka Story 54): `begin.sh` → `re-start.sh` w całej tej rodzinie** —
+patrz sekcja "Niespójność nazewnictwa" niżej dla pełnego kontekstu i
+aktualnego stanu po tej zmianie.
 
 **Wyjątek (2026-07-14): `03_local_mac_docker` ma 7 plików, nie 6.** Dodano
 `01_port_kill.sh` (patrz niżej), więc pozostałe przesunęły się o jeden numer:
-`02_config.sh`, `03_build.sh`, `04_begin.sh`, `05_end.sh`, `06_status.sh`,
+`02_config.sh`, `03_build.sh`, `04_re-start.sh`, `05_end.sh`, `06_status.sh`,
 `07_deploy.sh`. `00_qnap_shared`/`04_qnap_test`/`05_qnap_prod` NIE zostały
 tknięte — nadal mają dokładnie 6 plików w oryginalnej numeracji `01`-`06`
 opisanej wyżej. To drugi udokumentowany wyjątek od wspólnej numeracji obok
@@ -57,26 +60,55 @@ ponowna weryfikacja, SIGKILL dopiero gdy nadal żyje). Zero interaktywnych
 pytań — wywoływany automatycznie. Nigdy nie dotyka niczego niezwiązanego z
 podanym portem (brak `docker system prune`, brak `pkill`/`killall`).
 
-`04_begin.sh` wywołuje go automatycznie dla każdego portu z `REQUIRED_PORTS`
+`04_re-start.sh` wywołuje go automatycznie dla każdego portu z `REQUIRED_PORTS`
 (zbudowanego z `DASHBOARD_PORT`/`CONTENT_PROVIDER_API_PORT`/`MONGODB_PORT` w
 `02_config.sh` — nigdy nie hardkoduje numerów portów samo) PRZED próbą startu,
 zamiast (jak wcześniej) twardo kończyć się błędem `ensure_port_available`
 ("Not killing it automatically — stop it yourself"). Po zwolnieniu portów
-`04_begin.sh` wywołuje `ensure_port_available` ponownie jako końcową
+`04_re-start.sh` wywołuje `ensure_port_available` ponownie jako końcową
 weryfikację, dopiero potem `docker compose up -d`. `07_deploy.sh` (build →
-begin → status) tej logiki nie duplikuje — dziedziczy ją przez wywołanie
-`04_begin.sh`.
+re-start → status) tej logiki nie duplikuje — dziedziczy ją przez wywołanie
+`04_re-start.sh`.
 
 Lokalny `docker-compose.local.yml` (`03_local_mac_docker`) łączy mongo + CP +
 dashboard w jednym pliku, bo lokalnie nie ma potrzeby rozdzielać TEST/PROD —
 ten podział dotyczy wyłącznie QNAP.
 
-### Niespójność nazewnictwa: `begin/end` (Docker) vs `start/end` (tmux) — ustalone, NIE naprawiane w tym zadaniu
+### Niespójność nazewnictwa: `re-start/end` (Docker) vs `start/end` (tmux) vs `begin_*` (SSH wrappery)
 
-Cała rodzina skryptów opartych o Docker Compose (`00_qnap_shared`,
-`03_local_mac_docker`, `04_qnap_test`, `05_qnap_prod`, `06_qnap_ssh`) używa
-konsekwentnie **`begin`/`end`** (nigdy `start`/`stop`) — potwierdzone w
-każdym z tych katalogów i udokumentowane od 2026-07-10 (patrz akapit wyżej).
+**Stan do 2026-07-14:** cała rodzina skryptów opartych o Docker Compose
+(`00_qnap_shared`, `03_local_mac_docker`, `04_qnap_test`, `05_qnap_prod`)
+używała konsekwentnie **`begin`/`end`** (nigdy `start`/`stop`) —
+udokumentowane od 2026-07-10 (patrz akapit wyżej).
+
+**Zmiana 2026-07-14 (poprawka Story 54):** na wyraźną prośbę użytkownika,
+wszystkie skrypty nazwane dokładnie `begin.sh` albo `<NN>_begin.sh` w całym
+repo zostały przemianowane na `re-start.sh`/`<NN>_re-start.sh` — sześć
+plików: `00_qnap_shared/03_re-start.sh` (dawniej `03_begin.sh`),
+`03_local_mac_docker/04_re-start.sh` (dawniej `04_begin.sh`),
+`04_qnap_test/03_re-start.sh` (dawniej `03_begin.sh`),
+`05_qnap_prod/03_re-start.sh` (dawniej `03_begin.sh`),
+`bash-scripts/beeper/02_re-start.sh` (dawniej `02_begin.sh`), oraz
+root-level `re-start.sh` (dawniej `begin.sh`).
+Wszystkie wewnętrzne odwołania (inne skrypty, `docker-compose.*.yml`,
+`.gitignore`, `.env.qnap.example`, dokumentacja) zostały zaktualizowane w tym
+samym zadaniu. `end.sh`/`status.sh`/`build.sh`/`deploy.sh`/`config.sh` w
+żadnym katalogu **nie zostały** zmienione — poprawka dotyczyła wyłącznie
+plików nazwanych `begin.sh`.
+
+**Świadomie NIE przemianowane (inny wzorzec nazwy, nie dosłowne
+`begin.sh`):**
+- `06_qnap_ssh/begin_shared.sh` / `begin_test.sh` / `begin_prod.sh` —
+  zostają pod starą nazwą (`begin_*.sh`, nie `begin.sh`), ale ich
+  wewnętrzne wywołania zostały zaktualizowane, żeby wołać nowe
+  `NN_re-start.sh` na docelowym środowisku. Skutek: użytkownik nadal woła
+  `bash bash-scripts/dashboard/06_qnap_ssh/begin_prod.sh`, ale ten skrypt
+  teraz uruchamia zdalnie `05_qnap_prod/03_re-start.sh`, nie
+  (jak wcześniej) `03_begin.sh`.
+- `packages/net-content-provider/03_scripts/qnap/begin_qnap_test.sh` —
+  inny, niezależny system (patrz sekcja "Różnica względem
+  `packages/net-content-provider/...`" niżej), w trakcie przepisywania —
+  nietknięty.
 
 Osobny, niepowiązany z Dockerem system — lokalne środowisko dev oparte o
 `tmux`/`tmuxinator` (bez kontenerów, do jednoczesnego uruchamiania `dba`
@@ -88,22 +120,27 @@ przemianowane z powrotem na `01_build.sh`/`02_start.sh`/`03_end.sh` w samym
 `02_local_mac/`, z uzasadnieniem: *"build" i "begin" oba zaczynały się na tę
 samą literę, myląco w listingu katalogu* — inny problem niż oryginalny (tam
 kolidowały trzy nazwy zaczynające się na `s`; tu dwie zaczynające się na `b`).
+Wewnętrzny plik tej rodziny nadal nazywa się `02_start.sh` (nie zmieniony w
+poprawce 2026-07-14 — nie pasuje do wzorca `begin.sh`), tylko **root-level
+wrapper** (`begin.sh` → `re-start.sh`, patrz `dashboard-start-scripts.md`)
+został objęty poprawką.
 
-Stan na 2026-07-13 (repo, `git status`): katalog `02_local_mac/` został
-usunięty, a w jego miejsce powstał **nieescommitowany** `02_local_mac_tmux/`
-z tym samym wzorcem `01_build.sh`/`02_start.sh`/`03_end.sh`/`04_status.sh`/
-`05_logs.sh`. Root-level wrappery `begin.sh`/`end.sh`/`status.sh` (repo root)
-zostały zaktualizowane, by wskazywać na ten nowy katalog. To jest praca w
-toku innej osoby/sesji, nie część tego zadania.
+Stan katalogu: `02_local_mac/` został usunięty (2026-07-13), a w jego
+miejsce powstał `02_local_mac_tmux/` z tym samym wzorcem
+`01_build.sh`/`02_start.sh`/`03_end.sh`/`04_status.sh`/`05_logs.sh` — teraz
+w pełni scommitowany.
 
-**Wniosek:** obecna, faktyczna konwencja NIE jest jednolita w całym repo —
-Docker-owa rodzina konsekwentnie używa `begin`/`end`, a lokalny,
-tmux-owy dev-flow używa `start`/`end` (z innym, osobnym uzasadnieniem
-historycznym). Zgodnie z instrukcją zadania: **nazwy NIE zostały tu
-zmienione automatycznie** — to wymagałoby większej migracji i dotyczy
-osobnego, aktualnie niescommitowanego obszaru pracy. Jeśli planujesz
-ujednolicić nazewnictwo, zrób to jako osobne, świadome zadanie, nie przy
-okazji czegoś innego.
+**Wniosek (aktualny, 2026-07-14):** konwencja nazw nadal NIE jest w pełni
+jednolita w całym repo, ale z innym kształtem niespójności niż wcześniej —
+Docker-owa rodzina per-środowisko (`00_qnap_shared`/`03_local_mac_docker`/
+`04_qnap_test`/`05_qnap_prod`) i root-level wrapper używają teraz
+`re-start`/`end`, `06_qnap_ssh`'s wrappery nadal używają `begin_*`/`end_*`
+(inny, celowo nieprzemianowany wzorzec — patrz wyżej), a lokalny tmux-owy
+dev-flow (`02_local_mac_tmux`) nadal używa `start`/`end` (z innym, osobnym
+uzasadnieniem historycznym). Jeśli planujesz dalej ujednolicać nazewnictwo
+(np. `begin_*.sh` → `re-start_*.sh` w `06_qnap_ssh`, albo `start`→`re-start`
+w `02_local_mac_tmux`), zrób to jako osobne, świadome zadanie — patrz
+`documentation/stories/54/06_others_from_report.md`.
 
 ## Dlaczego shared/test/prod, a nie jeden plik na środowisko
 
@@ -127,7 +164,7 @@ Przebudowano na trzy pliki:
 Wszystkie trzy są osobnymi projektami Compose (`-p chad-shared` /
 `chad-test` / `chad-prod`), połączonymi przez jedną **zewnętrzną** sieć
 Docker `chad-shared` (tworzoną idempotentnie przez `ensure_docker_network`
-w `bash-scripts/common/lib.sh`, wywoływaną z `00_qnap_shared/03_begin.sh`).
+w `bash-scripts/common/lib.sh`, wywoływaną z `00_qnap_shared/03_re-start.sh`).
 
 ### DNS między osobnymi projektami Compose — container_name, nie service name
 
@@ -164,10 +201,10 @@ miejsce teraz, bo jest jeden wspólny Content Provider — wcześniej ten sam
 tekst był zduplikowany w `04_qnap_test`/`05_qnap_prod`). Funkcja
 `write_content_provider_appsettings()` zapisuje ten tekst do
 `.runtime/shared/content-provider/appsettings.json` (gitignored, nigdy
-source of truth) tuż przed `docker compose up` — `00_qnap_shared/03_begin.sh`
+source of truth) tuż przed `docker compose up` — `00_qnap_shared/03_re-start.sh`
 woła ją zawsze na początku. Docker Compose montuje wygenerowany plik jako
 `/app/appsettings.json:ro`. Zmiana konfiguracji Content Providera = ponowne
-`00_qnap_shared/03_begin.sh` (odtworzenie kontenera), nie rebuild obrazu.
+`00_qnap_shared/03_re-start.sh` (odtworzenie kontenera), nie rebuild obrazu.
 
 `04_qnap_test`/`05_qnap_prod` już NIE generują appsettings.json — nie mają
 własnego Content Providera.
@@ -206,7 +243,7 @@ nigdy do uruchamiania/zatrzymywania/budowania Content Providera.
 Ponieważ shared, TEST i PROD to trzy osobne projekty Compose, `depends_on`
 między nimi nie działa. Zamiast tego `bash-scripts/common/lib.sh` ma funkcję
 `require_shared_services_healthy <cp_port>`, wywoływaną z
-`04_qnap_test/03_begin.sh` i `05_qnap_prod/03_begin.sh` PRZED
+`04_qnap_test/03_re-start.sh` i `05_qnap_prod/03_re-start.sh` PRZED
 `docker compose up`:
 
 1. sprawdza, czy sieć `chad-shared` istnieje,
@@ -215,7 +252,7 @@ między nimi nie działa. Zamiast tego `bash-scripts/common/lib.sh` ma funkcję
 4. sprawdza `curl http://localhost:12024/health`.
 
 Jeśli którykolwiek krok zawiedzie, dashboard **odmawia startu** z czytelnym
-błędem wskazującym `bash bash-scripts/dashboard/00_qnap_shared/03_begin.sh`.
+błędem wskazującym `bash bash-scripts/dashboard/00_qnap_shared/03_re-start.sh`.
 Dashboard TEST/PROD nigdy sam nie uruchamia/nie naprawia shared.
 
 ## Zasady działania skryptów deploymentowych
@@ -244,11 +281,11 @@ nazwę projektu Compose, porty i nazwy kontenerów. Po udanym buildzie skrypt
 zapisuje ten tag do gitignored pliku `.image-tag.<image>.env` w rootcie repo —
 pełny standard i uzasadnienie: [image-tagging-standard.md](image-tagging-standard.md).
 
-### `03_begin.sh`
+### `03_re-start.sh`
 
 Służy **wyłącznie** do uruchamiania już zbudowanych obrazów. Nie buduje.
 
-`00_qnap_shared/03_begin.sh` (zaktualizowane 2026-07-13):
+`00_qnap_shared/03_re-start.sh` (zaktualizowane 2026-07-13):
 1. `require_image_tag` dla `chad-content-provider-api` — **odmawia startu**
    bez zapisanego tagu, nigdy fallback do `latest`.
 2. `require_data_path_writable` na `$QNAP_CONTAINER_DATA_PATH/chad-shared/mongodb`
@@ -263,7 +300,7 @@ Służy **wyłącznie** do uruchamiania już zbudowanych obrazów. Nie buduje.
 8. Czeka na `chad-mongodb` `healthy` i `content-provider-api` `/health`
    (`anyRepoFound:true`).
 
-`04_qnap_test/03_begin.sh` / `05_qnap_prod/03_begin.sh` (zaktualizowane 2026-07-13):
+`04_qnap_test/03_re-start.sh` / `05_qnap_prod/03_re-start.sh` (zaktualizowane 2026-07-13):
 1. `require_shared_services_healthy` — **odmawia startu**, jeśli shared nie
    działa.
 2. `require_image_tag` dla `chad-dashboard` — **odmawia startu** bez
@@ -282,7 +319,7 @@ sprawdzają.
 
 #### Automatyczne czyszczenie konfliktów portów
 
-Przed `docker compose up -d`, `03_begin.sh` sprawdza porty przez
+Przed `docker compose up -d`, `03_re-start.sh` sprawdza porty przez
 `ensure_port_available()` (`bash-scripts/common/lib.sh`) — automatycznie
 zatrzymuje i usuwa TYLKO kontener Dockera, który faktycznie publikuje
 wymagany port, nigdy szerokie czyszczenie. Jeśli port zajmuje proces spoza
@@ -300,7 +337,7 @@ przez OBA dashboardy** — ostrzega o tym w logach. `04_qnap_test/04_end.sh` /
 
 ### `06_deploy.sh`
 
-Pełny deployment nowej wersji: `02_build.sh` → `03_begin.sh` → `05_status.sh`.
+Pełny deployment nowej wersji: `02_build.sh` → `03_re-start.sh` → `05_status.sh`.
 
 ### `05_status.sh`
 
@@ -345,7 +382,9 @@ To DWA NIEZALEŻNE systemy, celowo:
 **Zrobione i przechodzi (2026-07-11), na realnym QNAP (s12,
 `100.117.139.83`):** migracja z jednego pliku compose (osobne mongo/CP na
 środowisko) na shared/test/prod. `00_qnap_shared/03_begin.sh` →
-`04_qnap_test/03_begin.sh` → `05_qnap_prod/03_begin.sh`, wraz z pełną
+`04_qnap_test/03_begin.sh` → `05_qnap_prod/03_begin.sh` (nazwy z tamtej
+daty — te skrypty od 2026-07-14 nazywają się `03_re-start.sh`, patrz
+sekcja "Niespójność nazewnictwa" wyżej), wraz z pełną
 weryfikacją: `chad-mongodb` healthy, `chad-content-provider-api`
 `/health` → `anyRepoFound:true` (36 repo z `/share/Dropbox`), oba
 dashboardy (`chad-dashboard-test:12020`, `chad-dashboard-prod:12030`)

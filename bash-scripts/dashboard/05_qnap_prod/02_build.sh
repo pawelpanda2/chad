@@ -3,7 +3,7 @@
 # touches a running environment, never builds/touches the shared mongo/
 # content-provider-api stack (see bash-scripts/dashboard/00_qnap_shared/).
 # PROD deployment requires separate explicit approval — building images
-# does not deploy anything by itself. See 03_begin.sh / 04_end.sh /
+# does not deploy anything by itself. See 03_re-start.sh / 04_end.sh /
 # 05_status.sh / 06_deploy.sh.
 set -euo pipefail
 
@@ -28,10 +28,11 @@ cd "$REPO_ROOT"
 # tag this build produces. 04_qnap_test and 05_qnap_prod build the exact same
 # chad-dashboard image (same Dockerfile/context/target — see
 # docker-compose.qnap.{test,prod}.yml), so they share ONE canonical tag-record
-# file: build once (from either environment), then `begin` in both to deploy
-# the identical image without a second build. Normal promotion TEST -> PROD
-# does NOT run this script again — it just runs 05_qnap_prod/03_begin.sh,
-# which reads the same tag-record file 04_qnap_test/02_build.sh already wrote.
+# file: build once (from either environment), then `re-start` in both to
+# deploy the identical image without a second build. Normal promotion
+# TEST -> PROD does NOT run this script again — it just runs
+# 05_qnap_prod/03_re-start.sh, which reads the same tag-record file
+# 04_qnap_test/02_build.sh already wrote.
 IMAGE_TAG="$(date +'%y%m%d_%H%M%S')"
 export IMAGE_TAG
 

@@ -18,10 +18,10 @@
 #                  the foreground tailing container logs. Used as the
 #                  tmuxinator "content-provider" pane command.
 #   --wait-only  — check, conditionally start + wait for health, then exit.
-#                  Used by begin.sh to block until CP is ready (or has failed)
-#                  before begin.sh declares its own start complete. Safe to
-#                  call after the pane already did this — health check makes
-#                  it a no-op the second time.
+#                  Used by re-start.sh to block until CP is ready (or has
+#                  failed) before re-start.sh declares its own start
+#                  complete. Safe to call after the pane already did this —
+#                  health check makes it a no-op the second time.
 
 set -euo pipefail
 

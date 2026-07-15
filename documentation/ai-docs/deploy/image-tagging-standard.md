@@ -20,7 +20,7 @@ Podczas deployu wielu zmian dashboardu, TEST i PROD zostały uruchomione przez
    `export`owaną tylko w obrębie własnego procesu skryptu.
 2. Tag **nigdy nie był zapisywany na dysk** — nie istniał żaden plik typu
    `.image-tag.env`.
-3. `03_begin.sh` to **osobne uruchomienie skryptu** (osobny proces bash,
+3. `03_re-start.sh` to **osobne uruchomienie skryptu** (osobny proces bash,
    często osobne połączenie SSH) — `IMAGE_TAG` z builda już nie istniał w
    jego środowisku.
 4. Pliki compose miały `image: chad-dashboard:${IMAGE_TAG:-latest}` — skoro
@@ -72,7 +72,7 @@ nie nadpisuje zapisanego tagu. Zapis jest atomowy (plik tymczasowy + `mv`).
 require_image_tag "$(dashboard_image_tag_file)" "chad-dashboard" || exit 1
 ```
 
-Wywoływane przez każdy `03_begin.sh` PRZED `docker compose up`. Jeśli plik nie
+Wywoływane przez każdy `03_re-start.sh` PRZED `docker compose up`. Jeśli plik nie
 istnieje albo `IMAGE_TAG` jest pusty — **czytelny błąd, exit 1**, żadnego
 fallbacku do `:latest`.
 
@@ -108,7 +108,7 @@ samego zapisanego tagu.
 
 ```bash
 # 1) Zbuduj i uruchom TEST (albo tylko zbuduj: bash bash-scripts/dashboard/06_qnap_ssh/deploy_test.sh
-#    uruchamia build + begin + status za jednym razem)
+#    uruchamia build + re-start + status za jednym razem)
 bash bash-scripts/dashboard/06_qnap_ssh/deploy_test.sh
 
 # 2) Sprawdź TEST ręcznie / wizualnie.
@@ -118,7 +118,7 @@ bash bash-scripts/dashboard/06_qnap_ssh/deploy_test.sh
 bash bash-scripts/dashboard/06_qnap_ssh/begin_prod.sh
 ```
 
-`begin_prod.sh` woła `05_qnap_prod/03_begin.sh`, które czyta ten sam plik
+`begin_prod.sh` woła `05_qnap_prod/03_re-start.sh`, które czyta ten sam plik
 `.image-tag.chad-dashboard.env` zapisany przez krok 1 — nie ma tam żadnego
 buildu.
 
@@ -135,7 +135,7 @@ a `docker images` — jeden wiersz z tym tagiem, bez `latest`.
 
 ## Content Provider (shared)
 
-`00_qnap_shared/02_build.sh` / `03_begin.sh` używają dokładnie tego samego
+`00_qnap_shared/02_build.sh` / `03_re-start.sh` używają dokładnie tego samego
 mechanizmu, plik `.image-tag.chad-content-provider-api.env`. CP jest
 zbudowany rzadziej niż dashboard (osobny cykl release'u) — ten sam wzorzec
 mimo to.
@@ -144,13 +144,13 @@ mimo to.
 
 `03_local_mac_docker/03_build.sh` buduje OBA obrazy w jednym wywołaniu i
 zapisuje OBA pliki tagów (ten sam znacznik czasowy dla obu, bo budowane razem).
-`04_begin.sh` wymaga obu przed `docker compose up`.
+`04_re-start.sh` wymaga obu przed `docker compose up`.
 
 ## Jak wymusić rebuild zamiast promocji
 
 Czasem chcesz faktycznie zbudować nową wersję zamiast promować już
-zbudowaną — po prostu uruchom `06_deploy.sh` (build+begin+status) dla
-docelowego środowiska zamiast samego `03_begin.sh`/`begin_*.sh`:
+zbudowaną — po prostu uruchom `06_deploy.sh` (build+re-start+status) dla
+docelowego środowiska zamiast samego `03_re-start.sh`/`begin_*.sh`:
 
 ```bash
 bash bash-scripts/dashboard/06_qnap_ssh/deploy_prod.sh   # buduje NOWY obraz i od razu go uruchamia na PROD

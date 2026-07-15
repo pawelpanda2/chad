@@ -1,8 +1,9 @@
 "use client";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Sidebar } from "@/components/shared/sidebar";
 import { Topbar } from "@/components/shared/topbar";
+import { DashboardHistoryProvider } from "@/components/shared/dashboard-history-provider";
 import { cn } from "@/lib/utils";
 
 // The top bar is intentionally hidden on EVERY screen size (desktop + mobile)
@@ -71,9 +72,14 @@ export default function DashboardLayout({
 
 				{/* Content region — the shared page shells fill this exactly, so the
 				    page never scrolls; scroll lives inside the frames. Padding is
-				    kept to ~2px so the frame nearly fills the screen. */}
+				    kept to ~2px so the frame nearly fills the screen. NavGroup
+				    (nav-group.tsx) is left-aligned in each page's own toolbar, right
+				    after the pl-14 menu-handle gap, so no extra reserved space is
+				    needed here. */}
 				<main className="min-h-0 flex-1 overflow-y-auto p-0.5">
-					{children}
+					<Suspense fallback={null}>
+						<DashboardHistoryProvider>{children}</DashboardHistoryProvider>
+					</Suspense>
 				</main>
 			</div>
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Frees a single port on this Mac, no questions asked — for automatic use by
-# 04_begin.sh (and transitively 07_deploy.sh), and for direct manual use.
+# 04_re-start.sh (and transitively 07_deploy.sh), and for direct manual use.
 #
 # Two cases, both handled by the shared kill_process_on_port() in
 # bash-scripts/common/lib.sh (this file is a thin CLI wrapper around it —

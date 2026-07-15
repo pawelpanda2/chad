@@ -5,7 +5,7 @@
 # never deployed to QNAP.
 #
 # Usage:
-#   ./bash-scripts/beeper/02_begin.sh
+#   ./bash-scripts/beeper/02_re-start.sh
 #
 # Works from any cwd — resolves the repo root from this script's own
 # location via git, not from $PWD.

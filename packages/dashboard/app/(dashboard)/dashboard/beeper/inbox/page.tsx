@@ -4,10 +4,9 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
 import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { RefreshCw, Inbox as InboxIcon, ArrowLeft } from "lucide-react";
+import { RefreshCw, Inbox as InboxIcon } from "lucide-react";
 import { toast } from "sonner";
 
 interface BeeperInboxRow {
@@ -41,18 +40,14 @@ export default function BeeperInboxPage() {
 
 	return (
 		<DashboardPageShell
+			upLevel={{ href: "/dashboard/beeper" }}
 			toolbar={
 				<>
-					<Button variant="outline" size="sm" className="gap-1 h-7 px-2" asChild>
-						<Link href="/dashboard/beeper">
-							<ArrowLeft className="h-3 w-3" />Back
-						</Link>
-					</Button>
 					<h2 className="text-lg font-bold">Inbox</h2>
 					<span className="text-xs text-muted-foreground">
 						Latest message per direct conversation, most recent first.
 					</span>
-					<span className="ml-auto text-xs text-muted-foreground">{rows.length} conversations</span>
+					<span className="text-xs text-muted-foreground">{rows.length} conversations</span>
 				</>
 			}
 		>

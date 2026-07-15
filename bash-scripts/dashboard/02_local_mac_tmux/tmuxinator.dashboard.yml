@@ -1,4 +1,4 @@
-# Scoped tmuxinator profile for `bash-scripts/dashboard/begin.sh` — only what
+# Scoped tmuxinator profile for `re-start.sh` — only what
 # the dashboard actually needs today (dba watch-build + dashboard dev server
 # + content-provider, started only if not already running), not the full
 # multi-service stack from the root .tmuxinator.yml.
