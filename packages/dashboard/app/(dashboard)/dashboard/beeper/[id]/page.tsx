@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback, use } from "react";
-import Link from "next/link";
 import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -17,13 +16,13 @@ import {
 	DialogFooter,
 } from "@/components/ui/dialog";
 import {
-	ArrowLeft,
 	RefreshCw,
 	Save,
 	Copy,
 	CalendarPlus,
 	Merge as MergeIcon,
 	Paperclip,
+	ImageOff,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -236,15 +235,7 @@ export default function BeeperContactDetailPage({ params }: { params: Promise<{ 
 
 	if (loading) {
 		return (
-			<DashboardPageShell
-				toolbar={
-					<Button variant="outline" size="sm" className="gap-1 h-7 px-2" asChild>
-						<Link href="/dashboard/beeper">
-							<ArrowLeft className="h-3 w-3" />Back
-						</Link>
-					</Button>
-				}
-			>
+			<DashboardPageShell upLevel={{ href: "/dashboard/beeper" }}>
 				<div className="flex items-center justify-center py-24 text-muted-foreground gap-2">
 					<RefreshCw className="h-4 w-4 animate-spin" /> Loading contact...
 				</div>
@@ -253,15 +244,7 @@ export default function BeeperContactDetailPage({ params }: { params: Promise<{ 
 	}
 	if (!detail) {
 		return (
-			<DashboardPageShell
-				toolbar={
-					<Button variant="outline" size="sm" className="gap-1 h-7 px-2" asChild>
-						<Link href="/dashboard/beeper">
-							<ArrowLeft className="h-3 w-3" />Back
-						</Link>
-					</Button>
-				}
-			>
+			<DashboardPageShell upLevel={{ href: "/dashboard/beeper" }}>
 				<div className="py-24 text-center text-muted-foreground">Contact not found.</div>
 			</DashboardPageShell>
 		);
@@ -282,13 +265,9 @@ export default function BeeperContactDetailPage({ params }: { params: Promise<{ 
 	return (
 		<DashboardPageShell
 			scroll={false}
+			upLevel={{ href: "/dashboard/beeper" }}
 			toolbar={
 				<>
-					<Button variant="outline" size="sm" className="gap-1 h-7 px-2" asChild>
-						<Link href="/dashboard/beeper">
-							<ArrowLeft className="h-3 w-3" />Back
-						</Link>
-					</Button>
 					<h2 className="text-lg font-bold">{contact.displayName}</h2>
 					<span className="ml-auto flex items-center gap-2">
 						<Button variant="outline" size="sm" className="gap-1 h-7 px-2 text-xs" onClick={copyForAI}>
@@ -434,9 +413,23 @@ export default function BeeperContactDetailPage({ params }: { params: Promise<{ 
 													{item.data.text || `[${item.data.type}]`}
 												</p>
 												{item.data.attachments.length > 0 && (
-													<p className="mt-1 flex items-center gap-1 text-[10px] opacity-70">
-														<Paperclip className="h-3 w-3" /> {item.data.attachments.length} attachment(s)
-													</p>
+													<div className="mt-1 space-y-1">
+														{item.data.attachments.map((att, i) => (
+															<div
+																key={i}
+																className="flex items-center gap-1.5 rounded border border-dashed border-current/20 px-1.5 py-1 text-[10px] opacity-70"
+																title="Media unavailable — no attachment proxy in this version"
+															>
+																{att.type?.startsWith("img") || att.type?.startsWith("video") ? (
+																	<ImageOff className="h-3 w-3 shrink-0" />
+																) : (
+																	<Paperclip className="h-3 w-3 shrink-0" />
+																)}
+																<span className="truncate">{att.fileName || att.type || "attachment"}</span>
+																<span className="shrink-0 opacity-60">(unavailable)</span>
+															</div>
+														))}
+													</div>
 												)}
 												{item.data.reactions.length > 0 && (
 													<p className="mt-1 text-xs">{item.data.reactions.map((r) => r.emoji).join(" ")}</p>
