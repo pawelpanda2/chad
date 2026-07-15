@@ -90,7 +90,7 @@ async function migrateCollection(sourceDb, targetDb, name) {
     console.log(
       `  ${name}: ${sourceDocs.length} in source, ${existingIds.size} already in target, ${toInsert.length} would be inserted (dry-run).`
     );
-    return { total: sourceDocs.length, existing: existingIds.size, inserted: 0 };
+    return { total: sourceDocs.length, existing: existingIds.size, inserted: toInsert.length };
   }
 
   if (toInsert.length > 0) {
