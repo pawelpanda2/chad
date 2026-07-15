@@ -4,10 +4,9 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
 import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { RefreshCw, Inbox as InboxIcon, ArrowLeft } from "lucide-react";
+import { RefreshCw, Inbox as InboxIcon } from "lucide-react";
 import { toast } from "sonner";
 
 interface BeeperInboxRow {
@@ -41,21 +40,17 @@ export default function BeeperInboxPage() {
 
 	return (
 		<DashboardPageShell
-			toolbar={
-				<>
-					<Button variant="outline" size="sm" className="gap-1 h-7 px-2" asChild>
-						<Link href="/dashboard/beeper">
-							<ArrowLeft className="h-3 w-3" />Back
-						</Link>
-					</Button>
-					<h2 className="text-lg font-bold">Inbox</h2>
-					<span className="text-xs text-muted-foreground">
-						Latest message per direct conversation, most recent first.
-					</span>
-					<span className="ml-auto text-xs text-muted-foreground">{rows.length} conversations</span>
-				</>
-			}
+			upLevel={{ href: "/dashboard/beeper" }}
+			toolbar={<h2 className="text-lg font-bold">Inbox</h2>}
 		>
+			{/* Second row inside the outer frame — see documentation/stories/60. */}
+			<div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b pb-3 mb-3">
+				<span className="text-xs text-muted-foreground">
+					Latest message per direct conversation, most recent first.
+				</span>
+				<span className="ml-auto text-xs text-muted-foreground">{rows.length} conversations</span>
+			</div>
+
 			{loading ? (
 				<div className="flex items-center justify-center py-24 text-muted-foreground gap-2">
 					<RefreshCw className="h-4 w-4 animate-spin" /> Loading inbox...

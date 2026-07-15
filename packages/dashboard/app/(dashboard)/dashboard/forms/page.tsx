@@ -8,8 +8,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
 import { EditorPageShell } from "@/components/shared/editor-page-shell";
 import { TextEditorWithToolbar } from "@/components/shared/text-editor-with-toolbar";
+import { NavGroup } from "@/components/shared/nav-group";
+import { VoiceRecordingPanel } from "@/components/shared/voice-recording-panel";
 import { toast } from "sonner";
-import { ArrowLeft, Plus, X, CheckCircle2, AlertCircle } from "lucide-react";
+import { Plus, X, CheckCircle2, AlertCircle } from "lucide-react";
 
 // ============================================================================
 // Constants & Mappings
@@ -616,15 +618,24 @@ function FormsPageContent() {
     }
   };
 
-  const handleReportSave = async () => {
-    if (!reportLoca) return;
+  /**
+   * Updates the already-created report. Accepts an optional content
+   * override so callers that just changed `reportContent` (e.g. Move, which
+   * can't rely on the state update having landed yet) can save the exact
+   * value they intend, without duplicating this function's POST logic.
+   * Returns whether the save succeeded, so callers like Move can decide
+   * whether it's safe to clear their own local state.
+   */
+  const handleReportSave = async (contentOverride?: string): Promise<boolean> => {
+    if (!reportLoca) return false;
+    const content = contentOverride ?? reportContent;
     setReportSaving(true);
     setReportError(null);
     try {
       const response = await fetch("/api/forms/reports", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: reportContent, loca: reportLoca }),
+        body: JSON.stringify({ content, loca: reportLoca }),
       });
       const result = await response.json();
       if (!result.success) {
@@ -633,10 +644,12 @@ function FormsPageContent() {
       setReportSaved(true);
       toast.success("Report updated");
       setTimeout(() => setReportSaved(false), 3000);
+      return true;
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : "Unknown error";
       setReportError(errorMsg);
       toast.error(`Error: ${errorMsg}`);
+      return false;
     } finally {
       setReportSaving(false);
     }
@@ -645,6 +658,15 @@ function FormsPageContent() {
   const handleReportContentChange = (value: string) => {
     setReportContent(value);
     if (reportSaved) setReportSaved(false);
+  };
+
+  /** Move: append the recording panel's transcript to the report body and
+   * save it immediately, through the same `handleReportSave` the Save
+   * button uses — never a second, duplicated save path. */
+  const handleReportVoiceMove = async (text: string): Promise<boolean> => {
+    const combined = reportContent.trim() ? `${reportContent}\n${text}` : text;
+    setReportContent(combined);
+    return handleReportSave(combined);
   };
 
   // ============================================================================
@@ -715,9 +737,7 @@ function FormsPageContent() {
     return (
       <EditorPageShell>
         <div className="flex shrink-0 items-center gap-2 pl-14">
-          <Button variant="outline" size="icon" onClick={handleFormBack}>
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
+          <NavGroup upLevel={{ onClick: handleFormBack }} />
           <span className="font-semibold">Reports</span>
           {reportError && (
             <span className="flex items-center gap-1 text-sm text-destructive">
@@ -728,7 +748,22 @@ function FormsPageContent() {
         </div>
 
         <div className="shrink-0 rounded-xl border bg-card shadow-sm p-[10px]">
-          <div className="grid gap-3 md:grid-cols-[auto_auto_1fr] items-end">
+          {/* Row 1: Create (or its locked Generated name placeholder) first,
+              then Generated name — both left-aligned, top of the frame. */}
+          <div className="flex flex-wrap items-end gap-3">
+            {!isReportCreated && (
+              <Button onClick={handleReportCreate} disabled={reportSaving}>
+                {reportSaving ? "Creating..." : "Create"}
+              </Button>
+            )}
+            <div className="space-y-1">
+              <Label>Generated name</Label>
+              <Input value={displayedReportName} readOnly className="bg-muted font-mono w-[320px]" />
+            </div>
+          </div>
+
+          {/* Row 2: the rest of the metadata, locked once the report exists. */}
+          <div className="mt-3 grid gap-3 md:grid-cols-[auto_auto_1fr] items-end">
             <div className="space-y-1">
               <Label>Date</Label>
               <Input
@@ -765,18 +800,13 @@ function FormsPageContent() {
               />
             </div>
           </div>
-          <div className="flex gap-3 items-end mt-3">
-            <div className="space-y-1">
-              <Label>Generated name</Label>
-              <Input value={displayedReportName} readOnly className="bg-muted font-mono w-[320px]" />
-            </div>
-            {!isReportCreated && (
-              <Button onClick={handleReportCreate} disabled={reportSaving}>
-                {reportSaving ? "Creating..." : "Create"}
-              </Button>
-            )}
-          </div>
         </div>
+
+        <VoiceRecordingPanel
+          reportCreated={isReportCreated}
+          saving={reportSaving}
+          onMove={handleReportVoiceMove}
+        />
 
         {isReportCreated && (
           <TextEditorWithToolbar
@@ -786,6 +816,7 @@ function FormsPageContent() {
             saving={reportSaving}
             saved={reportSaved}
             placeholder="Write your report..."
+            defaultTab="editor"
           />
         )}
       </EditorPageShell>
@@ -801,14 +832,8 @@ function FormsPageContent() {
       <DashboardPageShell
         padded={false}
         contentClassName="p-4"
-        toolbar={
-          <>
-            <Button variant="outline" size="sm" onClick={handleFormBack} className="gap-2">
-              <ArrowLeft className="h-4 w-4" />Back
-            </Button>
-            <h2 className="text-xl font-bold">Action</h2>
-          </>
-        }
+        upLevel={{ onClick: handleFormBack }}
+        toolbar={<h2 className="text-xl font-bold">Action</h2>}
       >
             <form onSubmit={handleActionSubmit} className="space-y-3">
               <div className="grid gap-3 md:grid-cols-[auto_auto_1fr_auto] items-end">
@@ -899,14 +924,8 @@ function FormsPageContent() {
       <DashboardPageShell
         padded={false}
         frameClassName="max-w-xl"
-        toolbar={
-          <>
-            <Button variant="outline" size="sm" onClick={handleFormBack} className="gap-1 h-7 px-2">
-              <ArrowLeft className="h-3 w-3" />Back
-            </Button>
-            <h2 className="text-lg font-bold">DAILY ENTRY</h2>
-          </>
-        }
+        upLevel={{ onClick: handleFormBack }}
+        toolbar={<h2 className="text-lg font-bold">DAILY ENTRY</h2>}
       >
             <form onSubmit={handleAddActionSubmit}>
               <table className="w-full border-collapse text-sm">
@@ -975,14 +994,8 @@ function FormsPageContent() {
       <DashboardPageShell
         padded={false}
         frameClassName="max-w-xl"
-        toolbar={
-          <>
-            <Button variant="outline" size="sm" onClick={handleFormBack} className="gap-1 h-7 px-2">
-              <ArrowLeft className="h-3 w-3" />Back
-            </Button>
-            <h2 className="text-lg font-bold">DATE ENTRY</h2>
-          </>
-        }
+        upLevel={{ onClick: handleFormBack }}
+        toolbar={<h2 className="text-lg font-bold">DATE ENTRY</h2>}
       >
             <form onSubmit={handleDateEntrySubmit}>
               <table className="w-full border-collapse text-sm">
@@ -1095,14 +1108,8 @@ function FormsPageContent() {
     <DashboardPageShell
       padded={false}
       contentClassName="p-3"
-      toolbar={
-        <>
-          <Button variant="outline" size="sm" onClick={handleFormBack} className="gap-2">
-            <ArrowLeft className="h-4 w-4" />Back
-          </Button>
-          <h2 className="text-xl font-bold">Add Lead</h2>
-        </>
-      }
+      upLevel={{ onClick: handleFormBack }}
+      toolbar={<h2 className="text-xl font-bold">Add Lead</h2>}
     >
           <form onSubmit={handleLeadSubmit} className="space-y-3">
 

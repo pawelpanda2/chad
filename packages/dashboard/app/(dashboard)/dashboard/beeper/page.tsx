@@ -77,45 +77,49 @@ export default function BeeperContactsPage() {
 	const filtered = contacts.filter((c) => c.displayName.toLowerCase().includes(query.toLowerCase()));
 
 	return (
-		<DashboardPageShell
-			toolbar={
-				<>
-					<h2 className="text-lg font-bold">Beeper</h2>
-					<Select value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
-							<SelectTrigger className="h-7 w-[130px] text-xs">
-								<SelectValue />
-							</SelectTrigger>
-							<SelectContent>
-								{TAB_OPTIONS.map((opt) => (
-									<SelectItem key={opt.value} value={opt.value}>
-										{opt.label}
-									</SelectItem>
-								))}
-							</SelectContent>
-						</Select>
-					<div className="relative">
-						<Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-						<Input
-							placeholder="Search contacts..."
-							className="pl-7 h-7 text-xs w-[200px]"
-							value={query}
-							onChange={(e) => setQuery(e.target.value)}
-						/>
-					</div>
-					<Button variant="outline" size="sm" className="gap-1 h-7 px-2 text-xs" asChild>
-						<Link href="/dashboard/beeper/inbox">
-							<Inbox className="h-3 w-3" /> Inbox
-						</Link>
-					</Button>
-					<Button variant="outline" size="sm" className="gap-1 h-7 px-2 text-xs" asChild>
-						<Link href="/dashboard/beeper/merge">
-							<Users2 className="h-3 w-3" /> Merge suggestions
-						</Link>
-					</Button>
-					<span className="ml-auto text-xs text-muted-foreground">{filtered.length} contacts</span>
-				</>
-			}
-		>
+		<DashboardPageShell toolbar={<h2 className="text-lg font-bold">Beeper</h2>}>
+			{/*
+				Standard header (line 1, above the frame) is reserved for the menu
+				handle, Back/Forw and a short page name only — see
+				documentation/dashboard/common/features/responsive-layout-standard.md
+				and documentation/stories/60. Beeper's own actions live here instead,
+				as a second row INSIDE the outer frame, above the contact list.
+			*/}
+			<div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b pb-3 mb-3">
+				<Select value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
+						<SelectTrigger className="h-7 w-[130px] text-xs">
+							<SelectValue />
+						</SelectTrigger>
+						<SelectContent>
+							{TAB_OPTIONS.map((opt) => (
+								<SelectItem key={opt.value} value={opt.value}>
+									{opt.label}
+								</SelectItem>
+							))}
+						</SelectContent>
+					</Select>
+				<div className="relative">
+					<Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+					<Input
+						placeholder="Search contacts..."
+						className="pl-7 h-7 text-xs w-[200px]"
+						value={query}
+						onChange={(e) => setQuery(e.target.value)}
+					/>
+				</div>
+				<Button variant="outline" size="sm" className="gap-1 h-7 px-2 text-xs" asChild>
+					<Link href="/dashboard/beeper/inbox">
+						<Inbox className="h-3 w-3" /> Inbox
+					</Link>
+				</Button>
+				<Button variant="outline" size="sm" className="gap-1 h-7 px-2 text-xs" asChild>
+					<Link href="/dashboard/beeper/merge">
+						<Users2 className="h-3 w-3" /> Merge suggestions
+					</Link>
+				</Button>
+				<span className="ml-auto text-xs text-muted-foreground">{filtered.length} contacts</span>
+			</div>
+
 			{loading ? (
 				<div className="flex items-center justify-center py-24 text-muted-foreground gap-2">
 					<RefreshCw className="h-4 w-4 animate-spin" /> Loading contacts...
@@ -129,22 +133,24 @@ export default function BeeperContactsPage() {
 				<div className="flex flex-col divide-y divide-border overflow-hidden rounded-md border">
 					{filtered.map((c) => (
 						<Link key={c._id} href={`/dashboard/beeper/${c._id}`} className="block transition-colors hover:bg-accent/50">
-							<div className="flex items-center gap-2 px-2 py-1">
-								<Avatar className="h-6 w-6 shrink-0">
+							<div className="flex items-center gap-2 p-[2px]">
+								<Avatar className="h-7 w-7 shrink-0">
 									{c.hasAvatar && <AvatarImage src={`/api/beeper-crm/contacts/${c._id}/avatar`} alt={c.displayName} />}
 									<AvatarFallback className="text-[10px]">{c.displayName.slice(0, 1).toUpperCase()}</AvatarFallback>
 								</Avatar>
-								<div className="min-w-0 flex-1 flex items-baseline gap-2">
-									<span className="shrink-0 max-w-[40%] truncate text-sm font-medium">{c.displayName}</span>
-									{c.tags.map((t) => (
-										<Badge key={t} variant="secondary" className="h-4 shrink-0 px-1 text-[9px]">
-											{t}
-										</Badge>
-									))}
+								<div className="min-w-0 max-w-[50%] flex-1">
+									<div className="flex items-baseline gap-1.5">
+										<span className="truncate text-sm font-medium">{c.displayName}</span>
+										{c.tags.map((t) => (
+											<Badge key={t} variant="secondary" className="h-4 shrink-0 px-1 text-[9px]">
+												{t}
+											</Badge>
+										))}
+									</div>
 									{c.lastMessage ? (
-										<p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{c.lastMessage.text}</p>
+										<p className="truncate text-xs text-muted-foreground">{c.lastMessage.text}</p>
 									) : (
-										<p className="min-w-0 flex-1 truncate text-xs italic text-muted-foreground/60">No messages</p>
+										<p className="truncate text-xs italic text-muted-foreground/60">No messages</p>
 									)}
 								</div>
 								<div className="flex shrink-0 items-center gap-1">

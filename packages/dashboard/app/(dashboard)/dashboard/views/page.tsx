@@ -8,10 +8,9 @@ import { Input } from "@/components/ui/input";
 import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
 import { buildLeadDetailsHref, getLeadDetailsHref } from "@/lib/lead-links";
 import { ErrorBox } from "@/components/shared/error-box";
-import { PreviewContent } from "@/components/shared/headers-renderer";
+import { TextEditorWithToolbar } from "@/components/shared/text-editor-with-toolbar";
 import {
   RefreshCw,
-  ArrowLeft,
   Table as TableIcon,
   Search,
   ArrowUp,
@@ -144,6 +143,13 @@ function ViewsPageContent() {
   const [reports, setReports] = useState<ReportEntry[]>([]);
   const [reportsError, setReportsError] = useState<string | null>(null);
   const [selectedReportLoca, setSelectedReportLoca] = useState<string | null>(null);
+  // Local editable copy of the selected report's body, plus its own
+  // save state — Views/Reports is editable (Story 56), reusing the same
+  // /api/forms/reports update endpoint Forms uses (no new route, no
+  // duplicated save logic).
+  const [editedReportContent, setEditedReportContent] = useState("");
+  const [reportSaving, setReportSaving] = useState(false);
+  const [reportSaved, setReportSaved] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
@@ -270,6 +276,51 @@ function ViewsPageContent() {
     [reports, selectedReportLoca]
   );
 
+  // Sync the editable copy when a (different) report is selected — keyed on
+  // the loca, not on `selectedReport` itself, so an in-progress edit isn't
+  // clobbered by a background refetch of the same report.
+  useEffect(() => {
+    setEditedReportContent(selectedReport?.body ?? "");
+    setReportSaved(false);
+  }, [selectedReportLoca]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleReportEditorChange = (value: string) => {
+    setEditedReportContent(value);
+    if (reportSaved) setReportSaved(false);
+  };
+
+  /** Saves the selected report's edited body via the same update endpoint
+   * the Forms Reports editor uses (loca-based POST) — no duplicated save
+   * logic, no new route. */
+  const handleReportEditorSave = async (): Promise<boolean> => {
+    if (!selectedReportLoca) return false;
+    setReportSaving(true);
+    try {
+      const response = await fetch("/api/forms/reports", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: editedReportContent, loca: selectedReportLoca }),
+      });
+      const result = await response.json();
+      if (!result.success) {
+        throw new Error(result.error || "Unknown error");
+      }
+      setReports((prev) =>
+        prev.map((r) => (r.loca === selectedReportLoca ? { ...r, body: editedReportContent } : r))
+      );
+      setReportSaved(true);
+      toast.success("Report updated");
+      setTimeout(() => setReportSaved(false), 3000);
+      return true;
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : "Unknown error";
+      toast.error(`Error: ${errorMsg}`);
+      return false;
+    } finally {
+      setReportSaving(false);
+    }
+  };
+
   // ============================================================================
   // Render: View Selection Menu
   // ============================================================================
@@ -328,11 +379,9 @@ function ViewsPageContent() {
   if (selectedView === "leads") {
     return (
       <DashboardPageShell
+        upLevel={{ onClick: handleBack }}
         toolbar={
           <>
-            <Button variant="outline" size="sm" onClick={handleBack} className="gap-1 h-7 px-2">
-              <ArrowLeft className="h-3 w-3" />Back
-            </Button>
             <div className="flex items-center gap-2">
               <User className="h-4 w-4" />
               <h2 className="text-lg font-bold">Views / LEADS</h2>
@@ -351,7 +400,7 @@ function ViewsPageContent() {
               size="sm"
               onClick={handleRefresh}
               disabled={isLoading}
-              className="gap-2 h-7 text-xs ml-auto"
+              className="gap-2 h-7 text-xs"
             >
               <RefreshCw className={`h-3 w-3 ${isLoading ? "animate-spin" : ""}`} />
               Refresh
@@ -430,16 +479,14 @@ function ViewsPageContent() {
   if (selectedView === "reports") {
     return (
       <DashboardPageShell
+        scroll={!selectedReport}
+        padded={!selectedReport}
+        upLevel={{
+          onClick: selectedReport ? () => setSelectedReportLoca(null) : handleBack,
+          label: selectedReport ? "Back to reports list" : "Back to Views menu",
+        }}
         toolbar={
           <>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={selectedReport ? () => setSelectedReportLoca(null) : handleBack}
-              className="gap-1 h-7 px-2"
-            >
-              <ArrowLeft className="h-3 w-3" />Back
-            </Button>
             <div className="flex items-center gap-2">
               <FileText className="h-4 w-4" />
               <h2 className="text-lg font-bold">
@@ -462,7 +509,7 @@ function ViewsPageContent() {
               size="sm"
               onClick={handleRefresh}
               disabled={isLoading}
-              className="gap-2 h-7 text-xs ml-auto"
+              className="gap-2 h-7 text-xs"
             >
               <RefreshCw className={`h-3 w-3 ${isLoading ? "animate-spin" : ""}`} />
               Refresh
@@ -475,12 +522,18 @@ function ViewsPageContent() {
           </>
         }
       >
-        <ErrorBox message={reportsError} className="mb-2" />
+        {!selectedReport && <ErrorBox message={reportsError} className="mb-2" />}
 
         {selectedReport ? (
-          <div className="h-full overflow-auto">
-            <PreviewContent body={selectedReport.body || ""} />
-          </div>
+          <TextEditorWithToolbar
+            value={editedReportContent}
+            onChange={handleReportEditorChange}
+            onSave={handleReportEditorSave}
+            saving={reportSaving}
+            saved={reportSaved}
+            placeholder="This report is empty. Start writing..."
+            className="h-full"
+          />
         ) : isLoading ? (
           <div className="flex items-center gap-2 py-4 text-muted-foreground">
             <RefreshCw className="h-4 w-4 animate-spin" />
@@ -524,16 +577,9 @@ function ViewsPageContent() {
     <DashboardPageShell
       scroll={false}
       padded={false}
+      upLevel={{ onClick: handleBack }}
       toolbar={
         <>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleBack}
-            className="gap-1 h-7 px-2"
-          >
-            <ArrowLeft className="h-3 w-3" />Back
-          </Button>
           <div className="flex items-center gap-2">
             <TableIcon className="h-4 w-4" />
             <h2 className="text-lg font-bold">Views / {viewTitle}</h2>
@@ -552,7 +598,7 @@ function ViewsPageContent() {
             size="sm"
             onClick={handleRefresh}
             disabled={isLoading}
-            className="gap-2 h-7 text-xs ml-auto"
+            className="gap-2 h-7 text-xs"
           >
             <RefreshCw className={`h-3 w-3 ${isLoading ? 'animate-spin' : ''}`} />
             Refresh

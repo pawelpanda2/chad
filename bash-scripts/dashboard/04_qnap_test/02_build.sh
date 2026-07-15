@@ -27,8 +27,8 @@ cd "$REPO_ROOT"
 # tag this build produces. 04_qnap_test and 05_qnap_prod build the exact same
 # chad-dashboard image (same Dockerfile/context/target — see
 # docker-compose.qnap.{test,prod}.yml), so they share ONE canonical tag-record
-# file: build once (from either environment), then `begin` in both to deploy
-# the identical image without a second build.
+# file: build once (from either environment), then `re-start` in both to
+# deploy the identical image without a second build.
 IMAGE_TAG="$(date +'%y%m%d_%H%M%S')"
 export IMAGE_TAG
 

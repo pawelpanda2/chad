@@ -9,7 +9,7 @@ The intended future TypeScript/Node.js implementation of Content Provider — a 
 ## What this is not (yet)
 
 - Not deployed anywhere, not started by any script.
-- Not wired into `begin.sh`/tmuxinator — `packages/net-content-provider` is what actually runs today.
+- Not wired into `re-start.sh`/tmuxinator — `packages/net-content-provider` is what actually runs today.
 - Does not implement `GetItem`, `GetByNames`, `Put`, `PostParentItem`, or anything else from the real API surface.
 - Not copied from `net-content-provider/typescript` or `net-content-provider/typescript_runner` — those weren't reviewed for currency against today's architecture before this skeleton was created, per explicit instruction not to copy blindly.
 

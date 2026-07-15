@@ -266,37 +266,35 @@ export default function BeeperContactDetailPage({ params }: { params: Promise<{ 
 		<DashboardPageShell
 			scroll={false}
 			upLevel={{ href: "/dashboard/beeper" }}
-			toolbar={
-				<>
-					<h2 className="text-lg font-bold">{contact.displayName}</h2>
-					<span className="ml-auto flex items-center gap-2">
-						<Button variant="outline" size="sm" className="gap-1 h-7 px-2 text-xs" onClick={copyForAI}>
-							<Copy className="h-3 w-3" /> Copy for AI
-						</Button>
-						<Button
-							variant="outline"
-							size="sm"
-							className="gap-1 h-7 px-2 text-xs"
-							onClick={() => setEventDialogOpen(true)}
-						>
-							<CalendarPlus className="h-3 w-3" /> Add event
-						</Button>
-						<Button
-							variant="outline"
-							size="sm"
-							className="gap-1 h-7 px-2 text-xs"
-							onClick={() => setMergeDialogOpen(true)}
-						>
-							<MergeIcon className="h-3 w-3" /> Merge
-						</Button>
-						<Button size="sm" className="gap-1 h-7 px-2 text-xs" onClick={saveProfile} disabled={saving}>
-							<Save className="h-3 w-3" /> {saving ? "Saving..." : "Save"}
-						</Button>
-					</span>
-				</>
-			}
+			toolbar={<h2 className="text-lg font-bold">{contact.displayName}</h2>}
 		>
-			<div className="grid h-full min-h-0 gap-4 lg:grid-cols-3">
+			{/* Second row inside the outer frame — see documentation/stories/60. */}
+			<div className="flex shrink-0 flex-wrap items-center gap-2 border-b pb-3 mb-3">
+				<Button variant="outline" size="sm" className="gap-1 h-7 px-2 text-xs" onClick={copyForAI}>
+					<Copy className="h-3 w-3" /> Copy for AI
+				</Button>
+				<Button
+					variant="outline"
+					size="sm"
+					className="gap-1 h-7 px-2 text-xs"
+					onClick={() => setEventDialogOpen(true)}
+				>
+					<CalendarPlus className="h-3 w-3" /> Add event
+				</Button>
+				<Button
+					variant="outline"
+					size="sm"
+					className="gap-1 h-7 px-2 text-xs"
+					onClick={() => setMergeDialogOpen(true)}
+				>
+					<MergeIcon className="h-3 w-3" /> Merge
+				</Button>
+				<Button size="sm" className="gap-1 h-7 px-2 text-xs" onClick={saveProfile} disabled={saving}>
+					<Save className="h-3 w-3" /> {saving ? "Saving..." : "Save"}
+				</Button>
+			</div>
+
+			<div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-3">
 				{/* Profile column */}
 				<Card className="lg:col-span-1 overflow-y-auto">
 					<CardContent className="space-y-4 p-4">

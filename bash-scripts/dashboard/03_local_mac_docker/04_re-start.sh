@@ -3,7 +3,7 @@
 # under docker-compose. Never builds. Idempotent: checks whether the stack
 # is already running; if so, calls 05_end.sh (docker compose down
 # --remove-orphans, never -v) then starts fresh. Use 07_deploy.sh for
-# build+begin.
+# build+re-start.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -15,7 +15,7 @@ require_command docker "install Docker" || exit 1
 require_file "$ENV_FILE" "cp .env.local.example .env.local and fill in real values" || exit 1
 
 echo ""
-log_info "chad local-mac-docker — begin"
+log_info "chad local-mac-docker — re-start"
 echo ""
 
 cd "$REPO_ROOT"

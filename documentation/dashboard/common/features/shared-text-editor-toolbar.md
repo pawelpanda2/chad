@@ -30,13 +30,28 @@ interface TextEditorWithToolbarProps {
   showPreview?: boolean;        // default: true
   showSave?: boolean;           // default: true
   showWhitespaceToggle?: boolean; // default: true
+  defaultTab?: "preview" | "editor"; // default: "preview" — which tab is active on first mount (Story 55)
   placeholder?: string;         // default: "Enter content..."
-  label?: string;               // optional label (not currently rendered by component)
-  icon?: React.ReactNode;       // optional icon for label
   toolbarExtra?: React.ReactNode; // extra content after main buttons
   className?: string;
 }
 ```
+
+**Correction (Story 55, 2026-07-14):** this doc previously listed `label`/
+`icon` props — those never actually existed on the real component (verified
+against source, not assumed from this doc); removed here to match reality.
+
+### `defaultTab` (Story 55)
+
+Controls which tab (`"preview"` or `"editor"`) is active when the
+component first mounts — `useState<"preview"|"editor">(defaultTab ??
+"preview")`, a lazy initializer, so it only matters for the instance's
+*first* render, not for a prop change on an already-mounted instance.
+Added specifically because Reports needed a freshly created (empty)
+report to open on Editor instead of a useless empty Preview — see
+`documentation/dashboard/forms/features/reports-form.md`. All other
+current usages (Msg Todo, Msg Workout, Msg Planner) leave it unset and
+keep the existing Preview-first default.
 
 ## Layout
 
@@ -131,12 +146,12 @@ export default function MyTextItemPage() {
 
   return (
     <EditorPageShell>
-      {/* Page-specific header (back button, title) */}
+      {/* Page-specific header (title + shared BackButton, right-aligned —
+          see responsive-layout-standard.md's "Back button" section,
+          Story 55) */}
       <div className="flex shrink-0 items-center gap-2">
-        <Button onClick={handleBack} variant="outline" size="icon">
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
         <span className="font-semibold">My Text Item</span>
+        <BackButton onClick={handleBack} showLabel={false} />
       </div>
 
       {/* Shared editor with toolbar */}
@@ -193,6 +208,13 @@ export default function MyTextItemPage() {
 ### 3. Msg Planner (`/dashboard/msg-planner`)
 - **Not yet migrated** - has a custom layout with date selector and "new" button in the toolbar
 - Future: Could use `toolbarExtra` prop to accommodate custom controls
+
+### 4. Reports editor (`/dashboard/forms?form=reports`, Stage 2)
+- Shows: Save, Preview/Editor tabs, WCH button, plus `toolbarExtra` =
+  `VoiceRecordButton` (Story 55 — see
+  `documentation/dashboard/common/features/voice-recording.md`)
+- `defaultTab="editor"` (only usage that overrides the default — see
+  "`defaultTab`" above)
 
 ## Implementation Details
 

@@ -1,7 +1,9 @@
 # Architecture Docs
 
-> **Zacznij od [`documentation/ai-docs/what-and-where.md`](ai-docs/what-and-where.md)**
-> — to jest aktualny indeks całej dokumentacji przeznaczonej dla AI (deploy,
+> **Zacznij od [`documentation/ai-docs/knowledge/01_ai_start.md`](ai-docs/knowledge/01_ai_start.md)**
+> — krótki punkt startowy dla AI, wskazuje kolejność czytania globalnej
+> wiedzy i indeksu [`02_what-and-where.md`](ai-docs/knowledge/02_what-and-where.md)
+> — aktualnego indeksu całej dokumentacji przeznaczonej dla AI (deploy,
 > dashboard, dba, Content Provider, console, Beeper, standardy). Treść
 > poniżej opisuje strukturę sprzed migracji do monorepo `chad` i jest w
 > dużej części nieaktualna (np. `general/SCREENS-ARCHITECTURE.md` nie

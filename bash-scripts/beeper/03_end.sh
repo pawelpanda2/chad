@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Stops the background beeper-ws process started by 02_begin.sh. Idempotent
+# Stops the background beeper-ws process started by 02_re-start.sh. Idempotent
 # — a no-op (not an error) if beeper-ws isn't running.
 set -euo pipefail
 

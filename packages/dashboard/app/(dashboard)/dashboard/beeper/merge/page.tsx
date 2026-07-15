@@ -7,7 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, Users2, ArrowLeft, ArrowRightLeft, X } from "lucide-react";
+import { RefreshCw, Users2, ArrowRightLeft, X } from "lucide-react";
 import { toast } from "sonner";
 
 interface Card_ {
@@ -95,21 +95,17 @@ export default function BeeperMergePage() {
 
 	return (
 		<DashboardPageShell
-			toolbar={
-				<>
-					<Button variant="outline" size="sm" className="gap-1 h-7 px-2" asChild>
-						<Link href="/dashboard/beeper">
-							<ArrowLeft className="h-3 w-3" />Back
-						</Link>
-					</Button>
-					<h2 className="text-lg font-bold">Merge suggestions</h2>
-					<span className="text-xs text-muted-foreground">
-						Fuzzy name matches among direct-DM contacts. Nothing is merged automatically.
-					</span>
-					<span className="ml-auto text-xs text-muted-foreground">{suggestions.length} pairs</span>
-				</>
-			}
+			upLevel={{ href: "/dashboard/beeper" }}
+			toolbar={<h2 className="text-lg font-bold">Merge suggestions</h2>}
 		>
+			{/* Second row inside the outer frame — see documentation/stories/60. */}
+			<div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b pb-3 mb-3">
+				<span className="text-xs text-muted-foreground">
+					Fuzzy name matches among direct-DM contacts. Nothing is merged automatically.
+				</span>
+				<span className="ml-auto text-xs text-muted-foreground">{suggestions.length} pairs</span>
+			</div>
+
 			{loading ? (
 				<div className="flex items-center justify-center py-24 text-muted-foreground gap-2">
 					<RefreshCw className="h-4 w-4 animate-spin" /> Computing suggestions...

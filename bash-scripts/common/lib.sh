@@ -112,9 +112,9 @@ ensure_docker_network() {
 }
 
 # Usage: require_shared_services_healthy 12024
-# Preflight for TEST/PROD dashboard begin scripts: refuses to proceed
+# Preflight for TEST/PROD dashboard re-start scripts: refuses to proceed
 # unless the shared chad-mongodb + chad-content-provider-api stack (started
-# separately by bash-scripts/dashboard/00_qnap_shared/03_begin.sh) is
+# separately by bash-scripts/dashboard/00_qnap_shared/03_re-start.sh) is
 # already up and healthy. Never starts/restarts shared services itself —
 # only reads state.
 require_shared_services_healthy() {
@@ -122,7 +122,7 @@ require_shared_services_healthy() {
 
   if ! docker network inspect chad-shared >/dev/null 2>&1; then
     log_error "Docker network 'chad-shared' does not exist."
-    log_error "  Fix: bash bash-scripts/dashboard/00_qnap_shared/03_begin.sh (start shared services first)."
+    log_error "  Fix: bash bash-scripts/dashboard/00_qnap_shared/03_re-start.sh (start shared services first)."
     return 1
   fi
 
@@ -130,13 +130,13 @@ require_shared_services_healthy() {
   mongo_state="$(docker inspect -f '{{.State.Health.Status}}' chad-mongodb 2>/dev/null || true)"
   if [ "$mongo_state" != "healthy" ]; then
     log_error "Shared chad-mongodb container is not running/healthy (state: ${mongo_state:-not found})."
-    log_error "  Fix: bash bash-scripts/dashboard/00_qnap_shared/03_begin.sh"
+    log_error "  Fix: bash bash-scripts/dashboard/00_qnap_shared/03_re-start.sh"
     return 1
   fi
 
   if ! docker ps --filter "name=^chad-content-provider-api$" --filter "status=running" --format '{{.Names}}' | grep -qx "chad-content-provider-api"; then
     log_error "Shared chad-content-provider-api container is not running."
-    log_error "  Fix: bash bash-scripts/dashboard/00_qnap_shared/03_begin.sh"
+    log_error "  Fix: bash bash-scripts/dashboard/00_qnap_shared/03_re-start.sh"
     return 1
   fi
 
@@ -229,7 +229,7 @@ ensure_port_available() {
 # ============================================================================
 # Release-tag mechanism for CHAD's own images (chad-dashboard,
 # chad-content-provider-api). Own images never use `:latest` — every build
-# writes ONE canonical, gitignored tag-record file; every begin/deploy script
+# writes ONE canonical, gitignored tag-record file; every re-start/deploy script
 # reads that same file and fails loudly if it's missing, instead of silently
 # defaulting to `:latest`. Full standard:
 # documentation/ai-docs/deploy/image-tagging-standard.md
@@ -260,7 +260,7 @@ write_image_tag() {
 # by `docker compose ... up`. Fails with a clear, actionable error if the file
 # is missing or empty — NEVER falls back to `:latest`. TEST and PROD read the
 # exact same tag-record file for chad-dashboard, so running the build ONCE
-# (from either environment) and then `begin` in both is how a release is
+# (from either environment) and then `re-start` in both is how a release is
 # promoted without a second build.
 require_image_tag() {
   local tag_file="$1" image_label="${2:-image}"
@@ -289,7 +289,7 @@ require_image_tag() {
 # never pull/run it). Returns the recorded tag if present, otherwise the
 # harmless placeholder "none" so `docker compose` doesn't hard-fail on a
 # stack that was never built/deployed. `require_image_tag` (used by
-# build/begin) is what actually enforces a real, valid tag.
+# build/re-start) is what actually enforces a real, valid tag.
 image_tag_for_readonly() {
   local tag_file="$1"
   if [ -f "$tag_file" ]; then

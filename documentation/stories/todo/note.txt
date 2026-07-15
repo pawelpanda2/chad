@@ -1,0 +1,246 @@
+//done
+	//nagrywanie raportów
+		- funkcja głosowa
+		- żeby można było głosowo nagrać raport
+		
+	//mobile
+		- w wersji na telefon w formularzu Reports
+		- przycisk Create powinien być w nowej linii
+		- być może w przeglądarce na laptopie też powinien
+		
+	//selection preview / editor
+		- w niektórych przypadkach w edytorze powinno się zaznaczać pierwsze Preview
+		- w niektórych Editor
+		- więc trzeba poprawić edytor, żeby miał taką opcję / flagę
+		- i w przypadku raportów po ich utworzeniu
+
+//-----------------
+
+//todo; 03
+    //bez commitow nie powinno byc deploya
+        - skrypt deploy ssh nie wykrywał ze nie sa zmiany lokalne i nie zapytal
+        - ma zapytac czy na pewno chce zrobic deploy skoro sa zmiany w repozytroium
+        - 
+
+	//nie scizeki tylko krotki tytuł
+		- dalej widze: Views / REPORTS / 26-07-14_dg_story56 empty test
+		- miało nie być takich krótkich ścieżek
+		
+	//
+		- w actions przeniesc przycisk i auto-generated nazwe na gore
+
+//todo; 02; pilne bugi
+	//przeniesienie przycisku
+		- w reports rodzielamy create i generated name do osbnej ramki okrablej
+		- i dajemy ja na gore
+		- najlpierw od lewej i wyrownany do lewej przycisk Create
+		- a potem wyrownany do lewej Genrated name
+		
+	//nargrywanie
+		- nagrywanie fajnie dziala
+		- ale trzeba stworzyc osobna ramke jednolinijkowa
+		- pomiedzy gorna ramka z nazwa i edytorem
+		- gdzie bedzie przycisk record
+		- i gdzie ta ramka bedzie sie rozszerzec
+		- w miare jak bedzie do niej wpisywane tekst
+		- i obok przycisku record powinine byc przycisk move
+		- ktory kopiuje ten tekst przesuwac go do edytora raportu
+		- i od razu klika przycisk save czyli zapisuje
+		- w przesuwa go czy kopiuje oczywiscie na koniec tekstu
+		
+	//reports view
+		- po wybraniu raportu ktory jest pusty
+		- nie pojawia sie edytor i preview
+		
+	//pusty pasek odstepu
+		- ok ogolenie w widoku w przegladarce na kompie
+		- trzeba zrobic od konca we wszystkich widokach
+		- pusty pasek odstepu od prawej strony
+		- tak na 100px
+		
+	//przycisk back i next i backslash
+		- na koncu po prawej stronie jest przycisk back
+		- trzeba dodac od prawej krawedzi przesunac go o 75px w lewo
+		- jeszcze 75px za paskiem odseptu z prawej
+		- i w stawic przed niego przycisk next
+		- ktory bedzie sluzyl do przejscia do ostatnio otwertej strony
+		- przyciski musze byc wyszarzone jezeli nie ma nic w histori
+		- ale nie ma nic w hostri
+		- a jeszcze przed niego taki przycisk backslesh trzeba dac
+		- ktory bedzie sluzyl do cofania w hierarchi
+		- jak cos jest w hierarchi nizej
+		
+	//
+		re-start.sh mial zostac pod dwojka czyli:
+		02_re-start.sh
+		nie wiadomo dlaczego clude dał go pod 04
+
+//-----------------
+
+//todo; 01
+	//standard podwójnej ramki
+		
+		
+	//prisma
+		- wytłumacz mi po co jest prisma w tym projekcie
+		- do czego ona jest używana
+		
+	//Beeper
+		- popraw menu tam
+		
+	//cp gui
+		- usun 03/06 podpowiadajacy napis w tle w input'cie loca
+		
+	//cp zip download
+		- mozliwosc pobierania zip jednego repo
+		- ale wielu repo
+		
+	//ten sam edytor
+		- w Folder zeby to byl ten sam edytor
+		- ten wspolny dla całego projektu
+		- ten co jest uzywany np. przy raportach
+	
+	//ostatnia modyfikacja
+		- apka na poczatku pobiera daty ostatnich modyfikacji
+		- z content providera z config glownych folderow
+		- majac dane pobrane moze nie wysylac w ogole requestow
+		- to musi byc dodatkowe ustawienie w settings
+		- pozwolenie na pobieranie twoich danych na to urządzenie
+		- idealnie jakby jeszcze potem apka samodzielnie dopytywala
+		- o te text itemy z tego folderu ktore zostaly zmienione
+		- po dacie ktore jest data modyfikacji na apce
+	
+	//miarka
+		- u gory kazdej storony chce miec taka miarke linijke
+		- co 100 i co 50px tak jak na linijce
+		- dluszczy grzebien na 100 i krotszy na 50
+		- zebym mogl ocenic i szczegolnie na wersji w telefonie w przegladarce
+		- dac odpowiednie ograniczna min szerokosci
+		
+	//edit
+		- dodatkowy przycisk edit ktory powoduje pojawienie sie przyciskow save
+		- i to niech bedzie standard
+	
+	//pages rearange
+		- zmien nazwe naglowka messages / leads na po prostu messages
+		- pod messages nagłowek przenies tylko jedna zakladke czyli Beeper
+		- stworz nowy naglowek Msg Automation i tam przenies reszte ktora byla po poprzednim
+		- i jeszcze pod OTHERS przenied zakładkę Folders
+	
+	//more scrollbars insie
+		- glwona ramka i jej scrollbar niech sluzy do scrollowania jak jest wiele elemetow wewnatrz
+		- elemetnow czyli kolejnych ramek
+		- ale wewnatrz glwonej ramki kolejna zagniezdzona ramka tez powinna miec ramke
+		- tak np. trzeba poprawic widok reports
+		- zebymial glowna ramke
+		- a wsrodku zagniezdzona z raportami i jej szerokosc sie zmiejsza w zlaeznosci od
+		- dlugosci nazw raportow
+		- i w innych zakadkach trzeba podobnie zrobić, jako taki standard 
+		- i opisac go w ppliku md ze jak ai bedzie tworzylo nowe widoki czy zakladki
+		- to zeby wiedzialo zeby to robic w taki sposob
+		
+	//redis
+		- przemyśleć czy redis może mi pomoc z ladowaniem strony
+		- 
+	
+	//niepotrzebne napisy
+		- 5 of 5 reports
+		- znaleźć inne niepotrzebne napisy
+		
+	//najszybszy serwer
+		- dane chcę mieć na serwerze Kamila
+		- i też u siebie
+		- i jak mój serwer jest wolny
+		- to próba health check na serwerze Kamila
+		- i przełączenie na szybszy
+	
+	//nie ścieśnianie, tylko preview
+		- jak rozsuwam menu
+		- to w tej przestrzeni nie ma być ścieśniania
+		- tylko takie lekkie preview
+		- i nieklikalne
+		- z zablokowanym klikaniem
+	
+	//delete item
+		- Delete powinien być możliwy tylko po wejściu do itemu
+		- nigdy w widoku tabeli czy innym widoku wielu itemów
+		- i po kliknięciu Delete powinno być zapytanie, czy na pewno chcesz usunąć
+		- jeszcze może nawet okienko do wpisania jednego z losowych słów
+		- np. 6 losowych: agree, trouble, morning, listener, gorilla, paprika
+	
+	//one common cp
+		- niech przy starcie sprawdza, czy istnieje CP na porcie 12021 (samodzielny)
+		- jeżeli tak, to niech z niego korzysta
+		- jeżeli nie, to niech uruchomi swojego Content Providera w Docker Compose
+		- i też w sumie w trakcie działania powinna być taka opcja, że jak CP nie jest dostępny
+		- to może sobie uruchomić własny
+		- ale tylko lokalnie ma się tak zachowywać
+		- na TEST i PROD wydzielimy jeden osobny CP na porcie 12021
+		- i może jakiś automatyczny restart tego kontenera, gdyby coś się z nim działo
+	
+	//prisma
+		- sprawdzić, do czego służy Prisma
+		- czy mam jakąś relacyjną bazę
+		- czy jest wykorzystywana do Mongo
+	
+	//pasek z prawej
+		- z prawej strony w przeglądarce na komputerze niech robi pusty pasek
+		- taki na około 200 px
+		- oczywiście na telefonie niech wykorzystuje całą przestrzeń
+	
+	//bez ścieżek
+		- nie chcę takich ścieżek: Views / REPORTS / 26-07-14_dgb
+		- nigdzie o to nie prosiłem
+	
+	//stack
+		- chcę zapamiętywanie cofania i przechodzenia do przodu
+		- taki stack
+	
+	//error
+		- zakładka Msg Planner ma dziwny błąd
+		- Error: Empty response body from /invoke. Args: ["IRepoService","IItemWorker","GetByNames","8b603669-f8e6-4224-bd78-a474998995fa","leads","msg planner"]
+	
+	//cloud flare
+		- do PROD dodać Cloudflare
+	
+	//długo trwa klik do formularza
+		- jak wybieram Date Entry, to zazwyczaj chwilę to trwa
+		- i jakiś wskaźnik ładowania trzeba tu wstawić
+		- takie kręcące się kółko z napisem Loading w przycisku
+		- i zablokowanie innych przycisków
+		- podobnie przy Back czasem to długo trwa
+	
+	//palcem przesunięcie - dziwny efekt
+		- user nie zachował standardu ze scroll barem poziomym
+		- ruchem ręki się przewija, a dolnego scroll bara nie widać
+		- do tego jest dziwny efekt, którego nie lubię
+		- ruchem ręki można przesunąć się dalej niż kolumny z danymi
+		- i tworzy się taka dziwna pusta przestrzeń po przesunięciu
+		- zamiast twardo zatrzymywać się na ostatnim pikselu ostatniej lub pierwszej kolumny
+		- w Statuses jest ten sam efekt, że mogę ruchem ręki przesunąć
+		- i też tak skacze i odbija z powrotem - nie lubię tego
+	
+	//close sidebar
+		- niech ma dwie strzałki
+		- będzie dwa razy większa wysokość, tak na dwie linie przycisków
+		- będzie jeszcze łatwiej kliknąć
+		- możesz zrobić tak, jak w ChatGPT jest przycisk zamykania sidebara
+		- i wtedy "dyndzel" niech będzie niewidoczny
+		- ale potem, gdy menu zostanie całkowicie zwinięte, niech będzie visible = true
+		- czyli jakby dwa przyciski służące do zwijania i rozwijania
+		- jeden osadzony na menu
+		- drugi tak jak teraz, wystający "dyndzel"
+		- tylko raz jeden jest widoczny, a raz drugi
+	
+	//zapamiętane widoki we frontendzie
+		- może dałoby się zapamiętywać widok bez danych
+		- automatycznie ładować go z pamięci przeglądarki telefonu / laptopa
+	
+	//??
+		- zwiększyć okienko Text Item w Blazor App
+		- raporty z randek osobno
+		- raport z randki z Darią
+		- informacja, jaki jest dzisiaj dzień, bo AI jakoś tego nie wie
+		- (- Jeśli **piątek jest dzisiaj**, wyślij:)
+		- inne podstawowe informacje na górze promptu
+		- dodatkowa opcja dla raportów z randek: czy randka się odbyła

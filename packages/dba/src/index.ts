@@ -9,6 +9,7 @@
 
 export * from './client.js';
 export * from './repo-context.js';
+export * from './repo-access.js';
 export * from './leads.js';
 export * from './reports.js';
 export * from './report-entries.js';

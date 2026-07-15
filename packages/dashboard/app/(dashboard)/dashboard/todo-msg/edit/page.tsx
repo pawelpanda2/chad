@@ -2,10 +2,11 @@
 
 import { Suspense, useState, useEffect, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Button } from "@/components/ui/button";
 import { TextEditorWithToolbar } from "@/components/shared/text-editor-with-toolbar";
 import { EditorPageShell } from "@/components/shared/editor-page-shell";
-import { ArrowLeft, AlertCircle, Loader2 } from "lucide-react";
+import { BackButton } from "@/components/shared/back-button";
+import { NavGroup } from "@/components/shared/nav-group";
+import { AlertCircle, Loader2 } from "lucide-react";
 
 // ============================================================================
 // Types
@@ -145,10 +146,7 @@ function TextEditorPageContent() {
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
         <AlertCircle className="h-12 w-12 text-destructive" />
         <p className="text-muted-foreground text-center max-w-md">{error}</p>
-        <Button onClick={handleBack} variant="outline">
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Back to list
-        </Button>
+        <BackButton onClick={handleBack} label="Back to list" className="ml-0" />
       </div>
     );
   }
@@ -158,13 +156,7 @@ function TextEditorPageContent() {
       {/* Compact Header with back button and label. pl-14 reserves the
           top-left slot for the fixed menu handle. */}
       <div className="flex shrink-0 items-center gap-2 pl-14">
-        <Button
-          onClick={handleBack}
-          variant="outline"
-          size="icon"
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
+        <NavGroup upLevel={{ onClick: handleBack, label: "Back to list" }} />
         <div className="flex min-w-0 items-center gap-2">
           <span className="shrink-0 font-semibold">
             Text Editor
