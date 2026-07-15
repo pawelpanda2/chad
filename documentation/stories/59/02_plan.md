@@ -28,17 +28,23 @@ sequence:
 
 ## Phase 0 — Decisions needed before implementation starts
 
-These are genuine open questions this plan surfaces but does not answer —
-see `06_others_from_report.md` for the full list. The two that block
-everything else:
+**RESOLVED by the user (approving this Story for execution):** one shared
+MongoDB *instance/container*, but **two separate logical databases** —
+`chad` (for CHAD/dashboard and the future Content Provider
+`content_provider_files` model) and `beeper` (for `contacts`, `channels`,
+`messages`, `timeline_events`, `sync_state`, `beeper_events`,
+`merge_suggestions`). This overrides this plan's original recommendation of
+one merged database — explicitly to minimize change/risk by keeping the
+`beeper` name and shape exactly as `contacts` already has it. Do **not**
+move Beeper data into database `chad` without a concrete technical reason.
+`migrate-contacts-to-chad.mjs` needs no code change for this — its target
+database is whatever the target `MONGODB_URI`'s path segment says
+(`.../beeper` vs `.../chad`), so this is purely a connection-string
+decision at each call site.
 
-- **Target database name.** `contacts`'s Mongo uses database `beeper`
-  (`mongodb://.../beeper`). Earlier migration docs assumed the target would
-  be a database literally named `chad`. Need one explicit decision: reuse
-  collection names in whichever single shared chad database already
-  exists/is planned (recommended — avoids a second migration later when
-  `content_provider_files` lands), not a separate `beeper` database on the
-  chad side.
+One remaining open question, unaffected by the above — see
+`06_others_from_report.md`:
+
 - **MongoDB replica-set re-approval.** `beeper-oplog` cannot run anywhere
   (local or QNAP) without a replica set, which was deliberately reverted to
   standalone after a real bootstrap-ordering bug. This plan does not

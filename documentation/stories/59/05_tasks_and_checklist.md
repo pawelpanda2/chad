@@ -1,16 +1,16 @@
 # Story 59 — Tasks Checklist
 
-**Scope note:** this Story is planning-only, per the user's explicit
-request ("zacznij planowac... opiszesz taski i plan potrzebny"). No
-implementation work has started. Every row below is a **planned future
-task**, not a completed one — this checklist doubles as the roadmap the
-user asked for. Statuses will move from `NOT DONE` as each phase is
-actually executed in a future Story.
+**Scope note:** originally planning-only. **Approved for execution by the
+user**, with Phase 0 resolved as: one shared MongoDB instance, two
+separate logical databases (`chad` and `beeper`, not merged) — see
+`02_plan.md` Phase 0. Phases now execute one at a time, each still gated on
+explicit go-ahead per this repo's rollout convention (local → local Docker
+→ QNAP test → QNAP prod).
 
 | # | Ai Status | Real Status | Task |
 |---|-----------|-------------|------|
-| 1 | NOT DONE  |             | Decide target chad MongoDB database/collection naming (Phase 0) |
-| 2 | NOT DONE  |             | Local dry-run + applied migration: `contacts` Mongo → local `chad` Mongo, with read+write verification (Phase 1) |
+| 1 | DONE      |             | Decide target chad MongoDB database/collection naming (Phase 0) |
+| 2 | NOT DONE  |             | Local dry-run + applied migration: `contacts` Mongo → local `beeper` database (same MongoDB instance as `chad`), with read+write verification (Phase 1) |
 | 3 | NOT DONE  |             | `beeper-ws`/`beeper-sync` verified live against the migrated local database, including a real incremental sync and a real live event (Phase 2) |
 | 4 | NOT DONE  |             | QNAP test dry-run + applied migration, dashboard re-pointed, read+write re-verified on QNAP test (Phase 3) |
 | 5 | NOT DONE  |             | `beeper-oplog` deployed to QNAP — gated on the MongoDB replica-set decision being re-approved (Phase 4) |
@@ -22,10 +22,16 @@ actually executed in a future Story.
 **Requested:** Resolve the open question in `02_plan.md` Phase 0 — which
 chad MongoDB database the migrated Beeper collections should live in, so
 Task 2 has an unambiguous target.
-**Plan:** Present the recommendation from `02_plan.md` (single shared chad
-database, not a separate `beeper` database) to the user for a one-line
-confirmation before Task 2 starts.
-**Status: NOT DONE**
+**Done:** User decided, overriding this plan's original recommendation:
+one shared MongoDB instance, two separate logical databases — `chad`
+(dashboard + future Content Provider `content_provider_files`) and
+`beeper` (unchanged: `contacts`, `channels`, `messages`,
+`timeline_events`, `sync_state`, `beeper_events`, `merge_suggestions`).
+Rationale given: minimizes change/risk versus renaming or merging
+anything. No Beeper data moves into `chad` unless a concrete technical
+need arises later.
+**Files changed:** `02_plan.md` (Phase 0 updated to record the decision).
+**Status: DONE**
 
 # Task 2 — Local dry-run + applied migration with read+write verification
 
