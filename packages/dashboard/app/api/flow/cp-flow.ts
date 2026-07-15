@@ -71,6 +71,36 @@ async function invokeCp(args: string[]): Promise<{ success: boolean; result?: st
   }
 }
 
+/** Raw GetItem shape — Body + Settings (config), matching the real .NET /invoke response verbatim. */
+export interface CpRawItem {
+  Body: string;
+  Settings: {
+    id: string;
+    type: string;
+    name: string;
+    address: string;
+    [key: string]: unknown;
+  };
+}
+
+/**
+ * GetItem by loca — used by the Folders tab's generic browser
+ * (documentation/stories/57). `invokeCp`'s declared return type
+ * (`{success, result, error}`) does NOT match the real .NET /invoke
+ * response for GetItem, which is `{Body, Settings}` directly — `invokeCp`
+ * just returns whatever JSON it parsed (see its own `return json;`
+ * above), so this reads the real shape directly rather than going
+ * through `invokeCpWithTrace` (which only extracts a `.result` string,
+ * built for the Body-only forms/leads flows above).
+ */
+export async function getItemByLoca(repoGuid: string, loca: string): Promise<CpRawItem> {
+  const raw = (await invokeCp(['IRepoService', 'IItemWorker', 'GetItem', repoGuid, loca])) as unknown as CpRawItem;
+  if (!raw || typeof raw.Body !== 'string' || !raw.Settings || typeof raw.Settings !== 'object') {
+    throw new Error(`GetItem(${repoGuid}, "${loca}") returned an unexpected shape: ${JSON.stringify(raw)}`);
+  }
+  return raw;
+}
+
 /**
  * Parse YAML string to object
  */

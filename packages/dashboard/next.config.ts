@@ -25,14 +25,10 @@ const nextConfig: NextConfig = {
 	turbopack: {
 		resolveAlias: {
 			"dba": "./node_modules/dba/dist/index.js",
-			"cp-core": "./node_modules/cp-core/dist/index.js",
-			"cp-net-adapter": "./node_modules/cp-net-adapter/dist/index.js",
-			"cp-files": "./node_modules/cp-files/dist/index.js",
-			"cp-entry": "./node_modules/cp-entry/dist/index.js",
 		},
 	},
 
-	transpilePackages: ["dba", "cp-core", "cp-net-adapter", "cp-files", "cp-entry"],
+	transpilePackages: ["dba"],
 
 	// Compress responses
 	compress: true,
