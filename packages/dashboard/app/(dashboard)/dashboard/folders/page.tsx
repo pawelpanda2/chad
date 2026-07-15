@@ -182,18 +182,6 @@ export default function FoldersPage() {
     }
   }, [currentItem, selectedRepoGuid]);
 
-  async function handleRepoChange(repoGuid: string) {
-    setSelectedRepoGuid(repoGuid);
-    setNav({ items: [], index: -1 });
-    setLoading(true);
-    try {
-      const result = await fetchItem(repoGuid, "");
-      if (result) pushItem(result.item);
-    } finally {
-      setLoading(false);
-    }
-  }
-
   async function handleGo() {
     setLoading(true);
     try {
@@ -233,7 +221,17 @@ export default function FoldersPage() {
         <div className="space-y-2 border-b pb-3">
           <div className="flex items-center gap-2">
             <span className="text-sm text-muted-foreground whitespace-nowrap">Repo::</span>
-            <Select value={selectedRepoGuid} onValueChange={handleRepoChange}>
+            {/*
+              Security (documentation/stories/60): this dropdown may only ever
+              show/select the current user's own repo. The backend
+              (/api/folders/repos, via dba's strict resolveOwnRepo()) never
+              returns more than one repo, but the control is ALSO disabled
+              here as defense-in-depth UX — there must be no way to type or
+              pick a different value even if that ever changed. This does
+              NOT replace the server-side enforcement in packages/dba; it is
+              purely a UX safeguard.
+            */}
+            <Select value={selectedRepoGuid} disabled>
               <SelectTrigger className="w-[220px]">
                 <SelectValue />
               </SelectTrigger>
