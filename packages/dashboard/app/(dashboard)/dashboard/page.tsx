@@ -5,5 +5,5 @@ import { redirect } from "next/navigation";
 // (app/page.tsx and the login redirect both point here), so instead of a 404
 // it now redirects to the first real working tab.
 export default function DashboardIndexPage() {
-	redirect("/dashboard/statuses");
+	redirect("/dashboard/forms");
 }

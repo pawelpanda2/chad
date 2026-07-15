@@ -2,8 +2,8 @@
 # Builds the full local Mac stack (mongo + content-provider-api + dashboard)
 # under docker-compose. Only builds — never runs containers, never touches
 # a running environment, never `docker compose up`, never removes volumes.
-# See 04_begin.sh (start, idempotent) / 05_end.sh (stop) / 06_status.sh /
-# 07_deploy.sh (build + begin, one shot).
+# See 04_re-start.sh (start, idempotent) / 05_end.sh (stop) / 06_status.sh /
+# 07_deploy.sh (build + re-start, one shot).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"

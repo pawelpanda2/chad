@@ -21,7 +21,6 @@ import {
   CheckCircle2,
   User,
   Search,
-  ArrowLeft,
   Save,
   X,
 } from "lucide-react";
@@ -571,15 +570,7 @@ function StatusesPageContent() {
       <DashboardPageShell
         padded={false}
         contentClassName="p-4"
-        toolbar={
-          <button
-            onClick={closeEditor}
-            className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back to list
-          </button>
-        }
+        upLevel={{ onClick: closeEditor, label: "Back to list" }}
       >
             {/* Lead Info */}
             <div className="mb-6">
@@ -734,8 +725,6 @@ function StatusesPageContent() {
         toolbar={
           <>
             {modeSelect}
-            {numericRangeInput}
-            {nameFilterInput}
             {matrixSaved && (
               <span className="text-sm text-green-600 flex items-center gap-1">
                 <CheckCircle2 className="h-4 w-4" />
@@ -751,6 +740,12 @@ function StatusesPageContent() {
             <span className="ml-auto text-sm text-muted-foreground">
               {visibleLeads.length} of {leads.length} leads
             </span>
+          </>
+        }
+        toolbarSecondRow={
+          <>
+            {numericRangeInput}
+            {nameFilterInput}
           </>
         }
       >
@@ -997,11 +992,15 @@ function StatusesPageContent() {
       toolbar={
         <>
           {modeSelect}
-          {numericRangeInput}
-          {nameFilterInput}
           <span className="ml-auto text-sm text-muted-foreground">
             {visibleLeads.length} of {leads.length} leads
           </span>
+        </>
+      }
+      toolbarSecondRow={
+        <>
+          {numericRangeInput}
+          {nameFilterInput}
         </>
       }
     >

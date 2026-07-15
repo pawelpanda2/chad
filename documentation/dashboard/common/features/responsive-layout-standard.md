@@ -88,11 +88,29 @@ layout różnicuje desktop i mobile.
   zmian. Nie usunięto implementacji.
 - **Theme toggle**: przeniesiony do nagłówka `Sidebar` (bo topbar jest ukryty
   app-wide), więc przełącznik motywu pozostaje dostępny.
-- **Główna treść**: `<main className="min-h-0 flex-1 overflow-y-auto p-0.5">`.
-  Padding ~2px, żeby ramka niemal idealnie wypełniała ekran. `overflow-y-auto`
-  (nie `hidden`) jest bezpieczne: powłoki wypełniają `main` dokładnie
-  (`h-full`), więc na stronach standardowych nie powstaje scroll strony, a
-  strony jeszcze niezmigrowane nie są przycinane.
+- **Główna treść**: `<main className="min-h-0 flex-1 overflow-y-auto p-0.5
+  md:pr-[100px]">`. Padding ~2px, żeby ramka niemal idealnie wypełniała
+  ekran. `overflow-y-auto` (nie `hidden`) jest bezpieczne: powłoki
+  wypełniają `main` dokładnie (`h-full`), więc na stronach standardowych
+  nie powstaje scroll strony, a strony jeszcze niezmigrowane nie są
+  przycinane. **`md:pr-[100px]` (Story 56, 2026-07-14):** dodatkowy pusty
+  pas ~100px po prawej stronie, tylko na desktopie (`md:` = od 768px) —
+  nigdy na telefonie. Jeden wspólny punkt zmiany dla wszystkich widoków
+  (zamiast kopiowania paddingu do każdej strony); zobacz "Shared
+  navigation" niżej — to ta sama przestrzeń, obok której siada wspólny
+  `NavGroup`.
+- **`DashboardHistoryProvider`** (Story 56, 2026-07-14) —
+  `components/shared/dashboard-history-provider.tsx`, montowany raz w
+  layout.tsx (owinięty w `<Suspense>`, bo korzysta z `useSearchParams`),
+  wewnątrz `<main>`, otaczający `{children}`. Śledzi własny stos
+  odwiedzonych URL-i (`pathname` + `?form=`/`?view=`) w zwykłym stanie
+  Reacta — wyłącznie w RAM, zerowana po odświeżeniu strony, bez
+  `localStorage`/`sessionStorage`/backendu. Maksymalnie 5 wpisów wstecz i
+  5 wpisów do przodu (przycinanie najstarszych przy każdej nowej,
+  nie-cofniętej/nie-do-przodu nawigacji). Udostępnia
+  `useDashboardHistory()`: `{ canGoBack, canGoForward, goBack, goForward
+  }` — używane wyłącznie przez `NavGroup` (patrz niżej), nie bezpośrednio
+  przez strony.
 
 ### Warstwa 2 — Wspólne powłoki strony
 
@@ -108,9 +126,51 @@ dla stron listowych/treściowych):
 - Treść ramki: `flex flex-col` (cross-axis `stretch` → dzieci pełnej szerokości,
   ułożone od góry → wyrównanie do lewej-górnej). Scroll wewnętrzny
   (`overflow-y-auto`) domyślnie w ramce.
-- Propsy: `toolbar`, `scroll` (domyślnie `true`; `false` gdy dziecko ma własny
-  scroll, np. tabela z `sticky` nagłówkiem lub edytor), `padded`, `className`,
-  `frameClassName`, `contentClassName`.
+- Propsy: `toolbar`, `toolbarSecondRow` (Story 56 — opcjonalny drugi wiersz
+  nad ramką, dla stron z własnymi filtrami/kontrolkami obok tytułu, żeby
+  `NavGroup` nie musiał konkurować o miejsce z filtrami w jednym wierszu;
+  patrz `statuses/page.tsx`), `upLevel` (Story 56 — patrz "Shared
+  navigation" niżej), `scroll` (domyślnie `true`; `false` gdy dziecko ma
+  własny scroll, np. tabela z `sticky` nagłówkiem lub edytor), `padded`,
+  `className`, `frameClassName`, `contentClassName`.
+
+#### Shared navigation: `NavGroup` (Story 56, 2026-07-14 — zastępuje `BackButton`)
+
+`components/shared/nav-group.tsx` — **NavGroup**: `[Prev] [Back] [Forw]`,
+jedyny sposób renderowania nawigacji "wstecz" na dowolnej stronie
+dashboardu. Zastępuje `BackButton` (Story 55) — ten komponent nadal
+istnieje (`components/shared/back-button.tsx`) tylko dla dwóch
+odosobnionych kart błędu poza `DashboardPageShell`/`EditorPageShell`
+(`leads/msg-workout`, `todo-msg/edit`, stan przed zamontowaniem powłoki).
+
+- **`DashboardPageShell` renderuje `NavGroup` automatycznie**, na końcu
+  swojego wiersza toolbara (`upLevel` prop przekazywany dalej) — strony na
+  tym standardzie dostają nawigację "za darmo", bez własnego kodu, nawet
+  jeśli nigdy wcześniej nie miały żadnego przycisku Back (np. `msg-planner`,
+  lista `todo-msg`, `users`, lista `beeper`). Strony z własnym, ręcznie
+  budowanym wierszem nagłówka na `EditorPageShell` (Reports, `todo-msg/edit`,
+  `leads/msg-workout`) renderują `<NavGroup upLevel={...} />` samodzielnie,
+  w miejscu starego `<BackButton>`.
+- **Zawsze po prawej stronie** swojego wiersza — komponent sam dokłada
+  `ml-auto`, więc musi być **ostatnim** dzieckiem w tym `flex` wierszu.
+- **`Prev`/`Forw`** (skrajne przyciski, strzałki lewo/prawo): prawdziwa
+  historia nawigacji w obrębie dashboardu, z `useDashboardHistory()` —
+  ten sam mechanizm na każdej stronie, bez żadnych propsów. Wyszarzone,
+  gdy nie ma odpowiednio wcześniejszego/kolejnego wpisu.
+- **`Back`** (środkowy przycisk, większa ikona `Undo2` — okrągła
+  strzałka): przejście o **jeden poziom wyżej w hierarchii bieżącej
+  strony** (np. wybrany raport → lista raportów → menu Views) — to
+  **NIE** jest historia przeglądarki/dashboardu, tylko logika konkretnej
+  strony, przekazana przez `upLevel={{ onClick, href, disabled, label }}`.
+  Bez `upLevel` (strony bez własnej hierarchii, np. top-level menu) —
+  wyszarzony domyślnie. `\`'s dawna, literalna forma tekstowa (`\`) z
+  pierwszej wersji Story 56 została zastąpiona ikoną + etykietą "Back" po
+  korekcie użytkownika w trakcie realizacji — reużywa dokładnie tego
+  samego `onClick`/`disabled`, który wcześniej trafiał do `BackButton`
+  (semantyka "idź w górę o poziom" istniała już wcześniej, tylko pod
+  nazwą/pozycją "Back").
+- Warianty `upLevel`: `onClick` albo `href` (renderuje `Link`, np. strony
+  Beeper), `disabled`, `label` (tekst `title` atrybutu).
 
 `components/shared/editor-page-shell.tsx` — **EditorPageShell** (niższa warstwa,
 sama kolumna pełnej wysokości, bez ramki):
@@ -157,6 +217,18 @@ Strony przeniesione na standard:
 
 Ekrany edytora korzystające z `EditorPageShell` + `TextEditorWithToolbar`
 (`todo-msg/edit`, `leads/msg-workout`) zyskują poprawę automatycznie.
+
+**Story 56 (2026-07-14) — nawigacja + pas 100px:**
+`components/shared/nav-group.tsx` (nowy), `components/shared/
+dashboard-history-provider.tsx` (nowy), `dashboard-page-shell.tsx`
+(`toolbarSecondRow`, `upLevel`, automatyczny `NavGroup`), `app/(dashboard)/
+layout.tsx` (`md:pr-[100px]`, `DashboardHistoryProvider` + `Suspense`).
+`upLevel` dodany w: `forms/page.tsx` (wszystkie gałęzie), `views/page.tsx`
+(leads/reports/tracker/dates), `leads/details/page.tsx`,
+`statuses/page.tsx`, `beeper/{inbox,merge,[id]}/page.tsx`. `NavGroup`
+wstawiony ręcznie (zamiast automatycznego, bo te strony budują własny
+nagłówek na `EditorPageShell`) w: `forms/page.tsx` (gałąź Reports),
+`leads/msg-workout/page.tsx`, `todo-msg/edit/page.tsx`.
 
 ## Zasady dla nowych stron
 

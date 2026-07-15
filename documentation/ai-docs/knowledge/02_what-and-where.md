@@ -1,19 +1,15 @@
 # What and where — AI documentation index
 
-Status: utworzone 2026-07-13, zaktualizowane 2026-07-14 (kolejność czytania
-+ globalne Knowledge). To jest **punkt startowy** dla AI przed większym
-zadaniem w tym repo.
+Status: utworzone 2026-07-13, zaktualizowane 2026-07-14 (przeniesione do
+`documentation/ai-docs/knowledge/` jako `02_what-and-where.md` — punktem
+startowym dla AI jest teraz [`01_ai_start.md`](01_ai_start.md), ten plik
+jest **indeksem** do reszty dokumentacji, nie punktem wejścia).
 
-## Kolejność czytania dokumentacji przez AI (czytaj to najpierw)
-
-1. **Najpierw** przeczytaj `documentation/ai-docs/knowledge/` **w
-   kolejności numeracji plików** (`01_...`, `02_...`, ...) — to jest
-   globalna baza wiedzy obowiązująca dla całego projektu, niezależnie od
-   tego, jakie konkretnie zadanie jest realizowane (np. standard Story,
-   zasady deploymentu). Krótka, ma być czytana w całości, za każdym razem.
-2. **Dopiero potem** wróć do reszty tego pliku (sekcja "Zasada" niżej) i
-   użyj go jako indeksu do pozostałej dokumentacji projektu — per-kategoria,
-   otwieraj tylko to, co potrzebne do aktualnego zadania.
+**Jeśli jeszcze nie czytałeś [`01_ai_start.md`](01_ai_start.md), zrób to
+najpierw** — wskazuje kolejność czytania całej globalnej wiedzy
+(`documentation/ai-docs/knowledge/`), zanim wrócisz tutaj po indeks reszty
+dokumentacji projektu, per-kategoria, otwierając tylko to, co potrzebne do
+aktualnego zadania.
 
 ## Zasada
 
@@ -34,37 +30,38 @@ nowej kategorii albo ważnym nowym dokumencie.
 środowisk (lokalnie z Dockerem, lokalnie przez tmux bez Dockera, QNAP TEST,
 QNAP PROD, współdzielony stack QNAP), MongoDB, Content Provider API jako
 usługa wdrożeniowa, `.env.qnap`/`.env.local`, standard skryptów
-build/begin/end/status/deploy.
+build/re-start/end/status/deploy.
 
 **Lokalizacja:** `documentation/ai-docs/deploy/`
 
 **Najważniejsze dokumenty:**
-- [image-tagging-standard.md](deploy/image-tagging-standard.md) — **przeczytaj
+- [image-tagging-standard.md](../deploy/image-tagging-standard.md) — **przeczytaj
   zawsze przed jakimkolwiek buildem/deployem.** Własne obrazy CHAD nigdy nie
   używają `:latest`; jeden zapisany tag na release, wspólny dla TEST i PROD.
-- [qnap-data-path.md](deploy/qnap-data-path.md) — incydent `/share` jako
+- [qnap-data-path.md](../deploy/qnap-data-path.md) — incydent `/share` jako
   16MB tmpfs, jak go rozpoznać, jak skrypt to teraz waliduje.
-- [dashboard-deployment-scripts.md](deploy/dashboard-deployment-scripts.md) —
+- [dashboard-deployment-scripts.md](../deploy/dashboard-deployment-scripts.md) —
   autorytatywny kontrakt skryptów Docker Compose (`00_qnap_shared`,
   `03_local_mac_docker`, `04_qnap_test`, `05_qnap_prod`, `06_qnap_ssh`):
-  co robi `02_build.sh`/`03_begin.sh`/`04_end.sh`/`05_status.sh`/
+  co robi `02_build.sh`/`03_re-start.sh`/`04_end.sh`/`05_status.sh`/
   `06_deploy.sh`, architektura shared/test/prod, **sekcja o niespójności
-  nazewnictwa `begin/end` vs `start/end`** (przeczytaj przed zmianą nazw
-  jakiegokolwiek skryptu deploymentowego).
-- [shared-qnap-services.md](deploy/shared-qnap-services.md) — jedno wspólne
+  nazewnictwa `re-start/end` (Docker) vs `start/end` (tmux) vs `begin_*`
+  (SSH wrappery)** (przeczytaj przed zmianą nazw jakiegokolwiek skryptu
+  deploymentowego).
+- [shared-qnap-services.md](../deploy/shared-qnap-services.md) — jedno wspólne
   MongoDB + jeden wspólny Content Provider dla TEST i PROD: decyzja
   architektoniczna, porty, mounty, procedura promocji obrazu, rollback,
   wyniki realnych testów na QNAP.
-- [dashboard-start-scripts.md](deploy/dashboard-start-scripts.md) — lokalny
+- [dashboard-start-scripts.md](../deploy/dashboard-start-scripts.md) — lokalny
   dev flow BEZ Dockera (tmux/tmuxinator: `dba` watch + `next dev` + Content
-  Provider), `begin.sh`/`end.sh`/`status.sh` z roota repo.
-- [2026-07-10_decision-beeper-mac-qnap-architecture.md](deploy/2026-07-10_decision-beeper-mac-qnap-architecture.md) —
+  Provider), `re-start.sh`/`end.sh`/`status.sh` z roota repo.
+- [2026-07-10_decision-beeper-mac-qnap-architecture.md](../deploy/2026-07-10_decision-beeper-mac-qnap-architecture.md) —
   matryca środowisk (Mac / local Docker / QNAP test / QNAP prod), konwencja
   portów właściciela (12020–29 = test, 12030–39 = prod).
-- [2026-07-10_mongodb-replica-set-migration-plan.md](deploy/2026-07-10_mongodb-replica-set-migration-plan.md) —
+- [2026-07-10_mongodb-replica-set-migration-plan.md](../deploy/2026-07-10_mongodb-replica-set-migration-plan.md) —
   Mongo pozostaje standalone (bez replica set) na dziś; plan migracji gdyby
   zaszła taka potrzeba (change streams dla `beeper-oplog`).
-- [bash-scripts-structure.md](deploy/bash-scripts-structure.md) — **częściowo
+- [bash-scripts-structure.md](../deploy/bash-scripts-structure.md) — **częściowo
   przestarzałe**, zachowane jako zapis historyczny uzasadnienia nazewnictwa;
   NIE ufaj jego drzewu katalogów jako aktualnemu (użyj `ls bash-scripts/dashboard/`).
 
@@ -92,19 +89,29 @@ kategoria "Beeper" niżej, która opisuje sync/integrację).
 
 **Najważniejsze dokumenty:**
 - `common/features/responsive-layout-standard.md` — jedyny obowiązujący
-  standard layoutu (DashboardPageShell/EditorPageShell), scroll, mobile.
+  standard layoutu (DashboardPageShell/EditorPageShell), scroll, mobile,
+  **wspólny komponent `BackButton`, zawsze po prawej stronie toolbara**
+  (Story 55, 2026-07-14).
 - `common/features/shared-text-editor-toolbar.md` — wspólny edytor
-  (CodeMirror), dark mode, numery linii, Preview/Editor tabs.
+  (CodeMirror), dark mode, numery linii, Preview/Editor tabs, **prop
+  `defaultTab`** (Story 55).
+- `common/features/voice-recording.md` (nowy, Story 55, 2026-07-14) —
+  architektura nagrywania raportów głosem: interfejs `SpeechToTextEngine`
+  (silnik wymienny), pierwsza implementacja Web Speech API (tylko Chrome/
+  Edge, obsłużone jako normalny stan, nie błąd), `VoiceRecordButton`
+  podpięty pod Reports przez `toolbarExtra`.
 - `common/features/compile-time-flags-and-error-box.md` — flagi
   `NEXT_PUBLIC_ENABLE_DEV_PANEL`/`NEXT_PUBLIC_ENABLE_DIAGNOSTICS`,
   standardowy `ErrorBox` (bezpieczeństwo: co jest widoczne na test/prod).
 - `common/features/chad-user-data-isolation.md`, `chad-domain-ssl.md`,
   `nginx-proxy-manager-domains.md` — auth/multi-user, SSL, domeny publiczne.
-- `forms/features/reports-form.md` (2026-07-13, przebudowany w Story 53) —
-  formularz "Reports" (Forms, dwuetapowy panel danych + edytor) i widok
-  "Reports" (Views): lista + podgląd zapisanych raportów pod `views/reports`
-  (przemianowane z `actions/reports` w Story 53). Zawiera też opis wywołań
-  Content Providera i wynik testu ręcznego względem realnego CP.
+- `forms/features/reports-form.md` (2026-07-13, przebudowany w Story 53;
+  Story 55 dodała nagrywanie głosowe, `defaultTab="editor"` po utworzeniu,
+  Create na osobnym wierszu) — formularz "Reports" (Forms, dwuetapowy
+  panel danych + edytor) i widok "Reports" (Views): lista + podgląd
+  zapisanych raportów pod `views/reports` (przemianowane z
+  `actions/reports` w Story 53). Zawiera też opis wywołań Content
+  Providera i wynik testu ręcznego względem realnego CP.
 
 **Uwaga o duplikacji:** `documentation/features/*.md` (katalog w rootcie
 `documentation/`, BEZ `dashboard/`) zawiera starsze dokumenty o tych samych
@@ -233,22 +240,30 @@ zapisywanych do Content Providera i renderowanych w dashboardzie.
 
 ---
 
-## Knowledge (globalna baza wiedzy — czytaj pierwsza, patrz sekcja na
-samej górze tego pliku)
+## Knowledge (globalna baza wiedzy — czytaj pierwsza, zacznij od
+`01_ai_start.md`)
 
 **Opis:** Krótkie, obowiązujące dla całego projektu zasady, niezależne od
-konkretnego zadania/Story. Numerowane wg ważności/kolejności czytania.
+konkretnego zadania/Story. Numerowane wg kolejności czytania.
 
 **Lokalizacja:** `documentation/ai-docs/knowledge/`
 
 **Pliki (2026-07-14):**
-- [knowledge/01_story-standard.md](knowledge/01_story-standard.md) —
+- [01_ai_start.md](01_ai_start.md) — pierwszy dokument do przeczytania;
+  bardzo krótki, wskazuje tylko kolejność czytania reszty (ten plik,
+  `03_story-standard.md`, `04_deployment-rules.md`) i przypomina o
+  bieżącym aktualizowaniu `stories/<N>/04_todos.md` podczas pracy nad Story.
+- [03_story-standard.md](03_story-standard.md) —
   standard numerowanych katalogów Story (`documentation/stories/<N>/`,
-  6 plików `01_input.md`...`06_propositions.md`), obowiązkowa Checklist na
-  początku `05_report.md`, zasada "puste `04_todos.md` = Story bez
-  nierozwiązanych wątków", i rozróżnienie względem per-Story
-  `03_knowledge.md`.
-- [knowledge/02_deployment-rules.md](knowledge/02_deployment-rules.md) —
+  6 plików `01_input.md`...`06_others_from_report.md`; **`05_tasks_and_checklist.md`
+  jest obowiązkowy i musi zawierać zarówno Checklistę JAK I opis każdego
+  tasku** — to najważniejszy plik całego standardu, oznaczony na czerwono
+  w samym dokumencie po tym, jak pominięcie opisów tasków faktycznie się
+  zdarzyło w Story 56; `06_others_from_report.md` jest opcjonalny —
+  decyzje/problemy/propozycje, może być pusty), zasada "puste
+  `04_todos.md` = Story bez nierozwiązanych wątków", i rozróżnienie
+  względem per-Story `03_knowledge.md`.
+- [04_deployment-rules.md](04_deployment-rules.md) —
   build/start/stop/deploy wyłącznie oficjalnymi skryptami projektu; dlaczego
   `docker-compose.*.yml` nie jest źródłem wiedzy o procesie deploymentu
   (IMAGE_TAG, generowany appsettings, health-checki, port ownership).
@@ -262,10 +277,11 @@ zadaniach dotyczących akurat Story albo deploymentu.
 przy pracy w tym repo — nie wiedza domenowa, tylko konwencje.
 
 **Lokalizacja:** `documentation/ai-docs/` (pliki bezpośrednio w tym
-katalogu, nie w podkatalogach kategorii)
+katalogu, nie w podkatalogach kategorii) oraz `documentation/ai-docs/knowledge/`
+dla `01_ai_start.md`/`02_what-and-where.md` (ten plik) samych.
 
 **Najważniejsze dokumenty:**
-- [feature-documentation-rules.md](feature-documentation-rules.md) —
+- [feature-documentation-rules.md](../feature-documentation-rules.md) —
   obowiązkowy standard dokumentowania nowych feature'ów (sekcje: cel,
   zakres, zmienione pliki, route/API, przepływ danych, zależność od Content
   Providera, cache, edge cases, ograniczenia, dalsze etapy). **Uwaga:**
@@ -274,7 +290,7 @@ katalogu, nie w podkatalogach kategorii)
   (`documentation/dashboard/<zakładka>/features/...`, `documentation/dba/features/...`
   itd.) — traktuj sekcje o TREŚCI dokumentacji jako obowiązujące, a ścieżkę
   jako przestarzałą; nie twórz katalogu `architecture/`.
-- `what-and-where.md` (ten plik) — indeks, aktualizuj przy każdej nowej
+- `02_what-and-where.md` (ten plik) — indeks, aktualizuj przy każdej nowej
   kategorii/ważnym dokumencie.
 
 **Czytać gdy:** tworzysz nową dokumentację feature'a/buga w dowolnej
@@ -296,12 +312,13 @@ metadana w nagłówku pliku, nie część nazwy katalogu — tak jak w Content
 Providerze fizyczne foldery są numeryczne, a nazwa logiczna żyje w
 `config.yaml`). Pliki wewnątrz mają numeryczny prefiks:
 `01_input.md`, `02_plan.md`, `03_knowledge.md`, `04_todos.md`,
-`05_report.md`, `06_propositions.md`.
+`05_tasks_and_checklist.md` (obowiązkowy), `06_others_from_report.md`
+(opcjonalny).
 
-**Standard opisany raz w:** `documentation/ai-docs/knowledge/01_story-standard.md`
-(część globalnej bazy wiedzy — patrz sekcja "Knowledge" na samym początku
-tego pliku) — przeczytaj go przed założeniem nowego story albo
-kontynuacją istniejącego, zamiast zgadywać konwencję z przykładu.
+**Standard opisany raz w:** `documentation/ai-docs/knowledge/03_story-standard.md`
+(część globalnej bazy wiedzy — patrz sekcja "Knowledge" wyżej) — przeczytaj
+go przed założeniem nowego story albo kontynuacją istniejącego, zamiast
+zgadywać konwencję z przykładu.
 
 **Nie zastępuje** dokumentacji per-funkcjonalność (`documentation/dashboard/<zakładka>/features/`,
 `documentation/dba/features/`, ...) — ta nadal żyje i jest aktualizowana w
@@ -325,12 +342,12 @@ dokument z kategorii powyżej, który je cytuje.
 katalogu)
 
 **Dokumenty:**
-- [26-07-10_cline_prompt_mongodb_qnap_folders_v3.md](26-07-10_cline_prompt_mongodb_qnap_folders_v3.md) —
+- [26-07-10_cline_prompt_mongodb_qnap_folders_v3.md](../26-07-10_cline_prompt_mongodb_qnap_folders_v3.md) —
   **2035 linii.** Oryginalny prompt migracyjny: monorepo `chad`, MongoDB na
   QNAP, kompatybilność Content Providera, feature Folders. Czytaj tylko
   fragmentami (szukaj przez `grep`), nie w całości, chyba że zadanie
   dotyczy bezpośrednio tej migracji.
-- [2026-07-12_audit-public-api-for-php-frontend.md](2026-07-12_audit-public-api-for-php-frontend.md) —
+- [2026-07-12_audit-public-api-for-php-frontend.md](../2026-07-12_audit-public-api-for-php-frontend.md) —
   Audyt: czy `dba` nadaje się jako baza publicznego API dla frontendu PHP.
   Status: audyt zakończony, **nic nie zaimplementowano**, czeka na decyzję
   właściciela.
@@ -348,7 +365,7 @@ publicznego API dla PHP.
 - `documentation/README.md` — **przestarzałe** (opisuje strukturę
   `general/`/`features/` z projektu sprzed monorepo `chad`, wzmiankuje pliki
   które nie istnieją w tym repo, np. `general/SCREENS-ARCHITECTURE.md`).
-  Ma teraz na górze wskaźnik do tego pliku (`what-and-where.md`).
+  Ma teraz na górze wskaźnik do `documentation/ai-docs/knowledge/01_ai_start.md`.
 - `documentation/nodejs-style.md` — styl kodu Node.js/TypeScript.
 - `documentation/DataLibFeatures.md` — funkcje biblioteki danych (starszy
   dokument, sprawdź aktualność przed użyciem).

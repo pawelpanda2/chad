@@ -171,8 +171,11 @@ export async function getAllReportEntries(): Promise<ReportEntryItem[]> {
       childLoca,
     ]);
 
+    // Presence check, not truthiness: itemResult?.Body === "" is a real,
+    // genuinely-empty report body and must survive as "", not collapse into
+    // `undefined` (which would be indistinguishable from "no Body at all").
     let body: string | undefined;
-    if (itemResult?.Body) {
+    if (itemResult?.Body !== undefined && itemResult?.Body !== null) {
       body = typeof itemResult.Body === "string" ? itemResult.Body : JSON.stringify(itemResult.Body);
     }
 

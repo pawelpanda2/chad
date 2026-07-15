@@ -21,7 +21,7 @@ require_command docker "install Docker" || exit 1
 require_file "$ENV_FILE" "cp .env.qnap.example .env.qnap and fill in real values" || exit 1
 
 echo ""
-log_info "chad QNAP PROD — begin"
+log_info "chad QNAP PROD — re-start"
 echo ""
 
 cd "$REPO_ROOT"

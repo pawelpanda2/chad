@@ -4,7 +4,7 @@
 # checks it's already healthy (require_shared_services_healthy) and refuses
 # to start otherwise. Idempotent: checks whether the dashboard is already
 # running; if so, calls 04_end.sh then starts fresh. Use 06_deploy.sh for
-# build+begin. Run this ON the QNAP host (or via
+# build+re-start. Run this ON the QNAP host (or via
 # bash-scripts/dashboard/06_qnap_ssh/begin_test.sh from your Mac).
 #
 # TEST uses the SAME shared MongoDB and Content Provider (and therefore the
@@ -21,7 +21,7 @@ require_command docker "install Docker" || exit 1
 require_file "$ENV_FILE" "cp .env.qnap.example .env.qnap and fill in real values" || exit 1
 
 echo ""
-log_info "chad QNAP TEST — begin"
+log_info "chad QNAP TEST — re-start"
 echo ""
 
 cd "$REPO_ROOT"

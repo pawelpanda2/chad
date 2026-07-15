@@ -29,6 +29,10 @@ export interface TextEditorWithToolbarProps {
   showSave?: boolean;
   /** Whether to show the WCH (whitespace toggle) button */
   showWhitespaceToggle?: boolean;
+  /** Which tab is active on first mount. Defaults to "preview" — pass
+   * "editor" for callers where Preview of a just-created/empty value
+   * would be useless (e.g. a freshly created report). */
+  defaultTab?: "preview" | "editor";
   /** Placeholder text for the editor */
   placeholder?: string;
   /** Additional content to show in the toolbar (after the main buttons) */
@@ -68,11 +72,12 @@ export function TextEditorWithToolbar({
   showPreview = true,
   showSave = true,
   showWhitespaceToggle = true,
+  defaultTab = "preview",
   placeholder = "Enter content...",
   toolbarExtra,
   className,
 }: TextEditorWithToolbarProps) {
-  const [activeTab, setActiveTab] = useState<"preview" | "editor">("preview");
+  const [activeTab, setActiveTab] = useState<"preview" | "editor">(defaultTab);
   const [showWhitespace, setShowWhitespace] = useState(false);
 
   const isEditorMode = activeTab === "editor";

@@ -56,7 +56,7 @@ dashboard PROD (chad-dashboard-prod, port 12030)
 Trzy osobne projekty Compose (`-p chad-shared`/`chad-test`/`chad-prod`),
 połączone jedną **zewnętrzną** siecią Docker `chad-shared` (tworzoną
 idempotentnie przez `ensure_docker_network()` w `bash-scripts/common/lib.sh`).
-Pełny opis konwencji skryptów (`build`/`begin`/`end`/`status`/`deploy`,
+Pełny opis konwencji skryptów (`build`/`re-start`/`end`/`status`/`deploy`,
 `require_shared_services_healthy` preflight, DNS przez `container_name`
 zamiast nazwy serwisu) w
 `documentation/ai-docs/deploy/dashboard-deployment-scripts.md`.
@@ -72,7 +72,7 @@ zamiast nazwy serwisu) w
 
 | Kontener | Bind mount |
 |---|---|
-| `chad-mongodb` | `$QNAP_CONTAINER_DATA_PATH/chad-shared/mongodb/db:/data/db`, `.../configdb:/data/configdb`, `.../backups:/backups` — `$QNAP_CONTAINER_DATA_PATH` MUST resolve onto the real data volume, not `/share` itself (a 16MB tmpfs on this QNAP); see [qnap-data-path.md](qnap-data-path.md) for the incident and the validation `03_begin.sh` now runs before every start |
+| `chad-mongodb` | `$QNAP_CONTAINER_DATA_PATH/chad-shared/mongodb/db:/data/db`, `.../configdb:/data/configdb`, `.../backups:/backups` — `$QNAP_CONTAINER_DATA_PATH` MUST resolve onto the real data volume, not `/share` itself (a 16MB tmpfs on this QNAP); see [qnap-data-path.md](qnap-data-path.md) for the incident and the validation `03_re-start.sh` now runs before every start |
 | `chad-content-provider-api` | `/share/Dropbox:/data/repos:rw` (potwierdzone: `repoCount:36`), `.runtime/shared/content-provider/appsettings.json:/app/appsettings.json:ro` |
 | `chad-dashboard-test` | named volume `chad-dashboard-qnap-test-data:/app/data` (SQLite Prisma, per-dashboard, nie Mongo) |
 | `chad-dashboard-prod` | named volume `chad-dashboard-qnap-prod-data:/app/data` (osobny od test — świadomie, to lokalna baza sesji dashboardu, nie "prawdziwe dane" biznesowe) |
@@ -117,7 +117,7 @@ bash bash-scripts/dashboard/06_qnap_ssh/deploy_test.sh
 bash bash-scripts/dashboard/06_qnap_ssh/deploy_prod.sh
 ```
 
-Każdy `begin.sh` dla TEST/PROD wywołuje `require_shared_services_healthy`
+Każdy `re-start.sh` dla TEST/PROD wywołuje `require_shared_services_healthy`
 przed startem i **odmawia uruchomienia**, jeśli shared nie działa/nie jest
 zdrowy — zamiast próbować go naprawić samodzielnie.
 
@@ -130,7 +130,7 @@ standard: [image-tagging-standard.md](image-tagging-standard.md). Skrót:
   sam obraz `chad-dashboard` (identyczny Dockerfile/context/target) i po
   udanym buildzie zapisują znacznik czasowy do jednego, wspólnego pliku
   `.image-tag.chad-dashboard.env` (gitignored, na hoście QNAP).
-- `03_begin.sh` w obu katalogach **odmawia startu**, jeśli ten plik nie
+- `03_re-start.sh` w obu katalogach **odmawia startu**, jeśli ten plik nie
   istnieje albo jest pusty — nigdy nie ma fallbacku do `chad-dashboard:latest`
   (własne obrazy CHAD w ogóle nie dostają już tagu `latest`).
 - Promocja "sprawdzonego" obrazu TEST na PROD = **bez rebuildu**, po prostu:
@@ -152,7 +152,7 @@ identyczny `Image` (ten sam tag, ten sam ID).
 - Dashboard TEST/PROD: `end_test.sh`/`end_prod.sh` (`docker compose down
   --remove-orphans`, nigdy `-v`) — dane dashboardu (SQLite) i obrazy
   zostają. Retag poprzedniego znacznika czasowego jako `:latest` i ponowny
-  `begin`.
+  `re-start`.
 - Shared: `end_shared.sh` — **zatrzymuje backend dla OBU dashboardów
   naraz**, wymaga wpisania `SHARED`. Dane Mongo (bind mount) i repo pliki
   (`/share/Dropbox`, poza kontenerem) przetrwają.
@@ -209,7 +209,7 @@ teraz to wykrywa przed startem: [qnap-data-path.md](qnap-data-path.md).
 ## 10. Znane ograniczenia / co zostało do decyzji
 
 - ~~Promocja obrazu TEST→PROD jest ręczna (retag), bez dedykowanego skryptu~~
-  — **zrobione 2026-07-13**: `02_build.sh`/`03_begin.sh` zapisują i czytają
+  — **zrobione 2026-07-13**: `02_build.sh`/`03_re-start.sh` zapisują i czytają
   wspólny plik ze znacznikiem release'u, bez `:latest`, bez ponownego builda
   przy promocji. Patrz sekcja 6 i [image-tagging-standard.md](image-tagging-standard.md).
 - MongoDB nie jest jeszcze konsumowane przez kod dashboardu/`dba` — "wspólna

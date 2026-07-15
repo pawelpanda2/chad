@@ -1,14 +1,31 @@
 import { ReactNode } from "react";
+import { NavGroup, type NavGroupUpLevel } from "@/components/shared/nav-group";
 import { cn } from "@/lib/utils";
 
 interface DashboardPageShellProps {
   /** Main content rendered inside the standard rounded frame. */
   children: ReactNode;
   /**
-   * Optional controls rendered ABOVE the frame (filters, refresh, back button).
+   * Optional controls rendered ABOVE the frame (filters, refresh). The
+   * shared NavGroup (`\`/Next/Back) is appended automatically after this —
+   * do not add a BackButton/NavGroup of your own here, use `upLevel`.
    * Kept outside the frame so it never scrolls with the content.
    */
   toolbar?: ReactNode;
+  /**
+   * Optional second toolbar row, rendered directly below `toolbar` (still
+   * above the frame, still non-scrolling). Use this instead of cramming
+   * everything into one row when a page has its own filters/controls in
+   * addition to a title — keeps the shared NavGroup sitting right after a
+   * short title on row one instead of competing for space with filters.
+   */
+  toolbarSecondRow?: ReactNode;
+  /**
+   * This page's own "go up one level" control, forwarded to the shared
+   * NavGroup's `\` button (see nav-group.tsx). Omit on pages with no
+   * hierarchy above them — `\` simply renders disabled.
+   */
+  upLevel?: NavGroupUpLevel;
   /**
    * When true (default) the frame owns the vertical scroll of its content.
    * Set to false when the child manages its own internal scroll (e.g. a
@@ -52,6 +69,8 @@ interface DashboardPageShellProps {
 export function DashboardPageShell({
   children,
   toolbar,
+  toolbarSecondRow,
+  upLevel,
   scroll = true,
   padded = true,
   className,
@@ -68,10 +87,19 @@ export function DashboardPageShell({
         The row is ALWAYS rendered (even without a toolbar) and reserves left
         space (`pl-14`) + a min height for the fixed menu handle that lives in
         the top-left of every view, so the handle never covers frame content.
+        The shared NavGroup is always appended last, so its `ml-auto` isolates
+        it on the right regardless of what `toolbar` contains.
       */}
       <div className="flex min-h-9 shrink-0 flex-wrap items-center gap-x-3 gap-y-1 pl-14">
         {toolbar}
+        <NavGroup upLevel={upLevel} />
       </div>
+
+      {toolbarSecondRow && (
+        <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 pl-14">
+          {toolbarSecondRow}
+        </div>
+      )}
 
       <div
         className={cn(

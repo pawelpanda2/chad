@@ -19,22 +19,33 @@ dashboard nav, no new form/view system.
 - Views: "REPORTS" button in the existing Views menu
   (`app/(dashboard)/dashboard/views/page.tsx`), reusing the existing
   `?view=` query-param routing that TRACKER/DATES/LEADS already use.
-  Unchanged by Story 53 — still read-only list + preview.
+  Read-only list + preview through Story 55; **Story 56 made a selected
+  report editable** (Preview **and** Editor tabs, Save) — see below.
 - dba layer: see `documentation/dba/features/report-entries.md`.
 
 ## Two-stage form (Story 53)
 
 **Stage 1 — metadata panel** (rounded frame, shown first, before any
-editor): top row has Date (`<input type="date">`), Report kind (Select:
-Daygame `dg` / Nightgame `ng` / Organized party `op` / Other `other`), and
-"Rest of the name" (free text, e.g. `galeria mokotów`); a second row below
-has the read-only "Generated name" field immediately next to the
-**Create** button (moved there per user feedback, so the name and the
-action that commits it read together). Generated name recomputes live from
-the three inputs above as `{YY-MM-DD}_{kind}_{suffix}` (e.g.
-`26-05-06_dg_galeria mokotów`) via `generateReportName` in `forms/page.tsx`
-(a separate function from the unrelated Actions form's
-`generateActionTitle` — different kind union, different feature).
+editor). **Story 56 reorganized its internal rows** (previous layout:
+Date/Kind/Suffix row, then Generated name row, then Create on its own row
+— see Story 55's history below): now **row 1** is `Create` (left) followed
+by the read-only `Generated name` field, and **row 2** below it holds
+Date (`<input type="date">`), Report kind (Select: Daygame `dg` /
+Nightgame `ng` / Organized party `op` / Other `other`), and "Rest of the
+name" (free text, e.g. `galeria mokotów`). Same single frame as before —
+Story 56 only reordered the rows within it, per an explicit user
+correction that arrived mid-Story (see `documentation/stories/56/
+01_input.md` Input 2) overriding that Story's own original "separate top
+frame" text. Generated name recomputes live from the three inputs as
+`{YY-MM-DD}_{kind}_{suffix}` (e.g. `26-05-06_dg_galeria mokotów`) via
+`generateReportName` in `forms/page.tsx` (a separate function from the
+unrelated Actions form's `generateActionTitle` — different kind union,
+different feature).
+
+*Pre-Story-56 history, for context:* Story 53 first introduced the
+two-stage flow; Story 55 moved Create to its own row (previously shared a
+row with Generated name) at all breakpoints, after a UX review concluded
+one layout was clearer than a mobile/desktop split.
 
 Clicking Create calls `POST /api/forms/reports` with
 `{ content: "", itemName: <generated name> }` (no `loca`). On success:
@@ -47,14 +58,42 @@ Clicking Create calls `POST /api/forms/reports` with
   menu resets all report state via `resetReportsForm`).
 - Stage 2 appears below the (now-locked) metadata panel.
 
-**Stage 2 — editor**: the existing shared `TextEditorWithToolbar` component
-(unchanged), stacked below the metadata panel inside the same
-`EditorPageShell` column — two independent rounded frames (the metadata
-panel uses the same `rounded-xl border bg-card shadow-sm` classes as
-`DashboardPageShell`'s frame; `TextEditorWithToolbar` already renders its
-own identical frame). Only the report's body content is editable here; its
-own Save button calls `handleReportSave`, which always updates the
-already-known `loca` (never `PostParentItem` again).
+**Stage 2 — editor**: the existing shared `TextEditorWithToolbar` component,
+stacked below the metadata panel inside the same `EditorPageShell` column —
+two independent rounded frames (the metadata panel uses the same
+`rounded-xl border bg-card shadow-sm` classes as `DashboardPageShell`'s
+frame; `TextEditorWithToolbar` already renders its own identical frame).
+Only the report's body content is editable here; its own Save button
+calls `handleReportSave`, which always updates the already-known `loca`
+(never `PostParentItem` again).
+
+**Story 55 additions to Stage 2:**
+- `defaultTab="editor"` is passed, so a freshly created report opens
+  straight on the Editor tab instead of the component's normal default
+  (Preview) — Preview of empty just-created content was useless. See
+  `documentation/dashboard/common/features/shared-text-editor-toolbar.md`
+  for the general `defaultTab` prop this relies on.
+
+**Story 56 replaced the in-toolbar voice button with a standalone
+recording panel:** `components/shared/voice-recording-panel.tsx` renders
+as its own rounded frame between the metadata panel and the editor (not
+inside `TextEditorWithToolbar`'s `toolbarExtra` anymore — that slot is
+now unused by Reports, though it still exists for other consumers). See
+`documentation/dashboard/common/features/voice-recording.md` for the full
+architecture and the Move flow.
+
+## Navigation (Story 56)
+
+The Reports form's header row (and every other `DashboardPageShell`/
+`EditorPageShell` page's) now renders the shared `NavGroup`
+(`components/shared/nav-group.tsx`: `[Prev] [Back] [Forw]`) instead of a
+standalone `BackButton` — see `documentation/dashboard/common/features/
+responsive-layout-standard.md`'s "Shared navigation" section for the full
+standard. In Reports specifically: `handleFormBack` (the pre-existing
+"go back to the Forms menu" handler) is now wired as `NavGroup`'s `upLevel`
+(the middle "Back" button) instead of being called by a plain
+`BackButton`; behavior is unchanged, only the surrounding control and its
+position changed.
 
 ## Zmienione pliki
 
@@ -66,8 +105,17 @@ already-known `loca` (never `PostParentItem` again).
 - `packages/dashboard/app/(dashboard)/dashboard/views/page.tsx` — `"reports"`
   in `ViewType`, a menu button, a `reports`/`reportsError`/
   `selectedReportLoca` state, and a render branch: a simple list (styled
-  like the existing LEADS list) + the shared `PreviewContent` renderer
-  (read-only) to show a selected report's body. Unchanged in Story 53.
+  like the existing LEADS list); a selected report renders the shared
+  `TextEditorWithToolbar` (Story 56 — previously a read-only
+  `PreviewContent`), with its own `editedReportContent`/`reportSaving`/
+  `reportSaved` state and a save handler that POSTs to the same
+  `/api/forms/reports` route (loca-based update) Forms already uses — no
+  new route, no duplicated save logic.
+- `packages/dba/src/report-entries.ts` (Story 56) — `getAllReportEntries`'s
+  `if (itemResult?.Body)` truthiness check replaced with an explicit
+  presence check (`!== undefined && !== null`), so a genuinely empty
+  report body survives as `""` instead of collapsing into `undefined`
+  (see dba doc and Story 56's report for the full bug analysis).
 - `packages/dashboard/app/api/forms/reports/route.ts` — `POST`; gained an
   `itemName` field (required when `loca` is absent).
 - `packages/dashboard/app/api/views/reports/route.ts` — `GET`. Unchanged in
@@ -76,6 +124,13 @@ already-known `loca` (never `PostParentItem` again).
   in Story 53), `packages/dba/src/index.ts` — `createReportEntry` now takes
   a caller-supplied `requestedName` instead of generating a sequential one,
   plus `nextAvailableName` collision handling (see dba doc).
+- **Story 55 additions:** `components/shared/voice-record-button.tsx`,
+  `hooks/use-speech-to-text.ts`, `lib/speech/types.ts`,
+  `lib/speech/web-speech-engine.ts` (see `voice-recording.md`);
+  `components/shared/back-button.tsx` (see
+  `responsive-layout-standard.md`'s "Back button" section) — the Reports
+  form's own icon-only Back button now uses this shared component instead
+  of ad-hoc markup.
 
 ## Route/API
 
@@ -139,9 +194,10 @@ existing Refresh button (shared with Tracker/Dates/Leads).
 
 ## Ograniczenia
 
-- Reports view is **read-only** (open + display via `PreviewContent`) —
-  no in-view editing, matching the read-only nature of the existing
-  Tracker/Dates views.
+- Views/Reports is editable as of Story 56 (Preview + Editor + Save,
+  same update endpoint Forms uses) — this is now a deliberate exception
+  to the otherwise read-only nature of Tracker/Dates views, not an
+  oversight.
 - No delete (Content Provider limitation, see dba doc).
 - Once a report is created, its date/kind/suffix/generated name cannot be
   changed — by design (Story 53 requirement). To use a different
@@ -152,13 +208,12 @@ existing Refresh button (shared with Tracker/Dates/Leads).
 
 ## Dalsze etapy
 
-None planned. A future "edit existing report from the Views page" would
-call the already-implemented `updateReportEntry` via a small addition to
-`/api/forms/reports` (already supports `loca`-based updates) — no dba
-changes needed.
+None planned — the "edit existing report from Views" idea from earlier
+Stories was implemented in Story 56.
 
 ## Testing
 
-See `documentation/stories/53/05_report.md` for exactly what was run and
-verified for the Story 53 rebuild (data-layer `/invoke` checks vs.
-browser click-through, and what wasn't verified).
+See `documentation/stories/53/05_tasks_and_checklist.md` for the Story 53 rebuild's
+verification, and `documentation/stories/56/05_tasks_and_checklist.md` for Story 56's
+(metadata row reorg, recording panel + Move, the empty-body bug fix and
+Views/Reports editability, navigation).

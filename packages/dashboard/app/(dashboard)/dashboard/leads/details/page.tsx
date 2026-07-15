@@ -8,7 +8,6 @@ import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
 import { Button } from "@/components/ui/button";
 import { getNormalizedContactLink, getSafeReturnTo } from "@/lib/lead-links";
 import {
-  ArrowLeft,
   RefreshCw,
   AlertCircle,
   User,
@@ -255,19 +254,11 @@ function LeadDetailsPageContent() {
   // Render
   // ========================================================================
 
-  const backToolbar = (
-    <button
-      onClick={handleBack}
-      className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-    >
-      <ArrowLeft className="h-4 w-4" />
-      Back to leads
-    </button>
-  );
+  const upLevel = { onClick: handleBack, label: "Back to leads" };
 
   if (!leadName || !leadLoca) {
     return (
-      <DashboardPageShell toolbar={backToolbar}>
+      <DashboardPageShell upLevel={upLevel}>
         <div className="flex flex-col items-start gap-2 py-4 text-muted-foreground">
           <div className="flex items-center gap-2">
             <AlertCircle className="h-6 w-6" />
@@ -286,7 +277,7 @@ function LeadDetailsPageContent() {
 
   if (loading) {
     return (
-      <DashboardPageShell toolbar={backToolbar}>
+      <DashboardPageShell upLevel={upLevel}>
         <div className="flex items-center gap-2 py-4 text-muted-foreground">
           <RefreshCw className="h-4 w-4 animate-spin" />
           <span>Loading lead details...</span>
@@ -297,7 +288,7 @@ function LeadDetailsPageContent() {
 
   if (error || !details) {
     return (
-      <DashboardPageShell toolbar={backToolbar}>
+      <DashboardPageShell upLevel={upLevel}>
         <div className="flex flex-col items-start gap-2 py-4 text-muted-foreground">
           <div className="flex items-center gap-2">
             <AlertCircle className="h-6 w-6" />
@@ -315,7 +306,7 @@ function LeadDetailsPageContent() {
   }
 
   return (
-    <DashboardPageShell toolbar={backToolbar} contentClassName="gap-1">
+    <DashboardPageShell upLevel={upLevel} contentClassName="gap-1">
       {/* Lead Header Card */}
       <Card className="gap-0 py-0">
         <CardContent className="px-[14px] py-[12px]">

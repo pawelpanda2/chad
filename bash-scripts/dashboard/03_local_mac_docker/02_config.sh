@@ -47,7 +47,7 @@ EOF
 # Writes CONTENT_PROVIDER_APPSETTINGS_JSON to the runtime path that
 # docker-compose.local.yml bind-mounts read-only into the container at
 # /app/appsettings.json. Call before `docker compose up` — never docker cp
-# into an already-running container (see 04_begin.sh).
+# into an already-running container (see 04_re-start.sh).
 write_content_provider_appsettings() {
   local output_file="$REPO_ROOT/.runtime/local/content-provider/appsettings.json"
   mkdir -p "$(dirname "$output_file")"

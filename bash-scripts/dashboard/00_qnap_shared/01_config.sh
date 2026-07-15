@@ -53,7 +53,7 @@ EOF
 # Writes CONTENT_PROVIDER_APPSETTINGS_JSON to the runtime path that
 # docker-compose.qnap.shared.yml bind-mounts read-only into the container
 # at /app/appsettings.json. Call before `docker compose up` — never docker
-# cp into an already-running container (see 03_begin.sh).
+# cp into an already-running container (see 03_re-start.sh).
 write_content_provider_appsettings() {
   local output_file="$REPO_ROOT/.runtime/$ENV_NAME/content-provider/appsettings.json"
   mkdir -p "$(dirname "$output_file")"

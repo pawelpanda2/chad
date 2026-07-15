@@ -7,7 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, Users2, ArrowLeft, ArrowRightLeft, X } from "lucide-react";
+import { RefreshCw, Users2, ArrowRightLeft, X } from "lucide-react";
 import { toast } from "sonner";
 
 interface Card_ {
@@ -95,18 +95,14 @@ export default function BeeperMergePage() {
 
 	return (
 		<DashboardPageShell
+			upLevel={{ href: "/dashboard/beeper" }}
 			toolbar={
 				<>
-					<Button variant="outline" size="sm" className="gap-1 h-7 px-2" asChild>
-						<Link href="/dashboard/beeper">
-							<ArrowLeft className="h-3 w-3" />Back
-						</Link>
-					</Button>
 					<h2 className="text-lg font-bold">Merge suggestions</h2>
 					<span className="text-xs text-muted-foreground">
 						Fuzzy name matches among direct-DM contacts. Nothing is merged automatically.
 					</span>
-					<span className="ml-auto text-xs text-muted-foreground">{suggestions.length} pairs</span>
+					<span className="text-xs text-muted-foreground">{suggestions.length} pairs</span>
 				</>
 			}
 		>

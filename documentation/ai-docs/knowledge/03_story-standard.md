@@ -12,18 +12,90 @@ feature, changes across several layers of the project, tests, documentation
 updates, and consciously-deferred follow-up items. Every Story gets the
 next sequential number (53, 54, 55, ...).
 
+## When a Story gets created — and by whom
+
+**This is the step that gets skipped most often. Read it as literally as
+the Checklist rule below.**
+
+Creating the Story folder is not something the user asks for by name, and
+it is not a ceremony reserved for large, obviously-multi-day efforts. It is
+the *default* way any non-trivial task on this repo gets recorded, and the
+AI agent doing the task is the one who creates it — proactively, without
+being asked, as close to the very first action of the task as possible.
+Concretely: as soon as you understand what the user is asking for well
+enough to start working, create `documentation/stories/<next-N>/` and write
+`01_input.md` with their request verbatim, **before** you start reading
+code, editing files, or running commands — not after you're done, and not
+only if the task "feels big enough" in the moment. If the task goes through
+Plan Mode, the presented plan becomes `02_plan.md` and this happens
+naturally at the same point; if it doesn't go through Plan Mode, create
+`01_input.md` yourself as the first step anyway.
+
+**"Non-trivial" — how to actually decide:**
+
+- Gets a Story: anything that touches more than one file, anything with a
+  real decision to make (naming, sequencing, trade-offs), anything that
+  gets tested/verified, anything spanning more than a few tool calls,
+  anything the user might reasonably want to look back on later ("why did
+  we do it this way?"). When genuinely unsure, create one — an
+  over-documented small task costs almost nothing; an undocumented real
+  task is unrecoverable history.
+- Skips a Story: a single trivial read-only question ("what does this
+  function do?"), a one-line typo/formatting fix with no decisions
+  attached, a pure lookup with zero file changes.
+
+Concrete failure this section exists to prevent: a Story-sized task (new
+script, renumbered sibling files, changed shared library behavior,
+integration changes across two other scripts, six tested scenarios) was
+completed start-to-finish with no Story folder at all, because the request
+was a fully-specified, detailed spec rather than an open-ended ask — which
+made it *feel* like "just implement this," not "plan and record this." Task
+shape (detailed spec vs. open question) is not a signal for whether a Story
+is warranted; the criteria above are.
+
+**If you notice mid-task (or after finishing) that you skipped this:**
+create the Story folder immediately, right then — don't finish skipping it.
+Backfill `01_input.md` with the actual verbatim conversation history
+reconstructed as faithfully as possible, note plainly in `03_knowledge.md`
+or `05_tasks_and_checklist.md` that the Story was created retroactively and
+why, and proceed with the remaining files normally. A late Story is far better than
+no Story.
+
 ## Directory naming — numeric only
 
 ```text
 documentation/stories/
-    53/
+    56/
         01_input.md
         02_plan.md
         03_knowledge.md
         04_todos.md
-        05_report.md
-        06_propositions.md
+        05_tasks_and_checklist.md
+        06_others_from_report.md
 ```
+
+**2026-07-14 (Story 56 — this file structure went through three
+corrections in one session; only the final one below matters going
+forward, the rest is history so nobody repeats the intermediate
+mistakes):**
+
+1. Original: a single `05_report.md` — Checklist as its opening section,
+   Task write-ups below.
+2. First correction: split into a Checklist-only `05_tasks-checklist.md`
+   plus a separate `06_report.md` for the Task write-ups (reasoning at
+   the time: keep the Checklist short). **Wrong** — a checklist with no
+   task context isn't actually usable on its own.
+3. **Second correction (this is the one that applies):** the per-Task
+   write-ups moved back **inside** the checklist file, and the leftover
+   report/propositions content merged into one optional file — final
+   names: `05_tasks_and_checklist.md` (mandatory: Checklist + Task
+   write-ups together) and `06_others_from_report.md` (optional:
+   decisions/problems/limitations/proposals — anything else from a
+   report that isn't the Checklist itself).
+
+Stories 53/54/55 were migrated through all of the above to match (content
+unchanged, only relocated/merged/renamed — see each Story's
+`06_others_from_report.md` for a short migration note).
 
 - The directory name is **only the Story number** — never
   `53_reports`, `53_reports-first-version`, `Story 53`, or any other
@@ -49,7 +121,7 @@ prompt and every later correction/clarification, each as its own numbered
 - No description of the Story standard itself (that's this file).
 - No organizational commentary, notes, or explanations added by the
   assistant — those belong in `02_plan.md`, `03_knowledge.md`, or
-  `05_report.md`, not here.
+  `06_others_from_report.md`, not here.
 - Must be sufficient, on its own, to reconstruct the entire task.
 
 ### `02_plan.md`
@@ -63,7 +135,7 @@ work starts.
 
 Pointers to the documentation and code needed to do **this specific
 Story**, each with a short note on *why* it was needed — not a description
-of the implementation (that's `05_report.md`). Goal: a future change to
+of the implementation (that's `05_tasks_and_checklist.md`). Goal: a future change to
 this Story's area of the codebase shouldn't require re-discovering this
 context from scratch.
 
@@ -96,49 +168,57 @@ a signal — to the user and to any AI reading the Story later — that
 something is still unresolved. Do not leave items sitting in
 `04_todos.md` as if that were their permanent home.
 
-By the time `05_report.md` is finalized, every item that was jotted into
-`04_todos.md` during the work must be triaged into exactly one of:
+By the time `05_tasks_and_checklist.md` is finalized, every item that was
+jotted into `04_todos.md` during the work must be triaged into exactly
+one of:
 
 - **fixed** — it turned out to be in scope after all, so it was done, and
   the note is removed;
 - **discarded** — on reflection it wasn't worth keeping, so it's removed
   with no further trace;
-- **promoted to `06_propositions.md`** — it's a real, worthwhile follow-up
-  that belongs to the project's future, written up properly there.
+- **promoted to `06_others_from_report.md`** — it's a real, worthwhile
+  follow-up that belongs to the project's future, written up properly
+  there.
 
 `04_todos.md` ending up empty is not optional busywork — it is the actual
 signal that the Story is complete with no loose ends left dangling in a
 scratch file.
 
-### `06_propositions.md`
+### `05_tasks_and_checklist.md`
 
-This Story's curated, final list of follow-up proposals for future work —
-where anything promoted out of `04_todos.md` ends up, plus any other
-next-step idea worth recording (this replaces what used to be a loose
-"Propozycje kolejnych kroków" prose section at the end of `05_report.md` —
-it now gets its own numbered file instead). Unlike `04_todos.md`, there is
-no rule requiring this file to end up empty — a Story can legitimately
-close with real, unimplemented proposals recorded here for later.
+<span style="color:red">**⚠️ IMPORTANT — this is THE most important file
+in this entire standard, and it is MANDATORY. It must always be produced,
+in full, with both the Checklist table AND a description for every task —
+never left as a bare table with no write-ups. Forgetting the per-task
+descriptions here is the single most common mistake made against this
+standard (it happened for real, in Story 56, before being corrected) —
+do not repeat it.**</span>
 
-### `05_report.md`
+This file contains **both**:
 
-The final account of what was actually done: scope completed, files
-changed, decisions made, tests actually run (never claimed beyond what was
-actually executed — build/typecheck is not "tested"), real results,
-problems hit, and anything left undone.
+1. The Checklist table (see format below).
+2. Immediately below it, one Task section per checklist row — what was
+   requested, what was actually done, which files changed, how it was
+   tested, what wasn't done/verifiable, and its status. **A checklist row
+   with no matching Task section is an incomplete file, not an acceptable
+   shorter version.**
 
-#### Mandatory opening section: the Checklist
+**History, for context (do not repeat the earlier mistakes described
+here):** originally this was the opening section of a combined
+`05_report.md`. A first correction split it into a Checklist-only
+`05_tasks_and_checklist.md` plus a separate `06_report.md` for the Task
+write-ups — that turned out to be wrong too: the whole point of this file
+is that the user can open **one** short file and both check things off
+*and* see enough of what happened per task to make sense of the
+checkbox, without needing to jump to a second file for the most basic
+"what did this task actually do" context. The Task write-ups belong here,
+with the Checklist, not split out.
 
-**This is one of the most important rules in this entire standard. Always
-follow it, without exception.**
-
-Every `05_report.md` **must open** with a Checklist — before anything
-else, including before the numbered Task sections that follow it. The
-Checklist exists for one purpose only: **it is how the user, as product
-owner, manually verifies the application** — not a summary of the
+The Checklist itself exists for one purpose: **it is how the user, as
+product owner, manually verifies the application** — not a summary of the
 implementation, not architecture, not documentation bookkeeping. Someone
-should be able to open `05_report.md` an hour or a week later and, in two
-minutes, know:
+should be able to open `05_tasks_and_checklist.md` an hour or a week later
+and, in two minutes, know:
 
 - what was supposed to be done,
 - what the AI believes is done,
@@ -148,7 +228,7 @@ minutes, know:
 Format, exactly:
 
 ```text
-# Checklist
+# Story <N> — Tasks Checklist
 
 | # | Ai Status | Real Status | Task |
 |---|-----------|-------------|------|
@@ -156,9 +236,19 @@ Format, exactly:
 | 2 | DONE      |             | Rebuild the Reports form as a two-stage panel |
 | 3 | DONE      |             | Move the "Generated name" field next to the Create button |
 | 4 | DONE      |             | Uppercase all Forms menu labels to match the Views menu style |
+
+# Task 1 — Migrate `actions/*` → `views/*`
+
+**Requested:** ...
+**Done:** ...
+**Files changed:** ...
+**Tested:** ...
+**Status: DONE**
+
+# Task 2 — ...
 ```
 
-Rules for this table:
+Rules for the table:
 
 - **`Ai Status`** is filled in by the AI: `DONE`, `PARTIAL`, or `NOT DONE`.
 - **`Real Status`** is **always left blank by the AI.** It exists
@@ -166,7 +256,8 @@ Rules for this table:
   the item themselves in the running application. The AI must never write
   anything into this column, ever.
 - Each row must correspond to one **functional** task the user can
-  actually go and check by using the app.
+  actually go and check by using the app, and must have a matching
+  `# Task N` section below with the same number.
 
 **Very important — what belongs on the Checklist and what does not:**
 
@@ -182,42 +273,37 @@ application** — things the user can click through and observe. It must
 - updating documentation indexes,
 - any other organizational/meta work.
 
-That kind of work still gets documented — just further down in
-`05_report.md`, in its own section, never in the Checklist and never as a
-numbered Task tied to the Checklist. If a Story mixes functional work and
+That kind of work still gets documented — just in the optional
+`06_others_from_report.md`, never in the Checklist and never as a
+numbered Task tied to it. If a Story mixes functional work and
 organizational work, only the functional part gets a Checklist row and a
-Task section; the organizational part gets a plain prose section later in
-the report.
+Task section here.
 
-#### The rest of the report
+### `06_others_from_report.md` (optional)
 
-After the Checklist, one Task section per checklist row, each with its own
-heading, in the same order and numbering as the Checklist:
+Everything else from a report that isn't the Checklist/Task write-ups —
+additional, **non-mandatory** material such as architectural decisions,
+problems encountered, limitations, general reflections, and follow-up
+proposals. Unlike every other file, this one **may be completely empty
+(or omitted entirely) if nothing important happened** worth recording
+beyond what's already in `05_tasks_and_checklist.md` — there is no rule
+requiring it to exist or have content.
 
-```text
-# Task 1 — [name]
-# Task 2 — [name]
-# Task 3 — [name]
-```
+Typical contents, none required:
 
-Under each task heading, cover:
+- architectural decisions made along the way, and why;
+- problems encountered during implementation and how they were resolved;
+- known limitations / what was deliberately left undone;
+- organizational/documentation work (per the rule above) that isn't a
+  functional Task;
+- follow-up proposals for future work — anything promoted out of
+  `04_todos.md`, plus any other next-step idea worth recording. Unlike
+  `04_todos.md`, there is no rule requiring proposals to end up empty —
+  a Story can legitimately close with real, unimplemented proposals
+  recorded here for later.
 
-- what was requested,
-- what was actually done,
-- which files were changed,
-- how the task was tested,
-- what was not done or could not be verified,
-- status: `DONE`, `PARTIAL`, or `NOT DONE` (matching the Checklist's `Ai Status`).
-
-**Only after all Task sections** do the remaining sections follow — e.g.
-architectural decisions, any organizational/documentation work (per the
-rule above), problems encountered, limitations, general testing notes.
-Follow-up proposals/next steps themselves belong in `06_propositions.md`,
-not as a prose section in `05_report.md` — see below.
-
-The report must never open with a general summary or with architectural
-decisions. It must always start with the Checklist, immediately followed
-by the numbered Task sections.
+No required structure — this file is deliberately the loose,
+low-ceremony one.
 
 ## Relationship to per-feature documentation
 
