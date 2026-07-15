@@ -228,73 +228,74 @@ export default function FoldersPage() {
     <DashboardPageShell>
       <ErrorBox message={error} className="mb-3" />
 
-      {/* Repo/Loca/nav — rendered INSIDE the frame, matching the Blazor screenshot layout (previously this lived above the frame in DashboardPageShell's toolbar row), and in its OWN nested bordered frame per explicit request. */}
-      <div className="mb-3 space-y-2 rounded-lg border bg-muted/10 p-3">
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground whitespace-nowrap">Repo::</span>
-          <Select value={selectedRepoGuid} onValueChange={handleRepoChange}>
-            <SelectTrigger className="w-[220px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {repos.map((r) => (
-                <SelectItem key={r.id} value={r.id}>
-                  {r.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground whitespace-nowrap">Loca::</span>
-          <Input
-            value={locaInput}
-            onChange={(e) => setLocaInput(e.target.value)}
-            placeholder="03/06"
-            className="w-[220px] font-mono"
-            onKeyDown={(e) => {
-              if (e.key === "Enter") handleGo();
-            }}
-          />
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={goBack} disabled={nav.index <= 0} title="Wstecz">
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          <Button variant="outline" size="sm" onClick={handleGo}>
-            GO
-          </Button>
-          <Button variant="outline" size="sm" onClick={goForward} disabled={nav.index >= nav.items.length - 1} title="Naprzód">
-            <ArrowRight className="h-4 w-4" />
-          </Button>
-          {loading && <RefreshCw className="h-4 w-4 animate-spin text-muted-foreground" />}
-        </div>
-      </div>
-
-      {!currentItem && loading ? (
-        <div className="flex items-center gap-2 py-4 text-muted-foreground">
-          <RefreshCw className="h-4 w-4 animate-spin" />
-          <span>Ładowanie...</span>
-        </div>
-      ) : !currentItem ? (
-        <p className="py-4 text-sm italic text-muted-foreground">
-          Nie udało się załadować żadnego itemu — sprawdź błąd powyżej i spróbuj ponownie (np. przyciskiem GO).
-        </p>
-      ) : (
-        <div className="space-y-3">
-          <div className="text-sm text-muted-foreground">
-            <div>
-              Address: <span className="font-mono">{currentItem.Address}</span>
-            </div>
-            <div>
-              Type: <span className="font-mono">{currentItem.Config.type}</span>
-            </div>
-            <div>
-              Name: <span className="font-mono">{currentItem.Config.name}</span>
-            </div>
+      {/* Single nested frame wrapping nav + info + item content — previously nav had its own frame separate from the rest, extended per explicit request to cover everything down through the editor. */}
+      <div className="space-y-3 rounded-lg border bg-muted/10 p-3">
+        <div className="space-y-2 border-b pb-3">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground whitespace-nowrap">Repo::</span>
+            <Select value={selectedRepoGuid} onValueChange={handleRepoChange}>
+              <SelectTrigger className="w-[220px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {repos.map((r) => (
+                  <SelectItem key={r.id} value={r.id}>
+                    {r.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground whitespace-nowrap">Loca::</span>
+            <Input
+              value={locaInput}
+              onChange={(e) => setLocaInput(e.target.value)}
+              placeholder="03/06"
+              className="w-[220px] font-mono"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleGo();
+              }}
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={goBack} disabled={nav.index <= 0} title="Wstecz">
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleGo}>
+              GO
+            </Button>
+            <Button variant="outline" size="sm" onClick={goForward} disabled={nav.index >= nav.items.length - 1} title="Naprzód">
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+            {loading && <RefreshCw className="h-4 w-4 animate-spin text-muted-foreground" />}
+          </div>
+        </div>
 
-          {currentItem.Config.type === "Text" && (
+        {!currentItem && loading ? (
+          <div className="flex items-center gap-2 py-4 text-muted-foreground">
+            <RefreshCw className="h-4 w-4 animate-spin" />
+            <span>Ładowanie...</span>
+          </div>
+        ) : !currentItem ? (
+          <p className="py-4 text-sm italic text-muted-foreground">
+            Nie udało się załadować żadnego itemu — sprawdź błąd powyżej i spróbuj ponownie (np. przyciskiem GO).
+          </p>
+        ) : (
+          <div className="space-y-3">
+            <div className="text-sm text-muted-foreground">
+              <div>
+                Address: <span className="font-mono">{currentItem.Address}</span>
+              </div>
+              <div>
+                Type: <span className="font-mono">{currentItem.Config.type}</span>
+              </div>
+              <div>
+                Name: <span className="font-mono">{currentItem.Config.name}</span>
+              </div>
+            </div>
+
+            {currentItem.Config.type === "Text" && (
             <div className="space-y-2">
               <div className="flex flex-wrap gap-2">
                 <InertButton title="Wymaga cp-plugin — niedostępne w dashboardzie">Folder</InertButton>
@@ -412,8 +413,9 @@ export default function FoldersPage() {
               Nieobsługiwany typ itemu: {currentItem.Config.type}
             </p>
           )}
-        </div>
-      )}
+          </div>
+        )}
+      </div>
     </DashboardPageShell>
   );
 }

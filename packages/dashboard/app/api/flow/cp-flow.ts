@@ -151,31 +151,6 @@ export async function getItemByLoca(repoGuid: string, loca: string): Promise<CpR
 }
 
 /**
- * Lists every repo (used by the Folders tab's repo picker — matches
- * Blazor's `RepoAdapter.GetAllReposNames`, `["IRepoService",
- * "IMethodWorker", "GetAllReposNames"]`). Real response verified live:
- * `[{Body: null, Settings: {id, name, type, address}}, ...]`.
- *
- * Gated to the `pawel_f` login only at the route level
- * (app/api/folders/repos/route.ts) — this function itself has no
- * per-user restriction, it genuinely lists ALL repos, exactly like the
- * standalone Blazor admin tool this Story ports. There is no admin/role
- * flag anywhere in this codebase's user model (checked lib/user-service.ts,
- * lib/session.ts) to gate this more precisely than by username.
- */
-export async function getAllRepos(): Promise<Array<{ id: string; name: string }>> {
-  const raw = (await invokeCp(['IRepoService', 'IMethodWorker', 'GetAllReposNames'])) as unknown;
-  if (!Array.isArray(raw)) {
-    throw new Error(`GetAllReposNames returned an unexpected shape: ${JSON.stringify(raw)}`);
-  }
-  return raw
-    .map((entry) => (entry as { Settings?: { id?: string; name?: string } }).Settings)
-    .filter((settings): settings is { id: string; name: string } => !!settings?.id && !!settings?.name)
-    .map(({ id, name }) => ({ id, name }))
-    .sort((a, b) => a.name.localeCompare(b.name));
-}
-
-/**
  * Parse YAML string to object
  */
 function parseYaml(str: string): Record<string, unknown> | null {

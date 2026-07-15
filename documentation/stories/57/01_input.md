@@ -52,3 +52,9 @@ do tego text item nie dziala jest taki dziwny blad:
 error: GetItem(8b603669-f8e6-4224-bd78-a474998995fa, "01") returned an unexpected shape: {"success":true,"result":""}
 
 gdzies tez zostal usuniety dev panel z prawej krawedzi strony powienine na srodku by taki przycisk do klikniecia. chcialem go zrobic niewidocznego i niedostepnego na prod i test ale tutaj w developemencie powineine byc widoczny
+
+## Input 6
+
+Ramka — panel Repo/Loca/przyciski jest teraz we własnej, zagnieżdżonej ramce z obramowaniem.
+chcialem zeby razem z edytorem calosc byla w ramce dodatkowej wiec rozszrz ta ramke na dol dodajac reszte elemetow
+dalej jest pusty combobox poszukaj metody IMethodWorker GetAllRepoNames czy cos podobnego dodaj ja do dba czy raczej ukryj w tej wartstwie wywowalenie z content providera
