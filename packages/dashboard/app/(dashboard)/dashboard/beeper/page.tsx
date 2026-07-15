@@ -127,39 +127,44 @@ export default function BeeperContactsPage() {
 					<span>No contacts found.</span>
 				</div>
 			) : (
-				<div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+				<div className="flex flex-col gap-2">
 					{filtered.map((c) => (
 						<Link key={c._id} href={`/dashboard/beeper/${c._id}`}>
-							<Card className="h-full transition-colors hover:bg-accent/50">
-								<CardContent className="flex items-start gap-3 p-4">
-									<Avatar>
+							<Card className="transition-colors hover:bg-accent/50">
+								<CardContent className="flex items-center gap-4 px-5 py-3">
+									<Avatar className="h-11 w-11 shrink-0">
 										{c.hasAvatar && <AvatarImage src={`/api/beeper-crm/contacts/${c._id}/avatar`} alt={c.displayName} />}
 										<AvatarFallback>{c.displayName.slice(0, 1).toUpperCase()}</AvatarFallback>
 									</Avatar>
 									<div className="min-w-0 flex-1">
-										<div className="flex items-center justify-between gap-2">
+										<div className="flex flex-wrap items-baseline gap-2">
 											<span className="truncate font-medium">{c.displayName}</span>
+											{c.tags.map((t) => (
+												<Badge key={t} variant="secondary" className="text-[10px]">
+													{t}
+												</Badge>
+											))}
 											{c.lastMessage?.timestamp && (
 												<span className="shrink-0 text-xs text-muted-foreground">
 													{relativeTime(c.lastMessage.timestamp)}
 												</span>
 											)}
 										</div>
-										{c.lastMessage && (
+										{c.lastMessage ? (
 											<p className="truncate text-sm text-muted-foreground">{c.lastMessage.text}</p>
+										) : (
+											<p className="truncate text-sm italic text-muted-foreground/60">No messages</p>
 										)}
-										<div className="mt-2 flex flex-wrap gap-1">
-											{c.tags.map((t) => (
-												<Badge key={t} variant="secondary" className="text-[10px]">
-													{t}
-												</Badge>
-											))}
-											{[...new Set(c.identities.map((i) => i.network))].map((n) => (
-												<Badge key={n} variant="outline" className="text-[10px]">
-													{n}
-												</Badge>
-											))}
-										</div>
+									</div>
+									<div className="flex shrink-0 items-center gap-1.5">
+										{[...new Set(c.identities.map((i) => i.network))].map((n) => (
+											<Badge key={n} variant="outline" className="text-[10px]">
+												{n}
+											</Badge>
+										))}
+										{c.channelCount > 0 && (
+											<span className="ml-1 text-xs text-muted-foreground">{c.channelCount} ch.</span>
+										)}
 									</div>
 								</CardContent>
 							</Card>
