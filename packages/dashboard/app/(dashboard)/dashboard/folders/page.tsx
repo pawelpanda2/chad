@@ -140,20 +140,36 @@ export default function FoldersPage() {
   }, []);
 
   // Load the repo list once, then the initial (first/own) repo's root.
+  // Wrapped in try/finally — a bare `await` sequence with no catch meant
+  // any failure here (repos fetch throwing, non-JSON response, etc.) left
+  // `loading` stuck `true` forever with no item ever pushed, which is
+  // what actually caused the reported "spins forever until I click GO"
+  // (GO starts a fresh, independent request/render cycle that can
+  // succeed even if the mount-time one got stuck) — NOT a rendering bug,
+  // a swallowed exception. Also now surfaces reposRes' own error instead
+  // of silently leaving the repo list empty.
   useEffect(() => {
     (async () => {
       setLoading(true);
-      const reposRes = await fetch("/api/folders/repos");
-      const reposData: { repos?: RepoOption[]; error?: string } = await reposRes.json();
-      const repoList = reposData.repos ?? [];
-      setRepos(repoList);
+      try {
+        const reposRes = await fetch("/api/folders/repos");
+        const reposData: { repos?: RepoOption[]; error?: string } = await reposRes.json();
+        if (!reposRes.ok || !reposData.repos) {
+          setError(reposData.error ?? `Failed to load repo list (${reposRes.status})`);
+          return;
+        }
+        setRepos(reposData.repos);
 
-      const initialRepoGuid = repoList[0]?.id ?? "";
-      setSelectedRepoGuid(initialRepoGuid);
+        const initialRepoGuid = reposData.repos[0]?.id ?? "";
+        setSelectedRepoGuid(initialRepoGuid);
 
-      const result = await fetchItem(initialRepoGuid, "");
-      if (result) pushItem(result.item);
-      setLoading(false);
+        const result = await fetchItem(initialRepoGuid, "");
+        if (result) pushItem(result.item);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load Folders tab");
+      } finally {
+        setLoading(false);
+      }
     })();
     // Run once on mount only.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -170,25 +186,34 @@ export default function FoldersPage() {
     setSelectedRepoGuid(repoGuid);
     setNav({ items: [], index: -1 });
     setLoading(true);
-    const result = await fetchItem(repoGuid, "");
-    if (result) pushItem(result.item);
-    setLoading(false);
+    try {
+      const result = await fetchItem(repoGuid, "");
+      if (result) pushItem(result.item);
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function handleGo() {
     setLoading(true);
-    const result = await fetchItem(selectedRepoGuid, locaInput);
-    if (result) pushItem(result.item);
-    setLoading(false);
+    try {
+      const result = await fetchItem(selectedRepoGuid, locaInput);
+      if (result) pushItem(result.item);
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function handleChildClick(childIndex: string) {
     const parentLoca = currentItem ? relativeLoca(currentItem.Address, selectedRepoGuid) : "";
     const childLoca = parentLoca ? `${parentLoca}/${childIndex}` : childIndex;
     setLoading(true);
-    const result = await fetchItem(selectedRepoGuid, childLoca);
-    if (result) pushItem(result.item);
-    setLoading(false);
+    try {
+      const result = await fetchItem(selectedRepoGuid, childLoca);
+      if (result) pushItem(result.item);
+    } finally {
+      setLoading(false);
+    }
   }
 
   function goBack() {
@@ -203,8 +228,8 @@ export default function FoldersPage() {
     <DashboardPageShell>
       <ErrorBox message={error} className="mb-3" />
 
-      {/* Repo/Loca/nav — rendered INSIDE the frame, matching the Blazor screenshot layout (previously this lived above the frame in DashboardPageShell's toolbar row). */}
-      <div className="mb-3 space-y-2 border-b pb-3">
+      {/* Repo/Loca/nav — rendered INSIDE the frame, matching the Blazor screenshot layout (previously this lived above the frame in DashboardPageShell's toolbar row), and in its OWN nested bordered frame per explicit request. */}
+      <div className="mb-3 space-y-2 rounded-lg border bg-muted/10 p-3">
         <div className="flex items-center gap-2">
           <span className="text-sm text-muted-foreground whitespace-nowrap">Repo::</span>
           <Select value={selectedRepoGuid} onValueChange={handleRepoChange}>
@@ -246,11 +271,15 @@ export default function FoldersPage() {
         </div>
       </div>
 
-      {!currentItem ? (
+      {!currentItem && loading ? (
         <div className="flex items-center gap-2 py-4 text-muted-foreground">
           <RefreshCw className="h-4 w-4 animate-spin" />
           <span>Ładowanie...</span>
         </div>
+      ) : !currentItem ? (
+        <p className="py-4 text-sm italic text-muted-foreground">
+          Nie udało się załadować żadnego itemu — sprawdź błąd powyżej i spróbuj ponownie (np. przyciskiem GO).
+        </p>
       ) : (
         <div className="space-y-3">
           <div className="text-sm text-muted-foreground">

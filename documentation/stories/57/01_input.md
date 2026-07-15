@@ -41,3 +41,14 @@ popraw to zeby bylo tak jka na screenach
 to jest przykladowa poprawna odpowiedz dla text item: [...]
 a to dla folder-item: [...]
 widzialem ze pisales wyzej jakas glupote ze to nie poprawne
+
+## Input 5
+
+ok wstaw go jeszcze w dodatkowa ramke
+na poczatku zachowanie jest bardzo dziwne bo wszystko kreci sie w nieskonczonosc
+dopiero klikniecie go odblokowalo dzialanie i prawie jest ok wyswietlaja sie itemy z folder-itemu
+do tego combobox jest pusty caly czas w ogole sie repozytoria tam nie zaladowaly sprawdz w kodzie blazor jka one sa pobierane i uzueplniany jest combobox
+do tego text item nie dziala jest taki dziwny blad:
+error: GetItem(8b603669-f8e6-4224-bd78-a474998995fa, "01") returned an unexpected shape: {"success":true,"result":""}
+
+gdzies tez zostal usuniety dev panel z prawej krawedzi strony powienine na srodku by taki przycisk do klikniecia. chcialem go zrobic niewidocznego i niedostepnego na prod i test ale tutaj w developemencie powineine byc widoczny
