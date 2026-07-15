@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
-import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -127,47 +126,41 @@ export default function BeeperContactsPage() {
 					<span>No contacts found.</span>
 				</div>
 			) : (
-				<div className="flex flex-col gap-2">
+				<div className="flex flex-col divide-y divide-border overflow-hidden rounded-md border">
 					{filtered.map((c) => (
-						<Link key={c._id} href={`/dashboard/beeper/${c._id}`}>
-							<Card className="transition-colors hover:bg-accent/50">
-								<CardContent className="flex items-center gap-4 px-5 py-3">
-									<Avatar className="h-11 w-11 shrink-0">
-										{c.hasAvatar && <AvatarImage src={`/api/beeper-crm/contacts/${c._id}/avatar`} alt={c.displayName} />}
-										<AvatarFallback>{c.displayName.slice(0, 1).toUpperCase()}</AvatarFallback>
-									</Avatar>
-									<div className="min-w-0 flex-1">
-										<div className="flex flex-wrap items-baseline gap-2">
-											<span className="truncate font-medium">{c.displayName}</span>
-											{c.tags.map((t) => (
-												<Badge key={t} variant="secondary" className="text-[10px]">
-													{t}
-												</Badge>
-											))}
-											{c.lastMessage?.timestamp && (
-												<span className="shrink-0 text-xs text-muted-foreground">
-													{relativeTime(c.lastMessage.timestamp)}
-												</span>
-											)}
-										</div>
-										{c.lastMessage ? (
-											<p className="truncate text-sm text-muted-foreground">{c.lastMessage.text}</p>
-										) : (
-											<p className="truncate text-sm italic text-muted-foreground/60">No messages</p>
-										)}
-									</div>
-									<div className="flex shrink-0 items-center gap-1.5">
-										{[...new Set(c.identities.map((i) => i.network))].map((n) => (
-											<Badge key={n} variant="outline" className="text-[10px]">
-												{n}
-											</Badge>
-										))}
-										{c.channelCount > 0 && (
-											<span className="ml-1 text-xs text-muted-foreground">{c.channelCount} ch.</span>
-										)}
-									</div>
-								</CardContent>
-							</Card>
+						<Link key={c._id} href={`/dashboard/beeper/${c._id}`} className="block transition-colors hover:bg-accent/50">
+							<div className="flex items-center gap-2 px-2 py-1">
+								<Avatar className="h-6 w-6 shrink-0">
+									{c.hasAvatar && <AvatarImage src={`/api/beeper-crm/contacts/${c._id}/avatar`} alt={c.displayName} />}
+									<AvatarFallback className="text-[10px]">{c.displayName.slice(0, 1).toUpperCase()}</AvatarFallback>
+								</Avatar>
+								<div className="min-w-0 flex-1 flex items-baseline gap-2">
+									<span className="shrink-0 max-w-[40%] truncate text-sm font-medium">{c.displayName}</span>
+									{c.tags.map((t) => (
+										<Badge key={t} variant="secondary" className="h-4 shrink-0 px-1 text-[9px]">
+											{t}
+										</Badge>
+									))}
+									{c.lastMessage ? (
+										<p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{c.lastMessage.text}</p>
+									) : (
+										<p className="min-w-0 flex-1 truncate text-xs italic text-muted-foreground/60">No messages</p>
+									)}
+								</div>
+								<div className="flex shrink-0 items-center gap-1">
+									{c.lastMessage?.timestamp && (
+										<span className="text-[10px] text-muted-foreground">{relativeTime(c.lastMessage.timestamp)}</span>
+									)}
+									{[...new Set(c.identities.map((i) => i.network))].map((n) => (
+										<Badge key={n} variant="outline" className="h-4 px-1 text-[9px]">
+											{n}
+										</Badge>
+									))}
+									{c.channelCount > 0 && (
+										<span className="text-[10px] text-muted-foreground">{c.channelCount}ch</span>
+									)}
+								</div>
+							</div>
 						</Link>
 					))}
 				</div>
