@@ -10,6 +10,7 @@
 | 6 | DONE      |             | Repo dropdown lists ALL repos for `pawel_f` only; every other user sees only their own repo |
 | 7 | DONE      |             | Folder-type items' `Body` (a raw JSON object from the real API, not a string) parses and renders correctly |
 | 8 | DONE      |             | Page no longer spins forever on a failed initial load; a missing item shows a clean "not found" message; nav is inside its own nested frame |
+| 9 | DONE      |             | Whole panel (nav + item content) is in one nested frame; repo listing goes through `dba`'s existing `getAllRepos()` |
 
 # Task 1 — Nav panel: repo dropdown, loca input, Wstecz/Naprzód/GO, no Logout
 
@@ -115,5 +116,17 @@
 **Tested:** `curl` reproducing the user's exact failing case (`GetItem(8b603669-..., "01")` — Kamil's repo) now returns `{"error":"Item not found: repo \"8b603669-...\", loca \"01\""}` (HTTP 404) instead of the raw shape dump. `pawel_f`'s repo list still returns all 36 repos. `tsc --noEmit` clean, `pnpm --filter dashboard build` clean. **Not verified**: the actual "spins forever" symptom itself, since it wasn't reproduced locally (this environment's `.NET` API responds fast) — the fix addresses the confirmed code-level cause (spinner logic + missing error handling + no timeout), not a reproduction of the exact original failure.
 
 **Dev Panel (4th report):** investigated, NOT a regression from this Story — `git log` on `components/dev-panel/*`/`lib/flags.ts` shows no changes by this Story or any of its commits. `DEV_PANEL_ENABLED` defaults ON only for `next dev` (`NODE_ENV !== "production"`); a Docker build sets `NODE_ENV=production`, turning it OFF unless `ENABLE_DEV_PANEL=true` is explicitly passed as a build arg (pre-existing `Dockerfile` behavior). Reported back as a finding, nothing changed in code.
+
+**Status: DONE**
+
+# Task 9 — One frame for everything; repo listing via `dba`
+
+**Requested:** Extend the nested frame to cover the item content too, not just nav; find/use a `GetAllReposNames`-style method via `dba` instead of duplicating the call.
+
+**Done:** The nested frame (`rounded-lg border bg-muted/10`) now wraps nav AND the item-content area (info line, button rows, tabs/children list) as one continuous box, with an internal `border-b` separating nav from content. `/api/folders/repos` now imports `getAllRepos` from `dba` (found via `grep -rln "getAllRepos"` — it already existed in `packages/dba/src/client.ts`, already used by `packages/console`, with a built-in 30s timeout and tracing) instead of a duplicate hand-rolled version in `cp-flow.ts`, which is now deleted.
+
+**Files changed:** `packages/dashboard/app/(dashboard)/dashboard/folders/page.tsx`, `packages/dashboard/app/api/folders/repos/route.ts`, `packages/dashboard/app/api/flow/cp-flow.ts` (removed the now-redundant `getAllRepos`).
+
+**Tested:** `tsc --noEmit` clean, `pnpm --filter dashboard build` clean. `curl` (logged in as `pawel_f`) via the new `dba`-backed route still returns all 36 real repos, correctly shaped (`{id, name}`). **Honestly not verified**: the user's "combobox still empty" report was never reproduced locally — every local test, before and after this change, returned the repo list correctly. This change is a real improvement (less duplicate code, better-tested underlying call, matches what was asked) but is not a confirmed fix for a bug that couldn't be reproduced in this environment — see `06_others_from_report.md`.
 
 **Status: DONE**
