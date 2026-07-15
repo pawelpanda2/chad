@@ -96,16 +96,16 @@ export default function BeeperMergePage() {
 	return (
 		<DashboardPageShell
 			upLevel={{ href: "/dashboard/beeper" }}
-			toolbar={
-				<>
-					<h2 className="text-lg font-bold">Merge suggestions</h2>
-					<span className="text-xs text-muted-foreground">
-						Fuzzy name matches among direct-DM contacts. Nothing is merged automatically.
-					</span>
-					<span className="text-xs text-muted-foreground">{suggestions.length} pairs</span>
-				</>
-			}
+			toolbar={<h2 className="text-lg font-bold">Merge suggestions</h2>}
 		>
+			{/* Second row inside the outer frame — see documentation/stories/60. */}
+			<div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b pb-3 mb-3">
+				<span className="text-xs text-muted-foreground">
+					Fuzzy name matches among direct-DM contacts. Nothing is merged automatically.
+				</span>
+				<span className="ml-auto text-xs text-muted-foreground">{suggestions.length} pairs</span>
+			</div>
+
 			{loading ? (
 				<div className="flex items-center justify-center py-24 text-muted-foreground gap-2">
 					<RefreshCw className="h-4 w-4 animate-spin" /> Computing suggestions...

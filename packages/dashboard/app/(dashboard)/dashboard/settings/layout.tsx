@@ -88,16 +88,22 @@ interface SettingsLayoutProps {
 export default function SettingsLayout({ children }: SettingsLayoutProps) {
 	return (
 		<DashboardPageShell contentClassName="gap-4 p-4">
-			{/* Frame 1 — theme mode (Dark / Light / System). */}
-			<div className="rounded-xl border bg-card p-4">
+			{/*
+				Section frames (documentation/stories/60 — page-frame standard):
+				these must read as sections INSIDE the shell's one outer frame, not
+				as second/third outer frames of their own — `rounded-lg` + muted
+				background distinguishes them from the shell's `rounded-xl` frame,
+				matching the section style already established in
+				app/(dashboard)/dashboard/folders/page.tsx.
+			*/}
+			<div className="rounded-lg border bg-muted/10 p-4">
 				<div className="space-y-2">
 					<h4 className="text-sm font-medium">Theme</h4>
 					<ThemeModeSelector />
 				</div>
 			</div>
 
-			{/* Frame 2 — the rest of the settings. */}
-			<div className="rounded-xl border bg-card p-4">
+			<div className="rounded-lg border bg-muted/10 p-4">
 				<div className="space-y-6">
 					<div>
 						<h3 className="text-lg font-medium">Settings</h3>
