@@ -1,14 +1,22 @@
 import { NextResponse } from 'next/server';
-import { getCurrentUserForms } from '@/app/api/flow/cp-flow';
 import { getCurrentUserFromCookies } from '@/lib/session';
+import { entry } from 'cp-entry';
+import { ContentProviderError } from 'cp-core';
 
 /**
- * GET /api/folders
+ * GET /api/folders?loca=<slash-joined loca, omit or "" for repo root>
  *
- * Returns the folder structure for the current user from Content Provider.
- * Uses cp-flow layer - does NOT construct CP args directly.
+ * Generic Content Provider item fetch for the dashboard's Folders tab
+ * (see documentation/stories/57). Scoped strictly to the current
+ * authenticated user's own repoGuid — repoGuid is never accepted from the
+ * client, matching every other Content-Provider-touching endpoint in this
+ * app (documentation/dashboard/common/features/chad-user-data-isolation.md).
+ * cp-entry's methods already take repoGuid as an explicit parameter, so
+ * this follows the same safe pattern app/api/flow/cp-flow.ts uses — no
+ * dba runWithRepoContext needed (that's dba's own AsyncLocalStorage
+ * pattern for its ~70 SHARED_REPO_ID call sites, a different module).
  */
-export async function GET() {
+export async function GET(request: Request) {
   const cpApiUrl = process.env.CONTENT_PROVIDER_API_URL;
   if (!cpApiUrl) {
     return NextResponse.json(
@@ -20,27 +28,22 @@ export async function GET() {
   const user = await getCurrentUserFromCookies();
   if (!user) {
     return NextResponse.json(
-      {
-        error: 'NOT_AUTHENTICATED',
-        details: 'Cannot fetch folders without authenticated user session',
-        debug: { CONTENT_PROVIDER_API_URL: cpApiUrl },
-      },
+      { error: 'NOT_AUTHENTICATED', details: 'Cannot fetch Content Provider items without an authenticated user session' },
       { status: 401 }
     );
   }
 
-  // Use cp-flow to get forms, scoped to this user's own repo
-  const result = await getCurrentUserForms(user.repoGuid);
+  const { searchParams } = new URL(request.url);
+  const loca = searchParams.get('loca') ?? '';
 
-  return NextResponse.json({
-    userGuid: user.repoGuid,
-    username: user.username,
-    repoKey: user.repoGuid,
-    actionRecords: result.actionRecords,
-    leadRecords: result.leadRecords,
-    cpCalls: result.cpCalls,
-    debug: {
-      CONTENT_PROVIDER_API_URL: cpApiUrl,
-    },
-  });
+  try {
+    const item = await entry.GetItem(user.repoGuid, loca);
+    return NextResponse.json({ item, repoGuid: user.repoGuid, username: user.username });
+  } catch (err) {
+    const status = err instanceof ContentProviderError ? 404 : 400;
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : 'UNKNOWN_ERROR' },
+      { status }
+    );
+  }
 }

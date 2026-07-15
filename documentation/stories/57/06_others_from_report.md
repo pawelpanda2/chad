@@ -1,0 +1,19 @@
+# Story 57 — Others from report
+
+## Architectural decisions (made autonomously, no user available to ask)
+
+- **Full replacement, not addition.** The prior `/dashboard/folders` page (a narrow, hardcoded actions/leads debug viewer with a "Developer logs" panel) and its `/api/folders` route were replaced outright, not kept alongside the new generic browser. `getCurrentUserForms` (in `app/api/flow/cp-flow.ts`) is now unused but was left in place rather than deleted speculatively — it's a shared module function and this Story didn't audit every other possible caller.
+- **New `cp-gui` components were NOT reused directly.** An earlier, separate session built a standalone `packages/cp-gui` component library intended partly for exactly this dashboard-embedding use case, but its components carry a free repo picker and `cp-plugin` (local desktop) integration that don't fit this dashboard's per-user isolation model or its web-only deployment. This Story wrote new, dashboard-native components instead, reusing only the shape of `cp-core`'s types and the already-proven `cp-entry` data-access layer.
+- **Repo is a read-only label, not a picker** (see `02_plan.md` point 1) — the single largest deviation from Blazor's `Repos.razor`, made necessary by this dashboard's existing per-user data isolation model, which Blazor's single-operator desktop tool has no equivalent of.
+- **Back/Forward is a real, working history stack**, not a port of Blazor's own dead-code triple-button (all three of `←`/`↶`/`→` call the identical handler in the real Blazor source — confirmed by re-reading `Repos.razor` in this Story, not assumed from memory).
+
+## Limitations / what was deliberately left undone
+
+- **No actual browser click-through verification.** This environment has no headless-browser or screenshot tool. Verification was done via: TypeScript build (`tsc --noEmit`, clean), a real `next dev` server, a real authenticated session (`pawel_f`/`changeme`), and `curl` calls against the real, already-running .NET Content Provider API (port 12024) confirming correct data end-to-end for the repo root, a Folder item, and a Text item. The React state logic (history stack, button disabled states) was verified by code review only.
+- **No write operations.** `Put`/`PostParentItem` exist in `cp-files`/`cp-mongo` (from the earlier session) but aren't wired into `cp-api` or this dashboard page — this Story is read-only browsing only, matching the user's own instruction to drop the "unnecessary" per-item toolbar buttons (which is where Blazor's only write affordances — "Add" forms — live).
+- **No repo switcher UI at all**, not even for admins. If a future need arises for an admin to browse another user's repo for support purposes, that would need its own, deliberately-scoped feature (e.g. an admin-only endpoint with its own authorization check) — not a re-enabled version of Blazor's combobox.
+
+## Follow-up proposals (not implemented, for future consideration)
+
+- Wire `cp-api`'s (still GET-only) HTTP layer or `cp-files`' now-working `Put`/`PostParentItem` into a future write-capable version of this page, if a real need for in-dashboard editing emerges.
+- Consider whether the dashboard's `NavGroup` (page-level Prev/Back/Forward, auto-rendered by `DashboardPageShell`) and this page's own Content-Provider-item-level Wstecz/Naprzód are confusing to have side-by-side in the same toolbar row — they serve genuinely different purposes (dashboard page history vs. CP item history) but look similar. Not changed in this Story since the user's request was specifically about the CP-item-level controls; flagged here in case it reads as redundant in practice.
