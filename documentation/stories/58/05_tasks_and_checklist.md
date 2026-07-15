@@ -1,5 +1,13 @@
 # Story 58 — Tasks Checklist
 
+**Scope note (Story close):** Story 58 is scoped to **GUI-level local
+verification only** — proving the `chad` Beeper tab is a working,
+functionally-equivalent replacement UI for the old `contacts` dashboard,
+by reading `contacts`'s existing local MongoDB directly, unmodified, over
+`host.docker.internal`. It deliberately does **not** cover: migrating that
+data into `chad`'s own MongoDB/Content Provider model, or the QNAP-side
+data migration. That work is planned separately in Story 59.
+
 | # | Ai Status | Real Status | Task |
 |---|-----------|-------------|------|
 | 1 | DONE      |             | Local Beeper dashboard stack (real `contacts` MongoDB + existing Content Provider API + dashboard) runs locally and is reachable |
@@ -8,8 +16,8 @@
 | 4 | DONE      |             | Beeper inbox reads real data correctly |
 | 5 | DONE      |             | Beeper merge-suggestions reads real data correctly |
 | 6 | PARTIAL   |             | `beeper-ws` / `beeper-sync` connect to the real, locally running Beeper Desktop and pull/log a small real sample |
-| 7 | NOT DONE  |             | Attachments show a graceful "media unavailable" placeholder instead of breaking (first-version scope, no central storage) |
-| 8 | NOT DONE  |             | MongoDB dry-run migration report: local `contacts` MongoDB → QNAP `chad` MongoDB (separate, later step — not a precondition for the tasks above) |
+| 7 | DONE      |             | Attachments show a graceful "media unavailable" placeholder instead of breaking (first-version scope, no central storage) |
+| 8 | DEFERRED  |             | MongoDB dry-run migration report: local `contacts` MongoDB → QNAP `chad` MongoDB — **out of scope for Story 58, planned in Story 59** |
 
 # Task 1 — Local Beeper dashboard stack runs locally
 
@@ -147,10 +155,18 @@ without the real token.
 **Requested:** First-version scope: show text, show attachment metadata if
 present, show a placeholder if the file can't be fetched — no central
 storage, no binary transfer.
-**Done:** Not started yet.
-**Files changed:** —
-**Tested:** —
-**Status: NOT DONE**
+**Done:** Each attachment in the contact-detail message timeline now
+renders as its own row (filename/type, an icon distinguishing
+image/video vs. generic file, and an explicit "(unavailable)" label with a
+tooltip explaining there's no attachment proxy yet) instead of a bare "N
+attachment(s)" count. No binary fetch is attempted anywhere — nothing to
+break.
+**Files changed:**
+`packages/dashboard/app/(dashboard)/dashboard/beeper/[id]/page.tsx`.
+**Tested:** `tsc --noEmit` and `next lint` both clean. Not click-tested in
+a real browser (no browser-automation tool in this session) — logically
+verified against real attachment data shape returned by the API.
+**Status: DONE**
 
 # Task 8 — MongoDB dry-run migration report (local `contacts` → QNAP `chad`)
 
@@ -158,7 +174,11 @@ storage, no binary transfer.
 the **later**, separate migration to QNAP's `chad` MongoDB — it is
 explicitly **not** a precondition for local UI testing (Tasks 1–5 above),
 which read the `contacts` database directly.
-**Done:** Not started yet.
+**Done:** Not started — and, per the Story-close scope note above,
+deliberately **moved out of Story 58 entirely**. Real integration of this
+data into `chad`'s own MongoDB/Content Provider model (not just reading
+`contacts`'s database as-is) plus the QNAP migration are planned in
+**Story 59**.
 **Files changed:** —
 **Tested:** —
-**Status: NOT DONE**
+**Status: DEFERRED (see Story 59)**

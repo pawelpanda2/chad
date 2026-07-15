@@ -11,7 +11,7 @@
     "beeper:sync": "pnpm --filter beeper-sync sync",
     "beeper:sync:force": "pnpm --filter beeper-sync sync:force",
     "beeper:oplog": "pnpm --filter beeper-oplog dev",
-    "mongo:up": "docker compose up -d mongodb",
+    "mongo:up": "docker compose -f docker-compose.local.yml up -d mongodb",
     "mongo:backup": "./bash-scripts/mongo/backup.sh",
     "mongo:restore": "./bash-scripts/mongo/restore.sh",
     "mongo:migrate-contacts": "node ./bash-scripts/mongo/migrate-contacts-to-chad.mjs",
