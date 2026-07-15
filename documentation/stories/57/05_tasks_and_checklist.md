@@ -11,6 +11,7 @@
 | 7 | DONE      |             | Folder-type items' `Body` (a raw JSON object from the real API, not a string) parses and renders correctly |
 | 8 | DONE      |             | Page no longer spins forever on a failed initial load; a missing item shows a clean "not found" message; nav is inside its own nested frame |
 | 9 | DONE      |             | Whole panel (nav + item content) is in one nested frame; repo listing goes through `dba`'s existing `getAllRepos()` |
+| 10 | DONE     |             | `GET /api/folders/repos` actually reachable in a Docker-built image (was silently 404'd by a `.dockerignore` glob) |
 
 # Task 1 — Nav panel: repo dropdown, loca input, Wstecz/Naprzód/GO, no Logout
 
@@ -128,5 +129,17 @@
 **Files changed:** `packages/dashboard/app/(dashboard)/dashboard/folders/page.tsx`, `packages/dashboard/app/api/folders/repos/route.ts`, `packages/dashboard/app/api/flow/cp-flow.ts` (removed the now-redundant `getAllRepos`).
 
 **Tested:** `tsc --noEmit` clean, `pnpm --filter dashboard build` clean. `curl` (logged in as `pawel_f`) via the new `dba`-backed route still returns all 36 real repos, correctly shaped (`{id, name}`). **Honestly not verified**: the user's "combobox still empty" report was never reproduced locally — every local test, before and after this change, returned the repo list correctly. This change is a real improvement (less duplicate code, better-tested underlying call, matches what was asked) but is not a confirmed fix for a bug that couldn't be reproduced in this environment — see `06_others_from_report.md`.
+
+**Status: DONE**
+
+# Task 10 — `.dockerignore` was silently excluding the `repos` API route
+
+**Requested:** User reported the combobox was still empty in the actual Docker-built deployment, with a specific error (`Unexpected token '<', "<!DOCTYPE "... is not valid JSON`), and asked to use Playwright to log in and click through to reproduce it.
+
+**Done:** No Playwright/browser tool is available in this environment, so reproduced the same failure via `curl` instead — logged into the real, already-running `chad-dashboard-local-mac-docker` container (`localhost:12020`) as `pawel_f`/`changeme`, then called `GET /api/folders/repos` directly: it returned Next.js's own 404 HTML page, not JSON — the exact `<!DOCTYPE` string the user hit. Root-caused (not guessed) by inspecting the running container's compiled build with `docker exec ... find /app -path "*/api/folders*"`: only `route.js` for `/api/folders` existed, `repos/route.js` was never compiled in at all, despite the source file being correctly present and git-tracked. Traced to the repo-root `.dockerignore`'s `**/repos/` line — meant to exclude the real local Content-Provider data dir (`packages/dashboard/cp-root/repos`, already covered by the more specific `packages/dashboard/cp-root` line two lines above it) — which also matches, and silently drops, `packages/dashboard/app/api/folders/repos/` from every Docker build context, for every build since that route was created (commit `71c76e6`). Removed the redundant/harmful `**/repos/` line.
+
+**Files changed:** `.dockerignore` (repo root).
+
+**Tested:** Full real rebuild via `bash-scripts/dashboard/03_local_mac_docker/03_build.sh`, restarted via `04_re-start.sh`, then re-ran the exact same failing `curl` sequence against the new image — `GET /api/folders/repos` now returns `200` with all 36 real repos as JSON. Also simulated the reported click-through end-to-end (switching repo via `GET /api/folders?loca=&repoGuid=<other-repo>`) against the fixed image — correctly returns that repo's real root folder. This is the first fix in this Story with both a confirmed, reproduced root cause and a verification against the user's literal reported failure, not a plausible-but-unconfirmed improvement.
 
 **Status: DONE**

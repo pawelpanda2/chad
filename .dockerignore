@@ -47,10 +47,13 @@ bash-scripts
 .claude
 
 # Local dev data / mounted volumes — not needed in the image
+# NOTE: no separate "**/repos/" glob here — it used to also match
+# packages/dashboard/app/api/folders/repos/, silently dropping that whole
+# API route from every Docker build image (Story 57, Input 6 follow-up).
+# packages/dashboard/cp-root already covers the actual local repo data dir.
 packages/dashboard/cp-root
 packages/dashboard/Binaries
 **/data/
-**/repos/
 
 # Test/coverage
 coverage
