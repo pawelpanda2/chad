@@ -9,6 +9,7 @@
 | 5 | DONE      |             | Typing a loca and pressing GO (or Enter) jumps directly to that item |
 | 6 | DONE      |             | Repo dropdown lists ALL repos for `pawel_f` only; every other user sees only their own repo |
 | 7 | DONE      |             | Folder-type items' `Body` (a raw JSON object from the real API, not a string) parses and renders correctly |
+| 8 | DONE      |             | Page no longer spins forever on a failed initial load; a missing item shows a clean "not found" message; nav is inside its own nested frame |
 
 # Task 1 — Nav panel: repo dropdown, loca input, Wstecz/Naprzód/GO, no Logout
 
@@ -95,5 +96,24 @@
 **Files changed:** `packages/dashboard/app/api/flow/cp-flow.ts`.
 
 **Tested:** `curl` against `GET /api/folders?repoGuid=f8da1e9a-...&loca=28` (the exact folder from the user's Input 3/4 reference — "wiedza moja") returned the exact same children as the user's pasted reference JSON, after the fix. Before the fix, this same call failed with `"returned an unexpected shape"`.
+
+**Status: DONE**
+
+# Task 8 — Infinite spinner, empty combobox, ugly "not found" error, nested frame
+
+**Requested (Input 5, from actually using the deployed page):** four reports at once — nav should be in its own extra frame; the page spins forever until GO is clicked; the repo combobox never loads; a Text item throws a raw, confusing error.
+
+**Done (each root-caused, not guessed — see `02_plan.md`'s "Correction 3" for full detail):**
+- Nav block now wrapped in its own `rounded-lg border` frame, nested inside `DashboardPageShell`'s frame.
+- The render logic showed a spinner whenever `!currentItem`, regardless of whether `loading` had already finished — so a failed FIRST load spun forever. Fixed: spinner only shows while actually loading; a finished-but-empty state shows a real message instead.
+- The mount effect had no error handling at all — an exception (e.g. non-JSON response) left `loading` stuck `true` and `repos` silently empty, with no error shown. Wrapped in `try/finally`, and `/api/folders/repos`'s own failure is now surfaced via `setError`.
+- `invokeCp` (`cp-flow.ts`) had NO fetch timeout — a slow/unreachable .NET API could hang indefinitely. Added a 15s `AbortController` timeout, matching `cp-net-adapter`'s existing pattern.
+- The "unexpected shape" error is a REAL .NET behavior (empty response body when a `loca` genuinely doesn't exist), not a bug to route around — `getItemByLoca` now detects this exact shape and throws a clean "Item not found" message.
+
+**Files changed:** `packages/dashboard/app/(dashboard)/dashboard/folders/page.tsx`, `packages/dashboard/app/api/flow/cp-flow.ts`.
+
+**Tested:** `curl` reproducing the user's exact failing case (`GetItem(8b603669-..., "01")` — Kamil's repo) now returns `{"error":"Item not found: repo \"8b603669-...\", loca \"01\""}` (HTTP 404) instead of the raw shape dump. `pawel_f`'s repo list still returns all 36 repos. `tsc --noEmit` clean, `pnpm --filter dashboard build` clean. **Not verified**: the actual "spins forever" symptom itself, since it wasn't reproduced locally (this environment's `.NET` API responds fast) — the fix addresses the confirmed code-level cause (spinner logic + missing error handling + no timeout), not a reproduction of the exact original failure.
+
+**Dev Panel (4th report):** investigated, NOT a regression from this Story — `git log` on `components/dev-panel/*`/`lib/flags.ts` shows no changes by this Story or any of its commits. `DEV_PANEL_ENABLED` defaults ON only for `next dev` (`NODE_ENV !== "production"`); a Docker build sets `NODE_ENV=production`, turning it OFF unless `ENABLE_DEV_PANEL=true` is explicitly passed as a build arg (pre-existing `Dockerfile` behavior). Reported back as a finding, nothing changed in code.
 
 **Status: DONE**
