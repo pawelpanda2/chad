@@ -25,6 +25,20 @@ Replaced with: a new `getItemByLoca(repoGuid, loca)` function added directly to 
 
 This does NOT touch or invalidate the earlier session's `cp-entry`/`cp-files`/`cp-mongo`/`cp-api` TypeScript rewrite work — that all still exists in the repo, built and verified on its own, just not consumed by the dashboard.
 
+## Correction 2 (Input 3/4) — full visual fidelity to the real Blazor screenshots, real repo picker, Body-shape bug fix
+
+The first corrected version (above) was too minimal — it dropped the entire per-item button rows and locked the repo picker to a read-only label. The user pasted two real screenshots of the actual running Blazor app (Input 3) and said plainly the earlier version was wrong, then pasted two real raw `/invoke` GetItem responses as ground truth (Input 4).
+
+**Changes made:**
+
+1. **Real repo picker restored**, but gated: `GET /api/folders/repos` returns ALL repos (`cp-flow.ts`'s new `getAllRepos()`, `["IRepoService","IMethodWorker","GetAllReposNames"]`, verified live — 36 real repos) only when the logged-in user is `pawel_f`; every other user still gets a single-item list containing only their own repo. This is a **new, narrow exception** to this dashboard's per-user isolation model, made because there is no admin/role flag anywhere in the user model to gate it more precisely, and because the reference screenshots are themselves from Pawel's own single-operator use of the system — flagged explicitly to the user in-conversation, not decided silently.
+2. **Full button rows restored** for both Text and Folder views (Folder/Content/Config/Terminal, Open▾/GoogleDoc/Tts, Add/type▾/input, Podgląd/Edytor tabs for Text; Folder/Config/Terminal, Add/type▾/input for Folder) — rendered for visual parity with the screenshots but `disabled` with an explanatory `title` tooltip, since none of them have a real backend path yet (`cp-plugin` un-reachable from a web dashboard; writes not wired in this Story). See `06_others_from_report.md` for the follow-up proposal.
+3. **Kept, explicitly NOT reverted despite the screenshots showing them**: no Logout button (user's ORIGINAL Input 1 explicitly said "bez logout"; the screenshots are just naturally of the standalone app, which has its own separate Logout) — and only ONE back button, not Blazor's dead-code duplicate `←`/`↶` pair (confirmed by source, not guessed).
+4. **Real bug found and fixed** (Input 4 pinpointed it exactly): `getItemByLoca`'s validation required `raw.Body` to already be a `string`, but the real .NET response has `Body` as a **string for Text items** and a **raw JSON object for Folder items** (not pre-stringified) — confirmed by the user's pasted example (`"Body": {"02": "...", ...}`) and matching what `cp-net-adapter` (the earlier session's separate TS rewrite) already normalizes for the same reason. Fixed: `getItemByLoca` now does `typeof raw.Body === 'string' ? raw.Body : JSON.stringify(raw.Body ?? '')`, always returning a string. This was caught independently via a live `curl` test against a real Folder item (`EmotionalThings/28`) BEFORE the user's Input 4 arrived — Input 4 confirmed the exact same root cause with real reference data, not a new problem.
+5. **`repoGuid` is now an explicit, optional query param on `GET /api/folders`** (`?repoGuid=...`), defaulting to the caller's own repo. An explicit value is only honored for `pawel_f` or when it equals the caller's own `repoGuid` — any other value is `403`, never silently substituted.
+
+Live-verified after the fix: fetching `EmotionalThings/28` (the exact folder in the user's Input 3 screenshot) returns the exact same real children (`02: "pierwsza wizyta..."`, `04: "lista sabotażysci..."`, etc.) as the screenshot and as the user's Input 4 reference JSON.
+
 ## Implementation steps
 
 1. Read `Repos.razor`/`TextView.razor`/`FolderView.razor` again in full (already read in the prior session, re-confirmed here) to keep the nav/toolbar/panel shape faithful.
