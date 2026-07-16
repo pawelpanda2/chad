@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
 import { FRAME_SECTION_GAP_CLASS } from "@/components/shared/layout-tokens";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
 	Table,
@@ -71,9 +72,9 @@ export default function UsersPage() {
 	}
 
 	return (
-		<DashboardPageShell scroll={false} contentClassName={FRAME_SECTION_GAP_CLASS} title="USERS">
+		<DashboardPageShell contentClassName={cn(FRAME_SECTION_GAP_CLASS, "overscroll-contain overflow-x-auto")} title="USERS">
 			<span className="shrink-0 text-xs text-muted-foreground">{users.length} users</span>
-			<div className="min-h-0 flex-1 overflow-auto overscroll-contain rounded-lg border bg-muted/10">
+			<div className="rounded-lg border bg-muted/10">
 				{users.length === 0 ? (
 					<p className="py-8 text-center text-sm text-muted-foreground">
 						No users found.

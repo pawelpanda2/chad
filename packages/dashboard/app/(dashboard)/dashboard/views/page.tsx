@@ -703,14 +703,17 @@ function ViewsPageContent() {
 
   return (
     <DashboardPageShell
-      contentClassName={cn(FRAME_SECTION_GAP_CLASS, "overscroll-contain")}
+      contentClassName={cn(FRAME_SECTION_GAP_CLASS, "overscroll-contain overflow-x-auto")}
       upLevel={{ onClick: handleBack }}
       title={viewTitle}
     >
       {/* Page-specific controls live inside the main frame, not above it
-          (Story 62 Round 3). Scroll now belongs to the outer shell frame
-          (default `scroll`), not this table's own box — dragging the
-          frame's scrollbar moves the toolbar row and table together
+          (Story 62 Round 3). Scroll (both vertical AND horizontal, Round
+          7 — the shell's own default hides horizontal overflow, which
+          broke this wide table's right-scroll; overridden back on here)
+          belongs to the outer shell frame (default `scroll`), not this
+          table's own box — dragging the frame's scrollbar moves the toolbar
+          row and table together
           instead of leaving the toolbar pinned while only the table
           scrolls in its own nested scrollbar (Story 62 Round 6). */}
       <div className="flex flex-wrap items-center gap-3">
@@ -805,11 +808,11 @@ function ViewsPageContent() {
           least one inner frame around its content, even single-element
           pages). No longer its own scroll box (Round 6) — the outer shell
           frame owns the one scrollbar now, so this frame just sizes to its
-          content and the sticky header below sticks relative to that
-          outer scroll container instead of this div. */}
+          content. Header is NOT sticky (Round 7 — explicitly not
+          requested, removed). */}
       <div className="rounded-lg border bg-muted/10">
             <table className="w-full border-collapse text-xs">
-              <thead className="sticky top-0 z-10">
+              <thead>
                 {isTracker && (
                   <tr>
                     <th rowSpan={2} className={cn("border p-1 bg-muted", TABLE_ACTION_COLUMN_WIDTH_CLASS)} />
