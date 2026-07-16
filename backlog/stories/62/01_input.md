@@ -993,3 +993,9 @@ i zrob zeby to byl standar dla listy i mozesz usunac ta kreske odzielajaca pomie
 
 zarowne dates, daily tracker i statues widze ten sam blad ze scroll bar zamiast byc w zewnetrznej ramce to jest w ramce tabeli. to nie tak ma byc. jka przesuwam prawy srolbar vertykarny z glownej ramki to maja sie przesuwac przyciski razem z tabela, wszystko co jest w srodku
 przenies te scroll bary
+
+## Input 19
+
+zrobiles cos takiego ze naglowki z tabeli zostaja w miejscu w trakcie przesuwania scroll bara nei prosilem o taka funkcjonalnosc usun ja
+natomaist to co miales zrobic to brakuje bo dolny scroll bar nie istnieje w wisoku tracker i nie moge przesuwac w prawo miales nie usuwac go calkowicie tylko przeniesc do zewnetrznej ramki
+popraw wszystkie widoki z tabelami w ten sposb czyli tez statuses
