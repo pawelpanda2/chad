@@ -213,7 +213,7 @@ export default function FoldersPage() {
   }
 
   return (
-    <DashboardPageShell>
+    <DashboardPageShell title="FOLDER">
       <ErrorBox message={error} className="mb-3" />
 
       {/* Single nested frame wrapping nav + info + item content — previously nav had its own frame separate from the rest, extended per explicit request to cover everything down through the editor. */}
@@ -222,7 +222,7 @@ export default function FoldersPage() {
           <div className="flex items-center gap-2">
             <span className="text-sm text-muted-foreground whitespace-nowrap">Repo::</span>
             {/*
-              Security (documentation/stories/60): this dropdown may only ever
+              Security (backlog/stories/60): this dropdown may only ever
               show/select the current user's own repo. The backend
               (/api/folders/repos, via dba's strict resolveOwnRepo()) never
               returns more than one repo, but the control is ALSO disabled

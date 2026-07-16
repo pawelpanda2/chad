@@ -1,6 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
 import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
+import { FRAME_SECTION_GAP_CLASS } from "@/components/shared/layout-tokens";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
 	Table,
@@ -61,26 +63,18 @@ export default function UsersPage() {
 			.slice(0, 2);
 	};
 
-	const toolbar = (
-		<h2 className="text-lg font-bold">
-			Users{" "}
-			<span className="text-sm font-normal text-muted-foreground">
-				({users.length})
-			</span>
-		</h2>
-	);
-
 	if (loading) {
 		return (
-			<DashboardPageShell toolbar={toolbar}>
+			<DashboardPageShell title="USERS">
 				<div className="py-4 text-sm text-muted-foreground">Loading users...</div>
 			</DashboardPageShell>
 		);
 	}
 
 	return (
-		<DashboardPageShell scroll={false} padded={false} toolbar={toolbar}>
-			<div className="min-h-0 flex-1 overflow-auto">
+		<DashboardPageShell contentClassName={cn(FRAME_SECTION_GAP_CLASS, "overscroll-contain overflow-x-auto")} title="USERS">
+			<span className="shrink-0 text-xs text-muted-foreground">{users.length} users</span>
+			<div className="rounded-lg border bg-muted/10">
 				{users.length === 0 ? (
 					<p className="py-8 text-center text-sm text-muted-foreground">
 						No users found.

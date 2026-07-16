@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Ensures Content Provider API is reachable for local-mac (non-Docker
 # tmuxinator) dev. Uses the same chad-content-provider-api image built by
-# bash-scripts/dashboard/03_local_mac_docker/03_build.sh (or any other
+# bash-scripts/dashboard/03_local_mac_docker/02_build.sh (or any other
 # environment's 02_build.sh — same image everywhere), run directly via
 # `docker run` since this dev mode has no docker-compose stack of its own.
 # Tracks ownership (.tmp/dashboard/content-provider.owned) so end.sh only
@@ -18,8 +18,8 @@
 #                  the foreground tailing container logs. Used as the
 #                  tmuxinator "content-provider" pane command.
 #   --wait-only  — check, conditionally start + wait for health, then exit.
-#                  Used by re-start.sh to block until CP is ready (or has
-#                  failed) before re-start.sh declares its own start
+#                  Used by 02_local_mac_tmux/03_restart.sh to block until CP
+#                  is ready (or has failed) before it declares its own start
 #                  complete. Safe to call after the pane already did this —
 #                  health check makes it a no-op the second time.
 

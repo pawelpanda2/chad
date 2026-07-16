@@ -4,23 +4,26 @@
 # (chad-content-provider-api) as TEST — started by
 # docker-compose.qnap.shared.yml (bash-scripts/dashboard/00_qnap_shared/).
 # Never starts/stops/rebuilds shared services itself — see
-# bash-scripts/dashboard/05_qnap_prod/03_re-start.sh, which refuses to start
+# bash-scripts/dashboard/05_qnap_prod/03_restart.sh, which refuses to start
 # unless shared services are already up and healthy.
 #
 # Used by bash-scripts/dashboard/05_qnap_prod/*.sh, plus
-# bash-scripts/dashboard/06_qnap_ssh/*_prod.sh (thin SSH wrappers over
+# bash-scripts/dashboard/07_qnap_prod_ssh/*.sh (thin SSH wrappers over
 # those). Env file: .env.qnap.
+#
+# Deliberately NO `build:` section (Story 63): PROD never builds its own
+# image — it only ever runs the exact image TEST already built and verified
+# (docker-compose.qnap.test.yml), promoted via
+# bash-scripts/dashboard/07_qnap_prod_ssh/06_last_from_test.sh. Removing
+# `build:` here (not just deleting 05_qnap_prod/02_build.sh) makes an
+# independent PROD build structurally impossible, not just undocumented.
 services:
   dashboard:
     # No ":latest" fallback - own CHAD images must be deployed by an explicit
     # release tag (see documentation/ai-docs/deploy/image-tagging-standard.md).
-    # 05_qnap_prod/03_re-start.sh sets IMAGE_TAG before calling this; the
+    # 05_qnap_prod/03_restart.sh sets IMAGE_TAG before calling this; the
     # required-var syntax below is a defense-in-depth backstop.
     image: "chad-dashboard:${IMAGE_TAG:?IMAGE_TAG is required, see documentation/ai-docs/deploy/image-tagging-standard.md}"
-    build:
-      context: .
-      dockerfile: packages/dashboard/Dockerfile
-      target: runner
     container_name: chad-dashboard-prod
     restart: unless-stopped
     ports:

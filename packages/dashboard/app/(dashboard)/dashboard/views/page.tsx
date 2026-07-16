@@ -9,17 +9,39 @@ import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
 import { buildLeadDetailsHref, getLeadDetailsHref } from "@/lib/lead-links";
 import { ErrorBox } from "@/components/shared/error-box";
 import { TextEditorWithToolbar } from "@/components/shared/text-editor-with-toolbar";
+import { TABLE_ACTION_COLUMN_WIDTH_CLASS, FRAME_SECTION_GAP_CLASS, LIST_ROW_CLASS, LIST_ROW_WRAPPER_CLASS } from "@/components/shared/layout-tokens";
+import { cn } from "@/lib/utils";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import {
   RefreshCw,
-  Table as TableIcon,
   Search,
   ArrowUp,
   ArrowDown,
   User,
   CheckCircle2,
   FileText,
+  Plus,
+  Pencil,
+  Save,
+  Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
+
+// Fields computed server-side on every read (computeDailyAutoFieldsByDate in
+// dba) — never editable, never sent back on save. Kept as a Set so the edit
+// path can never accidentally include them (Story 62).
+const AUTO_FIELD_KEYS = new Set([
+  "PULLS AUTO",
+  "CLOSES AUTO",
+  "QUALITY DP AUTO",
+  "QUALITY C AUTO",
+]);
 
 // ============================================================================
 // Types
@@ -27,13 +49,17 @@ import { toast } from "sonner";
 
 interface DateEntryRecord {
   itemName: string;
+  loca?: string;
   body?: Record<string, unknown>;
 }
 
 interface DailyEntryRecord {
   itemName: string;
+  loca?: string;
   body?: Record<string, unknown>;
 }
+
+type RowSaveStatus = "idle" | "saving" | "saved" | "error";
 
 interface LeadDashboardItem {
   leadKey: string;
@@ -156,6 +182,16 @@ function ViewsPageContent() {
   const [sortKey, setSortKey] = useState<string>("");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
 
+  // Daily Tracker inline edit (Story 62) — read-only by default; `Edit`
+  // reveals the floppy in the action column and unlocks cells. Draft edits
+  // are keyed by itemName so unrelated rows' in-progress edits are never
+  // clobbered by a save/refresh of a different row.
+  const [isTrackerEditMode, setIsTrackerEditMode] = useState(false);
+  const [editedRows, setEditedRows] = useState<Record<string, Record<string, string>>>({});
+  const [rowSaveStatus, setRowSaveStatus] = useState<Record<string, RowSaveStatus>>({});
+  const [bulkSaving, setBulkSaving] = useState(false);
+  const [selectedEntryItemName, setSelectedEntryItemName] = useState<string | null>(null);
+
   const fetchData = useCallback(async () => {
     setIsLoading(true);
     setError(null);
@@ -211,6 +247,10 @@ function ViewsPageContent() {
     setSortKey(selectedView === "dates" ? "DATA" : selectedView === "tracker" ? "DATE" : "");
     setSortDir(selectedView === "dates" ? "desc" : "asc");
     setSelectedReportLoca(null);
+    setIsTrackerEditMode(false);
+    setEditedRows({});
+    setRowSaveStatus({});
+    setSelectedEntryItemName(null);
   }, [selectedView]);
 
   const handleRefresh = () => {
@@ -234,6 +274,101 @@ function ViewsPageContent() {
       setSortDir("asc");
     }
   };
+
+  // ==========================================================================
+  // Daily Tracker inline edit — dirty tracking, per-row/bulk save (Story 62)
+  // ==========================================================================
+
+  const handleTrackerFieldChange = (itemName: string, key: string, value: string) => {
+    setEditedRows((prev) => ({
+      ...prev,
+      [itemName]: { ...prev[itemName], [key]: value },
+    }));
+    // A fresh edit invalidates a previous "saved" confirmation for this row.
+    setRowSaveStatus((prev) => (prev[itemName] === "saved" ? { ...prev, [itemName]: "idle" } : prev));
+  };
+
+  const isDirtyField = (itemName: string, key: string) => editedRows[itemName]?.[key] !== undefined;
+  const hasRowChanges = (itemName: string) => Object.keys(editedRows[itemName] || {}).length > 0;
+
+  /**
+   * Saves one Daily Entry row's changed fields for real via
+   * PATCH /api/forms/daily-entry (updateDailyEntry in dba) — never shows
+   * "Saved" unless the write actually succeeded (Story 62 explicit
+   * requirement: no pretend Save). AUTO columns are never sent — they are
+   * computed server-side on every read and would be silently overwritten
+   * with a stale snapshot otherwise.
+   */
+  const saveTrackerRow = async (entry: DailyEntryRecord): Promise<boolean> => {
+    const changes = editedRows[entry.itemName];
+    if (!changes || Object.keys(changes).length === 0) return true;
+    if (!entry.loca) {
+      toast.error(`Cannot save "${entry.itemName}": missing loca`);
+      return false;
+    }
+    if (rowSaveStatus[entry.itemName] === "saving") return false; // in-flight guard
+
+    setRowSaveStatus((prev) => ({ ...prev, [entry.itemName]: "saving" }));
+    try {
+      const fields: Record<string, unknown> = { ...entry.body, ...changes };
+      for (const key of AUTO_FIELD_KEYS) delete fields[key];
+
+      const response = await fetch("/api/forms/daily-entry", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ loca: entry.loca, fields }),
+      });
+      const result = await response.json();
+      if (!result.success) throw new Error(result.error || "Save failed");
+
+      setDailyEntries((prev) =>
+        prev.map((e) => (e.itemName === entry.itemName ? { ...e, body: { ...e.body, ...changes } } : e))
+      );
+      setEditedRows((prev) => {
+        const next = { ...prev };
+        delete next[entry.itemName];
+        return next;
+      });
+      setRowSaveStatus((prev) => ({ ...prev, [entry.itemName]: "saved" }));
+      setTimeout(() => {
+        setRowSaveStatus((prev) => (prev[entry.itemName] === "saved" ? { ...prev, [entry.itemName]: "idle" } : prev));
+      }, 2000);
+      return true;
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : "Unknown error";
+      toast.error(`Error saving ${entry.itemName}: ${errorMsg}`);
+      setRowSaveStatus((prev) => ({ ...prev, [entry.itemName]: "error" }));
+      return false;
+    }
+  };
+
+  /** Bulk Save — only rows with actual pending changes, per-row status. */
+  const saveAllDirtyTrackerRows = async () => {
+    const dirtyItemNames = Object.keys(editedRows).filter((name) => hasRowChanges(name));
+    if (dirtyItemNames.length === 0) return;
+    setBulkSaving(true);
+    try {
+      const results = await Promise.all(
+        dirtyItemNames.map((itemName) => {
+          const entry = dailyEntries.find((e) => e.itemName === itemName);
+          return entry ? saveTrackerRow(entry) : Promise.resolve(false);
+        })
+      );
+      const failCount = results.filter((ok) => !ok).length;
+      if (failCount === 0) {
+        toast.success(`Saved ${results.length} ${results.length === 1 ? "row" : "rows"}`);
+      } else {
+        toast.error(`${failCount} of ${results.length} rows failed to save`);
+      }
+    } finally {
+      setBulkSaving(false);
+    }
+  };
+
+  const selectedTrackerEntry = useMemo(
+    () => dailyEntries.find((e) => e.itemName === selectedEntryItemName) || null,
+    [dailyEntries, selectedEntryItemName]
+  );
 
   // Computed unconditionally (before any early return) — Rules of Hooks:
   // useMemo can't be called after a conditional return.
@@ -327,7 +462,7 @@ function ViewsPageContent() {
 
   if (!selectedView) {
     return (
-      <DashboardPageShell toolbar={<h2 className="text-lg font-bold">Views</h2>}>
+      <DashboardPageShell title="VIEWS">
         {/*
           Fixed 4-column grid (same as Forms): the 3 buttons occupy 3 cells and
           the 4th cell stays empty — buttons keep their column width instead of
@@ -339,8 +474,7 @@ function ViewsPageContent() {
             onClick={() => handleViewSelect("tracker")}
             className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
           >
-            <span className="font-semibold text-sm">TRACKER</span>
-            <span className="text-xs text-muted-foreground mt-0.5">Daily tracker</span>
+            <span className="font-semibold text-sm">DAILY TRACKER</span>
           </button>
           <button
             type="button"
@@ -348,7 +482,6 @@ function ViewsPageContent() {
             className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
           >
             <span className="font-semibold text-sm">DATES</span>
-            <span className="text-xs text-muted-foreground mt-0.5">Date entries</span>
           </button>
           <button
             type="button"
@@ -356,7 +489,6 @@ function ViewsPageContent() {
             className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
           >
             <span className="font-semibold text-sm">LEADS</span>
-            <span className="text-xs text-muted-foreground mt-0.5">All leads</span>
           </button>
           <button
             type="button"
@@ -364,7 +496,6 @@ function ViewsPageContent() {
             className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
           >
             <span className="font-semibold text-sm">REPORTS</span>
-            <span className="text-xs text-muted-foreground mt-0.5">Saved reports</span>
           </button>
         </div>
       </DashboardPageShell>
@@ -380,39 +511,38 @@ function ViewsPageContent() {
     return (
       <DashboardPageShell
         upLevel={{ onClick: handleBack }}
-        toolbar={
-          <>
-            <div className="flex items-center gap-2">
-              <User className="h-4 w-4" />
-              <h2 className="text-lg font-bold">Views / LEADS</h2>
-            </div>
-            <div className="relative">
-              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-              <Input
-                value={filter}
-                onChange={(e) => setFilter(e.target.value)}
-                placeholder="Filter leads..."
-                className="pl-7 h-7 text-xs w-[220px]"
-              />
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleRefresh}
-              disabled={isLoading}
-              className="gap-2 h-7 text-xs"
-            >
-              <RefreshCw className={`h-3 w-3 ${isLoading ? "animate-spin" : ""}`} />
-              Refresh
-            </Button>
-            <span className="text-xs text-muted-foreground">
-              {filteredLeads.length} of {leads.length} leads
-            </span>
-          </>
-        }
+        title="LEADS"
+        contentClassName={FRAME_SECTION_GAP_CLASS}
       >
+        <div className="flex shrink-0 flex-wrap items-center gap-3">
+          <div className="relative">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <Input
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              placeholder="Filter leads..."
+              className="pl-7 h-7 text-xs w-[220px]"
+            />
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRefresh}
+            disabled={isLoading}
+            className="gap-2 h-7 text-xs"
+          >
+            <RefreshCw className={`h-3 w-3 ${isLoading ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
+          <span className="text-xs text-muted-foreground">
+            {filteredLeads.length} of {leads.length} leads
+          </span>
+        </div>
+
         <ErrorBox message={error} className="mb-2" />
 
+        {/* Inner frame (Story 62 standard). */}
+        <div className={LIST_ROW_WRAPPER_CLASS}>
         {isLoading ? (
           <div className="flex items-center gap-2 py-4 text-muted-foreground">
             <RefreshCw className="h-4 w-4 animate-spin" />
@@ -428,7 +558,7 @@ function ViewsPageContent() {
               {filteredLeads.map((lead) => (
                   <div
                     key={lead.leadKey}
-                    className="flex items-center rounded-lg px-[10px] py-[10px] transition-colors group hover:bg-accent"
+                    className={`flex items-center group ${LIST_ROW_CLASS}`}
                   >
                     <div className="flex items-center gap-3 flex-1 min-w-0">
                       <Link
@@ -468,6 +598,7 @@ function ViewsPageContent() {
                 ))}
           </div>
         )}
+        </div>
       </DashboardPageShell>
     );
   }
@@ -481,49 +612,13 @@ function ViewsPageContent() {
       <DashboardPageShell
         scroll={!selectedReport}
         padded={!selectedReport}
+        contentClassName={!selectedReport ? FRAME_SECTION_GAP_CLASS : undefined}
         upLevel={{
           onClick: selectedReport ? () => setSelectedReportLoca(null) : handleBack,
           label: selectedReport ? "Back to reports list" : "Back to Views menu",
         }}
-        toolbar={
-          <>
-            <div className="flex items-center gap-2">
-              <FileText className="h-4 w-4" />
-              <h2 className="text-lg font-bold">
-                Views / REPORTS{selectedReport ? ` / ${selectedReport.itemName}` : ""}
-              </h2>
-            </div>
-            {!selectedReport && (
-              <div className="relative">
-                <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                <Input
-                  value={filter}
-                  onChange={(e) => setFilter(e.target.value)}
-                  placeholder="Filter reports..."
-                  className="pl-7 h-7 text-xs w-[220px]"
-                />
-              </div>
-            )}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleRefresh}
-              disabled={isLoading}
-              className="gap-2 h-7 text-xs"
-            >
-              <RefreshCw className={`h-3 w-3 ${isLoading ? "animate-spin" : ""}`} />
-              Refresh
-            </Button>
-            {!selectedReport && (
-              <span className="text-xs text-muted-foreground">
-                {filteredReports.length} of {reports.length} reports
-              </span>
-            )}
-          </>
-        }
+        title="REPORTS"
       >
-        {!selectedReport && <ErrorBox message={reportsError} className="mb-2" />}
-
         {selectedReport ? (
           <TextEditorWithToolbar
             value={editedReportContent}
@@ -534,32 +629,64 @@ function ViewsPageContent() {
             placeholder="This report is empty. Start writing..."
             className="h-full"
           />
-        ) : isLoading ? (
-          <div className="flex items-center gap-2 py-4 text-muted-foreground">
-            <RefreshCw className="h-4 w-4 animate-spin" />
-            <span>Loading reports...</span>
-          </div>
-        ) : reportsError ? null : filteredReports.length === 0 ? (
-          <div className="flex items-center gap-3 py-4 text-muted-foreground">
-            <FileText className="h-8 w-8 opacity-20" />
-            <span className="text-sm">No reports yet. Use Forms to add one.</span>
-          </div>
         ) : (
-          <div className="divide-y">
-            {filteredReports.map((report) => (
-              <button
-                key={report.loca}
-                type="button"
-                onClick={() => setSelectedReportLoca(report.loca)}
-                className="flex w-full items-center gap-3 rounded-lg px-[10px] py-[10px] text-left transition-colors hover:bg-accent"
+          <>
+            <div className="flex shrink-0 flex-wrap items-center gap-3">
+              <div className="relative">
+                <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                <Input
+                  value={filter}
+                  onChange={(e) => setFilter(e.target.value)}
+                  placeholder="Filter reports..."
+                  className="pl-7 h-7 text-xs w-[220px]"
+                />
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleRefresh}
+                disabled={isLoading}
+                className="gap-2 h-7 text-xs"
               >
-                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-primary">
-                  <FileText className="h-3.5 w-3.5" />
-                </span>
-                <span className="font-medium text-sm truncate">{report.itemName}</span>
-              </button>
-            ))}
-          </div>
+                <RefreshCw className={`h-3 w-3 ${isLoading ? "animate-spin" : ""}`} />
+                Refresh
+              </Button>
+              <span className="text-xs text-muted-foreground">
+                {filteredReports.length} of {reports.length} reports
+              </span>
+            </div>
+
+            <ErrorBox message={reportsError} className="mb-2" />
+            <div className={LIST_ROW_WRAPPER_CLASS}>
+            {isLoading ? (
+              <div className="flex items-center gap-2 py-4 text-muted-foreground">
+                <RefreshCw className="h-4 w-4 animate-spin" />
+                <span>Loading reports...</span>
+              </div>
+            ) : reportsError ? null : filteredReports.length === 0 ? (
+              <div className="flex items-center gap-3 py-4 text-muted-foreground">
+                <FileText className="h-8 w-8 opacity-20" />
+                <span className="text-sm">No reports yet. Use Forms to add one.</span>
+              </div>
+            ) : (
+              <div className="divide-y">
+                {filteredReports.map((report) => (
+                  <button
+                    key={report.loca}
+                    type="button"
+                    onClick={() => setSelectedReportLoca(report.loca)}
+                    className={`flex w-full items-center gap-3 text-left ${LIST_ROW_CLASS}`}
+                  >
+                    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-primary">
+                      <FileText className="h-3.5 w-3.5" />
+                    </span>
+                    <span className="font-medium text-sm truncate">{report.itemName}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            </div>
+          </>
         )}
       </DashboardPageShell>
     );
@@ -570,54 +697,125 @@ function ViewsPageContent() {
   // ============================================================================
 
   const columns = selectedView === "dates" ? DATE_COLUMNS : DAILY_COLUMNS;
-  const viewTitle = selectedView === "dates" ? "DATES" : "TRACKER";
+  const viewTitle = selectedView === "dates" ? "DATES" : "DAILY TRACKER";
   const isTracker = selectedView === "tracker";
+  const dirtyRowCount = Object.keys(editedRows).filter((name) => hasRowChanges(name)).length;
 
   return (
     <DashboardPageShell
-      scroll={false}
-      padded={false}
+      contentClassName={cn(FRAME_SECTION_GAP_CLASS, "overscroll-contain overflow-x-auto")}
       upLevel={{ onClick: handleBack }}
-      toolbar={
-        <>
-          <div className="flex items-center gap-2">
-            <TableIcon className="h-4 w-4" />
-            <h2 className="text-lg font-bold">Views / {viewTitle}</h2>
-          </div>
-          <div className="relative">
-            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-            <Input
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-              placeholder="Filter rows..."
-              className="pl-7 h-7 text-xs w-[220px]"
-            />
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleRefresh}
-            disabled={isLoading}
-            className="gap-2 h-7 text-xs"
-          >
-            <RefreshCw className={`h-3 w-3 ${isLoading ? 'animate-spin' : ''}`} />
-            Refresh
-          </Button>
-          <span className="text-xs text-muted-foreground">
-            {currentEntries.length} of {(selectedView === "dates" ? dateEntries : dailyEntries).length}
-          </span>
-        </>
-      }
+      title={viewTitle}
     >
+      {/* Page-specific controls live inside the main frame, not above it
+          (Story 62 Round 3). Scroll (both vertical AND horizontal, Round
+          7 — the shell's own default hides horizontal overflow, which
+          broke this wide table's right-scroll; overridden back on here)
+          belongs to the outer shell frame (default `scroll`), not this
+          table's own box — dragging the frame's scrollbar moves the toolbar
+          row and table together
+          instead of leaving the toolbar pinned while only the table
+          scrolls in its own nested scrollbar (Story 62 Round 6). */}
+      <div className="flex flex-wrap items-center gap-3">
+        {isTracker ? (
+          <>
+            {isTrackerEditMode && (
+              <Button
+                variant={dirtyRowCount > 0 ? "destructive" : "outline"}
+                size="sm"
+                onClick={saveAllDirtyTrackerRows}
+                disabled={bulkSaving || dirtyRowCount === 0}
+                className="gap-2 h-7 text-xs"
+                title="Save all changed rows"
+              >
+                {bulkSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+                Save{dirtyRowCount > 0 ? ` (${dirtyRowCount})` : ""}
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2 h-7 text-xs"
+              onClick={() => router.push("/dashboard/forms?form=add_action")}
+            >
+              <Plus className="h-3 w-3" />
+              Add
+            </Button>
+            <Button
+              variant={isTrackerEditMode ? "secondary" : "outline"}
+              size="sm"
+              className="gap-2 h-7 text-xs"
+              onClick={() => setIsTrackerEditMode((v) => !v)}
+            >
+              <Pencil className="h-3 w-3" />
+              {isTrackerEditMode ? "Done editing" : "Edit"}
+            </Button>
+            <div className="relative">
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+                placeholder="Filter rows..."
+                className="pl-7 h-7 text-xs w-[220px]"
+              />
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRefresh}
+              disabled={isLoading}
+              className="gap-2 h-7 text-xs"
+            >
+              <RefreshCw className={`h-3 w-3 ${isLoading ? "animate-spin" : ""}`} />
+              Refresh
+            </Button>
+            <span className="text-xs text-muted-foreground">
+              {currentEntries.length} of {dailyEntries.length}
+            </span>
+          </>
+        ) : (
+          <>
+            <div className="relative">
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+                placeholder="Filter rows..."
+                className="pl-7 h-7 text-xs w-[220px]"
+              />
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRefresh}
+              disabled={isLoading}
+              className="gap-2 h-7 text-xs"
+            >
+              <RefreshCw className={`h-3 w-3 ${isLoading ? "animate-spin" : ""}`} />
+              Refresh
+            </Button>
+            <span className="text-xs text-muted-foreground">
+              {currentEntries.length} of {dateEntries.length}
+            </span>
+          </>
+        )}
+      </div>
+
       {/* Error display */}
       <ErrorBox message={error} className="mb-1 shrink-0" />
 
-      {/* Table — fills remaining space, scrolls internally only */}
-      <div className="min-h-0 flex-1 overflow-auto">
+      {/* Inner frame (Story 62 standard: outer shell frame always holds at
+          least one inner frame around its content, even single-element
+          pages). No longer its own scroll box (Round 6) — the outer shell
+          frame owns the one scrollbar now, so this frame just sizes to its
+          content. Header is NOT sticky (Round 7 — explicitly not
+          requested, removed). */}
+      <div className="rounded-lg border bg-muted/10">
             <table className="w-full border-collapse text-xs">
-              <thead className="sticky top-0 z-10">
+              <thead>
                 {isTracker && (
                   <tr>
+                    <th rowSpan={2} className={cn("border p-1 bg-muted", TABLE_ACTION_COLUMN_WIDTH_CLASS)} />
                     <th
                       className="border p-1 bg-muted"
                       colSpan={columns.filter((c) => c.group === "none").length}
@@ -651,32 +849,137 @@ function ViewsPageContent() {
               <tbody>
                 {currentEntries.length === 0 ? (
                   <tr>
-                    <td colSpan={columns.length} className="border h-8 text-center text-muted-foreground">
+                    <td colSpan={columns.length + (isTracker ? 1 : 0)} className="border h-8 text-center text-muted-foreground">
                       No entries yet. Use Forms to add data.
                     </td>
                   </tr>
                 ) : (
-                  currentEntries.map((entry) => (
-                    <tr key={entry.itemName} className="hover:bg-accent/50">
-                      {columns.map((col) => {
-                        const raw = entry.body?.[col.key];
-                        const value = typeof raw === "number" ? (Number.isInteger(raw) ? String(raw) : raw.toFixed(1)) : String(raw ?? "");
-                        return (
-                          <td
-                            key={col.key}
-                            className={`border p-1.5 px-2 whitespace-nowrap max-w-[180px] truncate ${CELL_CLASS[col.group]}`}
-                            title={value}
-                          >
-                            {value}
+                  currentEntries.map((entry) => {
+                    const status: RowSaveStatus = rowSaveStatus[entry.itemName] || "idle";
+                    const rowDirty = hasRowChanges(entry.itemName);
+                    return (
+                      <tr key={entry.itemName} className="hover:bg-accent/50">
+                        {isTracker && (
+                          <td className={cn("border p-1 text-center", TABLE_ACTION_COLUMN_WIDTH_CLASS)}>
+                            <div className="flex items-center justify-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => setSelectedEntryItemName(entry.itemName)}
+                                title="Edit item"
+                                aria-label="Edit item"
+                                className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </button>
+                              {isTrackerEditMode && (
+                                <button
+                                  type="button"
+                                  onClick={() => saveTrackerRow(entry)}
+                                  disabled={status === "saving"}
+                                  title={rowDirty ? "Save changes" : "No changes"}
+                                  aria-label="Save row"
+                                  className={cn(
+                                    "rounded p-1",
+                                    status === "saved"
+                                      ? "text-green-600"
+                                      : rowDirty
+                                        ? "text-destructive hover:bg-destructive/10"
+                                        : "text-muted-foreground hover:bg-accent"
+                                  )}
+                                >
+                                  {status === "saving" ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  ) : status === "saved" ? (
+                                    <CheckCircle2 className="h-3.5 w-3.5" />
+                                  ) : (
+                                    <Save className="h-3.5 w-3.5" />
+                                  )}
+                                </button>
+                              )}
+                            </div>
                           </td>
-                        );
-                      })}
-                    </tr>
-                  ))
+                        )}
+                        {columns.map((col) => {
+                          const raw = entry.body?.[col.key];
+                          const isAuto = AUTO_FIELD_KEYS.has(col.key);
+                          const draft = editedRows[entry.itemName]?.[col.key];
+                          const value =
+                            draft ??
+                            (typeof raw === "number" ? (Number.isInteger(raw) ? String(raw) : raw.toFixed(1)) : String(raw ?? ""));
+                          const editable = isTracker && isTrackerEditMode && !isAuto;
+                          const dirty = isTracker && isDirtyField(entry.itemName, col.key);
+                          if (editable) {
+                            return (
+                              <td
+                                key={col.key}
+                                className={cn("border p-0.5 px-1", dirty ? "bg-destructive/10" : CELL_CLASS[col.group])}
+                              >
+                                <input
+                                  value={value}
+                                  onChange={(e) => handleTrackerFieldChange(entry.itemName, col.key, e.target.value)}
+                                  className={cn(
+                                    "h-6 w-full min-w-[70px] max-w-[180px] rounded border-0 bg-transparent px-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring",
+                                    dirty && "text-destructive"
+                                  )}
+                                />
+                              </td>
+                            );
+                          }
+                          return (
+                            <td
+                              key={col.key}
+                              className={`border p-1.5 px-2 whitespace-nowrap max-w-[180px] truncate ${CELL_CLASS[col.group]}`}
+                              title={value}
+                            >
+                              {value}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
       </div>
+
+      {/* Single-entry detail view (pencil target) — Story 62. Delete lives
+          only here, per instruction, but is disabled: Content Provider's
+          own delete is an empty stub project-wide (see
+          documentation/dashboard/forms/features/daily-tracker-dates.md §7),
+          so this says so rather than silently omitting the option. */}
+      <Dialog open={selectedEntryItemName !== null} onOpenChange={(open) => !open && setSelectedEntryItemName(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Daily Entry — {selectedEntryItemName}</DialogTitle>
+          </DialogHeader>
+          {selectedTrackerEntry && (
+            <div className="max-h-[60vh] space-y-2 overflow-y-auto pr-1 text-sm">
+              {DAILY_COLUMNS.filter((c) => !AUTO_FIELD_KEYS.has(c.key)).map((col) => (
+                <div key={col.key} className="flex items-baseline justify-between gap-4 border-b pb-1">
+                  <span className="text-muted-foreground">{col.label}</span>
+                  <span className="text-right font-mono">
+                    {String(selectedTrackerEntry.body?.[col.key] ?? "")}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+          <DialogFooter className="sm:justify-between">
+            <Button
+              variant="destructive"
+              size="sm"
+              disabled
+              title="Delete isn't available yet — Content Provider has no working delete (empty stub)"
+            >
+              Delete
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setSelectedEntryItemName(null)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DashboardPageShell>
   );
 }

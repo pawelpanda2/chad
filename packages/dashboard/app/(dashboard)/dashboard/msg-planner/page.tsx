@@ -12,7 +12,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { RefreshCw, AlertCircle, Loader2, Plus, X } from "lucide-react";
 import { TextEditorWithToolbar } from "@/components/shared/text-editor-with-toolbar";
-import { EditorPageShell } from "@/components/shared/editor-page-shell";
+import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
+import { FRAME_SECTION_GAP_CLASS } from "@/components/shared/layout-tokens";
 
 // ============================================================================
 // Types
@@ -260,10 +261,13 @@ export default function MsgPlannerPage() {
   }
 
   return (
-    <EditorPageShell>
-      {/* Msg Planner toolbar — buttons above the framed editor (standard layout).
-          pl-14 reserves the top-left slot for the fixed menu handle. */}
-      <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 pl-14">
+    <DashboardPageShell
+      scroll={false}
+      contentClassName={FRAME_SECTION_GAP_CLASS}
+      title="MSG PLANNER"
+    >
+      {/* Page-specific controls live inside the main frame (Story 62 Round 3). */}
+      <div className="flex shrink-0 flex-wrap items-center gap-2">
         <Select value={selectedDate} onValueChange={handleDateChange}>
           <SelectTrigger className="w-[160px] h-8">
             <SelectValue placeholder="Select date" />
@@ -297,7 +301,9 @@ export default function MsgPlannerPage() {
         </button>
       </div>
 
-      {/* Editor with toolbar - fills remaining viewport height */}
+      {/* Editor with toolbar - fills remaining viewport height. Already
+          reads as the inner frame (rounded-xl border bg-card, per
+          text-editor-with-toolbar.tsx) inside the shell's own outer frame. */}
       <TextEditorWithToolbar
         value={content}
         onChange={handleContentChange}
@@ -305,6 +311,7 @@ export default function MsgPlannerPage() {
         saving={saving}
         saved={saved}
         placeholder="Enter msg planner content..."
+        className="h-auto min-h-0 flex-1"
       />
 
       {/* Create Panel */}
@@ -352,6 +359,6 @@ export default function MsgPlannerPage() {
           )}
         </div>
       )}
-    </EditorPageShell>
+    </DashboardPageShell>
   );
 }

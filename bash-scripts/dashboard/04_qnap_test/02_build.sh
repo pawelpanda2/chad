@@ -3,7 +3,11 @@
 # touches a running environment, never builds/touches the shared mongo/
 # content-provider-api stack (see bash-scripts/dashboard/00_qnap_shared/).
 # Run this ON the QNAP host (or via
-# bash-scripts/dashboard/06_qnap_ssh/deploy_test.sh from your Mac).
+# bash-scripts/dashboard/06_qnap_test_ssh/06_deploy.sh from your Mac).
+#
+# This is now the ONLY place chad-dashboard is ever built (Story 63 removed
+# 05_qnap_prod/02_build.sh — PROD never builds independently, it only ever
+# promotes this exact image via 07_qnap_prod_ssh/06_last_from_test.sh).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -24,13 +28,17 @@ cd "$REPO_ROOT"
 # distinguished by compose project name, ports, and container names, not by
 # the image tag. Own CHAD images never get a `:latest` tag (see
 # documentation/ai-docs/deploy/image-tagging-standard.md) — this is the ONLY
-# tag this build produces. 04_qnap_test and 05_qnap_prod build the exact same
-# chad-dashboard image (same Dockerfile/context/target — see
-# docker-compose.qnap.{test,prod}.yml), so they share ONE canonical tag-record
-# file: build once (from either environment), then `re-start` in both to
-# deploy the identical image without a second build.
+# tag this build produces. TEST and PROD share ONE canonical tag-record file
+# for chad-dashboard: TEST builds it here, PROD only ever promotes this exact
+# image via 07_qnap_prod_ssh/06_last_from_test.sh — never a second build.
 IMAGE_TAG="$(date +'%y%m%d_%H%M%S')"
 export IMAGE_TAG
+
+# Records the exact commit this image was built from, as a standard OCI
+# label (see docker-compose.qnap.test.yml's build.labels) — read back by
+# 07_qnap_prod_ssh/06_last_from_test.sh before promoting to PROD (Story 63).
+GIT_SHA="$(git -C "$REPO_ROOT" rev-parse HEAD)"
+export GIT_SHA
 
 docker compose -p "$COMPOSE_PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" build --pull
 
@@ -38,4 +46,4 @@ docker compose -p "$COMPOSE_PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FI
 # failed build.
 write_image_tag "$(dashboard_image_tag_file)" "$IMAGE_TAG"
 
-log_ok "Image built: chad-dashboard:$IMAGE_TAG"
+log_ok "Image built: chad-dashboard:$IMAGE_TAG (commit $GIT_SHA)"

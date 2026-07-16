@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Suspense, useState, useEffect, useCallback } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
+import { FRAME_SECTION_GAP_CLASS } from "@/components/shared/layout-tokens";
 import { buildLeadDetailsHref } from "@/lib/lead-links";
 import {
   Select,
@@ -148,7 +149,9 @@ function TodoMsgPageContent() {
   );
 
   return (
-    <DashboardPageShell toolbar={toolbar}>
+    <DashboardPageShell title="MSG TODO" contentClassName={FRAME_SECTION_GAP_CLASS}>
+      <div className="flex shrink-0 flex-wrap items-center gap-3">{toolbar}</div>
+      <div className="rounded-lg border bg-muted/10 p-2">
       {loading ? (
         <div className="flex items-center gap-2 py-4 text-muted-foreground">
           <RefreshCw className="h-4 w-4 animate-spin" />
@@ -227,6 +230,7 @@ function TodoMsgPageContent() {
               ))}
         </div>
       )}
+      </div>
     </DashboardPageShell>
   );
 }

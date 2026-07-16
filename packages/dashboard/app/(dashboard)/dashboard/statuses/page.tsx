@@ -15,6 +15,8 @@ import {
 } from "@/components/ui/select";
 import { buildLeadDetailsHref } from "@/lib/lead-links";
 import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
+import { FRAME_SECTION_GAP_CLASS, SAVE_FRAME_PADDING_CLASS } from "@/components/shared/layout-tokens";
+import { cn } from "@/lib/utils";
 import {
   RefreshCw,
   AlertCircle,
@@ -568,16 +570,25 @@ function StatusesPageContent() {
   if (view === "editor" && editorData) {
     return (
       <DashboardPageShell
-        padded={false}
-        contentClassName="p-4"
+        contentClassName={FRAME_SECTION_GAP_CLASS}
         upLevel={{ onClick: closeEditor, label: "Back to list" }}
+        title="STATUSES"
       >
-            {/* Lead Info */}
-            <div className="mb-6">
+            {/* Top frame: Save/Cancel + lead identity, left-aligned (Story 62
+                standard: save controls at the top). */}
+            <div className={cn("flex flex-wrap items-center gap-3 rounded-lg border bg-muted/10", SAVE_FRAME_PADDING_CLASS)}>
+              <Button onClick={handleSave} disabled={saving} className="gap-2">
+                {saving ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                Save
+              </Button>
+              <Button variant="outline" onClick={closeEditor} className="gap-2">
+                <X className="h-4 w-4" />
+                Cancel
+              </Button>
               <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-xl font-semibold">
+                <h3 className="text-lg font-semibold">
                   {editorData.leadName}
-                </h2>
+                </h3>
                 <span className="text-sm text-muted-foreground font-mono">
                   {editorData.statusLoca}
                 </span>
@@ -589,7 +600,7 @@ function StatusesPageContent() {
 
             {/* Error message */}
             {error && (
-              <div className="mb-4 flex items-center gap-2 text-red-500 bg-red-50 p-3 rounded-lg">
+              <div className="flex items-center gap-2 text-red-500 bg-red-50 p-3 rounded-lg">
                 <AlertCircle className="h-4 w-4" />
                 <span>{error}</span>
               </div>
@@ -597,15 +608,15 @@ function StatusesPageContent() {
 
             {/* Success message */}
             {saved && (
-              <div className="mb-4 flex items-center gap-2 text-green-600 bg-green-50 p-3 rounded-lg">
+              <div className="flex items-center gap-2 text-green-600 bg-green-50 p-3 rounded-lg">
                 <CheckCircle2 className="h-4 w-4" />
                 <span>Saved!</span>
               </div>
             )}
 
-            {/* Fields */}
+            {/* Fields, in their own inner frame */}
             {fields && (
-              <div className="space-y-4 max-w-md">
+              <div className="max-w-md space-y-4 rounded-lg border bg-muted/10 p-4">
                 {/* city */}
                 <div>
                   <label className="block text-sm font-medium mb-1">City</label>
@@ -685,30 +696,6 @@ function StatusesPageContent() {
                 </div>
               </div>
             )}
-
-            {/* Actions */}
-            <div className="mt-6 flex items-center gap-2">
-              <Button
-                onClick={handleSave}
-                disabled={saving}
-                className="gap-2"
-              >
-                {saving ? (
-                  <RefreshCw className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Save className="h-4 w-4" />
-                )}
-                Save
-              </Button>
-              <Button
-                variant="outline"
-                onClick={closeEditor}
-                className="gap-2"
-              >
-                <X className="h-4 w-4" />
-                Cancel
-              </Button>
-            </div>
       </DashboardPageShell>
     );
   }
@@ -720,36 +707,38 @@ function StatusesPageContent() {
   if (mode === "matrix") {
     return (
       <DashboardPageShell
-        scroll={false}
-        padded={false}
-        toolbar={
-          <>
-            {modeSelect}
-            {matrixSaved && (
-              <span className="text-sm text-green-600 flex items-center gap-1">
-                <CheckCircle2 className="h-4 w-4" />
-                Saved!
-              </span>
-            )}
-            {matrixError && (
-              <span className="text-sm text-red-500 flex items-center gap-1">
-                <AlertCircle className="h-4 w-4" />
-                {matrixError}
-              </span>
-            )}
-            <span className="ml-auto text-sm text-muted-foreground">
-              {visibleLeads.length} of {leads.length} leads
-            </span>
-          </>
-        }
-        toolbarSecondRow={
-          <>
-            {numericRangeInput}
-            {nameFilterInput}
-          </>
-        }
+        contentClassName={cn(FRAME_SECTION_GAP_CLASS, "overscroll-contain overflow-x-auto")}
+        title="STATUSES"
       >
-        {/* Main Content - Matrix Table */}
+        {/* Page-specific controls now live inside the main frame, not above
+            it (Story 62 Round 3: toolbarSecondRow floated disconnected from
+            the frame it controls — moved in, standard gap below). Scroll
+            (both vertical AND horizontal, Round 7) now belongs to the outer
+            shell frame, not the table's own box (Round 6) — the toolbar
+            scrolls together with the table instead of staying pinned above
+            a separately-scrolling table. */}
+        <div className="flex flex-wrap items-center gap-3">
+          {modeSelect}
+          {numericRangeInput}
+          {nameFilterInput}
+          {matrixSaved && (
+            <span className="text-sm text-green-600 flex items-center gap-1">
+              <CheckCircle2 className="h-4 w-4" />
+              Saved!
+            </span>
+          )}
+          {matrixError && (
+            <span className="text-sm text-red-500 flex items-center gap-1">
+              <AlertCircle className="h-4 w-4" />
+              {matrixError}
+            </span>
+          )}
+          <span className="ml-auto text-sm text-muted-foreground">
+            {visibleLeads.length} of {leads.length} leads
+          </span>
+        </div>
+
+        {/* Main Content - Matrix Table, in its own inner frame (Story 62). */}
         {loading ? (
           <div className="flex items-center gap-2 py-4 text-muted-foreground">
             <RefreshCw className="h-4 w-4 animate-spin" />
@@ -761,9 +750,9 @@ function StatusesPageContent() {
             <span className="text-sm">No leads found</span>
           </div>
         ) : (
-          <div className="h-full overflow-auto">
+          <div className="rounded-lg border bg-muted/10">
                 <table className="w-full border-collapse text-sm">
-                  <thead className="bg-muted sticky top-0 z-10">
+                  <thead className="bg-muted">
                     <tr>
                       <th className="border p-1 text-center font-medium text-muted-foreground w-[50px]">
                         {/* Save button in table header - left corner */}
@@ -989,22 +978,20 @@ function StatusesPageContent() {
 
   return (
     <DashboardPageShell
-      toolbar={
-        <>
-          {modeSelect}
-          <span className="ml-auto text-sm text-muted-foreground">
-            {visibleLeads.length} of {leads.length} leads
-          </span>
-        </>
-      }
-      toolbarSecondRow={
-        <>
-          {numericRangeInput}
-          {nameFilterInput}
-        </>
-      }
+      title="STATUSES"
+      contentClassName={FRAME_SECTION_GAP_CLASS}
     >
-      {/* Main Content */}
+      <div className="flex shrink-0 flex-wrap items-center gap-3">
+        {modeSelect}
+        {numericRangeInput}
+        {nameFilterInput}
+        <span className="ml-auto text-sm text-muted-foreground">
+          {visibleLeads.length} of {leads.length} leads
+        </span>
+      </div>
+
+      {/* Main Content, in its own inner frame (Story 62). */}
+      <div className="rounded-lg border bg-muted/10 p-2">
       {loading ? (
         <div className="flex items-center gap-2 py-4 text-muted-foreground">
           <RefreshCw className="h-4 w-4 animate-spin" />
@@ -1079,6 +1066,7 @@ function StatusesPageContent() {
               ))}
         </div>
       )}
+      </div>
     </DashboardPageShell>
   );
 }
