@@ -2,8 +2,8 @@
 # Builds the shared content-provider-api image (the only buildable service
 # in docker-compose.qnap.shared.yml — mongodb uses a plain upstream image).
 # Only builds — never runs containers, never touches a running environment.
-# Run this ON the QNAP host (or via
-# bash-scripts/dashboard/06_qnap_ssh/deploy_shared.sh from your Mac).
+# Run this directly on the QNAP host over SSH — there is no thin SSH wrapper
+# for the shared stack (Story 63 deliberately didn't add one).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"

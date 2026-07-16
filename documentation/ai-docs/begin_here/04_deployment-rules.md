@@ -11,18 +11,21 @@ below for exactly what a raw command silently skips.
 
 Concretely, for the dashboard stack (`bash-scripts/dashboard/`), every
 environment (`00_qnap_shared`, `02_local_mac_tmux`, `03_local_mac_docker`,
-`04_qnap_test`, `05_qnap_prod`, `06_qnap_ssh`) exposes the same verbs:
-`01_config.sh` (sourced by the rest, never run directly), `02_build.sh`,
-`03_re-start.sh`, `04_end.sh`, `05_status.sh`, `06_deploy.sh` (= build +
-re-start + status). Naming is **`re-start`/`end`** (until 2026-07-14:
-`begin`/`end`), not `start`/`stop`, for the Docker-Compose family (root
-`re-start.sh`/`end.sh`/`status.sh` wrap `02_local_mac_tmux` specifically and
-use the same verbs) — see `deploy/dashboard-deployment-scripts.md` for the
-full naming history, the 2026-07-14 `begin.sh`→`re-start.sh` rename (Story
-54 correction), and the still-open exceptions (the tmux-only dev flow's own
-internal `01_build.sh`/`02_start.sh` naming, and `06_qnap_ssh`'s
-`begin_*.sh` wrappers, deliberately not renamed) — don't try to unify these
-further in passing.
+`04_qnap_test`, `05_qnap_prod`) uses one fixed, repo-wide set of numbered
+operation slots — `01_config`, `02_build`, `03_restart`, `04_end`,
+`05_status`, `06_deploy`, `07_logs` — with gaps left empty wherever an
+environment has no real use for a slot (e.g. `05_qnap_prod` has no
+`02_build`/`06_deploy` at all — see below). `06_deploy.sh` = build +
+restart + status. Naming is **`restart`/`end`** everywhere in this family
+(as of Story 63, 2026-07-16/17 — before that: `begin`/`end` until
+2026-07-14, then `re-start`/`end` until Story 63 unified it to `restart`,
+no hyphen). The SSH-remote layer is now two directories,
+`06_qnap_test_ssh/` and `07_qnap_prod_ssh/` (replacing the old, single
+`06_qnap_ssh/`), each exposing the *same* slot numbers as thin remote
+wrappers — see `deploy/dashboard-deployment-scripts.md` for the full
+current contract, the numbering-slot table, and why PROD has no build/deploy
+of its own (`07_qnap_prod_ssh/06_last_from_test.sh` is its only deployment
+operation — it promotes TEST's image, never builds).
 
 ## Read before touching docker-compose
 
@@ -39,7 +42,7 @@ read:
    short and are the real source of truth, not a summary of them.
 
 Never run `docker compose ... up/build/down` directly against one of these
-files without going through its `03_re-start.sh`/`02_build.sh`/`04_end.sh` —
+files without going through its `03_restart.sh`/`02_build.sh`/`04_end.sh` —
 even when you think you know the equivalent flags, because the scripts do
 things a bare compose invocation cannot:
 
@@ -47,7 +50,7 @@ things a bare compose invocation cannot:
   `chad-content-provider-api`) never use `:latest`. The tag is a
   timestamp written to a gitignored `.image-tag.<image>.env` file **only
   after a successful build** (`write_image_tag`, last line of
-  `02_build.sh`), and read back by `require_image_tag` in `03_re-start.sh` —
+  `02_build.sh`), and read back by `require_image_tag` in `03_restart.sh` —
   no in-shell env var survives between separate script invocations, so a
   bare `docker compose up` without sourcing the same config will hit the
   compose file's `${IMAGE_TAG:?...}` required-var guard and fail (or, on
@@ -55,7 +58,7 @@ things a bare compose invocation cannot:
   `:latest`, which is the exact incident that motivated this whole
   mechanism — see `image-tagging-standard.md`'s incident section). If you
   ever need to run compose commands directly (e.g. because only one
-  service needs restarting and the full `03_re-start.sh` would also try to
+  service needs restarting and the full `03_restart.sh` would also try to
   reclaim a port something else legitimately owns), still `source` the
   environment's own `01_config.sh` first and reuse its `IMAGE_TAG`/`ENV_FILE`/
   `COMPOSE_PROJECT_NAME`, don't invent your own.
@@ -66,7 +69,7 @@ things a bare compose invocation cannot:
   immediately before `up`, then bind-mounted read-only. Skipping this step
   means the container starts with whatever stale file happens to be on
   disk (or none).
-- **Health/readiness waits.** `03_re-start.sh` polls `/health` (Content
+- **Health/readiness waits.** `03_restart.sh` polls `/health` (Content
   Provider) and dashboard HTTP before declaring success, and — for
   `04_qnap_test`/`05_qnap_prod` — refuses to even attempt `up` unless
   `require_shared_services_healthy` passes first. A raw `docker compose up

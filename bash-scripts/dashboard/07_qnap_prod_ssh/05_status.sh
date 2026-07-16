@@ -3,5 +3,7 @@
 # there. Read-only, no confirmation needed.
 set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/lib.sh"
+REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel)"
+source "$REPO_ROOT/bash-scripts/common/lib.sh"
+load_qnap_ssh_config || exit 1
 run_remote_script "05_qnap_prod" "05_status.sh" "Status QNAP PROD"

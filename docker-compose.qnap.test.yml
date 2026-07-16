@@ -5,23 +5,29 @@
 # (chad-mongodb) and Content Provider (chad-content-provider-api) started
 # by docker-compose.qnap.shared.yml (bash-scripts/dashboard/00_qnap_shared/).
 # Never starts/stops/rebuilds shared services itself — see
-# bash-scripts/dashboard/04_qnap_test/03_re-start.sh, which refuses to start
+# bash-scripts/dashboard/04_qnap_test/03_restart.sh, which refuses to start
 # unless shared services are already up and healthy.
 #
 # Used by bash-scripts/dashboard/04_qnap_test/*.sh, plus
-# bash-scripts/dashboard/06_qnap_ssh/*_test.sh (thin SSH wrappers over
+# bash-scripts/dashboard/06_qnap_test_ssh/*.sh (thin SSH wrappers over
 # those). Env file: .env.qnap.
 services:
   dashboard:
     # No ":latest" fallback - own CHAD images must be deployed by an explicit
     # release tag (see documentation/ai-docs/deploy/image-tagging-standard.md).
-    # 04_qnap_test/03_re-start.sh sets IMAGE_TAG before calling this; the
+    # 04_qnap_test/03_restart.sh sets IMAGE_TAG before calling this; the
     # required-var syntax below is a defense-in-depth backstop.
     image: "chad-dashboard:${IMAGE_TAG:?IMAGE_TAG is required, see documentation/ai-docs/deploy/image-tagging-standard.md}"
     build:
       context: .
       dockerfile: packages/dashboard/Dockerfile
       target: runner
+      # Records the exact commit the TEST image was built from (Story 63) —
+      # read back by bash-scripts/dashboard/07_qnap_prod_ssh/06_last_from_test.sh
+      # before promoting this image to PROD, and by anyone running `docker
+      # inspect` on chad-dashboard-test. Standard OCI label, not a custom one.
+      labels:
+        org.opencontainers.image.revision: "${GIT_SHA:-unknown}"
     container_name: chad-dashboard-test
     restart: unless-stopped
     ports:

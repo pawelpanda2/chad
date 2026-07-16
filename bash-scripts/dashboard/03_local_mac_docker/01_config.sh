@@ -9,7 +9,7 @@
 # including `build` — so every script in this directory must source this
 # file and export these before invoking `docker compose`, not just the
 # scripts that obviously need the ports (confirmed by a real failure on
-# QNAP: 01_build.sh alone exporting ENV_NAME but not the ports produced
+# QNAP: 02_build.sh alone exporting ENV_NAME but not the ports produced
 # "variable is not set" warnings during `docker compose ... build`).
 
 COMPOSE_PROJECT_NAME="chad-local"
@@ -47,7 +47,7 @@ EOF
 # Writes CONTENT_PROVIDER_APPSETTINGS_JSON to the runtime path that
 # docker-compose.local.yml bind-mounts read-only into the container at
 # /app/appsettings.json. Call before `docker compose up` — never docker cp
-# into an already-running container (see 04_re-start.sh).
+# into an already-running container (see 03_restart.sh).
 write_content_provider_appsettings() {
   local output_file="$REPO_ROOT/.runtime/local/content-provider/appsettings.json"
   mkdir -p "$(dirname "$output_file")"

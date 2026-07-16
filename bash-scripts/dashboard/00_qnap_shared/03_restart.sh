@@ -3,8 +3,9 @@
 # docker-compose. Never builds. Idempotent: checks whether the stack is
 # already running; if so, calls 04_end.sh (docker compose down
 # --remove-orphans, never -v) then starts fresh. Use 06_deploy.sh for
-# build+re-start. Run this ON the QNAP host (or via
-# bash-scripts/dashboard/06_qnap_ssh/begin_shared.sh from your Mac).
+# build+restart. Run this directly on the QNAP host over SSH — there is no
+# thin SSH wrapper for the shared stack (Story 63 deliberately didn't add
+# one; manage it via SSH + these scripts directly, same as before).
 #
 # IMPORTANT: this stack is shared by BOTH chad-dashboard-test and
 # chad-dashboard-prod. Restarting it briefly interrupts BOTH dashboards.
@@ -20,7 +21,7 @@ require_command docker "install Docker" || exit 1
 require_file "$ENV_FILE" "cp .env.qnap.example .env.qnap and fill in real values" || exit 1
 
 echo ""
-log_info "chad QNAP SHARED — re-start (mongo + content-provider-api)"
+log_info "chad QNAP SHARED — restart (mongo + content-provider-api)"
 echo ""
 
 cd "$REPO_ROOT"

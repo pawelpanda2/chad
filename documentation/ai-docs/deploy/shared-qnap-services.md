@@ -56,7 +56,7 @@ dashboard PROD (chad-dashboard-prod, port 12030)
 Trzy osobne projekty Compose (`-p chad-shared`/`chad-test`/`chad-prod`),
 połączone jedną **zewnętrzną** siecią Docker `chad-shared` (tworzoną
 idempotentnie przez `ensure_docker_network()` w `bash-scripts/common/lib.sh`).
-Pełny opis konwencji skryptów (`build`/`re-start`/`end`/`status`/`deploy`,
+Pełny opis konwencji skryptów (`build`/`restart`/`end`/`status`/`deploy`,
 `require_shared_services_healthy` preflight, DNS przez `container_name`
 zamiast nazwy serwisu) w
 `documentation/ai-docs/deploy/dashboard-deployment-scripts.md`.
@@ -72,7 +72,7 @@ zamiast nazwy serwisu) w
 
 | Kontener | Bind mount |
 |---|---|
-| `chad-mongodb` | `$QNAP_CONTAINER_DATA_PATH/chad-shared/mongodb/db:/data/db`, `.../configdb:/data/configdb`, `.../backups:/backups` — `$QNAP_CONTAINER_DATA_PATH` MUST resolve onto the real data volume, not `/share` itself (a 16MB tmpfs on this QNAP); see [qnap-data-path.md](qnap-data-path.md) for the incident and the validation `03_re-start.sh` now runs before every start |
+| `chad-mongodb` | `$QNAP_CONTAINER_DATA_PATH/chad-shared/mongodb/db:/data/db`, `.../configdb:/data/configdb`, `.../backups:/backups` — `$QNAP_CONTAINER_DATA_PATH` MUST resolve onto the real data volume, not `/share` itself (a 16MB tmpfs on this QNAP); see [qnap-data-path.md](qnap-data-path.md) for the incident and the validation `03_restart.sh` now runs before every start |
 | `chad-content-provider-api` | `/share/Dropbox:/data/repos:rw` (potwierdzone: `repoCount:36`), `.runtime/shared/content-provider/appsettings.json:/app/appsettings.json:ro` |
 | `chad-dashboard-test` | named volume `chad-dashboard-qnap-test-data:/app/data` (SQLite Prisma, per-dashboard, nie Mongo) |
 | `chad-dashboard-prod` | named volume `chad-dashboard-qnap-prod-data:/app/data` (osobny od test — świadomie, to lokalna baza sesji dashboardu, nie "prawdziwe dane" biznesowe) |
@@ -107,55 +107,64 @@ tego twierdzenia poza samą infrastrukturą (jeden kontener, jedna sieć).
 ## 5. Procedura deploy
 
 ```bash
-# Shared (mongo + content-provider-api) — dotyka OBU dashboardów naraz
-bash bash-scripts/dashboard/06_qnap_ssh/deploy_shared.sh   # wymaga wpisania SHARED
+# Shared (mongo + content-provider-api) — bezpośrednio na QNAP przez SSH,
+# bez dedykowanego wrappera (świadoma decyzja, Story 63): SSH na QNAP, potem
+bash bash-scripts/dashboard/00_qnap_shared/06_deploy.sh   # dotyka OBU dashboardów naraz
 
-# TEST — nie restartuje shared
-bash bash-scripts/dashboard/06_qnap_ssh/deploy_test.sh
+# TEST — jedyne środowisko, które buduje; nie restartuje shared;
+# ma Git preflight (ostrzega o niezacommitowanych/niewypchniętych zmianach)
+bash bash-scripts/dashboard/06_qnap_test_ssh/06_deploy.sh
 
-# PROD — nie restartuje shared, wymaga wpisania PROD
-bash bash-scripts/dashboard/06_qnap_ssh/deploy_prod.sh
+# PROD — nigdy nie buduje. Promuje dokładnie obraz zweryfikowany na TEST,
+# wymaga wpisania PROD:
+bash bash-scripts/dashboard/07_qnap_prod_ssh/06_last_from_test.sh
 ```
 
-Każdy `re-start.sh` dla TEST/PROD wywołuje `require_shared_services_healthy`
+Każdy `03_restart.sh` dla TEST/PROD wywołuje `require_shared_services_healthy`
 przed startem i **odmawia uruchomienia**, jeśli shared nie działa/nie jest
 zdrowy — zamiast próbować go naprawić samodzielnie.
 
 ## 6. Procedura promocji obrazu TEST → PROD
 
-**Status (2026-07-13): zautomatyzowane przez skrypty, bez `:latest`.** Pełny
-standard: [image-tagging-standard.md](image-tagging-standard.md). Skrót:
+**Status (Story 63, 2026-07-16/17): jawna operacja
+`07_qnap_prod_ssh/06_last_from_test.sh`, zastępuje wcześniejszą "domyślną"
+promocję przez współdzielony plik tagu.** Pełny standard:
+[image-tagging-standard.md](image-tagging-standard.md). Skrót:
 
-- `04_qnap_test/02_build.sh` i `05_qnap_prod/02_build.sh` budują dokładnie ten
-  sam obraz `chad-dashboard` (identyczny Dockerfile/context/target) i po
-  udanym buildzie zapisują znacznik czasowy do jednego, wspólnego pliku
-  `.image-tag.chad-dashboard.env` (gitignored, na hoście QNAP).
-- `03_re-start.sh` w obu katalogach **odmawia startu**, jeśli ten plik nie
-  istnieje albo jest pusty — nigdy nie ma fallbacku do `chad-dashboard:latest`
-  (własne obrazy CHAD w ogóle nie dostają już tagu `latest`).
-- Promocja "sprawdzonego" obrazu TEST na PROD = **bez rebuildu**, po prostu:
+- `04_qnap_test/02_build.sh` jest teraz **jedynym** miejscem, gdzie
+  `chad-dashboard` jest budowany (`05_qnap_prod/02_build.sh` zostało
+  usunięte w Story 63 — PROD nie może już budować niezależnie, nawet
+  ręcznie: `docker-compose.qnap.prod.yml` nie ma sekcji `build:`). Po
+  udanym buildzie zapisuje znacznik czasowy do `.image-tag.chad-dashboard.env`
+  (gitignored, na hoście QNAP) oraz git SHA jako OCI label na obrazie.
+- `03_restart.sh` w obu katalogach **odmawia startu**, jeśli ten plik nie
+  istnieje albo jest pusty — nigdy nie ma fallbacku do `chad-dashboard:latest`.
+- Promocja "sprawdzonego" obrazu TEST na PROD = **bez rebuildu**, przez
+  jawną operację, nie przez poleganie na tym, że oba środowiska czytają ten
+  sam plik:
 
 ```bash
-# 1) zbuduj i uruchom TEST (albo tylko zbuduj, jeśli chcesz najpierw sprawdzić)
-bash bash-scripts/dashboard/06_qnap_ssh/deploy_test.sh
+# 1) zbuduj i uruchom TEST
+bash bash-scripts/dashboard/06_qnap_test_ssh/06_deploy.sh
 
-# 2) wypromuj DOKŁADNIE ten sam obraz na PROD — czyta ten sam zapisany tag,
-#    nie buduje nic ponownie
-bash bash-scripts/dashboard/06_qnap_ssh/begin_prod.sh   # wymaga wpisania PROD
+# 2) wypromuj DOKŁADNIE ten obraz na PROD — pokazuje tag/image ID/git SHA
+#    TEST i aktualny obraz PROD, prosi o potwierdzenie (PROD), nie buduje nic
+bash bash-scripts/dashboard/07_qnap_prod_ssh/06_last_from_test.sh
 ```
 
 Po tym `docker inspect chad-dashboard-test`/`chad-dashboard-prod` pokazują
-identyczny `Image` (ten sam tag, ten sam ID).
+identyczny `Image` (ten sam tag, ten sam ID) — `06_last_from_test.sh`
+potwierdza to jawnie na końcu, nie zakłada sukcesu.
 
 ## 7. Procedura rollbacku
 
-- Dashboard TEST/PROD: `end_test.sh`/`end_prod.sh` (`docker compose down
-  --remove-orphans`, nigdy `-v`) — dane dashboardu (SQLite) i obrazy
-  zostają. Retag poprzedniego znacznika czasowego jako `:latest` i ponowny
-  `re-start`.
-- Shared: `end_shared.sh` — **zatrzymuje backend dla OBU dashboardów
-  naraz**, wymaga wpisania `SHARED`. Dane Mongo (bind mount) i repo pliki
-  (`/share/Dropbox`, poza kontenerem) przetrwają.
+- Dashboard TEST/PROD: `06_qnap_test_ssh/04_end.sh`/`07_qnap_prod_ssh/04_end.sh`
+  (`docker compose down --remove-orphans`, nigdy `-v`) — dane dashboardu
+  (SQLite) i obrazy zostają. Retag poprzedniego znacznika czasowego jako
+  bieżący i ponowny `03_restart.sh`.
+- Shared: `00_qnap_shared/04_end.sh` (bezpośrednio na QNAP, patrz sekcja 5) —
+  **zatrzymuje backend dla OBU dashboardów naraz**. Dane Mongo (bind mount)
+  i repo pliki (`/share/Dropbox`, poza kontenerem) przetrwają.
 - Backup logiczny Mongo: `MONGO_CONTAINER_NAME=chad-mongodb bash
   bash-scripts/mongo/backup.sh` (mongodump do `.../mongodb/backups`, na tym
   samym trwałym bind moуncie).
@@ -209,7 +218,7 @@ teraz to wykrywa przed startem: [qnap-data-path.md](qnap-data-path.md).
 ## 10. Znane ograniczenia / co zostało do decyzji
 
 - ~~Promocja obrazu TEST→PROD jest ręczna (retag), bez dedykowanego skryptu~~
-  — **zrobione 2026-07-13**: `02_build.sh`/`03_re-start.sh` zapisują i czytają
+  — **zrobione 2026-07-13**: `02_build.sh`/`03_restart.sh` zapisują i czytają
   wspólny plik ze znacznikiem release'u, bez `:latest`, bez ponownego builda
   przy promocji. Patrz sekcja 6 i [image-tagging-standard.md](image-tagging-standard.md).
 - MongoDB nie jest jeszcze konsumowane przez kod dashboardu/`dba` — "wspólna
