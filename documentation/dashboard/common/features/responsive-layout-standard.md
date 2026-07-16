@@ -89,16 +89,23 @@ layout różnicuje desktop i mobile.
 - **Theme toggle**: przeniesiony do nagłówka `Sidebar` (bo topbar jest ukryty
   app-wide), więc przełącznik motywu pozostaje dostępny.
 - **Główna treść**: `<main className="min-h-0 flex-1 overflow-y-auto p-0.5
-  md:pr-[100px]">`. Padding ~2px, żeby ramka niemal idealnie wypełniała
+  md:pr-[150px]">`. Padding ~2px, żeby ramka niemal idealnie wypełniała
   ekran. `overflow-y-auto` (nie `hidden`) jest bezpieczne: powłoki
   wypełniają `main` dokładnie (`h-full`), więc na stronach standardowych
   nie powstaje scroll strony, a strony jeszcze niezmigrowane nie są
-  przycinane. **`md:pr-[100px]` (Story 56, 2026-07-14):** dodatkowy pusty
-  pas ~100px po prawej stronie, tylko na desktopie (`md:` = od 768px) —
-  nigdy na telefonie. Jeden wspólny punkt zmiany dla wszystkich widoków
-  (zamiast kopiowania paddingu do każdej strony); zobacz "Shared
-  navigation" niżej — to ta sama przestrzeń, obok której siada wspólny
-  `NavGroup`.
+  przycinane. **`md:pr-[150px]` (Story 62, 2026-07-16 — patrz uwaga
+  niżej):** dodatkowy pusty pas ~150px po prawej stronie, tylko na
+  desktopie (`md:` = od 768px, ten sam próg co `DESKTOP_QUERY` w
+  `app/(dashboard)/layout.tsx`) — nigdy na telefonie. Jeden wspólny punkt
+  zmiany dla wszystkich widoków (zamiast kopiowania paddingu do każdej
+  strony).
+  **Uwaga o historii tej wartości:** Story 56 (2026-07-14) opisał i
+  oznaczył jako DONE wersję `md:pr-[100px]`, ale w rzeczywistym kodzie jej
+  nigdy nie było (`git log -S"pr-[100px]"` na tym pliku nie ma ani jednego
+  commitu) — albo dokumentacja/checklist Story 56 się myliły, albo zmiana
+  została cofnięta bez śladu w historii. Story 62 dodało pas od nowa, przy
+  okazji zmieniając wartość na `150px` — to nie jest "przywrócenie", tylko
+  nowa implementacja.
 - **`DashboardHistoryProvider`** (Story 56, 2026-07-14) —
   `components/shared/dashboard-history-provider.tsx`, montowany raz w
   layout.tsx (owinięty w `<Suspense>`, bo korzysta z `useSearchParams`),
@@ -117,46 +124,60 @@ layout różnicuje desktop i mobile.
 `components/shared/dashboard-page-shell.tsx` — **DashboardPageShell** (standard
 dla stron listowych/treściowych):
 
-- Kolumna `flex h-full min-h-0 w-full flex-col` — wypełnia `main` (bez magicznych
-  `calc()` zależnych od wysokości topbara).
-- Opcjonalny `toolbar` NAD ramką: `flex flex-wrap items-center` — przyciski w
-  jednej linii, a gdy się nie mieszczą, zawijają się do drugiej. Jeśli jest
-  tytuł, stoi w tej samej linii co przyciski, bez dodatkowych opisów.
-- Ramka: `rounded-xl border bg-card` + `flex-1 min-h-0 overflow-hidden`.
+- Kolumna `flex h-full min-h-0 w-full flex-col gap-0.5` — wypełnia `main` (bez
+  magicznych `calc()` zależnych od wysokości topbara).
+- Wiersz 1 (zawsze renderowany, `pl-14` na uchwyt menu): **`NavGroup`
+  (Back/Forw) pierwszy, potem opcjonalny `title`, potem opcjonalny
+  `toolbar`** (Story 62 — wcześniej było odwrotnie, patrz "Shared
+  navigation" niżej). Zawija się do drugiej linii, gdy się nie mieści.
+- Opcjonalny `toolbarSecondRow`, osobny wiersz pod wierszem 1, wciąż NAD
+  ramką (nie scrolluje z treścią) — miejsce na akcje właściwe dla danej
+  strony (filtry, `+Add`, `Edit`, zbiorczy `Save`, ...). Standard: **wiersz
+  1 = nawigacja i tytuł, wiersz 2 = akcje strony** (Story 62).
+- Ramka: `rounded-xl border bg-card shadow-sm` + `flex-1 min-h-0
+  overflow-hidden`.
 - Treść ramki: `flex flex-col` (cross-axis `stretch` → dzieci pełnej szerokości,
   ułożone od góry → wyrównanie do lewej-górnej). Scroll wewnętrzny
-  (`overflow-y-auto`) domyślnie w ramce.
-- Propsy: `toolbar`, `toolbarSecondRow` (Story 56 — opcjonalny drugi wiersz
-  nad ramką, dla stron z własnymi filtrami/kontrolkami obok tytułu, żeby
-  `NavGroup` nie musiał konkurować o miejsce z filtrami w jednym wierszu;
-  patrz `statuses/page.tsx`), `upLevel` (Story 56 — patrz "Shared
-  navigation" niżej), `scroll` (domyślnie `true`; `false` gdy dziecko ma
-  własny scroll, np. tabela z `sticky` nagłówkiem lub edytor), `padded`,
-  `className`, `frameClassName`, `contentClassName`.
+  (`overflow-y-auto overflow-x-hidden`) domyślnie w ramce.
+- Propsy: `title` (Story 62 — krótki tytuł wielkimi literami, np.
+  `"SETTINGS"`, `"DAILY TRACKER"`, renderowany w wierszu 1 zaraz po
+  `NavGroup`; **nigdy** nie duplikuj go jako osobny podtytuł/ścieżkę
+  gdzieś indziej na stronie), `toolbar` (starszy sposób na treść wiersza 1
+  — nowe strony powinny wolić `title` + `toolbarSecondRow`), `toolbarSecondRow`
+  (Story 56 — opcjonalny drugi wiersz, patrz `statuses/page.tsx`), `upLevel`
+  (Story 56 — patrz "Shared navigation" niżej), `scroll` (domyślnie `true`;
+  `false` gdy dziecko ma własny scroll, np. tabela z `sticky` nagłówkiem lub
+  edytor), `padded`, `className`, `frameClassName`, `contentClassName`.
 
-#### Shared navigation: `NavGroup` (Story 56, 2026-07-14 — zastępuje `BackButton`)
+#### Shared navigation: `NavGroup` (Story 56, 2026-07-14 — zastępuje `BackButton`; kolejność poprawiona w Story 62)
 
-`components/shared/nav-group.tsx` — **NavGroup**: `[Prev] [Back] [Forw]`,
+`components/shared/nav-group.tsx` — **NavGroup**: `[Back] [Forw]`,
 jedyny sposób renderowania nawigacji "wstecz" na dowolnej stronie
 dashboardu. Zastępuje `BackButton` (Story 55) — ten komponent nadal
 istnieje (`components/shared/back-button.tsx`) tylko dla dwóch
 odosobnionych kart błędu poza `DashboardPageShell`/`EditorPageShell`
 (`leads/msg-workout`, `todo-msg/edit`, stan przed zamontowaniem powłoki).
+`Prev` (trzeci przycisk z pierwszej wersji Story 56) został usunięty
+2026-07-14 — `goBack`/`canGoBack` nadal istnieją w
+`dashboard-history-provider.tsx` na wypadek, gdyby wrócił.
 
-- **`DashboardPageShell` renderuje `NavGroup` automatycznie**, na końcu
-  swojego wiersza toolbara (`upLevel` prop przekazywany dalej) — strony na
-  tym standardzie dostają nawigację "za darmo", bez własnego kodu, nawet
-  jeśli nigdy wcześniej nie miały żadnego przycisku Back (np. `msg-planner`,
-  lista `todo-msg`, `users`, lista `beeper`). Strony z własnym, ręcznie
-  budowanym wierszem nagłówka na `EditorPageShell` (Reports, `todo-msg/edit`,
-  `leads/msg-workout`) renderują `<NavGroup upLevel={...} />` samodzielnie,
-  w miejscu starego `<BackButton>`.
-- **Zawsze po prawej stronie** swojego wiersza — komponent sam dokłada
-  `ml-auto`, więc musi być **ostatnim** dzieckiem w tym `flex` wierszu.
-- **`Prev`/`Forw`** (skrajne przyciski, strzałki lewo/prawo): prawdziwa
-  historia nawigacji w obrębie dashboardu, z `useDashboardHistory()` —
-  ten sam mechanizm na każdej stronie, bez żadnych propsów. Wyszarzone,
-  gdy nie ma odpowiednio wcześniejszego/kolejnego wpisu.
+- **`DashboardPageShell` renderuje `NavGroup` automatycznie, jako
+  PIERWSZY element wiersza 1** (Story 62 — wcześniej, błędnie względem
+  własnego komentarza w `nav-group.tsx`, renderował się na końcu, po
+  `toolbar`; poprawione, bo standard wymaga kolejności `Back, Forw,
+  TYTUŁ`). Strony na tym standardzie dostają nawigację "za darmo", bez
+  własnego kodu, nawet jeśli nigdy wcześniej nie miały żadnego przycisku
+  Back (np. `msg-planner`, lista `todo-msg`, `users`, lista `beeper`).
+  Strony z własnym, ręcznie budowanym wierszem nagłówka na
+  `EditorPageShell` (Reports, `todo-msg/edit`, `leads/msg-workout`)
+  renderują `<NavGroup upLevel={...} />` samodzielnie, jako pierwszy
+  element tego wiersza.
+- **Lewo-wyrównany, bez `ml-auto`** — musi być **pierwszym** dzieckiem w
+  swoim `flex` wierszu (odwrotnie niż w oryginalnej wersji Story 56).
+- **`Forw`** (prawy przycisk, strzałka w prawo): prawdziwa historia
+  nawigacji w obrębie dashboardu, z `useDashboardHistory()` — ten sam
+  mechanizm na każdej stronie, bez żadnych propsów. Wyszarzony, gdy nie ma
+  kolejnego wpisu.
 - **`Back`** (środkowy przycisk, większa ikona `Undo2` — okrągła
   strzałka): przejście o **jeden poziom wyżej w hierarchii bieżącej
   strony** (np. wybrany raport → lista raportów → menu Views) — to
@@ -189,6 +210,73 @@ sama kolumna pełnej wysokości, bez ramki):
   **zawija się** (`flex-wrap`) na wąskim ekranie telefonu.
 - Z zakładki **Preview** usunięto ikonę oka (pozostał sam tekst „Preview”).
 
+### Warstwa 3 — Standard edytowalnej tabeli (Story 62, pilotaż na `DAILY TRACKER`)
+
+Piloted on `Views → DAILY TRACKER` (`app/(dashboard)/dashboard/views/page.tsx`).
+Nie ma jeszcze wydzielonego wspólnego komponentu (`components/shared/*table*`)
+— ten opis jest przepisem do ręcznego zastosowania przy migracji kolejnych
+tabel (`STATUSES`, `USERS`), nie odniesieniem do gotowego importu.
+
+- **Domyślnie read-only.** Brak przełącznika `Edit` → brak kolumny akcji poza
+  ołówkiem (patrz niżej), pola nieedytowalne.
+- **Kolumna akcji — `[💾][✎]`, stała szerokość** (`components/shared/
+  layout-tokens.ts`: `TABLE_ACTION_COLUMN_WIDTH_CLASS`, obecnie `w-[72px]`),
+  ta sama we wszystkich stanach (sam ołówek / ołówek+dyskietka / spinner /
+  zielony `Saved`):
+  - **Ołówek (✎, "Edit Item")** — **zawsze widoczny**, także w trybie
+    read-only. Otwiera pełny widok pojedynczego wpisu (Dialog) — osobny od
+    edycji inline w tabeli. `title="Edit item"`, `aria-label="Edit item"`.
+  - **Dyskietka (💾, "Save")** — widoczna **tylko** gdy globalny `Edit` jest
+    włączony. Zapisuje zmiany TEGO wiersza wprost w tabeli. Kolor: szary
+    (bez zmian) → czerwony (`text-destructive`, są niezapisane zmiany w tym
+    wierszu) → spinner (`animate-spin`, w trakcie zapisu, przycisk
+    `disabled`) → zielony `CheckCircle2` (zapisano, znika po ~2s, wraca
+    dyskietka). **Nigdy nie pokazuj stanu "zapisano", jeśli zapis
+    faktycznie się nie powiódł** — błąd zapisu to osobny stan (toast +
+    powrót do czerwonego), nie fałszywy sukces.
+  - Żaden zwykły przycisk z literą (np. "E") — odrzucone jako niestandardowe,
+    niejednoznaczne, gorsze na telefonie, mylące z globalnym `Edit`.
+- **Stan `dirty` pola**: zmiana wartości pola → czerwone tło pola
+  (`bg-destructive/10`) + czerwony tekst w polu, niezależnie dla każdego
+  pola/wiersza (stan trzymany w mapie `editedRows[itemName][fieldKey]`) —
+  edycja jednego wiersza nigdy nie czyści niezapisanych zmian innego.
+  Kolumny "— AUTO" (liczone po stronie serwera przy odczycie) są **zawsze**
+  tylko do odczytu, nawet w trybie `Edit` — nigdy nie wysyłane przy zapisie.
+- **Zbiorczy `Save`** — w drugim wierszu toolbara (`toolbarSecondRow`),
+  widoczny tylko w trybie `Edit`, zapisuje **wyłącznie wiersze z realną
+  zmianą** (nie wszystkie widoczne, w przeciwieństwie do obecnego
+  zachowania `STATUSES`, patrz niżej), pokazuje stan ładowania, każdy
+  wiersz aktualizuje swój własny stan niezależnie (jeden nieudany zapis nie
+  fałszuje sukcesu innych).
+- **Wzorzec zapisu** (nie kopiuj mechanicznie z `STATUSES` — patrz różnice
+  niżej): `PATCH /api/forms/daily-entry` → `updateDailyEntry(loca, bodyYaml)`
+  w `packages/dba/src/leads.ts` → `GetItem` (odczyt typu/nazwy pod danym
+  `loca`) → `Put` na tym samym `loca` — dokładnie ten sam kształt co
+  `updateReportEntry` w `report-entries.ts`. Identyfikacja wiersza wyłącznie
+  po jego prawdziwym `itemName`/`loca` (dodane jako pole w odpowiedzi
+  `GET /api/views`, wcześniej go tam nie było) — **nigdy** po polu `DATE`.
+  Zobacz `documentation/ai-docs/begin_here/05_endpoint-rules.md` i
+  `documentation/dashboard/forms/features/daily-tracker-dates.md`.
+- **Różnice względem `STATUSES`** (świadome, nie błąd migracji): Statuses
+  jest zawsze-edytowalny (brak trybu read-only), oznacza `dirty` tylko na
+  poziomie wiersza (nie pola), a jego zbiorczy zapis zapisuje **wszystkie**
+  widoczne wiersze, nie tylko zmienione. `DAILY TRACKER` celowo tego nie
+  powtarza — patrz `backlog/stories/62/03_knowledge.md` §6 dla pełnej listy
+  różnic.
+- **Scroll tabeli / dotyk**: kontener `overflow-auto overscroll-contain` —
+  `overscroll-contain` (czyli `overscroll-behavior: contain`) zatrzymuje
+  scroll-chaining/odbijanie na granicach danych bez blokowania normalnego
+  przewijania w obu osiach wewnątrz kontenera. To samo rozwiązanie ma być
+  zastosowane przy migracji `USERS`/`STATUSES`, gdzie ten sam problem
+  (przeciągnięcie palcem poza ostatnią kolumnę, odbicie widoku) jest znany,
+  ale jeszcze niepoprawiony.
+- **Widok pojedynczego wpisu** (cel ołówka): `Dialog` (shadcn) pokazujący
+  wszystkie pola danego wpisu. `Delete` żyje **wyłącznie** tutaj (nigdy w
+  wierszu tabeli) — w obecnym stanie renderowany jako `disabled`, z
+  tooltipem tłumaczącym dlaczego (Content Provider nie ma działającej
+  metody usuwania — pusty stub `DeleteWorker.Delete()`, patrz
+  `daily-tracker-dates.md` §7) zamiast być pominięty bez wyjaśnienia.
+
 ## Zmienione pliki
 
 Komponenty wspólne:
@@ -218,6 +306,26 @@ Strony przeniesione na standard:
 Ekrany edytora korzystające z `EditorPageShell` + `TextEditorWithToolbar`
 (`todo-msg/edit`, `leads/msg-workout`) zyskują poprawę automatycznie.
 
+**Story 62 (2026-07-16) — tytuł w shellu, pas 150px, wzorzec `SETTINGS` +
+`DAILY TRACKER`, username w sidebarze:**
+`components/shared/layout-tokens.ts` (nowy — `FRAME_SECTION_GAP_CLASS`
+~3px, `TABLE_ACTION_COLUMN_WIDTH_CLASS`), `dashboard-page-shell.tsx` (nowy
+prop `title`, `NavGroup` przeniesiony na początek wiersza 1),
+`nav-group.tsx` (dokumentacja komentarza dopasowana do faktycznego
+zachowania — bez zmiany logiki), `app/(dashboard)/layout.tsx`
+(`md:pr-[150px]`), `sidebar.tsx` (fetch `/api/auth/session`, napis
+"Dashboard" → `displayName || username`), `settings/layout.tsx` (`title=
+"SETTINGS"`, `FRAME_SECTION_GAP_CLASS` zamiast lokalnego `gap-4`),
+`views/page.tsx` (`DAILY TRACKER`: `title` zamiast `toolbar` z "Views /
+TRACKER", drugi wiersz z `+Add`/`Edit`/zbiorczym `Save`, kolumna akcji
+`[💾][✎]`, stan `dirty` per-pole, `Dialog` pojedynczego wpisu,
+`overscroll-contain`), `packages/dba/src/leads.ts` (nowa
+`updateDailyEntry`), `app/api/forms/daily-entry/route.ts` (nowy `PATCH`,
+istniejący `POST` bez zmian), `app/api/views/route.ts` (dodane pole
+`loca`, addytywnie). **Nie migrowane w tym Story** (tylko opisane w planie
+migracji, patrz `backlog/stories/62/02_plan.md`): strona logowania i
+wszystkie pozostałe strony poza `SETTINGS`/`DAILY TRACKER`.
+
 **Story 56 (2026-07-14) — nawigacja + pas 100px:**
 `components/shared/nav-group.tsx` (nowy), `components/shared/
 dashboard-history-provider.tsx` (nowy), `dashboard-page-shell.tsx`
@@ -232,14 +340,43 @@ nagłówek na `EditorPageShell`) w: `forms/page.tsx` (gałąź Reports),
 
 ## Zasady dla nowych stron
 
-1. Strona listowa/treściowa → `DashboardPageShell` (przyciski w `toolbar`).
+1. Strona listowa/treściowa → `DashboardPageShell` z `title` (krótki,
+   WIELKIMI LITERAMI, bez podtytułów/ścieżek gdzie indziej na stronie) +
+   `toolbarSecondRow` na akcje strony (Story 62) — preferowane nad starszym
+   wzorcem samego `toolbar`.
 2. Tabela ze `sticky` nagłówkiem lub własnym scrollem → `DashboardPageShell`
-   z `scroll={false} padded={false}` i wewnętrznym `overflow-auto`.
+   z `scroll={false} padded={false}` i wewnętrznym `overflow-auto
+   overscroll-contain` (Story 62 — patrz "Warstwa 3" wyżej dla pełnego
+   standardu edytowalnej tabeli).
 3. Ekran edytora → `EditorPageShell` + `TextEditorWithToolbar`.
 4. **Nie** twórz nowego `<div className="-m-[22px] ...">` ani nowego
    `Card + flex-1 + overflow`. To jest już scentralizowane.
 5. Treść zawsze od lewej-górnej krawędzi — nie centruj (`items-center`,
    `justify-center`, `mx-auto`).
+6. Odstęp między główną ramką a ramkami wewnętrznymi (gdy strona ma sekcje)
+   → `components/shared/layout-tokens.ts`'s `FRAME_SECTION_GAP_CLASS`
+   (~3px), nigdy lokalna wartość skopiowana per strona. To osobna wartość
+   od paddingu treści wewnątrz każdej sekcji — tego paddingu ten token nie
+   dotyczy.
+
+## Strona logowania — ograniczony standard (opisany, NIE zaimplementowany w Story 62)
+
+Zakres logowania (`app/(auth)/login/page.tsx`) i jej sąsiadów w tej samej
+grupie tras (`register`, `forgot-password`, `setup-2fa`, `verify-email`)
+**nie został zmigrowany w Story 62** — obecnie nadal używa wyśrodkowanego
+układu (`min-h-screen flex items-center justify-center`), bez związku ze
+standardem `DashboardPageShell`. Docelowy, ograniczony standard (do
+zaimplementowania w przyszłym Story):
+
+- bez sidebara, bez menu, bez `Back`/`Forw`, bez toolbara dashboardu,
+- layout w górnym lewym rogu (nie wyśrodkowany),
+- jedna główna ramka + jedna ramka wewnętrzna z formularzem — te same
+  zaokrąglenia i ~3px odstęp co w standardzie dashboardowym,
+- kontrolowana wysokość, wewnętrzny scrollbar gdy treść przekracza
+  dostępną wysokość, **bez** niekontrolowanego globalnego scrolla
+  dokumentu,
+- osobny mały komponent (np. `components/shared/auth-page-shell.tsx`),
+  nie kopiowany ręcznie do każdej strony `(auth)`.
 
 ## Edge cases
 
@@ -253,15 +390,29 @@ nagłówek na `EditorPageShell`) w: `forms/page.tsx` (gałąź Reports),
 
 ## Znane ograniczenia
 
-- Strony spoza zakresu (np. `dashboard` home, `analytics`, `beeper`, `settings`)
-  nie zostały przeniesione na standard — nadal mogą scrollować `main`. `main`
-  celowo pozostaje `overflow-y-auto`, żeby ich nie przyciąć.
+- **Pełna lista stron i ich stopień zgodności z tym standardem**:
+  `backlog/stories/62/03_knowledge.md` §9 (inwentaryzacja) i
+  `02_plan.md` (plan migracji) — tylko `SETTINGS` i `Views → DAILY TRACKER`
+  są w pełni zmigrowane (Story 62); reszta (`ADD DAILY ENTRY`/`ADD DATE`/
+  `ADD LEAD`/`ADD ACTION`/`ADD REPORT`, `DATES`/`LEADS`/`REPORTS`,
+  `STATUSES`, `MSG TODO`, `MSG PLANNER`, `BEEPER`, `FOLDER`, `MESSAGES`,
+  `USERS`, strona logowania) czeka na osobne Story/Stories.
+- `MESSAGES` (`app/(dashboard)/dashboard/messages/page.tsx`) nie używa
+  `DashboardPageShell` w ogóle (własny, niezależny layout) — inny przypadek
+  niż "przeniesione częściowo", raczej "jeszcze nie zaczęte".
 - Topbar (search + ikony) jest ukryty na każdym rozmiarze; jego funkcje
   (search, powiadomienia, profil) nie są obecnie dostępne poza kodem. Theme
   toggle przeniesiono do nagłówka sidebara, a Wyloguj jest pozycją w menu, więc
   oba pozostają dostępne.
-- Weryfikacja: przeszły `tsc --noEmit` oraz `next build`. Widoku mobilnego nie
-  zweryfikowano wizualnie w przeglądarce w tym środowisku (strony za auth).
+- `DAILY TRACKER`'s edytowalna tabela (Story 62) nie ma jeszcze wydzielonego
+  wspólnego komponentu — logika (dirty tracking, stan zapisu, kolumna akcji)
+  żyje bezpośrednio w `views/page.tsx`. Wydzielenie do
+  `components/shared/` warte zrobienia przy migracji drugiej tabeli
+  (`STATUSES` albo `USERS`), nie wcześniej (żeby nie zgadywać kształtu
+  abstrakcji z jednego przypadku użycia).
+- Weryfikacja: patrz `backlog/stories/62/05_tasks_and_checklist.md` dla
+  dokładnego zakresu tego, co zostało sprawdzone real-mobile-viewport vs.
+  tylko statycznie/desktop.
 
 ## Dalsze etapy
 

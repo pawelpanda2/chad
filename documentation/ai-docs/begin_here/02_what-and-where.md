@@ -3,11 +3,15 @@
 Status: utworzone 2026-07-13, zaktualizowane 2026-07-14 (przeniesione do
 `documentation/ai-docs/knowledge/` jako `02_what-and-where.md` — punktem
 startowym dla AI jest teraz [`01_ai_start.md`](01_ai_start.md), ten plik
-jest **indeksem** do reszty dokumentacji, nie punktem wejścia).
+jest **indeksem** do reszty dokumentacji, nie punktem wejścia), oraz
+2026-07-16 (użytkownik zmienił nazwę katalogu `documentation/ai-docs/
+knowledge/` na `documentation/ai-docs/begin_here/` — treść i numeracja
+plików bez zmian, zmieniła się wyłącznie nazwa katalogu; wszystkie ścieżki
+w tym pliku i w `03_story-standard.md` już wskazują nową nazwę).
 
 **Jeśli jeszcze nie czytałeś [`01_ai_start.md`](01_ai_start.md), zrób to
 najpierw** — wskazuje kolejność czytania całej globalnej wiedzy
-(`documentation/ai-docs/knowledge/`), zanim wrócisz tutaj po indeks reszty
+(`documentation/ai-docs/begin_here/`), zanim wrócisz tutaj po indeks reszty
 dokumentacji projektu, per-kategoria, otwierając tylko to, co potrzebne do
 aktualnego zadania.
 
@@ -21,6 +25,24 @@ projektu za każdym razem.
 Ten plik jest **indeksem**, nie treścią — nie kopiuje wiedzy z dokumentów,
 tylko mówi, gdzie ona jest i kiedy po nią sięgnąć. Aktualizuj go przy każdej
 nowej kategorii albo ważnym nowym dokumencie.
+
+---
+
+## Endpoints i zmiany API (przeczytaj przed implementacją każdego feature'a z zapisem danych)
+
+**Opis:** Podstawowa zasada architektury dla dodawania/zmiany endpointów i
+metod `dba` — kiedy wolno dodać brakującą obsługę zapisu, gdzie ma żyć
+logika Content Providera, zakaz pozornego Save/stuba, zasady kompatybilności
+przy zmianie istniejącego endpointu, nazewnictwo, co sprawdzić po
+implementacji. Umieszczone wysoko w tym indeksie (przed Deploy) celowo —
+to zasada potrzebna **przed** implementacją, nie tylko przy wdrażaniu.
+
+**Lokalizacja:** [`05_endpoint-rules.md`](05_endpoint-rules.md) (część tego
+samego katalogu `documentation/ai-docs/begin_here/`, część globalnej wiedzy
+— patrz sekcja "Knowledge" niżej).
+
+**Czytać gdy:** dowolny feature, który zapisuje lub modyfikuje dane —
+zwłaszcza gdy odpowiedni endpoint/metoda `dba` jeszcze nie istnieje.
 
 ---
 
@@ -112,6 +134,18 @@ kategoria "Beeper" niżej, która opisuje sync/integrację).
   zapisanych raportów pod `views/reports` (przemianowane z
   `actions/reports` w Story 53). Zawiera też opis wywołań Content
   Providera i wynik testu ręcznego względem realnego CP.
+- `forms/features/daily-tracker-dates.md` (zweryfikowane end-to-end,
+  2026-07-12; dodane do tego indeksu w Story 62, 2026-07-16 — **przeczytaj
+  przed dotknięciem Daily Entry/Tracker/Date Entry/Dates kodu**) — Forms →
+  DAILY ENTRY/DATE ENTRY i Views → TRACKER/DATES: pełny audytowany
+  przepływ zapisu (`saveDailyEntry`/`saveDateEntry` w `packages/dba/src/
+  leads.ts`, `runWithRepoContext`, `invokeContentProvider`), aktualne
+  nazewnictwo Itemów (kolejne numery `01`, `02`, ... — NIE nazwy oparte na
+  dacie), reguła kolumn `— AUTO` (liczone przy odczycie, nigdy zapisywane),
+  potwierdzone: brak działającej metody Delete w Content Providerze
+  (`DeleteWorker.Delete()` to pusty stub), istniejące Itemy były już
+  bezpiecznie nadpisywane w miejscu przez `Put` (nie przez tworzenie od
+  nowa).
 
 **Uwaga o duplikacji:** `documentation/features/*.md` (katalog w rootcie
 `documentation/`, BEZ `dashboard/`) zawiera starsze dokumenty o tych samych
@@ -246,15 +280,16 @@ zapisywanych do Content Providera i renderowanych w dashboardzie.
 **Opis:** Krótkie, obowiązujące dla całego projektu zasady, niezależne od
 konkretnego zadania/Story. Numerowane wg kolejności czytania.
 
-**Lokalizacja:** `documentation/ai-docs/knowledge/`
+**Lokalizacja:** `documentation/ai-docs/begin_here/`
 
-**Pliki (2026-07-14):**
+**Pliki (2026-07-16):**
 - [01_ai_start.md](01_ai_start.md) — pierwszy dokument do przeczytania;
   bardzo krótki, wskazuje tylko kolejność czytania reszty (ten plik,
-  `03_story-standard.md`, `04_deployment-rules.md`) i przypomina o
-  bieżącym aktualizowaniu `stories/<N>/04_todos.md` podczas pracy nad Story.
+  `03_story-standard.md`, `05_endpoint-rules.md`, `04_deployment-rules.md`)
+  i przypomina o bieżącym aktualizowaniu `stories/<N>/04_todos.md` podczas
+  pracy nad Story.
 - [03_story-standard.md](03_story-standard.md) —
-  standard numerowanych katalogów Story (`documentation/stories/<N>/`,
+  standard numerowanych katalogów Story (`backlog/stories/<N>/`,
   6 plików `01_input.md`...`06_others_from_report.md`; **`05_tasks_and_checklist.md`
   jest obowiązkowy i musi zawierać zarówno Checklistę JAK I opis każdego
   tasku** — to najważniejszy plik całego standardu, oznaczony na czerwono
@@ -267,6 +302,15 @@ konkretnego zadania/Story. Numerowane wg kolejności czytania.
   build/start/stop/deploy wyłącznie oficjalnymi skryptami projektu; dlaczego
   `docker-compose.*.yml` nie jest źródłem wiedzy o procesie deploymentu
   (IMAGE_TAG, generowany appsettings, health-checki, port ownership).
+- [05_endpoint-rules.md](05_endpoint-rules.md) (nowy, Story 62, 2026-07-16)
+  — zasady dodawania/zmiany endpointów i metod `dba`: kiedy wolno dodać
+  brakującą obsługę zapisu, gdzie żyje logika Content Providera, zakaz
+  pozornego Save/stuba, kompatybilność przy zmianie istniejącego endpointu,
+  nazewnictwo, co sprawdzić po implementacji. Mimo numeru `05`, czytać
+  **przed** `04_deployment-rules.md` przy jakimkolwiek zadaniu z zapisem
+  danych — numeracja odzwierciedla kolejność powstania plików, nie
+  kolejność czytania dla tego konkretnego przypadku (patrz też sekcja
+  "Endpoints i zmiany API" wyżej w tym indeksie).
 
 **Czytać gdy:** zawsze, na samym początku pracy w tym repo — nie tylko przy
 zadaniach dotyczących akurat Story albo deploymentu.
@@ -277,7 +321,7 @@ zadaniach dotyczących akurat Story albo deploymentu.
 przy pracy w tym repo — nie wiedza domenowa, tylko konwencje.
 
 **Lokalizacja:** `documentation/ai-docs/` (pliki bezpośrednio w tym
-katalogu, nie w podkatalogach kategorii) oraz `documentation/ai-docs/knowledge/`
+katalogu, nie w podkatalogach kategorii) oraz `documentation/ai-docs/begin_here/`
 dla `01_ai_start.md`/`02_what-and-where.md` (ten plik) samych.
 
 **Najważniejsze dokumenty:**
@@ -306,7 +350,10 @@ migracja, poprawki, zmiany w kilku warstwach, testy, dokumentacja i
 pełną historią zadania: dokładny wejściowy prompt użytkownika, plan,
 potrzebna wiedza, końcowy raport, odłożone tematy.
 
-**Lokalizacja:** `documentation/stories/<numer>/` — katalog nazwany
+**Lokalizacja (od Story 62, 2026-07-16 — przeniesione z `documentation/stories/`
+do `backlog/stories/`, root repo; stare ścieżki `documentation/stories/<N>/`
+cytowane w treści Story 53–56 są historycznym zapisem i nie zostały
+przepisane):** `backlog/stories/<numer>/` — katalog nazwany
 WYŁĄCZNIE numerem (nigdy `53_reports` ani `Story 53`; nazwa story to
 metadana w nagłówku pliku, nie część nazwy katalogu — tak jak w Content
 Providerze fizyczne foldery są numeryczne, a nazwa logiczna żyje w
@@ -315,7 +362,7 @@ Providerze fizyczne foldery są numeryczne, a nazwa logiczna żyje w
 `05_tasks_and_checklist.md` (obowiązkowy), `06_others_from_report.md`
 (opcjonalny).
 
-**Standard opisany raz w:** `documentation/ai-docs/knowledge/03_story-standard.md`
+**Standard opisany raz w:** `documentation/ai-docs/begin_here/03_story-standard.md`
 (część globalnej bazy wiedzy — patrz sekcja "Knowledge" wyżej) — przeczytaj
 go przed założeniem nowego story albo kontynuacją istniejącego, zamiast
 zgadywać konwencję z przykładu.
@@ -365,7 +412,7 @@ publicznego API dla PHP.
 - `documentation/README.md` — **przestarzałe** (opisuje strukturę
   `general/`/`features/` z projektu sprzed monorepo `chad`, wzmiankuje pliki
   które nie istnieją w tym repo, np. `general/SCREENS-ARCHITECTURE.md`).
-  Ma teraz na górze wskaźnik do `documentation/ai-docs/knowledge/01_ai_start.md`.
+  Ma teraz na górze wskaźnik do `documentation/ai-docs/begin_here/01_ai_start.md`.
 - `documentation/nodejs-style.md` — styl kodu Node.js/TypeScript.
 - `documentation/DataLibFeatures.md` — funkcje biblioteki danych (starszy
   dokument, sprawdź aktualność przed użyciem).

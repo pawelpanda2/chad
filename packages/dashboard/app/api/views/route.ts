@@ -8,6 +8,7 @@ import { getCurrentUserFromCookies } from '@/lib/session';
  */
 interface DailyEntryRecord {
   itemName: string;
+  loca?: string;
   body?: Record<string, unknown>;
 }
 
@@ -16,6 +17,7 @@ interface DailyEntryRecord {
  */
 interface DateEntryRecord {
   itemName: string;
+  loca?: string;
   body?: Record<string, unknown>;
 }
 
@@ -106,13 +108,18 @@ export async function GET() {
     // without parsing, which (combined with a since-fixed dba bug that
     // returned the wrong body entirely) meant Dates never actually showed
     // real field values. Both are parsed the same way now.
+    // `loca` added (Story 62, additive field — existing consumers that
+    // don't read it are unaffected) so the Views/Tracker table can call the
+    // new PATCH /api/forms/daily-entry update route without a second fetch.
     const dateEntries: DateEntryRecord[] = dateEntriesRaw.map(entry => ({
       itemName: entry.itemName,
+      loca: entry.loca,
       body: entry.body ? (parseYaml(entry.body as string) || undefined) : undefined,
     }));
 
     const dailyEntries: DailyEntryRecord[] = dailyEntriesRaw.map(entry => ({
       itemName: entry.itemName,
+      loca: entry.loca,
       body: entry.body ? (parseYaml(entry.body as string) || undefined) : undefined,
     }));
 

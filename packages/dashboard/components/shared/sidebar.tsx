@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
@@ -69,6 +69,30 @@ export function Sidebar({ onMobileClose, mobile = false }: SidebarProps) {
 	// Collapsing only makes sense for the fixed desktop rail.
 	const collapsed = mobile ? false : isCollapsed;
 
+	// Brand label: the logged-in user's name in place of the static
+	// "Dashboard" text (Story 62). Falls back to "Dashboard" while the
+	// session fetch is in flight (or if there's no session, which shouldn't
+	// normally happen here since this renders inside the authenticated
+	// dashboard layout).
+	const [brandLabel, setBrandLabel] = useState("Dashboard");
+	useEffect(() => {
+		let cancelled = false;
+		fetch("/api/auth/session")
+			.then((res) => res.json())
+			.then((data: { user?: { username?: string; displayName?: string | null } | null }) => {
+				if (cancelled) return;
+				const user = data.user;
+				const label = user?.displayName || user?.username;
+				if (label) setBrandLabel(label);
+			})
+			.catch(() => {
+				/* keep the "Dashboard" fallback on error */
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, []);
+
 	const handleLinkClick = () => {
 		if (onMobileClose) {
 			onMobileClose();
@@ -99,7 +123,7 @@ export function Sidebar({ onMobileClose, mobile = false }: SidebarProps) {
 							<LayoutDashboard className="w-4 h-4 text-primary-foreground" />
 						</div>
 						<span className="text-xl font-bold group-hover:text-primary transition-colors">
-							Dashboard
+							{brandLabel}
 						</span>
 					</Link>
 				)}
