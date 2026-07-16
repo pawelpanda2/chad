@@ -43,3 +43,23 @@ export const SAVE_FRAME_PADDING_CLASS = "p-[8px]";
  * body cell.
  */
 export const TABLE_ACTION_COLUMN_WIDTH_CLASS = "w-[72px]";
+
+/**
+ * Standard clickable-row style for a "list of items" page (a stack of
+ * links/rows inside a single inner frame, as opposed to a table) — a
+ * single-color card that highlights with a rounded grey background on
+ * hover, no per-row border. Originated on the Views Reports/Leads lists,
+ * confirmed by the project owner as the standard and applied to Beeper's
+ * contact list (Story 62 Round 5). Always pair with
+ * `LIST_ROW_WRAPPER_CLASS` on the containing inner frame and a `divide-y`
+ * wrapper around the rows themselves.
+ */
+export const LIST_ROW_CLASS = "rounded-lg px-[10px] py-[10px] transition-colors hover:bg-accent";
+
+/**
+ * Inner frame wrapper for a `LIST_ROW_CLASS` list — same
+ * `rounded-lg border bg-muted/10` frame used everywhere else in the
+ * Story 62 standard, `p-2` so each row's own `px-[10px] py-[10px]`
+ * still reads as evenly spaced from the frame's edge.
+ */
+export const LIST_ROW_WRAPPER_CLASS = "rounded-lg border bg-muted/10 p-2";

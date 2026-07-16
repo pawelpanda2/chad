@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
+import { LIST_ROW_CLASS, LIST_ROW_WRAPPER_CLASS } from "@/components/shared/layout-tokens";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -85,7 +86,7 @@ export default function BeeperContactsPage() {
 				and backlog/stories/60. Beeper's own actions live here instead,
 				as a second row INSIDE the outer frame, above the contact list.
 			*/}
-			<div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b pb-3 mb-3">
+			<div className="flex flex-wrap items-center gap-x-3 gap-y-1 mb-[10px]">
 				<Select value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
 						<SelectTrigger className="h-7 w-[130px] text-xs">
 							<SelectValue />
@@ -130,10 +131,17 @@ export default function BeeperContactsPage() {
 					<span>No contacts found.</span>
 				</div>
 			) : (
-				<div className="flex flex-col divide-y divide-border overflow-hidden rounded-md border">
-					{filtered.map((c) => (
-						<Link key={c._id} href={`/dashboard/beeper/${c._id}`} className="block transition-colors hover:bg-accent/50">
-							<div className="flex items-center gap-2 p-[2px]">
+				// Inner frame (Story 62 standard) — same row style as the Views
+				// Reports/Leads lists: rounded-lg hover highlight per row instead
+				// of a bordered/striped table row.
+				<div className={LIST_ROW_WRAPPER_CLASS}>
+					<div className="divide-y">
+						{filtered.map((c) => (
+							<Link
+								key={c._id}
+								href={`/dashboard/beeper/${c._id}`}
+								className={`flex items-center gap-2 ${LIST_ROW_CLASS}`}
+							>
 								<Avatar className="h-7 w-7 shrink-0">
 									{c.hasAvatar && <AvatarImage src={`/api/beeper-crm/contacts/${c._id}/avatar`} alt={c.displayName} />}
 									<AvatarFallback className="text-[10px]">{c.displayName.slice(0, 1).toUpperCase()}</AvatarFallback>
@@ -166,9 +174,9 @@ export default function BeeperContactsPage() {
 										<span className="text-[10px] text-muted-foreground">{c.channelCount}ch</span>
 									)}
 								</div>
-							</div>
-						</Link>
-					))}
+							</Link>
+						))}
+					</div>
 				</div>
 			)}
 		</DashboardPageShell>

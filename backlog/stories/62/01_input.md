@@ -980,3 +980,11 @@ error: Failed to fetch
 ## Input 15 (mid-turn interrupt)
 
 w add action niepotrzeny jest napis Title usun go i zmiejsze odsept przycisku save do ramki do 8px i w innych miejscach gdie jest przycisk save
+
+## Input 16
+
+niech w beeper chaty kolejne na liscie beda tak jak w reports view zrobione ze sie podswietlaja takie ramki szare kolejne
+
+## Input 17 (mid-turn interrupt)
+
+i zrob zeby to byl standar dla listy i mozesz usunac ta kreske odzielajaca pomiedzy przyciskami u gory a lista w Beeper
