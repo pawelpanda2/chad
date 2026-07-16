@@ -6,7 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
-import { FRAME_SECTION_GAP_CLASS, FRAME_SECTION_SPACE_Y_CLASS } from "@/components/shared/layout-tokens";
+import { FRAME_SECTION_GAP_CLASS, FRAME_SECTION_SPACE_Y_CLASS, SAVE_FRAME_PADDING_CLASS } from "@/components/shared/layout-tokens";
+import { cn } from "@/lib/utils";
 import { TextEditorWithToolbar } from "@/components/shared/text-editor-with-toolbar";
 import { VoiceRecordingPanel } from "@/components/shared/voice-recording-panel";
 import { ErrorBox } from "@/components/shared/error-box";
@@ -16,6 +17,8 @@ import { Plus, X, CheckCircle2, AlertCircle } from "lucide-react";
 // ============================================================================
 // Constants & Mappings
 // ============================================================================
+
+const MIN_SAVE_INDICATOR_MS = 450;
 
 const APPROACH_KINDS = [
   { value: "p", label: "Daygame" },
@@ -507,6 +510,7 @@ function FormsPageContent() {
   const handleAddActionSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
+    const startedAt = Date.now();
     try {
       // Build payload for daily entry
       const payload = {
@@ -535,9 +539,15 @@ function FormsPageContent() {
       });
       const result = await response.json();
       if (result.success) {
-        setSubmitResult({ 
-          type: "success", 
-          message: `DAILY ENTRY saved as "${result.itemName}"! Path: ${result.path || 'views/daily'}`
+        // Minimum visible "Saving..." duration so a very fast round trip
+        // still reads as a smooth transition instead of an instant flash.
+        const elapsed = Date.now() - startedAt;
+        if (elapsed < MIN_SAVE_INDICATOR_MS) {
+          await new Promise((resolve) => setTimeout(resolve, MIN_SAVE_INDICATOR_MS - elapsed));
+        }
+        setSubmitResult({
+          type: "success",
+          message: `Saved as "${result.itemName}"!`
         });
         toast.success(`DAILY ENTRY saved as "${result.itemName}"!`);
         setTimeout(() => { setSubmitResult(null); resetAddActionForm(); router.push("/dashboard/views?view=tracker"); }, 1200);
@@ -742,7 +752,7 @@ function FormsPageContent() {
             first, then Generated name — both left-aligned, top of the
             frame (Story 62 standard: save/create controls at the top,
             grouped with the generated name). */}
-        <div className="shrink-0 rounded-lg border bg-muted/10 p-4">
+        <div className={cn("shrink-0 rounded-lg border bg-muted/10", SAVE_FRAME_PADDING_CLASS)}>
           <div className="flex flex-wrap items-end gap-3">
             {!isReportCreated && (
               <Button onClick={handleReportCreate} disabled={reportSaving}>
@@ -833,14 +843,11 @@ function FormsPageContent() {
                   standard — save controls live at the top, grouped with the
                   generated name when one exists). Inner frames left-anchor
                   to a 500px default width rather than stretching full-width. */}
-              <div className="flex max-w-[500px] flex-wrap items-end gap-3 rounded-lg border bg-muted/10 p-4">
+              <div className={cn("flex max-w-[500px] flex-wrap items-center gap-3 rounded-lg border bg-muted/10", SAVE_FRAME_PADDING_CLASS)}>
                 <Button type="submit" disabled={isSubmitting}>
                   {isSubmitting ? "Saving..." : "Save"}
                 </Button>
-                <div className="space-y-1">
-                  <Label>Title</Label>
-                  <Input value={actionData.actionTitle} readOnly className="bg-muted font-mono w-[200px]" />
-                </div>
+                <Input value={actionData.actionTitle} readOnly className="bg-muted font-mono w-[200px]" />
               </div>
 
               {/* Second frame: the rest of the fields. */}
@@ -933,10 +940,16 @@ function FormsPageContent() {
               {/* Save lives in its own top frame — Story 62 standard: save
                   controls always live at the top, inside the main frame,
                   even when there's no generated-name field to group it with. */}
-              <div className="max-w-[460px] rounded-lg border bg-muted/10 p-4">
+              <div className={cn("flex flex-wrap items-center gap-3 max-w-[460px] rounded-lg border bg-muted/10", SAVE_FRAME_PADDING_CLASS)}>
                 <Button type="submit" disabled={isSubmitting}>
                   {isSubmitting ? "Saving..." : "Save"}
                 </Button>
+                {submitResult && (
+                  <span className={`flex items-center gap-1 text-sm ${submitResult.type === "success" ? "text-green-600" : "text-red-600"}`}>
+                    {submitResult.type === "success" ? <CheckCircle2 className="h-4 w-4 flex-shrink-0" /> : <AlertCircle className="h-4 w-4 flex-shrink-0" />}
+                    {submitResult.message}
+                  </span>
+                )}
               </div>
 
               {/* Inner frame holds the form itself — no duplicate title row
@@ -981,12 +994,6 @@ function FormsPageContent() {
                 </table>
               </div>
             </form>
-        {submitResult && (
-          <div className={`mt-3 p-3 rounded-lg flex items-center gap-2 ${submitResult.type === "success" ? "bg-green-50 text-green-700 border border-green-200" : "bg-red-50 text-red-700 border border-red-200"}`}>
-            {submitResult.type === "success" ? <CheckCircle2 className="h-5 w-5 flex-shrink-0" /> : <AlertCircle className="h-5 w-5 flex-shrink-0" />}
-            <span className="text-sm">{submitResult.message}</span>
-          </div>
-        )}
       </DashboardPageShell>
     );
   }
@@ -1003,7 +1010,7 @@ function FormsPageContent() {
         title="ADD DATE"
       >
             <form onSubmit={handleDateEntrySubmit} className={FRAME_SECTION_SPACE_Y_CLASS}>
-              <div className="max-w-[460px] rounded-lg border bg-muted/10 p-4">
+              <div className={cn("max-w-[460px] rounded-lg border bg-muted/10", SAVE_FRAME_PADDING_CLASS)}>
                 <Button type="submit" disabled={isSubmitting}>
                   {isSubmitting ? "Saving..." : "Save"}
                 </Button>
@@ -1117,7 +1124,7 @@ function FormsPageContent() {
             {/* Top frame: Save + generated name, left-aligned (Story 62
                 standard). Generated name shown as a greyed, locked input,
                 same as ADD ACTION's Title field — not a plain span. */}
-            <div className="flex max-w-[500px] flex-wrap items-end gap-3 rounded-lg border bg-muted/10 p-3">
+            <div className={cn("flex max-w-[500px] flex-wrap items-end gap-3 rounded-lg border bg-muted/10", SAVE_FRAME_PADDING_CLASS)}>
               <Button type="submit" disabled={isSubmitting || !isLeadFormValid}>
                 {isSubmitting ? "Saving..." : "Save"}
               </Button>

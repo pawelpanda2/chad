@@ -970,3 +970,13 @@ w ADD DATE mozesz pierwsza kolumne dorownac do szerokosci napisow plus jakies 5-
 
 w messages planner tez popraw odstep od glownej ramki (wyliczone na podstawie FORMS MENU odstep miedzy przyciskami a glowna ramka chyba 8px lub wiecej)
 i to odsuwanie do 500px jezeli sie da bo dane sa krotki albo do konca jzeli dane sa na tyle dlugie
+
+## Input 14
+
+w page'u add daily entry zaraz przy przycisku dodaj taki fajny napis ktory byl wczesniej po kliknieciu przycisku save tam cos pisalo na zielono succesfully saved data czy cos takiego i daj lekki deley jezeli sie jakos super szybko sie zapisze wtedy to wygldalo tak fajnie plynie i spoko bedzie wygladal taki napis pojawiajacy sie obok przycisku save
+do tego jak przekieroawalo mnie na widok trackera to mam blad sprawdz dlaczego i sprobuj naprawic:
+error: Failed to fetch
+
+## Input 15 (mid-turn interrupt)
+
+w add action niepotrzeny jest napis Title usun go i zmiejsze odsept przycisku save do ramki do 8px i w innych miejscach gdie jest przycisk save

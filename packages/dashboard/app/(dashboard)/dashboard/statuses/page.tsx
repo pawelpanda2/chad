@@ -15,7 +15,8 @@ import {
 } from "@/components/ui/select";
 import { buildLeadDetailsHref } from "@/lib/lead-links";
 import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
-import { FRAME_SECTION_GAP_CLASS } from "@/components/shared/layout-tokens";
+import { FRAME_SECTION_GAP_CLASS, SAVE_FRAME_PADDING_CLASS } from "@/components/shared/layout-tokens";
+import { cn } from "@/lib/utils";
 import {
   RefreshCw,
   AlertCircle,
@@ -575,7 +576,7 @@ function StatusesPageContent() {
       >
             {/* Top frame: Save/Cancel + lead identity, left-aligned (Story 62
                 standard: save controls at the top). */}
-            <div className="flex flex-wrap items-center gap-3 rounded-lg border bg-muted/10 p-4">
+            <div className={cn("flex flex-wrap items-center gap-3 rounded-lg border bg-muted/10", SAVE_FRAME_PADDING_CLASS)}>
               <Button onClick={handleSave} disabled={saving} className="gap-2">
                 {saving ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                 Save
