@@ -1243,6 +1243,53 @@ export async function saveDailyEntry(
 }
 
 /**
+ * Updates an existing Daily Entry's body in place, identified by its real
+ * `loca` — never by matching on its DATE field (dates aren't guaranteed
+ * unique) and never via `generateEntryName`/`PostParentItem` (those are
+ * create-only; using them here would create a duplicate instead of
+ * overwriting). Mirrors `updateReportEntry`'s proven `GetItem`-then-`Put`
+ * shape in `report-entries.ts` (Story 62 — see
+ * documentation/dashboard/forms/features/daily-tracker-dates.md and
+ * documentation/ai-docs/begin_here/05_endpoint-rules.md).
+ *
+ * Callers must not include the computed "— AUTO" fields (PULLS AUTO,
+ * CLOSES AUTO, QUALITY DP AUTO, QUALITY C AUTO) in `bodyYaml` — those are
+ * derived server-side on every read from Date Entry data and are never
+ * persisted.
+ *
+ * @param loca The numeric loca of the daily entry item (from
+ *   `saveDailyEntry`/`getAllDailyEntries`)
+ * @param bodyYaml The full new YAML body content (not a partial patch —
+ *   callers should merge with the existing body themselves before calling)
+ */
+export async function updateDailyEntry(loca: string, bodyYaml: string): Promise<void> {
+  const repoGuid = getCurrentRepoGuid();
+
+  const item = await invokeContentProvider([
+    "IRepoService",
+    "IItemWorker",
+    "GetItem",
+    repoGuid,
+    loca,
+  ]);
+
+  if (!item?.Settings?.name) {
+    throw new Error(`Could not find daily entry at loca "${loca}" to update`);
+  }
+
+  await invokeContentProvider([
+    "IRepoService",
+    "IItemWorker",
+    "Put",
+    repoGuid,
+    loca,
+    item.Settings.type || "Text",
+    item.Settings.name,
+    bodyYaml,
+  ]);
+}
+
+/**
  * Generates the next sequential zero-padded numeric item name ("01", "02",
  * ...) that isn't already in existingNames. Item NAMES are just sequence
  * numbers, not dates — the actual date lives inside the entry's own body

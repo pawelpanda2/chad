@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import * as yaml from 'js-yaml';
 import {
   saveDailyEntry,
+  updateDailyEntry,
   getAllDailyEntries,
   getAllDateEntries,
   generateEntryName,
@@ -188,5 +189,60 @@ export async function POST(request: Request) {
       error: error instanceof Error ? error.message : "Unknown error",
       debug: debugResponse,
     }, { status: 500 });
+  }
+}
+
+/**
+ * PATCH /api/forms/daily-entry
+ *
+ * Updates an existing daily entry's fields in place, identified by its real
+ * `loca` (never by DATE — see updateDailyEntry's own doc comment in
+ * packages/dba). Added alongside the existing POST (still create-only,
+ * unchanged) rather than overloading it — Story 62, per
+ * documentation/ai-docs/begin_here/05_endpoint-rules.md and
+ * documentation/dashboard/forms/features/daily-tracker-dates.md.
+ *
+ * Body: { loca: string, fields: Record<string, unknown> } — `fields` is the
+ * full new set of fields (already merged with the previous body by the
+ * caller), with any "— AUTO" keys stripped, since those are computed
+ * server-side on every read and must never be persisted.
+ */
+export async function PATCH(request: Request) {
+  const payload = await request.json();
+  const user = await getCurrentUserFromCookies();
+
+  if (!user) {
+    return NextResponse.json({ success: false, error: "Not authenticated" }, { status: 401 });
+  }
+
+  const loca = payload.loca as string | undefined;
+  const fields = payload.fields as Record<string, unknown> | undefined;
+
+  if (!loca || typeof loca !== "string") {
+    return NextResponse.json({ success: false, error: "Missing loca" }, { status: 400 });
+  }
+  if (!fields || typeof fields !== "object") {
+    return NextResponse.json({ success: false, error: "Missing fields" }, { status: 400 });
+  }
+
+  // Never persist the computed "— AUTO" columns, regardless of what the
+  // client sent — they are derived server-side from Date Entry data on
+  // every GET and would otherwise drift the moment any Date Entry changes.
+  const AUTO_KEYS = ["PULLS AUTO", "CLOSES AUTO", "QUALITY DP AUTO", "QUALITY C AUTO"];
+  const cleanFields = { ...fields };
+  for (const key of AUTO_KEYS) delete cleanFields[key];
+
+  try {
+    await runWithRepoContext(user, async () => {
+      const bodyYaml = yaml.dump(cleanFields);
+      await updateDailyEntry(loca, bodyYaml);
+    });
+
+    return NextResponse.json({ success: true, loca });
+  } catch (error) {
+    return NextResponse.json(
+      { success: false, error: error instanceof Error ? error.message : "Unknown error" },
+      { status: 500 }
+    );
   }
 }

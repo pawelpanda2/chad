@@ -34,7 +34,7 @@ Date (`<input type="date">`), Report kind (Select: Daygame `dg` /
 Nightgame `ng` / Organized party `op` / Other `other`), and "Rest of the
 name" (free text, e.g. `galeria mokotów`). Same single frame as before —
 Story 56 only reordered the rows within it, per an explicit user
-correction that arrived mid-Story (see `documentation/stories/56/
+correction that arrived mid-Story (see `backlog/stories/56/
 01_input.md` Input 2) overriding that Story's own original "separate top
 frame" text. Generated name recomputes live from the three inputs as
 `{YY-MM-DD}_{kind}_{suffix}` (e.g. `26-05-06_dg_galeria mokotów`) via
@@ -204,7 +204,7 @@ existing Refresh button (shared with Tracker/Dates/Leads).
   date/kind/suffix, the user creates a new report.
 - The two reports that existed before Story 53 (`"01"`, `"02"`) keep their
   old sequential names — no backfill to the new naming scheme was
-  attempted (see `documentation/stories/53/04_todos.md`).
+  attempted (see `backlog/stories/53/04_todos.md`).
 
 ## Dalsze etapy
 
@@ -213,7 +213,7 @@ Stories was implemented in Story 56.
 
 ## Testing
 
-See `documentation/stories/53/05_tasks_and_checklist.md` for the Story 53 rebuild's
-verification, and `documentation/stories/56/05_tasks_and_checklist.md` for Story 56's
+See `backlog/stories/53/05_tasks_and_checklist.md` for the Story 53 rebuild's
+verification, and `backlog/stories/56/05_tasks_and_checklist.md` for Story 56's
 (metadata row reorg, recording panel + Move, the empty-body bug fix and
 Views/Reports editability, navigation).

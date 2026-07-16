@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
 import { ThemeModeSelector } from "@/components/shared/theme-mode-selector";
+import { FRAME_SECTION_GAP_CLASS } from "@/components/shared/layout-tokens";
 
 interface SettingsSidebarNavProps extends React.HTMLAttributes<HTMLElement> {
 	items: {
@@ -87,14 +88,19 @@ interface SettingsLayoutProps {
 
 export default function SettingsLayout({ children }: SettingsLayoutProps) {
 	return (
-		<DashboardPageShell contentClassName="gap-4 p-4">
+		<DashboardPageShell title="SETTINGS" contentClassName={cn(FRAME_SECTION_GAP_CLASS, "p-[3px]")}>
 			{/*
-				Section frames (documentation/stories/60 — page-frame standard):
-				these must read as sections INSIDE the shell's one outer frame, not
-				as second/third outer frames of their own — `rounded-lg` + muted
+				Section frames (backlog/stories/60 — page-frame standard): these
+				must read as sections INSIDE the shell's one outer frame, not as
+				second/third outer frames of their own — `rounded-lg` + muted
 				background distinguishes them from the shell's `rounded-xl` frame,
 				matching the section style already established in
 				app/(dashboard)/dashboard/folders/page.tsx.
+
+				Gap token (~3px, Story 62): the space between the outer frame's
+				edge and these section boxes, and between the boxes themselves.
+				Each box's own internal content padding (`p-4` below) is separate
+				and untouched — see components/shared/layout-tokens.ts.
 			*/}
 			<div className="rounded-lg border bg-muted/10 p-4">
 				<div className="space-y-2">

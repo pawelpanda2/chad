@@ -15,16 +15,22 @@ kolejności czytania, nie opis standardów samych w sobie.
    dalej i użyj jako indeksu — nie czytaj całej dokumentacji projektu za
    każdym razem, tylko sekcje potrzebne do aktualnego zadania.
 3. [`03_story-standard.md`](03_story-standard.md) — opisuje obowiązujący
-   standard realizacji Story (kiedy zakładać katalog `documentation/stories/<N>/`,
+   standard realizacji Story (kiedy zakładać katalog `backlog/stories/<N>/`,
    sześć plików, **obowiązkowy `05_tasks_and_checklist.md`** — Checklist
    RAZEM z opisem każdego tasku, to najważniejszy plik całego standardu —
    opcjonalny `06_others_from_report.md` na decyzje/problemy/propozycje).
-4. [`04_deployment-rules.md`](04_deployment-rules.md) — zasady buildu/startu/
+4. [`05_endpoint-rules.md`](05_endpoint-rules.md) — zasady dodawania/zmiany
+   endpointów i metod `dba`: kiedy wolno dodać brakującą obsługę zapisu,
+   zakaz pozornego Save/stuba, kompatybilność przy zmianie istniejącego
+   endpointu. Czytaj przed implementacją **każdego** feature'a, który
+   zapisuje/modyfikuje dane (numer `05` odzwierciedla kiedy plik powstał,
+   nie kolejność czytania — stąd czytany tu, przed `04_deployment-rules.md`).
+5. [`04_deployment-rules.md`](04_deployment-rules.md) — zasady buildu/startu/
    stopu/deploymentu wyłącznie oficjalnymi skryptami projektu.
 
 ## Podczas pracy nad Story
 
-- Regularnie aktualizuj `documentation/stories/<N>/04_todos.md`. Służy
+- Regularnie aktualizuj `backlog/stories/<N>/04_todos.md`. Służy
   wyłącznie do zapisywania bieżącego stanu pracy, żeby po przerwaniu sesji
   AI mogło wznowić pracę tam, gdzie skończyło.
 - Po zakończeniu Story `04_todos.md` ma być puste — to sygnał, że nie

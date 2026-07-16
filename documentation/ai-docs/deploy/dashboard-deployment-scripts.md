@@ -140,7 +140,7 @@ dev-flow (`02_local_mac_tmux`) nadal używa `start`/`end` (z innym, osobnym
 uzasadnieniem historycznym). Jeśli planujesz dalej ujednolicać nazewnictwo
 (np. `begin_*.sh` → `re-start_*.sh` w `06_qnap_ssh`, albo `start`→`re-start`
 w `02_local_mac_tmux`), zrób to jako osobne, świadome zadanie — patrz
-`documentation/stories/54/06_others_from_report.md`.
+`backlog/stories/54/06_others_from_report.md`.
 
 ## Dlaczego shared/test/prod, a nie jeden plik na środowisko
 

@@ -1,8 +1,8 @@
 # Architecture Docs
 
-> **Zacznij od [`documentation/ai-docs/knowledge/01_ai_start.md`](ai-docs/knowledge/01_ai_start.md)**
+> **Zacznij od [`documentation/ai-docs/begin_here/01_ai_start.md`](ai-docs/begin_here/01_ai_start.md)**
 > — krótki punkt startowy dla AI, wskazuje kolejność czytania globalnej
-> wiedzy i indeksu [`02_what-and-where.md`](ai-docs/knowledge/02_what-and-where.md)
+> wiedzy i indeksu [`02_what-and-where.md`](ai-docs/begin_here/02_what-and-where.md)
 > — aktualnego indeksu całej dokumentacji przeznaczonej dla AI (deploy,
 > dashboard, dba, Content Provider, console, Beeper, standardy). Treść
 > poniżej opisuje strukturę sprzed migracji do monorepo `chad` i jest w

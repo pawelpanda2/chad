@@ -45,7 +45,7 @@ writing a new file that implements the same interface and changing one
 `lib/speech/web-speech-engine.ts`, `createWebSpeechEngine()`. Chosen as
 the first cut (not Whisper) specifically to validate the report-by-voice
 UX without building backend infrastructure first — see
-`documentation/stories/55/02_plan.md` for the full comparison against
+`backlog/stories/55/02_plan.md` for the full comparison against
 Whisper and local/on-device recognition.
 
 **Permanent limitations of this engine (approved tradeoffs, not bugs):**
@@ -60,7 +60,7 @@ Whisper and local/on-device recognition.
   Chrome) — outside this app's control.
 - **Not a mobile solution.** There is no native-mobile equivalent of this
   API; a future mobile app needs an entirely different
-  `SpeechToTextEngine` implementation (see `documentation/stories/55/
+  `SpeechToTextEngine` implementation (see `backlog/stories/55/
   06_others_from_report.md`). This engine is never presented to the user as a
   cross-device answer, only as what currently powers the Record button in
   a desktop browser.
@@ -155,6 +155,6 @@ above.
 
 ## Dalsze etapy
 
-See `documentation/stories/55/06_others_from_report.md`: a Whisper-backed engine
+See `backlog/stories/55/06_others_from_report.md`: a Whisper-backed engine
 (if Web Speech API's accuracy/support/privacy tradeoffs prove
 unacceptable), and a native-mobile adapter.

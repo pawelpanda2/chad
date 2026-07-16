@@ -72,11 +72,11 @@ export default function DashboardLayout({
 
 				{/* Content region — the shared page shells fill this exactly, so the
 				    page never scrolls; scroll lives inside the frames. Padding is
-				    kept to ~2px so the frame nearly fills the screen. NavGroup
-				    (nav-group.tsx) is left-aligned in each page's own toolbar, right
-				    after the pl-14 menu-handle gap, so no extra reserved space is
-				    needed here. */}
-				<main className="min-h-0 flex-1 overflow-y-auto p-0.5">
+				    kept to ~2px so the frame nearly fills the screen. `md:pr-[150px]`
+				    (Story 62) reserves an empty strip on the right edge, desktop
+				    only (same `md:` / 768px threshold as DESKTOP_QUERY above) —
+				    absent on mobile, where the page uses the full width. */}
+				<main className="min-h-0 flex-1 overflow-y-auto p-0.5 md:pr-[150px]">
 					<Suspense fallback={null}>
 						<DashboardHistoryProvider>{children}</DashboardHistoryProvider>
 					</Suspense>

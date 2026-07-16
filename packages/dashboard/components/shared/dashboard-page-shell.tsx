@@ -6,10 +6,19 @@ interface DashboardPageShellProps {
   /** Main content rendered inside the standard rounded frame. */
   children: ReactNode;
   /**
-   * Optional controls rendered ABOVE the frame (filters, refresh). The
-   * shared NavGroup (`\`/Next/Back) is appended automatically after this —
-   * do not add a BackButton/NavGroup of your own here, use `upLevel`.
-   * Kept outside the frame so it never scrolls with the content.
+   * Short, uppercase page title (e.g. "SETTINGS", "DAILY TRACKER"),
+   * rendered in row 1 immediately after NavGroup (`Back`/`Forw`) — the
+   * standard row-1 order is `Back, Forw, TITLE` and nothing else. Prefer
+   * this over cramming a title into `toolbar` (Story 62). No subtitle/path
+   * — a single short string.
+   */
+  title?: string;
+  /**
+   * Optional controls rendered ABOVE the frame, after NavGroup/`title`.
+   * Kept outside the frame so it never scrolls with the content. New pages
+   * should prefer `title` + `toolbarSecondRow` over putting page-specific
+   * controls here — `toolbar` remains for pages not yet migrated to that
+   * convention.
    */
   toolbar?: ReactNode;
   /**
@@ -68,6 +77,7 @@ interface DashboardPageShellProps {
  */
 export function DashboardPageShell({
   children,
+  title,
   toolbar,
   toolbarSecondRow,
   upLevel,
@@ -80,19 +90,22 @@ export function DashboardPageShell({
   return (
     <div className={cn("flex h-full min-h-0 w-full flex-col gap-0.5", className)}>
       {/*
-        Top row: controls sit ABOVE the frame, left-aligned. They wrap onto a
-        second row automatically when they do not fit. If a title is shown it
-        lives inline here with the buttons — no subtitles (DAILY ENTRY layout).
+        Row 1: `NavGroup` (Back/Forw) first, then the short `title`, then any
+        remaining `toolbar` content — left-aligned, wraps to a second line if
+        it doesn't fit. `NavGroup` renders FIRST (it positions itself
+        left-aligned, no `ml-auto` — see nav-group.tsx) so the standard
+        left-to-right reading order is always `Back, Forw, TITLE` (Story 62).
+        Page-specific controls belong in `toolbarSecondRow`, not here.
 
-        The row is ALWAYS rendered (even without a toolbar) and reserves left
-        space (`pl-14`) + a min height for the fixed menu handle that lives in
-        the top-left of every view, so the handle never covers frame content.
-        The shared NavGroup is always appended last, so its `ml-auto` isolates
-        it on the right regardless of what `toolbar` contains.
+        The row is ALWAYS rendered (even without a title/toolbar) and
+        reserves left space (`pl-14`) + a min height for the fixed menu
+        handle that lives in the top-left of every view, so the handle never
+        covers frame content.
       */}
       <div className="flex min-h-9 shrink-0 flex-wrap items-center gap-x-3 gap-y-1 pl-14">
-        {toolbar}
         <NavGroup upLevel={upLevel} />
+        {title && <h2 className="text-sm font-bold uppercase tracking-wide">{title}</h2>}
+        {toolbar}
       </div>
 
       {toolbarSecondRow && (

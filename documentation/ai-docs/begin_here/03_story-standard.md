@@ -2,7 +2,24 @@
 
 This file is the single source of truth for how work on this repo is
 organized into numbered **Stories**. Read this once; individual story
-folders (`documentation/stories/<N>/`) do not repeat these rules.
+folders (`backlog/stories/<N>/`) do not repeat these rules.
+
+**Location note (Story 62, 2026-07-16):** the story folders live at
+`backlog/stories/<N>/` (repo root), not `documentation/stories/<N>/`. The
+user moved them into a new top-level `backlog/` folder; this file and
+`02_what-and-where.md` were updated to match. Stories 53–56's own file
+contents still say `documentation/stories/...` in places — that's a
+historical record of paths at the time and was intentionally left
+unchanged (see the Story-standard rule against rewriting other Stories'
+history).
+
+**Second location note (Story 62, same day):** the folder this very file
+lives in was also renamed, from `documentation/ai-docs/knowledge/` to
+`documentation/ai-docs/begin_here/` — file names/numbering (`01_ai_start.md`
+… `04_deployment-rules.md`) and content unchanged, only the containing
+directory's name changed. All forward-looking docs were updated to the new
+path; historical Story content citing the old `.../knowledge/...` path was
+left as-is for the same reason as above.
 
 ## What is a Story
 
@@ -23,7 +40,7 @@ the *default* way any non-trivial task on this repo gets recorded, and the
 AI agent doing the task is the one who creates it — proactively, without
 being asked, as close to the very first action of the task as possible.
 Concretely: as soon as you understand what the user is asking for well
-enough to start working, create `documentation/stories/<next-N>/` and write
+enough to start working, create `backlog/stories/<next-N>/` and write
 `01_input.md` with their request verbatim, **before** you start reading
 code, editing files, or running commands — not after you're done, and not
 only if the task "feels big enough" in the moment. If the task goes through
@@ -64,7 +81,7 @@ no Story.
 ## Directory naming — numeric only
 
 ```text
-documentation/stories/
+backlog/stories/
     56/
         01_input.md
         02_plan.md
@@ -139,10 +156,10 @@ of the implementation (that's `05_tasks_and_checklist.md`). Goal: a future chang
 this Story's area of the codebase shouldn't require re-discovering this
 context from scratch.
 
-**This is not the same thing as `documentation/ai-docs/knowledge/`** (this
+**This is not the same thing as `documentation/ai-docs/begin_here/`** (this
 directory, the one this file lives in). The distinction:
 
-- `documentation/ai-docs/knowledge/` — global knowledge that holds for the
+- `documentation/ai-docs/begin_here/` — global knowledge that holds for the
   **whole project**, read once at the start of any non-trivial task,
   independent of which Story is being worked on (this file is entry `01`
   of it).
@@ -151,7 +168,7 @@ directory, the one this file lives in). The distinction:
 
 If something learned in a Story's `03_knowledge.md` turns out to be
 generally true for the project (not just relevant to that one task), move
-or copy it into `documentation/ai-docs/knowledge/` so later Stories benefit
+or copy it into `documentation/ai-docs/begin_here/` so later Stories benefit
 from it too, instead of leaving it buried in one Story's history.
 
 ### `04_todos.md`
