@@ -103,6 +103,7 @@ nobody has to re-discover the finding):
 | 29 | DONE     |             | ADD ACTION: "Title" label removed entirely (not just "(auto-generated)"); Save-frame padding standardized to 8px across every page with a Save button (ADD REPORT, ADD ACTION, ADD DAILY ENTRY, ADD DATE, ADD LEAD, STATUSES editor) |
 | 30 | DONE     |             | BEEPER contact list: rows now use the same rounded grey hover highlight as Views Reports/Leads (`LIST_ROW_CLASS`/`LIST_ROW_WRAPPER_CLASS`, new shared tokens), instead of the old bordered/striped table-row look; the `border-b` separator between the toolbar row and the list was removed |
 | 31 | DONE     |             | DAILY TRACKER, DATES, STATUSES matrix: the vertical scrollbar now belongs to the outer shell frame, not the inner table box — dragging it scrolls the toolbar row and the table together as one unit, instead of the toolbar staying pinned above a separately-scrolling table |
+| 32 | DONE     |             | Reverted the sticky table header Task 31 introduced as a side effect (not requested); restored horizontal scroll on the outer frame for DAILY TRACKER/DATES and STATUSES matrix (Task 31 accidentally cut it off via the shell's default `overflow-x-hidden`); applied the same single-outer-scrollbar fix to USERS (same old pattern, not explicitly named before but a table view) |
 
 # Task 1 — SETTINGS: single frame, ~3px gap, title in row 1
 
@@ -1051,4 +1052,55 @@ and table now move together as a single unit, not independently.
 Screenshot of STATUSES matrix mid-scroll confirms the sticky table header
 correctly pins at the top of the frame once the toolbar has scrolled out
 of view.
+**Status: DONE**
+
+# Task 32 — Revert sticky header side effect; restore horizontal scroll; extend fix to USERS
+
+**Requested:** two corrections to Task 31's result, in the same message.
+First: Task 31's write-up called out the table header now sticking to the
+top of the (now-scrolled) outer frame as a side benefit — the user never
+asked for that and explicitly said to remove it. Second, and the actual
+point of Task 31: the bottom horizontal scrollbar was gone entirely on
+DAILY TRACKER, so wide tables couldn't be scrolled right anymore — the
+instruction was to move that scrollbar to the outer frame too, not delete
+it. Fix every table view this way, including STATUSES.
+**Done:**
+- Removed `sticky top-0`/`sticky top-0 z-10` from both table `<thead>`
+  elements (DAILY TRACKER/DATES' shared branch, STATUSES matrix mode).
+  Headers now scroll away with the rest of the table like plain content —
+  no sticky behavior anywhere in this Story's tables.
+- Root cause of the missing horizontal scrollbar: `DashboardPageShell`'s
+  default `scroll={true}` behavior is `"overflow-y-auto
+  overflow-x-hidden"` — Task 31 removed `scroll={false}` to get the
+  single vertical scrollbar onto the outer frame, but inherited that
+  default's `overflow-x-hidden` along with it, silently clipping any
+  table wider than the frame with no way to reach the clipped columns.
+  Fixed by adding `overflow-x-auto` to `contentClassName` on all three
+  pages (DAILY TRACKER/DATES, STATUSES matrix, and USERS — see below),
+  which `tailwind-merge` correctly resolves in favor of the override since
+  it's the same utility group as the shell's own `overflow-x-hidden`. The
+  outer frame is now the one true scroll container in both axes: drag the
+  right-hand scrollbar and the toolbar + table move together vertically
+  (Task 31); drag the bottom scrollbar and the whole frame's content pans
+  right, revealing the table's remaining columns.
+- Extended the same fix to `USERS`: same old `scroll={false}` +
+  independently-scrolling table-wrapper pattern as the three named pages,
+  not explicitly named in Input 18 but caught by "fix all table views this
+  way" in the follow-up message. Its `<Table>` (shadcn/ui) component has
+  no sticky-header behavior in its own styles, so nothing needed removing
+  there — just the same scroll-ownership fix.
+**Files changed:** `app/(dashboard)/dashboard/views/page.tsx`;
+`app/(dashboard)/dashboard/statuses/page.tsx`;
+`app/(dashboard)/dashboard/users/page.tsx`.
+**Tested:** Real Playwright against the running stack (900×500 viewport,
+narrow enough that DAILY TRACKER's 16-column table and STATUSES matrix's
+9-column table both genuinely overflow horizontally): confirmed via
+`getComputedStyle` that the outer content wrapper is `overflow-x: auto`
+and `scrollWidth > clientWidth` on both; set `scrollLeft = 300` directly
+and confirmed it actually took effect (not clamped to 0) and a follow-up
+screenshot shows the table visibly scrolled right, with the toolbar row
+and table header both scrolled out of view along with it — not pinned.
+Confirmed via `getComputedStyle(thead).position === "static"` on all
+three fixed table headers that no sticky behavior remains. `tsc
+--noEmit`/`eslint`/`next build` all clean; deployed to local-mac-docker.
 **Status: DONE**
