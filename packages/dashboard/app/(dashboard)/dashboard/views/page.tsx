@@ -9,7 +9,7 @@ import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
 import { buildLeadDetailsHref, getLeadDetailsHref } from "@/lib/lead-links";
 import { ErrorBox } from "@/components/shared/error-box";
 import { TextEditorWithToolbar } from "@/components/shared/text-editor-with-toolbar";
-import { TABLE_ACTION_COLUMN_WIDTH_CLASS, FRAME_SECTION_GAP_CLASS } from "@/components/shared/layout-tokens";
+import { TABLE_ACTION_COLUMN_WIDTH_CLASS, FRAME_SECTION_GAP_CLASS, LIST_ROW_CLASS, LIST_ROW_WRAPPER_CLASS } from "@/components/shared/layout-tokens";
 import { cn } from "@/lib/utils";
 import {
   Dialog,
@@ -542,7 +542,7 @@ function ViewsPageContent() {
         <ErrorBox message={error} className="mb-2" />
 
         {/* Inner frame (Story 62 standard). */}
-        <div className="rounded-lg border bg-muted/10 p-2">
+        <div className={LIST_ROW_WRAPPER_CLASS}>
         {isLoading ? (
           <div className="flex items-center gap-2 py-4 text-muted-foreground">
             <RefreshCw className="h-4 w-4 animate-spin" />
@@ -558,7 +558,7 @@ function ViewsPageContent() {
               {filteredLeads.map((lead) => (
                   <div
                     key={lead.leadKey}
-                    className="flex items-center rounded-lg px-[10px] py-[10px] transition-colors group hover:bg-accent"
+                    className={`flex items-center group ${LIST_ROW_CLASS}`}
                   >
                     <div className="flex items-center gap-3 flex-1 min-w-0">
                       <Link
@@ -657,7 +657,7 @@ function ViewsPageContent() {
             </div>
 
             <ErrorBox message={reportsError} className="mb-2" />
-            <div className="rounded-lg border bg-muted/10 p-2">
+            <div className={LIST_ROW_WRAPPER_CLASS}>
             {isLoading ? (
               <div className="flex items-center gap-2 py-4 text-muted-foreground">
                 <RefreshCw className="h-4 w-4 animate-spin" />
@@ -675,7 +675,7 @@ function ViewsPageContent() {
                     key={report.loca}
                     type="button"
                     onClick={() => setSelectedReportLoca(report.loca)}
-                    className="flex w-full items-center gap-3 rounded-lg px-[10px] py-[10px] text-left transition-colors hover:bg-accent"
+                    className={`flex w-full items-center gap-3 text-left ${LIST_ROW_CLASS}`}
                   >
                     <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-primary">
                       <FileText className="h-3.5 w-3.5" />

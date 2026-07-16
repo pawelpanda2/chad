@@ -101,6 +101,7 @@ nobody has to re-discover the finding):
 | 27 | DONE     |             | ADD DAILY ENTRY: the green "Saved" indicator now appears inline next to the Save button (was rendering at the bottom, below the whole table, easy to miss without scrolling); a minimum-visible "Saving..." duration keeps the transition smooth even when the round trip is near-instant |
 | 28 | N/A      |             | "Failed to fetch" after the post-save redirect to DAILY TRACKER — investigated, not caused by this Story's code (see write-up): a stale browser tab left open from before this session's own redeploy, not a reproducible bug |
 | 29 | DONE     |             | ADD ACTION: "Title" label removed entirely (not just "(auto-generated)"); Save-frame padding standardized to 8px across every page with a Save button (ADD REPORT, ADD ACTION, ADD DAILY ENTRY, ADD DATE, ADD LEAD, STATUSES editor) |
+| 30 | DONE     |             | BEEPER contact list: rows now use the same rounded grey hover highlight as Views Reports/Leads (`LIST_ROW_CLASS`/`LIST_ROW_WRAPPER_CLASS`, new shared tokens), instead of the old bordered/striped table-row look; the `border-b` separator between the toolbar row and the list was removed |
 
 # Task 1 — SETTINGS: single frame, ~3px gap, title in row 1
 
@@ -948,4 +949,53 @@ stack — confirms the "Title" label is gone and the Save frame is visibly
 tighter than before (Round 3's screenshot for comparison); `tsc
 --noEmit`/`eslint`/`next build` all clean; deployed to local-mac-docker
 and re-verified live.
+**Status: DONE**
+
+**Round 5 — Beeper's contact list adopts the Views list-row standard, now
+promoted to a shared token.** One request, with a follow-up in the same
+turn: make Beeper's chat list highlight rows the same way Views'
+Reports/Leads lists already do, then explicitly establish that row style
+as the reusable standard (not a one-off copy) and drop a stray separator
+line above Beeper's list while at it.
+
+# Task 30 — BEEPER list rows: shared `LIST_ROW_CLASS` standard
+
+**Requested:** Beeper's chat list should highlight rows the same way the
+Views Reports list does — a rounded grey frame appearing on hover, one row
+at a time. Once built, make this the actual standard for "list of items"
+pages generally (not just copy the classes onto Beeper), and remove the
+separator line that sat between Beeper's top toolbar row and the list
+below it.
+**Done:** Beeper's contact list previously rendered each row as a full-
+width `<Link className="block ... hover:bg-accent/50">` wrapping a
+`p-[2px]` div, inside one `divide-y divide-border overflow-hidden
+rounded-md border` container — a bordered/striped table-row look,
+different from the Views lists. Replaced it with the exact Reports/Leads
+pattern: rows are `rounded-lg px-[10px] py-[10px] transition-colors
+hover:bg-accent` (a rounded card that only shows its grey background on
+hover, no border), inside a `rounded-lg border bg-muted/10 p-2` inner
+frame with a `divide-y` wrapper around the rows.
+
+Rather than leave this as three separate copies of the same class string
+(Beeper + Views Leads + Views Reports), added two new shared tokens to
+`layout-tokens.ts` — `LIST_ROW_CLASS` and `LIST_ROW_WRAPPER_CLASS` — and
+refactored all three call sites (Beeper's contact list, Views' Leads
+list, Views' Reports list) to import and use them instead of the
+hardcoded string, so this is now a real single source of truth per the
+user's "make it the standard" instruction, not just a copy-pasted match.
+Also removed the `border-b pb-3 mb-3` separator between Beeper's
+Select/Search/Inbox/Merge toolbar row and the contact list below it
+(replaced with a plain `mb-[10px]`, matching the standard gap used
+everywhere else in the Story rather than a border).
+**Files changed:** `components/shared/layout-tokens.ts`;
+`app/(dashboard)/dashboard/beeper/page.tsx`;
+`app/(dashboard)/dashboard/views/page.tsx`.
+**Tested:** Real Playwright against the running stack: hovered a Beeper
+contact row (`JanuPol`) and screenshotted it showing the rounded grey
+highlight, confirmed via `getComputedStyle`/`closest()` that the row and
+its wrapper carry exactly the `LIST_ROW_CLASS`/`LIST_ROW_WRAPPER_CLASS`
+strings, and confirmed the separator is gone; re-screenshotted Views
+REPORTS afterward to confirm the token refactor didn't change its
+rendering. `tsc --noEmit`/`eslint`/`next build` all clean; deployed to
+local-mac-docker.
 **Status: DONE**
