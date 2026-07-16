@@ -707,14 +707,16 @@ function StatusesPageContent() {
   if (mode === "matrix") {
     return (
       <DashboardPageShell
-        scroll={false}
-        contentClassName={FRAME_SECTION_GAP_CLASS}
+        contentClassName={cn(FRAME_SECTION_GAP_CLASS, "overscroll-contain")}
         title="STATUSES"
       >
         {/* Page-specific controls now live inside the main frame, not above
             it (Story 62 Round 3: toolbarSecondRow floated disconnected from
-            the frame it controls — moved in, standard gap below). */}
-        <div className="flex shrink-0 flex-wrap items-center gap-3">
+            the frame it controls — moved in, standard gap below). Scroll
+            now belongs to the outer shell frame, not the table's own box
+            (Round 6) — the toolbar scrolls together with the table instead
+            of staying pinned above a separately-scrolling table. */}
+        <div className="flex flex-wrap items-center gap-3">
           {modeSelect}
           {numericRangeInput}
           {nameFilterInput}
@@ -747,7 +749,7 @@ function StatusesPageContent() {
             <span className="text-sm">No leads found</span>
           </div>
         ) : (
-          <div className="min-h-0 flex-1 overflow-auto overscroll-contain rounded-lg border bg-muted/10">
+          <div className="rounded-lg border bg-muted/10">
                 <table className="w-full border-collapse text-sm">
                   <thead className="bg-muted sticky top-0 z-10">
                     <tr>
