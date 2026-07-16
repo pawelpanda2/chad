@@ -235,7 +235,7 @@ export default function BeeperContactDetailPage({ params }: { params: Promise<{ 
 
 	if (loading) {
 		return (
-			<DashboardPageShell upLevel={{ href: "/dashboard/beeper" }}>
+			<DashboardPageShell upLevel={{ href: "/dashboard/beeper" }} title="BEEPER">
 				<div className="flex items-center justify-center py-24 text-muted-foreground gap-2">
 					<RefreshCw className="h-4 w-4 animate-spin" /> Loading contact...
 				</div>
@@ -244,7 +244,7 @@ export default function BeeperContactDetailPage({ params }: { params: Promise<{ 
 	}
 	if (!detail) {
 		return (
-			<DashboardPageShell upLevel={{ href: "/dashboard/beeper" }}>
+			<DashboardPageShell upLevel={{ href: "/dashboard/beeper" }} title="BEEPER">
 				<div className="py-24 text-center text-muted-foreground">Contact not found.</div>
 			</DashboardPageShell>
 		);
@@ -266,10 +266,12 @@ export default function BeeperContactDetailPage({ params }: { params: Promise<{ 
 		<DashboardPageShell
 			scroll={false}
 			upLevel={{ href: "/dashboard/beeper" }}
-			toolbar={<h2 className="text-lg font-bold">{contact.displayName}</h2>}
+			title="BEEPER"
 		>
-			{/* Second row inside the outer frame — see documentation/stories/60. */}
+			{/* Second row inside the outer frame — see backlog/stories/60. Contact
+			    name shown here since the shell's own title stays page-level. */}
 			<div className="flex shrink-0 flex-wrap items-center gap-2 border-b pb-3 mb-3">
+				<span className="font-semibold">{contact.displayName}</span>
 				<Button variant="outline" size="sm" className="gap-1 h-7 px-2 text-xs" onClick={copyForAI}>
 					<Copy className="h-3 w-3" /> Copy for AI
 				</Button>

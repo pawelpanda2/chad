@@ -27,6 +27,49 @@ for every account, because it looked the session cookie up in the Prisma
 CP-`chad_admin`-backed mechanism (`getCurrentUserFromCookies()`). Fixed to
 use the same real mechanism as the rest of the app.
 
+**Round 2 (Input 8/9) — full rollout, superseding the "pilot only" framing
+above.** After reviewing the deployed pilot, the user found the pilot
+pages themselves still incomplete (missing a required "double frame" —
+outer shell frame + at least one inner content frame, even for
+single-element pages — and a "Save + generated name at the top" pattern
+for forms that have a generated name) and, having seen the same gaps
+repeat, explicitly said to fix every remaining page rather than stopping
+at two pilots (`"nie sprawdzam dalej bo widzę że wszędzie te same błędy
+się powtrzają więc popraw to wszędzie"`). Tasks 11–20 below cover that
+full rollout: all 5 Forms branches, all 4 Views branches (including
+re-fixing `DAILY TRACKER`'s missing inner frame), `STATUSES` (3
+branches), `MSG TODO`, `MSG PLANNER`, all 4 `BEEPER` routes, `FOLDER`,
+`MESSAGES`, `USERS`, and `LOGIN` (previously deferred, now explicitly
+included). `SETTINGS` was re-checked against the sharpened standard and
+already complied (two inner frame boxes, no change needed).
+
+Two things were investigated and fixed as part of this round, reported
+back to the user, but are **not** functional Checklist items (organizational
+config in the log the user flagged, per this Story's own reporting so
+nobody has to re-discover the finding):
+- **Dev Panel silently disabled on every local-mac-docker build.**
+  `docker-compose.local.yml`'s dashboard `build:` never passed the
+  Dockerfile's `ARG ENABLE_DEV_PANEL`, so `NEXT_PUBLIC_ENABLE_DEV_PANEL`
+  defaulted to `false` on every build — not something this Story's own
+  changes broke (confirmed via `git log`: no commit ever wired this arg
+  through this compose file). Fixed by adding `args: ENABLE_DEV_PANEL:
+  "true"` to the local compose file only (QNAP test/prod use separate
+  compose files, untouched). Verified live: the Dev Panel tab now renders
+  `position: fixed; right: 0`, measured at the true viewport edge (right
+  edge = full window width), independent of the new 150px pane.
+- **`MSG TODO`/`MSG PLANNER` Content-Provider errors — confirmed
+  pre-existing, not caused by this Story.** Reproduced the identical error
+  (`ValidateChildFoldersAreNumeric` failing under `kamil_s`'s `leads/all
+  items`) via a raw `GET /api/msg-planner` / `GET /api/todo-msg?type=todo`
+  call with a fresh login, no browser session involved. `git log` confirms
+  neither route nor its `dba` functions were touched by this Story. The
+  real repo data lives on a host bind-mount
+  (`CP_REPOS_HOST_PATH=/Users/pawelfluder/Dropbox`), which container
+  restarts never touch. This points to a Content-Provider-side data-state
+  issue in `kamil_s`'s repo — `packages/net-content-provider` is off-limits
+  for this Story to touch, so this was reported to the user rather than
+  "fixed."
+
 | # | Ai Status | Real Status | Task |
 |---|-----------|-------------|------|
 | 1 | DONE      |             | SETTINGS: single outer frame with a ~3px gap token to its inner section frames (each section's own internal content padding left untouched), row 1 shows `Back, Forw, SETTINGS` with no title duplicated elsewhere |
@@ -39,6 +82,15 @@ use the same real mechanism as the rest of the app.
 | 8 | DONE      |             | DAILY TRACKER: a single top-left `Save` button persists all currently-dirty rows in one action, via the same `updateDailyEntry` path |
 | 9 | BLOCKED   |             | DAILY TRACKER single-entry detail view (opened via the pencil) offers a Delete option gated behind a confirmation dialog (blocked: Content Provider has no working delete — nothing to wire this to yet) |
 | 10 | DONE     |             | DAILY TRACKER on a real mobile viewport: horizontal table scroll stops exactly at the first/last column with no empty space and no bounce-back, and dragging the table does not drag the whole page |
+| 11 | DONE     |             | ADD DAILY ENTRY and ADD DATE: outer shell frame + inner content frame (table no longer bare in the shell), free-standing Save at the top, no duplicate in-table title |
+| 12 | DONE     |             | ADD LEAD and ADD ACTION: Save + generated name moved into their own top frame, left-aligned; remaining fields in a second frame below |
+| 13 | DONE     |             | ADD REPORT: outer shell frame added (was missing entirely — EditorPageShell provides none), Create/Generated-name frame now sits inside it |
+| 14 | DONE     |             | DAILY TRACKER: table now sits inside an inner content frame within the outer shell frame (previously bare); title corrected to read "DAILY TRACKER" (was still literally "TRACKER" after Round 1) |
+| 15 | DONE     |             | DATES, LEADS, REPORTS (Views): each gets a short uppercase `title` in row 1 and its list/table content wrapped in an inner frame |
+| 16 | DONE     |             | STATUSES (all 3 modes: editor, matrix, migration list): `title="STATUSES"` in row 1, page-specific controls moved to row 2, content wrapped in an inner frame, Save/Cancel moved to the top in the editor mode |
+| 17 | DONE     |             | MSG TODO, MSG PLANNER, BEEPER (all 4 routes), FOLDER, MESSAGES, USERS: each gets a short uppercase `title` in row 1 and its content wrapped in an inner frame (MESSAGES also migrated off a bare `h-[calc(100vh-200px)]` div onto DashboardPageShell; MSG PLANNER migrated from EditorPageShell to DashboardPageShell so it has an outer frame) |
+| 18 | DONE     |             | LOGIN: top-left corner (not centered), one outer frame + one inner frame holding the form, no sidebar/menu/Back/Forw/toolbar, capped height with its own internal scrollbar, no uncontrolled global page scroll |
+| 19 | DONE     |             | Dev Panel visible again on local-mac-docker, rendered at the true right edge of the viewport regardless of the 150px pane |
 
 # Task 1 — SETTINGS: single frame, ~3px gap, title in row 1
 
@@ -343,4 +395,225 @@ here is what `overscroll-contain` is documented to guarantee regardless
 of input method (mouse, touch, or programmatic), so this is treated as
 sufficient, not as a substitute claim of "touch-tested" beyond what was
 actually run.
+**Status: DONE**
+
+# Task 11 — ADD DAILY ENTRY / ADD DATE: double frame + Save at top
+
+**Requested:** these are single-element (one table) forms, so per the
+standard they still need the outer shell frame **plus** an inner content
+frame around the form — not just the bare shell. Title first, then the
+framed content. No duplicate title inside the table.
+**Done:** Both branches (`add_action`/`add_action`→`ADD DAILY ENTRY`,
+`date_entry`→`ADD DATE`) in `forms/page.tsx`: `title` prop replaces the
+old `toolbar` h2; removed the duplicate `<th colSpan={2}>DAILY ENTRY/DATE
+ENTRY</th>` row inside each table (redundant with the shell's own title);
+`Save` moved to a free-standing button at the top (no generated name on
+these forms, so no frame around it, per the standard's "free-standing
+when there's no generated name" branch); the table itself now sits inside
+a `rounded-lg border bg-muted/10` inner frame.
+**Files changed:** `app/(dashboard)/dashboard/forms/page.tsx`.
+**Tested:** Real Playwright screenshot against the running stack
+(`round2_add_daily_entry.png`) confirms: row 1 `Back, Forw, ADD DAILY
+ENTRY`, free-standing Save above a bordered inner frame holding the
+table, no duplicate title anywhere on the page.
+**Status: DONE**
+
+# Task 12 — ADD LEAD / ADD ACTION: Save + generated name top frame
+
+**Requested:** move Save and the generated-name field into their own
+frame at the top, left-aligned together; the rest of each form's fields
+stay in their existing/separate frame(s) below.
+**Done:**
+- ADD LEAD: new top frame (`rounded-lg border bg-muted/10 p-4`) with
+  `Save` + `leadNamePreview` (previously shown inline inside the "Lead
+  Name/Id" section header) side by side, left-aligned. Removed the old
+  bottom `Save` button and the inline preview span from the Lead Name/Id
+  section. The two pre-existing sections (Lead Name/Id, Contacts) stay as
+  their own frames below, unchanged internally.
+- ADD ACTION: new top frame with `Save` + `actionData.actionTitle`
+  (auto-generated), left-aligned. The rest of the fields (Type, Suffix,
+  Date, City, Start Time, Notes) moved into a second frame below,
+  replacing the previous bare/unframed layout.
+**Files changed:** `app/(dashboard)/dashboard/forms/page.tsx`.
+**Tested:** Real Playwright screenshots (`round2_add_lead.png`,
+`round2_add_action.png`) confirm Save sits directly beside the generated
+name in a bordered top frame on both pages, left-aligned, with the rest
+of each form in a separate frame below.
+**Status: DONE**
+
+# Task 13 — ADD REPORT: add the missing outer frame
+
+**Requested:** this branch was missing the outer frame entirely.
+**Done:** Converted from `EditorPageShell` (provides no frame of its own)
+to `DashboardPageShell` (`scroll={!isReportCreated} padded={false}
+title="ADD REPORT"`), mirroring the already-proven pattern used by
+`Views → REPORTS` for viewing/editing an existing report. The manually
+built `NavGroup` + "Reports" header row was removed (the shell now
+provides `Back, Forw, ADD REPORT` automatically); `reportError` moved
+into a standard `ErrorBox`. The existing Create/Generated-name frame and
+the metadata row now sit correctly *inside* the new outer frame instead
+of being the page's only frame.
+**Files changed:** `app/(dashboard)/dashboard/forms/page.tsx` (dropped
+the now-unused `EditorPageShell`/`NavGroup` imports, added `ErrorBox`).
+**Tested:** Real Playwright screenshot (`round2_add_report.png`) shows
+the outer rounded frame now present, with the Create/Generated-name box
+correctly nested inside it.
+**Status: DONE**
+
+# Task 14 — DAILY TRACKER: inner frame + title text fix
+
+**Requested:** same double-frame requirement as the forms — the table was
+sitting bare in the outer shell frame.
+**Done:** Added `rounded-lg border bg-muted/10` to the table's scroll
+container (already had `overscroll-contain` from Task 10), so the table
+now reads as an inner frame inside the outer shell frame. **Also fixed a
+real regression caught by this round's own verification, not requested
+directly:** the `viewTitle` constant powering the shell's `title` prop
+still literally read `"TRACKER"`, not `"DAILY TRACKER"` — Round 1's edit
+changed how the title was *rendered* (via the new `title` prop) but never
+updated the underlying string. Caught by an automated title-presence
+check against the live page, not by inspection.
+**Files changed:** `app/(dashboard)/dashboard/views/page.tsx`.
+**Tested:** Real Playwright: initial check flagged
+`title "DAILY TRACKER" found: false`; screenshot confirmed the page still
+said "TRACKER"; fixed the string, rebuilt, redeployed, re-ran the same
+check — now passes (`title "DAILY TRACKER" found: true`).
+**Status: DONE**
+
+# Task 15 — Views: DATES, LEADS, REPORTS title + inner frame
+
+**Requested:** same standard applied to the rest of the Views branches
+(blanket "fix everywhere" — no page-specific note given).
+**Done:** Views menu itself: `title="VIEWS"`, tile subtitles removed
+(matching the earlier Tracker tile cleanup). `DATES` branch: shares
+`Tracker`'s render block, now gets `title="DATES"` (via the shared
+`viewTitle` computation) automatically. `LEADS`: `title="LEADS"`, filter/
+refresh/count moved to `toolbarSecondRow`, the leads list wrapped in a
+`rounded-lg border bg-muted/10` inner frame. `REPORTS`: `title="REPORTS"`
+(dropped the "Views / REPORTS / itemName" path-style title), list view
+wrapped in an inner frame; the editor view (when a report is open) is
+unchanged — `TextEditorWithToolbar` already provides its own frame.
+**Files changed:** `app/(dashboard)/dashboard/views/page.tsx`.
+**Tested:** Real Playwright screenshots + title-presence checks for all
+four branches against the running stack — all pass, no horizontal page
+overflow on any of them.
+**Status: DONE**
+
+# Task 16 — STATUSES: title + inner frame across all 3 modes
+
+**Requested:** same standard, blanket "fix everywhere".
+**Done:**
+- Editor mode: `title="STATUSES"` (was no title at all — the per-lead
+  name lived directly in `toolbar`). New top frame holds `Save`/`Cancel` +
+  the lead's identity (name, loca, status badge), left-aligned — moved
+  from a bottom "Actions" row per the "Save at the top" standard. Fields
+  moved into their own second frame.
+- Matrix mode: `title="STATUSES"`, the mode selector + filters + saved/
+  error indicators + count consolidated into `toolbarSecondRow` (row 1
+  had been carrying page content directly via `toolbar`). Table wrapped
+  in a `rounded-lg border bg-muted/10` frame; also added
+  `overscroll-contain` to its scroll container while touching this code
+  (same known mobile-bounce issue flagged for Statuses in
+  `03_knowledge.md` §7 — not separately mobile-tested this round, see
+  `06_others_from_report.md`).
+- Migration/list mode: same `title` + `toolbarSecondRow` consolidation,
+  list wrapped in an inner frame.
+**Files changed:** `app/(dashboard)/dashboard/statuses/page.tsx`.
+**Tested:** `tsc --noEmit` clean after each of the 3 branch edits; real
+Playwright screenshot of matrix mode (`round2_statuses.png`) confirms
+`Back, Forw, STATUSES` in row 1, controls in row 2, framed table.
+**Status: DONE**
+
+# Task 17 — MSG TODO, MSG PLANNER, BEEPER×4, FOLDER, MESSAGES, USERS
+
+**Requested:** same standard, blanket "fix everywhere".
+**Done:**
+- **MSG TODO**: `title="MSG TODO"`, existing filter controls moved to
+  `toolbarSecondRow`, list wrapped in an inner frame.
+- **MSG PLANNER**: migrated from `EditorPageShell` (no frame) to
+  `DashboardPageShell` (`scroll={false} padded={false} title="MSG
+  PLANNER"`) — was missing an outer frame **and** `Back`/`Forw` entirely
+  (confirmed against `responsive-layout-standard.md`'s own Story 56 file
+  list, which never included this page). Date select/new/refresh moved to
+  `toolbarSecondRow`.
+- **BEEPER** (`beeper/page.tsx`, `beeper/inbox/page.tsx`,
+  `beeper/merge/page.tsx`, `beeper/[id]/page.tsx`): each gets a `title`
+  prop (`BEEPER`, `INBOX`, `MERGE SUGGESTIONS`, `BEEPER` again for the
+  per-contact page, with the contact's own name shown inside the existing
+  in-frame second row instead of as the page title). The existing Story
+  60 "second row inside the outer frame" pattern was kept as-is — already
+  compliant, just needed the title mechanism swapped.
+- **FOLDER**: `title="FOLDER"` (target name is singular per the original
+  spec, left the sidebar's "Folders" label alone — see
+  `02_plan.md` Decision 6). Content already had its own inner frame from
+  earlier work; unchanged.
+- **MESSAGES**: migrated off a bare, unframed `<div className="space-y-6">`
+  with a hardcoded `h-[calc(100vh-200px)] min-h-[500px]` height hack onto
+  `DashboardPageShell` (`scroll={false} padded={false} title="MESSAGES"`)
+  — the two chat panels (`Card`s) now get their height from the shell's
+  own `h-full` column instead of a viewport calc().
+- **USERS**: `title="USERS"`, count moved to `toolbarSecondRow`, table
+  wrapped in an inner frame, `overscroll-contain` added to its scroll
+  container (same known mobile-bounce issue as Statuses — not separately
+  mobile-tested this round).
+**Files changed:** `todo-msg/page.tsx`, `msg-planner/page.tsx`,
+`beeper/page.tsx`, `beeper/inbox/page.tsx`, `beeper/merge/page.tsx`,
+`beeper/[id]/page.tsx`, `folders/page.tsx`, `messages/page.tsx`,
+`users/page.tsx`.
+**Tested:** `tsc --noEmit` and `eslint` clean after each file; real
+Playwright title-presence + no-horizontal-overflow checks for every one
+of these pages against the running local-mac-docker stack, plus a
+screenshot of MSG PLANNER (`round2_msg_planner.png`) confirming the full
+row-1/row-2/framed-editor structure.
+**Status: DONE**
+
+# Task 18 — LOGIN: reduced top-left standard
+
+**Requested (previously deferred in Input 2 point 3, now explicitly
+included in Input 8's "fix everywhere"):** top-left corner, one outer
+frame + one inner frame holding the form, no sidebar/menu/Back/Forw/
+toolbar, controlled height with its own internal scrollbar, no
+uncontrolled global document scroll.
+**Done:** Replaced the old `min-h-screen flex items-center justify-center`
+centered-`Card` layout with: `<div className="h-[100dvh] w-full
+overflow-hidden ...">` (page-level, prevents any global scroll) →
+outer frame (`rounded-xl border bg-card shadow-sm`, `max-h-full
+overflow-y-auto` — capped to the viewport, own internal scroll if content
+ever grows) → `p-[3px]` gap → inner frame (`rounded-lg border
+bg-muted/10`) holding the actual form. No `auth-page-shell.tsx` component
+was extracted (deliberately — see `06_others_from_report.md`'s original
+follow-up proposal; this pass only fixes `login/page.tsx` itself, kept
+simple rather than building a shared component for a single current
+consumer).
+**Files changed:** `app/(auth)/login/page.tsx` (dropped the now-unused
+`Card`/`CardContent`/`CardDescription`/`CardHeader`/`CardTitle` imports).
+**Tested:** Real Playwright, fresh (unauthenticated) browser context
+against the running stack: outer frame's `getBoundingClientRect()` shows
+`top: 8, left: 8` (top-left corner, not centered); `document.scrollWidth`
+(1440) equals the viewport width and `document.scrollHeight` (900) equals
+the viewport height — no global scroll in either axis. Screenshot
+(`round2_login.png`) confirms two visible nested frames and the Dev Panel
+still rendering correctly at the true right edge on this page too.
+**Status: DONE**
+
+# Task 19 — Dev Panel build-arg fix
+
+**Requested:** not directly requested as a Story task, but reported by the
+user as a regression ("znowu wywaliłeś dev panel") and fixed as part of
+this round since it blocked the user's own manual verification of the
+other tasks.
+**Done:** `docker-compose.local.yml`'s `dashboard.build` section never
+included an `args:` block, so the Dockerfile's `ARG ENABLE_DEV_PANEL=false`
+default silently applied to every local-mac-docker image — confirmed via
+`git log` that no commit (this Story's or any earlier one) ever wired
+this through. Added `args: { ENABLE_DEV_PANEL: "true" }` to the
+`dashboard` service's `build` block in that file only — QNAP test/prod
+use `docker-compose.qnap.*.yml`, untouched.
+**Files changed:** `docker-compose.local.yml`.
+**Tested:** Real Playwright: located the `.dev-panel-handle` element,
+confirmed `position: fixed`, `right: 0px` (CSS), and its
+`getBoundingClientRect().right` equals the full 1440px window width —
+i.e. it renders exactly at the true viewport edge, unaffected by the
+150px pane inside `main`. Screenshot (`story62_devpanel_check.png`)
+included in this Story's working evidence.
 **Status: DONE**

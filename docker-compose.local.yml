@@ -69,6 +69,17 @@ services:
       context: .
       dockerfile: packages/dashboard/Dockerfile
       target: runner
+      # Dev Panel is meant to be visible in local dev (see
+      # packages/dashboard/app/layout.tsx's own comment: it's compiled in
+      # only when NEXT_PUBLIC_ENABLE_DEV_PANEL is set at build time). This
+      # compose file's `build.args` never passed the Dockerfile's
+      # `ARG ENABLE_DEV_PANEL` before, so it silently defaulted to `false`
+      # on every local-mac-docker build regardless of who ran it — not a
+      # regression from any one build, a pre-existing gap in this file.
+      # QNAP test/prod use entirely separate compose files and are
+      # unaffected by this.
+      args:
+        ENABLE_DEV_PANEL: "true"
     container_name: chad-dashboard-local-mac-docker
     restart: unless-stopped
     ports:

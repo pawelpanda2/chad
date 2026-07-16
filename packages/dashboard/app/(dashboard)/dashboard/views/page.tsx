@@ -20,7 +20,6 @@ import {
 } from "@/components/ui/dialog";
 import {
   RefreshCw,
-  Table as TableIcon,
   Search,
   ArrowUp,
   ArrowDown,
@@ -463,7 +462,7 @@ function ViewsPageContent() {
 
   if (!selectedView) {
     return (
-      <DashboardPageShell toolbar={<h2 className="text-lg font-bold">Views</h2>}>
+      <DashboardPageShell title="VIEWS">
         {/*
           Fixed 4-column grid (same as Forms): the 3 buttons occupy 3 cells and
           the 4th cell stays empty — buttons keep their column width instead of
@@ -483,7 +482,6 @@ function ViewsPageContent() {
             className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
           >
             <span className="font-semibold text-sm">DATES</span>
-            <span className="text-xs text-muted-foreground mt-0.5">Date entries</span>
           </button>
           <button
             type="button"
@@ -491,7 +489,6 @@ function ViewsPageContent() {
             className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
           >
             <span className="font-semibold text-sm">LEADS</span>
-            <span className="text-xs text-muted-foreground mt-0.5">All leads</span>
           </button>
           <button
             type="button"
@@ -499,7 +496,6 @@ function ViewsPageContent() {
             className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
           >
             <span className="font-semibold text-sm">REPORTS</span>
-            <span className="text-xs text-muted-foreground mt-0.5">Saved reports</span>
           </button>
         </div>
       </DashboardPageShell>
@@ -515,12 +511,10 @@ function ViewsPageContent() {
     return (
       <DashboardPageShell
         upLevel={{ onClick: handleBack }}
-        toolbar={
+        title="LEADS"
+        contentClassName="p-[3px]"
+        toolbarSecondRow={
           <>
-            <div className="flex items-center gap-2">
-              <User className="h-4 w-4" />
-              <h2 className="text-lg font-bold">Views / LEADS</h2>
-            </div>
             <div className="relative">
               <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
               <Input
@@ -548,6 +542,8 @@ function ViewsPageContent() {
       >
         <ErrorBox message={error} className="mb-2" />
 
+        {/* Inner frame (Story 62 standard). */}
+        <div className="rounded-lg border bg-muted/10 p-2">
         {isLoading ? (
           <div className="flex items-center gap-2 py-4 text-muted-foreground">
             <RefreshCw className="h-4 w-4 animate-spin" />
@@ -603,6 +599,7 @@ function ViewsPageContent() {
                 ))}
           </div>
         )}
+        </div>
       </DashboardPageShell>
     );
   }
@@ -616,19 +613,15 @@ function ViewsPageContent() {
       <DashboardPageShell
         scroll={!selectedReport}
         padded={!selectedReport}
+        contentClassName={!selectedReport ? "p-[3px]" : undefined}
         upLevel={{
           onClick: selectedReport ? () => setSelectedReportLoca(null) : handleBack,
           label: selectedReport ? "Back to reports list" : "Back to Views menu",
         }}
-        toolbar={
-          <>
-            <div className="flex items-center gap-2">
-              <FileText className="h-4 w-4" />
-              <h2 className="text-lg font-bold">
-                Views / REPORTS{selectedReport ? ` / ${selectedReport.itemName}` : ""}
-              </h2>
-            </div>
-            {!selectedReport && (
+        title="REPORTS"
+        toolbarSecondRow={
+          selectedReport ? undefined : (
+            <>
               <div className="relative">
                 <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                 <Input
@@ -638,27 +631,23 @@ function ViewsPageContent() {
                   className="pl-7 h-7 text-xs w-[220px]"
                 />
               </div>
-            )}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleRefresh}
-              disabled={isLoading}
-              className="gap-2 h-7 text-xs"
-            >
-              <RefreshCw className={`h-3 w-3 ${isLoading ? "animate-spin" : ""}`} />
-              Refresh
-            </Button>
-            {!selectedReport && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleRefresh}
+                disabled={isLoading}
+                className="gap-2 h-7 text-xs"
+              >
+                <RefreshCw className={`h-3 w-3 ${isLoading ? "animate-spin" : ""}`} />
+                Refresh
+              </Button>
               <span className="text-xs text-muted-foreground">
                 {filteredReports.length} of {reports.length} reports
               </span>
-            )}
-          </>
+            </>
+          )
         }
       >
-        {!selectedReport && <ErrorBox message={reportsError} className="mb-2" />}
-
         {selectedReport ? (
           <TextEditorWithToolbar
             value={editedReportContent}
@@ -669,32 +658,39 @@ function ViewsPageContent() {
             placeholder="This report is empty. Start writing..."
             className="h-full"
           />
-        ) : isLoading ? (
-          <div className="flex items-center gap-2 py-4 text-muted-foreground">
-            <RefreshCw className="h-4 w-4 animate-spin" />
-            <span>Loading reports...</span>
-          </div>
-        ) : reportsError ? null : filteredReports.length === 0 ? (
-          <div className="flex items-center gap-3 py-4 text-muted-foreground">
-            <FileText className="h-8 w-8 opacity-20" />
-            <span className="text-sm">No reports yet. Use Forms to add one.</span>
-          </div>
         ) : (
-          <div className="divide-y">
-            {filteredReports.map((report) => (
-              <button
-                key={report.loca}
-                type="button"
-                onClick={() => setSelectedReportLoca(report.loca)}
-                className="flex w-full items-center gap-3 rounded-lg px-[10px] py-[10px] text-left transition-colors hover:bg-accent"
-              >
-                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-primary">
-                  <FileText className="h-3.5 w-3.5" />
-                </span>
-                <span className="font-medium text-sm truncate">{report.itemName}</span>
-              </button>
-            ))}
-          </div>
+          <>
+            <ErrorBox message={reportsError} className="mb-2" />
+            <div className="rounded-lg border bg-muted/10 p-2">
+            {isLoading ? (
+              <div className="flex items-center gap-2 py-4 text-muted-foreground">
+                <RefreshCw className="h-4 w-4 animate-spin" />
+                <span>Loading reports...</span>
+              </div>
+            ) : reportsError ? null : filteredReports.length === 0 ? (
+              <div className="flex items-center gap-3 py-4 text-muted-foreground">
+                <FileText className="h-8 w-8 opacity-20" />
+                <span className="text-sm">No reports yet. Use Forms to add one.</span>
+              </div>
+            ) : (
+              <div className="divide-y">
+                {filteredReports.map((report) => (
+                  <button
+                    key={report.loca}
+                    type="button"
+                    onClick={() => setSelectedReportLoca(report.loca)}
+                    className="flex w-full items-center gap-3 rounded-lg px-[10px] py-[10px] text-left transition-colors hover:bg-accent"
+                  >
+                    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-primary">
+                      <FileText className="h-3.5 w-3.5" />
+                    </span>
+                    <span className="font-medium text-sm truncate">{report.itemName}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            </div>
+          </>
         )}
       </DashboardPageShell>
     );
@@ -705,7 +701,7 @@ function ViewsPageContent() {
   // ============================================================================
 
   const columns = selectedView === "dates" ? DATE_COLUMNS : DAILY_COLUMNS;
-  const viewTitle = selectedView === "dates" ? "DATES" : "TRACKER";
+  const viewTitle = selectedView === "dates" ? "DATES" : "DAILY TRACKER";
   const isTracker = selectedView === "tracker";
   const dirtyRowCount = Object.keys(editedRows).filter((name) => hasRowChanges(name)).length;
 
@@ -714,39 +710,7 @@ function ViewsPageContent() {
       scroll={false}
       padded={false}
       upLevel={{ onClick: handleBack }}
-      title={isTracker ? "DAILY TRACKER" : undefined}
-      toolbar={
-        isTracker ? undefined : (
-          <>
-            <div className="flex items-center gap-2">
-              <TableIcon className="h-4 w-4" />
-              <h2 className="text-lg font-bold">Views / {viewTitle}</h2>
-            </div>
-            <div className="relative">
-              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-              <Input
-                value={filter}
-                onChange={(e) => setFilter(e.target.value)}
-                placeholder="Filter rows..."
-                className="pl-7 h-7 text-xs w-[220px]"
-              />
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleRefresh}
-              disabled={isLoading}
-              className="gap-2 h-7 text-xs"
-            >
-              <RefreshCw className={`h-3 w-3 ${isLoading ? 'animate-spin' : ''}`} />
-              Refresh
-            </Button>
-            <span className="text-xs text-muted-foreground">
-              {currentEntries.length} of {dateEntries.length}
-            </span>
-          </>
-        )
-      }
+      title={viewTitle}
       toolbarSecondRow={
         isTracker ? (
           <>
@@ -804,17 +768,44 @@ function ViewsPageContent() {
               {currentEntries.length} of {dailyEntries.length}
             </span>
           </>
-        ) : undefined
+        ) : (
+          <>
+            <div className="relative">
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+                placeholder="Filter rows..."
+                className="pl-7 h-7 text-xs w-[220px]"
+              />
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRefresh}
+              disabled={isLoading}
+              className="gap-2 h-7 text-xs"
+            >
+              <RefreshCw className={`h-3 w-3 ${isLoading ? "animate-spin" : ""}`} />
+              Refresh
+            </Button>
+            <span className="text-xs text-muted-foreground">
+              {currentEntries.length} of {dateEntries.length}
+            </span>
+          </>
+        )
       }
     >
       {/* Error display */}
       <ErrorBox message={error} className="mb-1 shrink-0" />
 
-      {/* Table — fills remaining space, scrolls internally only.
-          `overscroll-contain` (Story 62): stops scroll-chaining/bounce from
-          reaching the page when the user drags past the table's own
-          start/end — the table's own scrollbar still works normally. */}
-      <div className="min-h-0 flex-1 overflow-auto overscroll-contain">
+      {/* Inner frame (Story 62 standard: outer shell frame always holds at
+          least one inner frame around its content, even single-element
+          pages). Table fills the remaining space, scrolls internally only.
+          `overscroll-contain`: stops scroll-chaining/bounce from reaching
+          the page when the user drags past the table's own start/end —
+          the table's own scrollbar still works normally. */}
+      <div className="min-h-0 flex-1 overflow-auto overscroll-contain rounded-lg border bg-muted/10">
             <table className="w-full border-collapse text-xs">
               <thead className="sticky top-0 z-10">
                 {isTracker && (

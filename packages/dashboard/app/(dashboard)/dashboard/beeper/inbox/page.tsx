@@ -41,9 +41,9 @@ export default function BeeperInboxPage() {
 	return (
 		<DashboardPageShell
 			upLevel={{ href: "/dashboard/beeper" }}
-			toolbar={<h2 className="text-lg font-bold">Inbox</h2>}
+			title="INBOX"
 		>
-			{/* Second row inside the outer frame — see documentation/stories/60. */}
+			{/* Second row inside the outer frame — see backlog/stories/60. */}
 			<div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b pb-3 mb-3">
 				<span className="text-xs text-muted-foreground">
 					Latest message per direct conversation, most recent first.

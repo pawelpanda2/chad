@@ -77,12 +77,12 @@ export default function BeeperContactsPage() {
 	const filtered = contacts.filter((c) => c.displayName.toLowerCase().includes(query.toLowerCase()));
 
 	return (
-		<DashboardPageShell toolbar={<h2 className="text-lg font-bold">Beeper</h2>}>
+		<DashboardPageShell title="BEEPER">
 			{/*
 				Standard header (line 1, above the frame) is reserved for the menu
 				handle, Back/Forw and a short page name only — see
 				documentation/dashboard/common/features/responsive-layout-standard.md
-				and documentation/stories/60. Beeper's own actions live here instead,
+				and backlog/stories/60. Beeper's own actions live here instead,
 				as a second row INSIDE the outer frame, above the contact list.
 			*/}
 			<div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b pb-3 mb-3">

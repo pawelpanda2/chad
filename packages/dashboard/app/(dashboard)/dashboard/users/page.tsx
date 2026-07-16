@@ -61,26 +61,21 @@ export default function UsersPage() {
 			.slice(0, 2);
 	};
 
-	const toolbar = (
-		<h2 className="text-lg font-bold">
-			Users{" "}
-			<span className="text-sm font-normal text-muted-foreground">
-				({users.length})
-			</span>
-		</h2>
+	const toolbarSecondRow = (
+		<span className="text-xs text-muted-foreground">{users.length} users</span>
 	);
 
 	if (loading) {
 		return (
-			<DashboardPageShell toolbar={toolbar}>
+			<DashboardPageShell title="USERS">
 				<div className="py-4 text-sm text-muted-foreground">Loading users...</div>
 			</DashboardPageShell>
 		);
 	}
 
 	return (
-		<DashboardPageShell scroll={false} padded={false} toolbar={toolbar}>
-			<div className="min-h-0 flex-1 overflow-auto">
+		<DashboardPageShell scroll={false} padded={false} title="USERS" toolbarSecondRow={toolbarSecondRow}>
+			<div className="min-h-0 flex-1 overflow-auto overscroll-contain rounded-lg border bg-muted/10">
 				{users.length === 0 ? (
 					<p className="py-8 text-center text-sm text-muted-foreground">
 						No users found.

@@ -338,6 +338,35 @@ wstawiony ręcznie (zamiast automatycznego, bo te strony budują własny
 nagłówek na `EditorPageShell`) w: `forms/page.tsx` (gałąź Reports),
 `leads/msg-workout/page.tsx`, `todo-msg/edit/page.tsx`.
 
+## Zasada podwójnej ramki i "Save na górze" (Story 62, doprecyzowane po przeglądzie wdrożenia)
+
+Po wdrożeniu pilotażu (`SETTINGS`, `DAILY TRACKER`) użytkownik, przeglądając
+realnie działającą aplikację, doprecyzował dwie rzeczy, które nie były
+oczywiste z pierwszej wersji standardu:
+
+1. **Każda strona ma mieć co najmniej dwie ramki, nawet gdy treść to
+   pojedynczy formularz/tabela.** Zewnętrzna ramka to zawsze
+   `DashboardPageShell`'a własna `rounded-xl border bg-card`; wewnątrz niej
+   **zawsze** ląduje co najmniej jedna ramka wewnętrzna
+   (`rounded-lg border bg-muted/10`) opakowująca właściwą treść — nie
+   "jedna, jeśli strona nie wymaga podziału" jak sugerowała pierwsza wersja
+   tego dokumentu, tylko zawsze co najmniej jedna. Dotyczy to też tabel
+   (patrz `ADD DAILY ENTRY`, `DAILY TRACKER` po poprawce Story 62).
+2. **Przyciski zapisu zawsze na górze**, nie na dole formularza:
+   - jeśli strona ma pole z automatycznie generowaną nazwą (np. `ADD LEAD`,
+     `ADD ACTION`, `ADD REPORT`) — `Save`/`Create` i to pole żyją razem, w
+     jednej ramce, na samej górze treści, wyrównane do lewej;
+   - jeśli nie ma generowanej nazwy (np. `ADD DAILY ENTRY`, `ADD DATE`) —
+     `Save` jest wolnym przyciskiem bez własnej ramki, też na górze, nad
+     ramką z resztą formularza.
+
+Zastosowane w Story 62 na: `ADD DAILY ENTRY`, `ADD DATE`, `ADD LEAD`,
+`ADD ACTION`, `ADD REPORT`, `DAILY TRACKER`, `DATES`, `LEADS`, `REPORTS`,
+`STATUSES` (wszystkie 3 tryby), `MSG TODO`, `MSG PLANNER`, `BEEPER`
+(wszystkie 4 trasy), `FOLDER`, `MESSAGES`, `USERS`, `LOGIN` — patrz
+`backlog/stories/62/05_tasks_and_checklist.md` Tasks 11–19 dla pełnego
+zestawienia plik-po-pliku.
+
 ## Zasady dla nowych stron
 
 1. Strona listowa/treściowa → `DashboardPageShell` z `title` (krótki,
@@ -391,15 +420,15 @@ zaimplementowania w przyszłym Story):
 ## Znane ograniczenia
 
 - **Pełna lista stron i ich stopień zgodności z tym standardem**:
-  `backlog/stories/62/03_knowledge.md` §9 (inwentaryzacja) i
-  `02_plan.md` (plan migracji) — tylko `SETTINGS` i `Views → DAILY TRACKER`
-  są w pełni zmigrowane (Story 62); reszta (`ADD DAILY ENTRY`/`ADD DATE`/
-  `ADD LEAD`/`ADD ACTION`/`ADD REPORT`, `DATES`/`LEADS`/`REPORTS`,
-  `STATUSES`, `MSG TODO`, `MSG PLANNER`, `BEEPER`, `FOLDER`, `MESSAGES`,
-  `USERS`, strona logowania) czeka na osobne Story/Stories.
-- `MESSAGES` (`app/(dashboard)/dashboard/messages/page.tsx`) nie używa
-  `DashboardPageShell` w ogóle (własny, niezależny layout) — inny przypadek
-  niż "przeniesione częściowo", raczej "jeszcze nie zaczęte".
+  `backlog/stories/62/05_tasks_and_checklist.md` (Tasks 1–19) —
+  po Round 2 (pełny rollout, ten sam Story) zmigrowane są: `SETTINGS`,
+  `ADD DAILY ENTRY`, `ADD DATE`, `ADD LEAD`, `ADD ACTION`, `ADD REPORT`,
+  `DAILY TRACKER`, `DATES`, `LEADS`, `REPORTS`, `STATUSES` (3 tryby),
+  `MSG TODO`, `MSG PLANNER`, `BEEPER` (4 trasy), `FOLDER`, `MESSAGES`,
+  `USERS`, `LOGIN`. Niezmigrowane pozostają: strona `/dashboard/
+  content-provider` (osobny feature spoza tego Story) i sąsiednie trasy
+  `(auth)` obok loginu (`register`, `forgot-password`, `setup-2fa`,
+  `verify-email`).
 - Topbar (search + ikony) jest ukryty na każdym rozmiarze; jego funkcje
   (search, powiadomienia, profil) nie są obecnie dostępne poza kodem. Theme
   toggle przeniesiono do nagłówka sidebara, a Wyloguj jest pozycją w menu, więc
