@@ -102,6 +102,7 @@ nobody has to re-discover the finding):
 | 28 | N/A      |             | "Failed to fetch" after the post-save redirect to DAILY TRACKER — investigated, not caused by this Story's code (see write-up): a stale browser tab left open from before this session's own redeploy, not a reproducible bug |
 | 29 | DONE     |             | ADD ACTION: "Title" label removed entirely (not just "(auto-generated)"); Save-frame padding standardized to 8px across every page with a Save button (ADD REPORT, ADD ACTION, ADD DAILY ENTRY, ADD DATE, ADD LEAD, STATUSES editor) |
 | 30 | DONE     |             | BEEPER contact list: rows now use the same rounded grey hover highlight as Views Reports/Leads (`LIST_ROW_CLASS`/`LIST_ROW_WRAPPER_CLASS`, new shared tokens), instead of the old bordered/striped table-row look; the `border-b` separator between the toolbar row and the list was removed |
+| 31 | DONE     |             | DAILY TRACKER, DATES, STATUSES matrix: the vertical scrollbar now belongs to the outer shell frame, not the inner table box — dragging it scrolls the toolbar row and the table together as one unit, instead of the toolbar staying pinned above a separately-scrolling table |
 
 # Task 1 — SETTINGS: single frame, ~3px gap, title in row 1
 
@@ -998,4 +999,56 @@ strings, and confirmed the separator is gone; re-screenshotted Views
 REPORTS afterward to confirm the token refactor didn't change its
 rendering. `tsc --noEmit`/`eslint`/`next build` all clean; deployed to
 local-mac-docker.
+**Status: DONE**
+
+# Task 31 — Move the scrollbar from the table box to the outer shell frame
+
+**Requested:** on DATES, DAILY TRACKER, and STATUSES (matrix mode), the
+vertical scrollbar was on the table's own inner box instead of the outer
+frame — the user explicitly said this is wrong: dragging the outer
+frame's right-hand scrollbar should move everything inside it together
+(toolbar row and table both), not leave the toolbar pinned in place while
+only the table scrolls in its own nested scrollbar.
+**Done:** these three views previously passed `scroll={false}` to
+`DashboardPageShell` (so the shell's own content wrapper became
+non-scrolling, `overflow-hidden`) specifically so the table's own wrapper
+div (`min-h-0 flex-1 overflow-auto`) could own an independent scrollbar —
+that was the actual bug: two nested scroll boxes where the user only
+wanted one. Removed `scroll={false}` from all three (DAILY TRACKER/DATES'
+shared branch and STATUSES' matrix-mode branch — the shell's own default
+`scroll={true}` now applies), and stripped `min-h-0 flex-1 overflow-auto`
+from each table's wrapper div, leaving just `rounded-lg border
+bg-muted/10` — it no longer owns any scroll behavior of its own, it just
+sizes to its content like any other block. The one scrollbar is now the
+shell's own content wrapper, which holds the toolbar row and the table
+frame as two ordinary stacked children — scrolling it moves both.
+`overscroll-contain` (previously on the table's own box, to stop
+scroll-bounce reaching the page behind it) moved up to the shell's
+`contentClassName` alongside `FRAME_SECTION_GAP_CLASS`, so the same
+protection still applies to the one real scroll container.
+
+The table's `sticky top-0` header keeps working correctly with this
+change — `position: sticky` sticks to the nearest scrolling ancestor
+regardless of which element that is, so once a user scrolls the frame
+past the toolbar row, the table's own header still pins itself to the top
+of the (now-scrolled) frame and the body rows continue scrolling under it
+— arguably a nicer behavior than before, since previously the header could
+only ever stick within the table's own small box.
+**Files changed:** `app/(dashboard)/dashboard/views/page.tsx`;
+`app/(dashboard)/dashboard/statuses/page.tsx`.
+**Tested:** Real Playwright against the running stack, shrinking the
+viewport height (250–420px) to force real overflow on both pages: before
+the fix, only STATUSES matrix (66 leads) had enough content to overflow
+at 420px, so DAILY TRACKER was re-tested at 250px to force the same
+condition. Confirmed via direct DOM inspection that the table's own
+wrapper is no longer scrollable (`scrollHeight === clientHeight`,
+`overflow-y: visible`) while the shell's content wrapper is
+(`overflow-y: auto`, `scrollHeight > clientHeight`); set `scrollTop` on
+that one container and confirmed the toolbar row's `getBoundingClientRect().top`
+moved by the same amount as the scroll offset (e.g. STATUSES matrix:
+`top` went from `51` to `-149` after `scrollTop = 200`) — i.e. the toolbar
+and table now move together as a single unit, not independently.
+Screenshot of STATUSES matrix mid-scroll confirms the sticky table header
+correctly pins at the top of the frame once the toolbar has scrolled out
+of view.
 **Status: DONE**

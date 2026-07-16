@@ -988,3 +988,8 @@ niech w beeper chaty kolejne na liscie beda tak jak w reports view zrobione ze s
 ## Input 17 (mid-turn interrupt)
 
 i zrob zeby to byl standar dla listy i mozesz usunac ta kreske odzielajaca pomiedzy przyciskami u gory a lista w Beeper
+
+## Input 18
+
+zarowne dates, daily tracker i statues widze ten sam blad ze scroll bar zamiast byc w zewnetrznej ramce to jest w ramce tabeli. to nie tak ma byc. jka przesuwam prawy srolbar vertykarny z glownej ramki to maja sie przesuwac przyciski razem z tabela, wszystko co jest w srodku
+przenies te scroll bary
