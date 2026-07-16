@@ -88,7 +88,7 @@ interface SettingsLayoutProps {
 
 export default function SettingsLayout({ children }: SettingsLayoutProps) {
 	return (
-		<DashboardPageShell title="SETTINGS" contentClassName={cn(FRAME_SECTION_GAP_CLASS, "p-[3px]")}>
+		<DashboardPageShell title="SETTINGS" contentClassName={FRAME_SECTION_GAP_CLASS}>
 			{/*
 				Section frames (backlog/stories/60 — page-frame standard): these
 				must read as sections INSIDE the shell's one outer frame, not as
@@ -97,10 +97,12 @@ export default function SettingsLayout({ children }: SettingsLayoutProps) {
 				matching the section style already established in
 				app/(dashboard)/dashboard/folders/page.tsx.
 
-				Gap token (~3px, Story 62): the space between the outer frame's
-				edge and these section boxes, and between the boxes themselves.
-				Each box's own internal content padding (`p-4` below) is separate
-				and untouched — see components/shared/layout-tokens.ts.
+				Gap token (10px, Story 62 Round 3): the space between the outer
+				frame's edge and these section boxes, and between the boxes
+				themselves (the shell's own default `p-[10px]` plus this token's
+				`gap-[10px]`). Each box's own internal content padding (`p-4`
+				below) is separate and untouched — see
+				components/shared/layout-tokens.ts.
 			*/}
 			<div className="rounded-lg border bg-muted/10 p-4">
 				<div className="space-y-2">

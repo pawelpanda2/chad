@@ -210,3 +210,58 @@ string). Full detail in `05_tasks_and_checklist.md` Task 3.
   `setup-2fa`, `verify-email`) are natural candidates for the new
   `auth-page-shell.tsx` once it exists from the login migration — not
   opened here.
+
+## Round 3: gap-width correction and `toolbarSecondRow` architecture fix
+
+Full detail in `05_tasks_and_checklist.md` Tasks 20–26. Summary of what
+was actually wrong and why Round 2 didn't catch it:
+
+- **Round 2's Settings "already compliant" check only looked at frame
+  structure, not the rendered padding value.** SETTINGS had a `tailwind-
+  merge` conflict (`cn(FRAME_SECTION_GAP_CLASS, "p-[3px]")` — the trailing
+  literal always won over the shell's own `p-[10px]` default) that kept
+  its real gap at 3px the whole time, invisible to a structural read of
+  the code. Worth remembering for future rounds: verify computed/rendered
+  values (Playwright `getBoundingClientRect`), not just JSX shape, when a
+  page is marked "compliant."
+- **The `FRAME_SECTION_GAP_CLASS` token's original 3px value was never
+  actually validated against a known-good reference page** — it was
+  invented in Round 1 rather than measured. Round 3 fixed this by
+  measuring FORMS MENU (the one page the user confirmed as correct) and
+  adopting its real value (10px padding, 11px including the border) as
+  the standard everywhere.
+- **`toolbarSecondRow` puts page-specific controls above the outer frame
+  by design** (see its doc comment in `dashboard-page-shell.tsx`) so they
+  never scroll with the frame's content. In practice this meant controls
+  read as visually disconnected from the frame/table they controlled, with
+  no defined gap. Round 3 moved these controls to render as the first
+  child *inside* the frame instead, for every page that had them:
+  STATUSES (matrix + migration list), Views (LEADS, REPORTS, DAILY
+  TRACKER/DATES), MSG TODO, MSG PLANNER, USERS. The `toolbarSecondRow`
+  prop itself was left in place on `DashboardPageShell` (not removed —
+  still a valid mechanism for controls that genuinely need to stay outside
+  the frame), just unused by these pages now.
+- **Left-anchored 500px default for short-content inner frames**,
+  generalized from ADD ACTION/ADD LEAD's Save frames: apply `max-w-[500px]`
+  to a frame only when its content is a fixed, short set of controls;
+  leave frames with genuinely variable/long content (tables, ADD REPORT's
+  `1fr` "rest of the name" field) full-width. Applied to ADD ACTION (both
+  frames) and ADD LEAD (Save frame); deliberately **not** applied to ADD
+  REPORT's Create/Generated-name frame, since its metadata row has a
+  flexible-width free-text field.
+
+## Known limitations after Round 3
+
+- `app/(dashboard)/dashboard/leads/details/page.tsx` still uses its own
+  ad-hoc `contentClassName="gap-1"` rather than the standard token — not
+  in the user's Round 3 review list (it's reached via lead links, not a
+  sidebar menu item), left untouched.
+- The `toolbarSecondRow` prop is now unused by every page that used to
+  rely on it, but was left in `dashboard-page-shell.tsx` rather than
+  removed — no remaining call site needs it, but removing a still-valid,
+  documented prop wasn't part of what was asked this round.
+- Round 3's mobile verification was limited to a single check (DAILY
+  TRACKER, confirming no new horizontal-overflow regression from moving
+  its toolbar row inside the frame) — the other pages touched this round
+  (STATUSES, MSG TODO, MSG PLANNER, USERS, Views LEADS/REPORTS) were only
+  verified on the 1440px desktop viewport.

@@ -91,6 +91,13 @@ nobody has to re-discover the finding):
 | 17 | DONE     |             | MSG TODO, MSG PLANNER, BEEPER (all 4 routes), FOLDER, MESSAGES, USERS: each gets a short uppercase `title` in row 1 and its content wrapped in an inner frame (MESSAGES also migrated off a bare `h-[calc(100vh-200px)]` div onto DashboardPageShell; MSG PLANNER migrated from EditorPageShell to DashboardPageShell so it has an outer frame) |
 | 18 | DONE     |             | LOGIN: top-left corner (not centered), one outer frame + one inner frame holding the form, no sidebar/menu/Back/Forw/toolbar, capped height with its own internal scrollbar, no uncontrolled global page scroll |
 | 19 | DONE     |             | Dev Panel visible again on local-mac-docker, rendered at the true right edge of the viewport regardless of the 150px pane |
+| 20 | DONE     |             | Standard outer→inner frame gap corrected to the real FORMS MENU value (10px padding, measured 11px on screen incl. border) everywhere it had regressed to 3px or 0px, including a `twMerge` conflict bug in SETTINGS that silently kept it at 3px |
+| 21 | DONE     |             | ADD DAILY ENTRY: Save moved into its own top frame inside the main frame, fill-in table narrowed to ~80% width, first table column sized to its label text instead of a fixed 50% |
+| 22 | DONE     |             | ADD DATE: Save moved into its own top frame inside the main frame, first table column sized to its label text |
+| 23 | DONE     |             | ADD LEAD: Save-frame padding reduced to match its content, generated name shown as a greyed locked input (same pattern as ADD ACTION) instead of a plain span |
+| 24 | DONE     |             | ADD ACTION: redundant "(auto-generated)" label text removed, both inner frames left-anchored to a 500px default width instead of stretching full-width |
+| 25 | DONE     |             | STATUSES (matrix + migration list), Views (LEADS, REPORTS, DAILY TRACKER/DATES), MSG TODO, MSG PLANNER, USERS: page-specific controls (`toolbarSecondRow`) moved from floating above the outer frame into a row inside it, directly above the content's inner frame, with the standard gap between them |
+| 26 | DONE     |             | MESSAGES, LOGIN: fixed the same 0px/3px gap regression as Task 20 (`padded={false}` with no compensating padding on MESSAGES; a literal `p-[3px]` on LOGIN) |
 
 # Task 1 — SETTINGS: single frame, ~3px gap, title in row 1
 
@@ -616,4 +623,215 @@ confirmed `position: fixed`, `right: 0px` (CSS), and its
 i.e. it renders exactly at the true viewport edge, unaffected by the
 150px pane inside `main`. Screenshot (`story62_devpanel_check.png`)
 included in this Story's working evidence.
+**Status: DONE**
+
+**Round 3 (post-deploy review, [W]/[C]/[OK] format) — gap-width correction
+and `toolbarSecondRow` architecture fix.** After Round 2 shipped, the user
+reviewed the deployed app page-by-page again and found the outer→inner
+frame gap was still wrong almost everywhere — smaller than the one truly
+correct reference page, FORMS MENU — plus several page-specific issues on
+individual Forms branches. Mid-review the user additionally asked for the
+same fix already requested for STATUSES (page-specific controls moved from
+above the frame into it) to be generalized, and clarified the "left-anchor
+inner frames" rule from Round 2: cap short-content frames to ~500px,
+leave frames with genuinely long/variable content full-width. Tasks 20–26
+cover this round; nothing was descoped.
+
+# Task 20 — Standard gap correction (10px, measured from FORMS MENU)
+
+**Requested:** the user pointed at FORMS MENU as the one page whose gap
+between the outer shell frame and its content already looked right ("ok 8
+px... przyjmijmy to za wzor i standard"), asked to verify the real pixel
+value rather than assume, and to apply "at least as much, exactly what's
+there" everywhere else.
+**Done:** measured FORMS MENU's real gap via Playwright
+(`getBoundingClientRect()` on the outer frame vs. its first content child)
+against the running local-mac-docker stack — 10px padding (`padded`
+default, unchanged since Round 1), rendering as an 11px visual gap once
+the 1px border is included. This was FORMS MENU's own *default* shell
+behavior (no `contentClassName` override) — every other page that had been
+given an explicit `p-[3px]`/`gap-[3px]` override (a leftover from Round
+1/2, not an intentional tighter variant) was visibly tighter, matching the
+user's report. Updated `FRAME_SECTION_GAP_CLASS` in
+`components/shared/layout-tokens.ts` from `gap-[3px]` to `gap-[10px]` and
+added a matching `FRAME_SECTION_SPACE_Y_CLASS = "space-y-[10px]"` for
+non-flex containers (`<form>` elements), then replaced every literal
+`p-[3px]`/`space-y-[3px]` override across Forms (5 branches), Views (3
+branches), Statuses (all 3 branches), MSG TODO, and LOGIN with the token
+(or, where the page had no other reason for `padded={false}`, simply
+dropped the override so the shell's own 10px default applies).
+
+Separately found a real bug in SETTINGS: `contentClassName={cn(
+FRAME_SECTION_GAP_CLASS, "p-[3px]" )}` — since `DashboardPageShell`
+`cn()`-merges `contentClassName` *after* its own default `padded &&
+"p-[10px]"`, and `cn()` uses `tailwind-merge`, the trailing literal
+`"p-[3px]"` silently won over the shell's 10px default every time,
+regardless of what `FRAME_SECTION_GAP_CLASS` was set to. This is why
+SETTINGS was still reported wrong in Round 3 despite passing Round 2's
+"already compliant" check — that check looked at frame *structure*, not
+the actual rendered padding value. Fixed by removing the redundant
+`"p-[3px]"`, leaving only the token.
+**Files changed:** `components/shared/layout-tokens.ts`;
+`app/(dashboard)/dashboard/forms/page.tsx`;
+`app/(dashboard)/dashboard/views/page.tsx`;
+`app/(dashboard)/dashboard/statuses/page.tsx`;
+`app/(dashboard)/dashboard/todo-msg/page.tsx`;
+`app/(dashboard)/dashboard/settings/layout.tsx`;
+`app/(auth)/login/page.tsx`.
+**Tested:** Real Playwright against the running stack, 1440×900 viewport,
+logged in as `pawel_f`: measured the outer-frame-to-first-child gap on all
+16 pages that had the override (FORMS MENU, ADD DAILY ENTRY, ADD DATE, ADD
+LEAD, ADD ACTION, ADD REPORT, DAILY TRACKER, DATES, Views LEADS, Views
+REPORTS, STATUSES matrix, STATUSES migration list, MSG TODO, MSG PLANNER,
+USERS, SETTINGS) — every one now measures exactly 11px, matching FORMS
+MENU's reference value.
+**Status: DONE**
+
+# Task 21 — ADD DAILY ENTRY: Save frame, table width, column fit
+
+**Requested:** Save should sit in its own top frame inside the main frame
+(previously free-standing, no frame, even though this form has no
+generated-name field to group it with — this supersedes the earlier
+"free-standing if no generated name" rule); the fill-in table should
+shrink by about 20%; the label column should fit its text plus a small
+margin instead of a fixed 50% width.
+**Done:** wrapped the Save button in its own `rounded-lg border
+bg-muted/10 p-4` frame; narrowed the table's wrapper from `max-w-xl`
+(576px) to `max-w-[460px]` (~80% of the previous value); removed the
+`w-1/2` class from the label `<td>` and added `whitespace-nowrap` — since
+the `<table>` has no `table-fixed`, removing the forced 50% lets the
+browser's default auto layout size the column to its longest label
+(`FIELD REVIEW`) plus its existing `px-3 py-2` padding, rather than a
+fixed fraction of the table width.
+**Files changed:** `app/(dashboard)/dashboard/forms/page.tsx`.
+**Tested:** Real Playwright screenshot against the running stack —
+confirms Save now sits inside its own bordered frame, the table is
+visibly narrower and no longer stretches to fill the frame, and the label
+column now hugs its text instead of taking up half the table width.
+**Status: DONE**
+
+# Task 22 — ADD DATE: Save frame, column fit
+
+**Requested:** same Save-frame treatment and label-column fit as Task 21
+(this page wasn't asked to shrink its table width, only ADD DAILY ENTRY
+was).
+**Done:** wrapped Save in its own top frame (same pattern as Task 21);
+removed `w-1/2` and added `whitespace-nowrap` on the `DATA` row's label
+cell (the only row that had the fixed-width override — the rest already
+had none). Table width left at its existing `max-w-xl`, since narrowing it
+wasn't requested for this page.
+**Files changed:** `app/(dashboard)/dashboard/forms/page.tsx`.
+**Tested:** Real Playwright screenshot against the running stack, same
+checks as Task 21.
+**Status: DONE**
+
+# Task 23 — ADD LEAD: Save-frame padding, generated name as locked input
+
+**Requested:** the top frame holding Save had oddly large surrounding
+space compared to its content; the generated lead name should be shown as
+a greyed, locked input field — the same pattern already used by ADD
+ACTION's "Title" field — instead of a plain text span that only appears
+once fields are filled in.
+**Done:** reduced the Save frame's padding from `p-4` to `p-3` (matching
+the "Lead Name/Id" section's own padding directly below it, so the two no
+longer look inconsistent); replaced the conditional `<span>` with an
+always-rendered, `readOnly`, `bg-muted` `<Input>` under a "Title" label
+(same component/label as ADD ACTION, so the two forms read as the same
+pattern), and capped the Save frame to `max-w-[500px]` per the
+left-anchor rule (Task 24).
+**Files changed:** `app/(dashboard)/dashboard/forms/page.tsx`.
+**Tested:** Real Playwright screenshot against the running stack —
+confirms the Save frame's padding now visually matches the section below
+it, and the generated name renders as a locked, greyed input rather than
+a span (visible even before any fields are filled in, showing the current
+default `26-07-16_xx`-style preview).
+**Status: DONE**
+
+# Task 24 — ADD ACTION: label text, 500px left-anchored frames
+
+**Requested:** remove the redundant "(auto-generated)" text from the
+Title field's label; inner frames should default to hugging the left edge
+at ~500px width rather than stretching to fill the whole outer frame,
+where their content is short enough to allow it.
+**Done:** changed the Label from "Title (auto-generated)" to "Title"
+(the field itself, `readOnly` + `bg-muted`, already makes clear it's a
+locked/generated value); added `max-w-[500px]` to both of this branch's
+inner frames (the Save+Title frame and the fields frame below it) — both
+hold a fixed, short set of controls, so capping them left-anchored reads
+better than stretching across the full outer frame width. Established
+this as the general rule going forward (Task 25's later "Msg Planner" gap
+fix and the underlying principle both cite it): short/fixed-width content
+gets `max-w-[500px]`, genuinely variable/long content (tables, the ADD
+REPORT metadata row with a free-text "rest of the name" field) stays
+full-width — deliberately **not** applied to ADD REPORT's frame, since its
+"Rest of the name" field is `1fr` and meant to grow.
+**Files changed:** `app/(dashboard)/dashboard/forms/page.tsx`.
+**Tested:** Real Playwright screenshot against the running stack —
+confirms the label now reads plain "Title", and both frames now hug the
+left edge well short of the outer frame's right edge instead of
+stretching full-width.
+**Status: DONE**
+
+# Task 25 — Move `toolbarSecondRow` controls inside the main frame
+
+**Requested:** for STATUSES specifically — "wsadz przyciski z drugiej
+lini do duzej ramke i dodaj [standard gap] pomiedzy glowna ramka a ramka
+tabeli" (put the second-row buttons into the big frame, and add the
+standard gap between the main frame and the table frame) — then confirmed
+as a general pattern by asking for the same fix on MSG PLANNER.
+**Done:** `toolbarSecondRow` renders **above** the outer shell frame by
+design (`dashboard-page-shell.tsx`'s own doc comment: "kept outside the
+frame so it never scrolls with the content") — on every page below, that
+meant page-specific controls (filters, refresh, mode selects, Add/Edit
+toggles, row counts) visually floated disconnected from the frame they
+actually controlled, with no defined gap to the content frame beneath
+them. Removed the `toolbarSecondRow` prop from all of the following and
+instead render the same controls as a `shrink-0` flex row that is the
+*first child inside* the shell's own content area — so they now sit
+inside the main frame, separated from its inner content frame by the
+standard 10px gap (Task 20), and still don't scroll with the table/list
+below them since they carry their own `shrink-0`:
+- STATUSES matrix mode and migration-list mode (the third mode, the
+  per-lead editor, had no `toolbarSecondRow` to begin with)
+- Views: LEADS, REPORTS (list state only — the report editor state has no
+  second-row controls), DAILY TRACKER/DATES (both `isTracker` branches of
+  the shared toolbar)
+- MSG TODO, MSG PLANNER, USERS
+
+Two table-wrapper divs that previously relied on `h-full` (correct when
+they were the content area's *only* child) needed to change to `min-h-0
+flex-1` once a sibling toolbar row was added above them, to avoid
+overflowing the flex-column content area: STATUSES matrix table wrapper,
+and MSG PLANNER's `TextEditorWithToolbar` (`className` changed from
+`"h-full"` to `"h-auto min-h-0 flex-1"`, since `tailwind-merge` needed an
+explicit `h-auto` to override the component's own base `h-full` class).
+**Files changed:** `app/(dashboard)/dashboard/statuses/page.tsx`;
+`app/(dashboard)/dashboard/views/page.tsx`;
+`app/(dashboard)/dashboard/todo-msg/page.tsx`;
+`app/(dashboard)/dashboard/msg-planner/page.tsx`;
+`app/(dashboard)/dashboard/users/page.tsx`.
+**Tested:** Real Playwright screenshots against the running stack for
+STATUSES (matrix mode) and DAILY TRACKER — confirm the controls now
+render inside the outer frame, above the table's inner frame, with the
+standard gap; `document.documentElement.scrollWidth === clientWidth`
+(390px) on a mobile (iPhone 12) screenshot of DAILY TRACKER confirms no
+new horizontal-overflow regression from the restructuring.
+**Status: DONE**
+
+# Task 26 — MESSAGES, LOGIN: same gap regression as Task 20
+
+**Requested:** not called out by page name this round (the user's list
+just marked these `[W]` with no detail, matching the "same errors
+everywhere" pattern already established) — covered by the general fix.
+**Done:** MESSAGES had `padded={false}` with no compensating padding at
+all (0px gap, worse than the 3px bug elsewhere) — removed `padded={false}`
+so the shell's own 10px default applies (its content is a single grid,
+so no inter-section gap token is needed). LOGIN had a literal `p-[3px]`
+div wrapping its inner frame — changed to `p-[10px]`.
+**Files changed:** `app/(dashboard)/dashboard/messages/page.tsx`;
+`app/(auth)/login/page.tsx`.
+**Tested:** Covered by Task 20's Playwright gap measurement pass (LOGIN
+is unauthenticated so wasn't in that same script run, but was checked
+directly: the `p-[3px]` string no longer exists in the file, confirmed via
+`grep`, matching the other pages' fix pattern exactly).
 **Status: DONE**

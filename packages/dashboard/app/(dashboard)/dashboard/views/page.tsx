@@ -9,7 +9,7 @@ import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
 import { buildLeadDetailsHref, getLeadDetailsHref } from "@/lib/lead-links";
 import { ErrorBox } from "@/components/shared/error-box";
 import { TextEditorWithToolbar } from "@/components/shared/text-editor-with-toolbar";
-import { TABLE_ACTION_COLUMN_WIDTH_CLASS } from "@/components/shared/layout-tokens";
+import { TABLE_ACTION_COLUMN_WIDTH_CLASS, FRAME_SECTION_GAP_CLASS } from "@/components/shared/layout-tokens";
 import { cn } from "@/lib/utils";
 import {
   Dialog,
@@ -512,34 +512,33 @@ function ViewsPageContent() {
       <DashboardPageShell
         upLevel={{ onClick: handleBack }}
         title="LEADS"
-        contentClassName="p-[3px]"
-        toolbarSecondRow={
-          <>
-            <div className="relative">
-              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-              <Input
-                value={filter}
-                onChange={(e) => setFilter(e.target.value)}
-                placeholder="Filter leads..."
-                className="pl-7 h-7 text-xs w-[220px]"
-              />
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleRefresh}
-              disabled={isLoading}
-              className="gap-2 h-7 text-xs"
-            >
-              <RefreshCw className={`h-3 w-3 ${isLoading ? "animate-spin" : ""}`} />
-              Refresh
-            </Button>
-            <span className="text-xs text-muted-foreground">
-              {filteredLeads.length} of {leads.length} leads
-            </span>
-          </>
-        }
+        contentClassName={FRAME_SECTION_GAP_CLASS}
       >
+        <div className="flex shrink-0 flex-wrap items-center gap-3">
+          <div className="relative">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <Input
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              placeholder="Filter leads..."
+              className="pl-7 h-7 text-xs w-[220px]"
+            />
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRefresh}
+            disabled={isLoading}
+            className="gap-2 h-7 text-xs"
+          >
+            <RefreshCw className={`h-3 w-3 ${isLoading ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
+          <span className="text-xs text-muted-foreground">
+            {filteredLeads.length} of {leads.length} leads
+          </span>
+        </div>
+
         <ErrorBox message={error} className="mb-2" />
 
         {/* Inner frame (Story 62 standard). */}
@@ -613,15 +612,26 @@ function ViewsPageContent() {
       <DashboardPageShell
         scroll={!selectedReport}
         padded={!selectedReport}
-        contentClassName={!selectedReport ? "p-[3px]" : undefined}
+        contentClassName={!selectedReport ? FRAME_SECTION_GAP_CLASS : undefined}
         upLevel={{
           onClick: selectedReport ? () => setSelectedReportLoca(null) : handleBack,
           label: selectedReport ? "Back to reports list" : "Back to Views menu",
         }}
         title="REPORTS"
-        toolbarSecondRow={
-          selectedReport ? undefined : (
-            <>
+      >
+        {selectedReport ? (
+          <TextEditorWithToolbar
+            value={editedReportContent}
+            onChange={handleReportEditorChange}
+            onSave={handleReportEditorSave}
+            saving={reportSaving}
+            saved={reportSaved}
+            placeholder="This report is empty. Start writing..."
+            className="h-full"
+          />
+        ) : (
+          <>
+            <div className="flex shrink-0 flex-wrap items-center gap-3">
               <div className="relative">
                 <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                 <Input
@@ -644,22 +654,8 @@ function ViewsPageContent() {
               <span className="text-xs text-muted-foreground">
                 {filteredReports.length} of {reports.length} reports
               </span>
-            </>
-          )
-        }
-      >
-        {selectedReport ? (
-          <TextEditorWithToolbar
-            value={editedReportContent}
-            onChange={handleReportEditorChange}
-            onSave={handleReportEditorSave}
-            saving={reportSaving}
-            saved={reportSaved}
-            placeholder="This report is empty. Start writing..."
-            className="h-full"
-          />
-        ) : (
-          <>
+            </div>
+
             <ErrorBox message={reportsError} className="mb-2" />
             <div className="rounded-lg border bg-muted/10 p-2">
             {isLoading ? (
@@ -708,11 +704,14 @@ function ViewsPageContent() {
   return (
     <DashboardPageShell
       scroll={false}
-      padded={false}
+      contentClassName={FRAME_SECTION_GAP_CLASS}
       upLevel={{ onClick: handleBack }}
       title={viewTitle}
-      toolbarSecondRow={
-        isTracker ? (
+    >
+      {/* Page-specific controls live inside the main frame, not above it
+          (Story 62 Round 3). */}
+      <div className="flex shrink-0 flex-wrap items-center gap-3">
+        {isTracker ? (
           <>
             {isTrackerEditMode && (
               <Button
@@ -793,9 +792,9 @@ function ViewsPageContent() {
               {currentEntries.length} of {dateEntries.length}
             </span>
           </>
-        )
-      }
-    >
+        )}
+      </div>
+
       {/* Error display */}
       <ErrorBox message={error} className="mb-1 shrink-0" />
 
