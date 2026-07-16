@@ -148,7 +148,8 @@ function TodoMsgPageContent() {
   );
 
   return (
-    <DashboardPageShell toolbar={toolbar}>
+    <DashboardPageShell title="MSG TODO" contentClassName="p-[3px]" toolbarSecondRow={toolbar}>
+      <div className="rounded-lg border bg-muted/10 p-2">
       {loading ? (
         <div className="flex items-center gap-2 py-4 text-muted-foreground">
           <RefreshCw className="h-4 w-4 animate-spin" />
@@ -227,6 +228,7 @@ function TodoMsgPageContent() {
               ))}
         </div>
       )}
+      </div>
     </DashboardPageShell>
   );
 }

@@ -799,3 +799,85 @@ Na jego podstawie:
 10. Dodaj `documentation/dashboard/forms/daily-tracker-dates.md` do
     właściwego indeksu `what-and-where.md`, aby kolejni agenci znajdowali
     ten dokument przed analizą kodu.
+
+## Input 8
+
+# [W] ADD DAILY ENTRY
+- jest pojedynczy element wiec powienien byc w podwojnej ramce
+- wtedy ta pierwsza ramka ma scroll bar 150px od prawej
+- a formularz jest w kolejnej ramce
+- tak to chcialem miec w standarcei
+- do tego najpierw jest tytul a potem
+# [W] ADD DATE
+- te same bledy co w ADD DAILY ENTRY
+# [OK/N] ADD LEAD
+- nie wiem czy jest scroll bar w glownej ramce bo jest malo elementow
+- ale wzgledem standardu wszystko wyglada ok
+- natomaist tutaj chcicalbym przeniesc na gore do osobnej ramki
+- do osobnej ramki przycisk save razem obok z wygenerowana nazwa
+- oba do lewej wyrownane
+# [W] ADD ACTION
+- to samo co w ADD DAILY ENTRY
+- nie ma podowjnej ramki
+- dodawko te tak jak w ADD LEAD
+- daj save na gore razem z wygenerowana ramka
+- a te co sa teraz reszta daj do osobnej ramki
+- i daj to jako standard ze przyciski save sa na gorze
+- albo jako wolne bez ramki
+- albo jak jest wygenrowana nazwa to razem z nia w ramce
+# [W] ADD REPORT
+- tu tez brakuje podwojnej ramki
+- tej zewnetrzenej brakuje
+
+nie sprawdzam dalej bo widze ze wszedzie te same bledy sie powtrzaja wiec popraw to wszedzie
+to pozostale widoki:
+
+## Views
+
+# [W] DAILY TRACKER
+-
+# [W] DATES
+-
+# [W] LEADS
+-
+# [W] REPORTS
+-
+
+## Pozostałe
+
+# [W] Statuses
+-
+# [W] Msg Todo
+-
+# [W] Msg Planner
+-
+# [W] Beeper
+-
+# [W] Folder
+-
+# [W] Messages
+-
+# [W] Settings
+-
+# [W] Users
+-
+
+## Login
+
+# [W] Login
+-
+
+[W] oznacza wrong
+
+## Input 9
+
+dodatkowo zrobiles duza regresje
+rozwaliles dwa widoki
+msg todo oraz msg planner takie bledy tam sa w tych widokach
+
+Error: Failed to parse JSON response. Args: ["IRepoService","IItemWorker","PostByNames","8b603669-f8e6-4224-bd78-a474998995fa","Folder","leads","all items"] Raw response: error:{"messageType":"System.Reflection.TargetInvocationException","message":"Exception has been thrown by the target of an invocation.","stackTrace":" at System.Reflection.MethodBaseInvoker.InvokeWithFewArgs(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)\n at SharpApiArgsProg.Services.StringArgsResolverService.TryInvoke(Object worker, MethodInfo method, Object[] parameters, String& result) in /src/api_charp/StringArgsResolver/Services/StringArgsResolverService.cs:line 80","targetSite":"System.Object InvokeWithFewArgs(System.Object, System.Reflection.BindingFlags, System.Reflection.Binder, System.Object[], System.Globalization.CultureInfo)","source":"System.Private.CoreLib","innerException":{"messageType":"System.InvalidOperationException","message":"Operation is not valid due to the current state of the object.","stackTrace":" at SharpRepoServiceProg.Workers.System.PathWorker.HandleError() in /src/api_charp/SharpRepoService/SharpRepoServiceProg/Workers/System/PathWorker.cs:line 147\n at SharpRepoServiceProg.Workers.System.PathWorker.GetItemPath(ValueTuple`2 adrTuple) in /src/api_charp/SharpRepoService/SharpRepoServiceProg/Workers/System/PathWorker.cs:line 54\n at SharpRepoServiceProg.Workers.Validation.ValidationWorker.ValidateChildFoldersAreNumeric(ValueTuple`2 parentAdrTuple, String& invalidFolderName) in /src/api_charp/SharpRepoService/SharpRepoServiceProg/Workers/Validation/ValidationWorker.cs:line 34\n at SharpRepoServiceProg.Workers.Validation.ValidationWorker.ValidateParentBeforeCreateChild(ValueTuple`2 parentAdrTuple, String& errorMessage, String& invalidFolderName, String& parentPath) in /src/api_charp/SharpRepoService/SharpRepoServiceProg/Workers/Validation/ValidationWorker.cs:line 89\n at SharpRepoServiceProg.Workers.CrudWrites.WriteMultiWorker.PostItem(ItemModel& item, ValueTuple`2 adrTuple, String type, String name) in /src/api_charp/SharpRepoService/SharpRepoServiceProg/Workers/CrudWrites/WriteMultiWorker.cs:line 53\n at SharpRepoServiceProg.Workers.APublic.ItemWorkers.ItemWorker.PostByNames(String parent, String type, String[] names) in /src/api_charp/SharpRepoService/SharpRepoServiceProg/Workers/APublic/ItemWorkers/PostItemWorker.cs:line 46\n at InvokeStub_ItemWorker.PostByNames(Object, Span`1)\n at System.Reflection.MethodBaseInvoker.InvokeWithFewArgs(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)","targetSite":"System.String HandleError()","source":"SharpRepoServiceProg","innerException":null}}
+
+Error: Failed to parse JSON response. Args: ["IRepoService","IItemWorker","GetByNames","8b603669-f8e6-4224-bd78-a474998995fa","leads","msg planner"] Raw response: error:{"messageType":"System.Reflection.TargetInvocationException","message":"Exception has been thrown by the target of an invocation.","stackTrace":" at System.Reflection.MethodBaseInvoker.InvokeWithFewArgs(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)\n at SharpApiArgsProg.Services.StringArgsResolverService.TryInvoke(Object worker, MethodInfo method, Object[] parameters, String& result) in /src/api_charp/StringArgsResolver/Services/StringArgsResolverService.cs:line 80","targetSite":"System.Object InvokeWithFewArgs(System.Object, System.Reflection.BindingFlags, System.Reflection.Binder, System.Object[], System.Globalization.CultureInfo)","source":"System.Private.CoreLib","innerException":{"messageType":"System.InvalidOperationException","message":"Operation is not valid due to the current state of the object.","stackTrace":" at SharpRepoServiceProg.Workers.System.PathWorker.HandleError() in /src/api_charp/SharpRepoService/SharpRepoServiceProg/Workers/System/PathWorker.cs:line 147\n at SharpRepoServiceProg.Workers.CrudReads.ReadManyWorker.ListOfOnlyConfigItems(ValueTuple`2 adrTuple) in /src/api_charp/SharpRepoService/SharpRepoServiceProg/Workers/CrudReads/ReadManyWorker.cs:line 101\n at SharpRepoServiceProg.Workers.APublic.ItemWorkers.ItemWorker.GetByNames(String Repo, String[] names) in /src/api_charp/SharpRepoService/SharpRepoServiceProg/Workers/APublic/ItemWorkers/GetItemWorker.cs:line 67\n at InvokeStub_ItemWorker.GetByNames(Object, Span`1)\n at System.Reflection.MethodBaseInvoker.InvokeWithFewArgs(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)","targetSite":"System.String HandleError()","source":"SharpRepoServiceProg","innerException":null}}
+
+do tego znowu wywaliles dev panel ktory ma byc widoczny w lokalnej dev wersji
+taki dzyndzel z prawej storny niezaleznie od konce strony 150px tej wolnej przestrzeni on ma do od saemj krawedzie storny sie pojawiac

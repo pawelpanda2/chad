@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
 import {
 	Search,
 	MessageSquare,
@@ -204,17 +205,10 @@ export default function MessagesPage() {
 	// ========================================================================
 
 	return (
-		<div className="space-y-6">
-			{/* Header */}
-			<div>
-				<h2 className="text-3xl font-bold tracking-tight">Messages</h2>
-				<p className="text-muted-foreground">
-					WhatsApp conversations from Content Provider.
-				</p>
-			</div>
-
-			{/* Main Content */}
-			<div className="grid gap-6 lg:grid-cols-3 h-[calc(100vh-200px)] min-h-[500px]">
+		<DashboardPageShell scroll={false} padded={false} title="MESSAGES">
+			{/* Main Content — height comes from the shell's own h-full column,
+			    not a viewport calc() (Story 62; was h-[calc(100vh-200px)]). */}
+			<div className="grid gap-3 lg:grid-cols-3 h-full min-h-0">
 				{/* Left Panel - Leads List */}
 				<Card className="lg:col-span-1 flex flex-col">
 					<CardHeader className="pb-3">
@@ -375,6 +369,6 @@ export default function MessagesPage() {
 					</CardContent>
 				</Card>
 			</div>
-		</div>
+		</DashboardPageShell>
 	);
 }

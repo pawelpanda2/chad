@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { RefreshCw, AlertCircle, Loader2, Plus, X } from "lucide-react";
 import { TextEditorWithToolbar } from "@/components/shared/text-editor-with-toolbar";
-import { EditorPageShell } from "@/components/shared/editor-page-shell";
+import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
 
 // ============================================================================
 // Types
@@ -260,44 +260,49 @@ export default function MsgPlannerPage() {
   }
 
   return (
-    <EditorPageShell>
-      {/* Msg Planner toolbar — buttons above the framed editor (standard layout).
-          pl-14 reserves the top-left slot for the fixed menu handle. */}
-      <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 pl-14">
-        <Select value={selectedDate} onValueChange={handleDateChange}>
-          <SelectTrigger className="w-[160px] h-8">
-            <SelectValue placeholder="Select date" />
-          </SelectTrigger>
-          <SelectContent>
-            {dateFolders.map((folder) => (
-              <SelectItem key={folder.date} value={folder.date}>
-                {folder.date}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+    <DashboardPageShell
+      scroll={false}
+      padded={false}
+      title="MSG PLANNER"
+      toolbarSecondRow={
+        <>
+          <Select value={selectedDate} onValueChange={handleDateChange}>
+            <SelectTrigger className="w-[160px] h-8">
+              <SelectValue placeholder="Select date" />
+            </SelectTrigger>
+            <SelectContent>
+              {dateFolders.map((folder) => (
+                <SelectItem key={folder.date} value={folder.date}>
+                  {folder.date}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
-        <Button
-          onClick={openCreatePanel}
-          variant="outline"
-          size="sm"
-          className="h-8"
-        >
-          <Plus className="h-3.5 w-3.5 mr-1" />
-          new
-        </Button>
+          <Button
+            onClick={openCreatePanel}
+            variant="outline"
+            size="sm"
+            className="h-8"
+          >
+            <Plus className="h-3.5 w-3.5 mr-1" />
+            new
+          </Button>
 
-        <button
-          onClick={loadDateFolders}
-          disabled={loading}
-          className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50 h-8"
-        >
-          <RefreshCw className={`h-3 w-3 ${loading ? "animate-spin" : ""}`} />
-          Refresh
-        </button>
-      </div>
-
-      {/* Editor with toolbar - fills remaining viewport height */}
+          <button
+            onClick={loadDateFolders}
+            disabled={loading}
+            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50 h-8"
+          >
+            <RefreshCw className={`h-3 w-3 ${loading ? "animate-spin" : ""}`} />
+            Refresh
+          </button>
+        </>
+      }
+    >
+      {/* Editor with toolbar - fills remaining viewport height. Already
+          reads as the inner frame (rounded-xl border bg-card, per
+          text-editor-with-toolbar.tsx) inside the shell's own outer frame. */}
       <TextEditorWithToolbar
         value={content}
         onChange={handleContentChange}
@@ -305,6 +310,7 @@ export default function MsgPlannerPage() {
         saving={saving}
         saved={saved}
         placeholder="Enter msg planner content..."
+        className="h-full"
       />
 
       {/* Create Panel */}
@@ -352,6 +358,6 @@ export default function MsgPlannerPage() {
           )}
         </div>
       )}
-    </EditorPageShell>
+    </DashboardPageShell>
   );
 }

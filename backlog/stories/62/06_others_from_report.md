@@ -158,6 +158,47 @@ string). Full detail in `05_tasks_and_checklist.md` Task 3.
   Task 10's write-up for why the clamping check performed is considered
   sufficient evidence for `overscroll-contain`'s documented guarantee.
 
+## Round 2: full rollout — investigation findings (not functional Checklist items)
+
+- **`MSG TODO`/`MSG PLANNER` Content-Provider error — confirmed
+  pre-existing, reported to the user, not fixed by this Story.** Full
+  detail in `05_tasks_and_checklist.md`'s Round-2 scope note. Root cause
+  is a data-state issue in `kamil_s`'s Content Provider repo
+  (`leads/all items` / `leads/msg planner`), surfaced by C#
+  `ValidateChildFoldersAreNumeric`. `packages/net-content-provider` is
+  off-limits for this Story per project convention (mid-rewrite) — this
+  needs its own investigation, either by inspecting the actual folder
+  structure under `kamil_s`'s repo on disk or by a Content-Provider-focused
+  Story.
+- **Dev Panel build-arg gap** — see `05_tasks_and_checklist.md` Task 19.
+  Fixed for local-mac-docker; not applicable to QNAP test/prod.
+- **`SETTINGS` re-checked against the sharpened double-frame standard**
+  (the standard was clarified mid-Story by Input 8, after Settings had
+  already shipped in Round 1) and found already compliant — two inner
+  section boxes (Theme, Settings/Profile) already existed inside the
+  outer shell frame. No changes made.
+
+## Known limitations after Round 2
+
+- `STATUSES` matrix mode and `USERS` both got `overscroll-contain` added
+  to their table scroll containers (same fix as `DAILY TRACKER`'s Task
+  10), but neither was separately verified on a real mobile viewport this
+  round — only `DAILY TRACKER` got the full Playwright mobile-scroll-clamp
+  test. Reasonable follow-up, not blocking, since it's the identical CSS
+  property already proven to work on Tracker.
+- Bulk Save with multiple simultaneously-dirty rows (Task 8) still hasn't
+  been separately load-tested against the live stack — same note as
+  Round 1.
+- No shared table/frame component was extracted despite the same
+  `rounded-lg border bg-muted/10` inner-frame pattern now appearing on
+  ~15 pages — deliberately deferred (per `02_plan.md`'s original
+  "don't guess the abstraction from one use case" reasoning), now more
+  clearly warranted given how many call sites repeat it. Worth a
+  dedicated follow-up Story once the pattern is this well-established.
+- `login/page.tsx`'s sibling `(auth)` routes (`register`,
+  `forgot-password`, `setup-2fa`, `verify-email`) were not touched —
+  still on the old centered-card layout. Not requested this round.
+
 ## Follow-up proposals (not scheduled)
 
 - Once Settings + Daily Tracker ship and are approved, open the remaining
