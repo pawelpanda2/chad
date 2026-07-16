@@ -61,7 +61,7 @@ export default function LoginPage() {
 		// document scroll.
 		<div className="h-[100dvh] w-full overflow-hidden bg-background p-2">
 			<div className="max-h-full w-full max-w-md overflow-y-auto rounded-xl border bg-card shadow-sm">
-				<div className="p-[3px]">
+				<div className="p-[10px]">
 					<div className="rounded-lg border bg-muted/10 p-6">
 						<div className="mb-4 space-y-1">
 							<h1 className="text-2xl font-bold">Personal Dashboard</h1>

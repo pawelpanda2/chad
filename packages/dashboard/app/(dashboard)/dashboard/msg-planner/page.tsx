@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { RefreshCw, AlertCircle, Loader2, Plus, X } from "lucide-react";
 import { TextEditorWithToolbar } from "@/components/shared/text-editor-with-toolbar";
 import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
+import { FRAME_SECTION_GAP_CLASS } from "@/components/shared/layout-tokens";
 
 // ============================================================================
 // Types
@@ -262,44 +263,44 @@ export default function MsgPlannerPage() {
   return (
     <DashboardPageShell
       scroll={false}
-      padded={false}
+      contentClassName={FRAME_SECTION_GAP_CLASS}
       title="MSG PLANNER"
-      toolbarSecondRow={
-        <>
-          <Select value={selectedDate} onValueChange={handleDateChange}>
-            <SelectTrigger className="w-[160px] h-8">
-              <SelectValue placeholder="Select date" />
-            </SelectTrigger>
-            <SelectContent>
-              {dateFolders.map((folder) => (
-                <SelectItem key={folder.date} value={folder.date}>
-                  {folder.date}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Button
-            onClick={openCreatePanel}
-            variant="outline"
-            size="sm"
-            className="h-8"
-          >
-            <Plus className="h-3.5 w-3.5 mr-1" />
-            new
-          </Button>
-
-          <button
-            onClick={loadDateFolders}
-            disabled={loading}
-            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50 h-8"
-          >
-            <RefreshCw className={`h-3 w-3 ${loading ? "animate-spin" : ""}`} />
-            Refresh
-          </button>
-        </>
-      }
     >
+      {/* Page-specific controls live inside the main frame (Story 62 Round 3). */}
+      <div className="flex shrink-0 flex-wrap items-center gap-2">
+        <Select value={selectedDate} onValueChange={handleDateChange}>
+          <SelectTrigger className="w-[160px] h-8">
+            <SelectValue placeholder="Select date" />
+          </SelectTrigger>
+          <SelectContent>
+            {dateFolders.map((folder) => (
+              <SelectItem key={folder.date} value={folder.date}>
+                {folder.date}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Button
+          onClick={openCreatePanel}
+          variant="outline"
+          size="sm"
+          className="h-8"
+        >
+          <Plus className="h-3.5 w-3.5 mr-1" />
+          new
+        </Button>
+
+        <button
+          onClick={loadDateFolders}
+          disabled={loading}
+          className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50 h-8"
+        >
+          <RefreshCw className={`h-3 w-3 ${loading ? "animate-spin" : ""}`} />
+          Refresh
+        </button>
+      </div>
+
       {/* Editor with toolbar - fills remaining viewport height. Already
           reads as the inner frame (rounded-xl border bg-card, per
           text-editor-with-toolbar.tsx) inside the shell's own outer frame. */}
@@ -310,7 +311,7 @@ export default function MsgPlannerPage() {
         saving={saving}
         saved={saved}
         placeholder="Enter msg planner content..."
-        className="h-full"
+        className="h-auto min-h-0 flex-1"
       />
 
       {/* Create Panel */}

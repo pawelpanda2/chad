@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
+import { FRAME_SECTION_GAP_CLASS } from "@/components/shared/layout-tokens";
 import { Button } from "@/components/ui/button";
 import {
 	Table,
@@ -61,10 +62,6 @@ export default function UsersPage() {
 			.slice(0, 2);
 	};
 
-	const toolbarSecondRow = (
-		<span className="text-xs text-muted-foreground">{users.length} users</span>
-	);
-
 	if (loading) {
 		return (
 			<DashboardPageShell title="USERS">
@@ -74,7 +71,8 @@ export default function UsersPage() {
 	}
 
 	return (
-		<DashboardPageShell scroll={false} padded={false} title="USERS" toolbarSecondRow={toolbarSecondRow}>
+		<DashboardPageShell scroll={false} contentClassName={FRAME_SECTION_GAP_CLASS} title="USERS">
+			<span className="shrink-0 text-xs text-muted-foreground">{users.length} users</span>
 			<div className="min-h-0 flex-1 overflow-auto overscroll-contain rounded-lg border bg-muted/10">
 				{users.length === 0 ? (
 					<p className="py-8 text-center text-sm text-muted-foreground">

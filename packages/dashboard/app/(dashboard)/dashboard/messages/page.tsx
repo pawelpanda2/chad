@@ -205,7 +205,7 @@ export default function MessagesPage() {
 	// ========================================================================
 
 	return (
-		<DashboardPageShell scroll={false} padded={false} title="MESSAGES">
+		<DashboardPageShell scroll={false} title="MESSAGES">
 			{/* Main Content — height comes from the shell's own h-full column,
 			    not a viewport calc() (Story 62; was h-[calc(100vh-200px)]). */}
 			<div className="grid gap-3 lg:grid-cols-3 h-full min-h-0">

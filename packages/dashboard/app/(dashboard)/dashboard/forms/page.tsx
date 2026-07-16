@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
+import { FRAME_SECTION_GAP_CLASS, FRAME_SECTION_SPACE_Y_CLASS } from "@/components/shared/layout-tokens";
 import { TextEditorWithToolbar } from "@/components/shared/text-editor-with-toolbar";
 import { VoiceRecordingPanel } from "@/components/shared/voice-recording-panel";
 import { ErrorBox } from "@/components/shared/error-box";
@@ -731,8 +732,7 @@ function FormsPageContent() {
     return (
       <DashboardPageShell
         scroll={!isReportCreated}
-        padded={false}
-        contentClassName="p-[3px] space-y-[3px]"
+        contentClassName={FRAME_SECTION_GAP_CLASS}
         upLevel={{ onClick: handleFormBack }}
         title="ADD REPORT"
       >
@@ -824,27 +824,27 @@ function FormsPageContent() {
   if (selectedForm === "action") {
     return (
       <DashboardPageShell
-        padded={false}
-        contentClassName="p-[3px] space-y-[3px]"
+        contentClassName={FRAME_SECTION_GAP_CLASS}
         upLevel={{ onClick: handleFormBack }}
         title="ADD ACTION"
       >
-            <form onSubmit={handleActionSubmit} className="space-y-[3px]">
+            <form onSubmit={handleActionSubmit} className={FRAME_SECTION_SPACE_Y_CLASS}>
               {/* Top frame: Save + generated name, left-aligned (Story 62
                   standard — save controls live at the top, grouped with the
-                  generated name when one exists). */}
-              <div className="flex flex-wrap items-end gap-3 rounded-lg border bg-muted/10 p-4">
+                  generated name when one exists). Inner frames left-anchor
+                  to a 500px default width rather than stretching full-width. */}
+              <div className="flex max-w-[500px] flex-wrap items-end gap-3 rounded-lg border bg-muted/10 p-4">
                 <Button type="submit" disabled={isSubmitting}>
                   {isSubmitting ? "Saving..." : "Save"}
                 </Button>
                 <div className="space-y-1">
-                  <Label>Title (auto-generated)</Label>
+                  <Label>Title</Label>
                   <Input value={actionData.actionTitle} readOnly className="bg-muted font-mono w-[200px]" />
                 </div>
               </div>
 
               {/* Second frame: the rest of the fields. */}
-              <div className="space-y-3 rounded-lg border bg-muted/10 p-4">
+              <div className="max-w-[500px] space-y-3 rounded-lg border bg-muted/10 p-4">
                 <div className="grid gap-3 md:grid-cols-3 items-end">
                   <div className="space-y-1">
                     <Label>Type</Label>
@@ -925,28 +925,29 @@ function FormsPageContent() {
 
     return (
       <DashboardPageShell
-        padded={false}
-        contentClassName="p-[3px] space-y-[3px]"
+        contentClassName={FRAME_SECTION_GAP_CLASS}
         upLevel={{ onClick: handleFormBack }}
         title="ADD DAILY ENTRY"
       >
-            <form onSubmit={handleAddActionSubmit} className="space-y-[3px]">
-              {/* Save is free-standing (no frame) at the top — this form has
-                  no generated-name concept, per the Story 62 standard: save
-                  controls always live at the top, framed together with a
-                  generated name when one exists, otherwise free-standing. */}
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? "Saving..." : "Save"}
-              </Button>
+            <form onSubmit={handleAddActionSubmit} className={FRAME_SECTION_SPACE_Y_CLASS}>
+              {/* Save lives in its own top frame — Story 62 standard: save
+                  controls always live at the top, inside the main frame,
+                  even when there's no generated-name field to group it with. */}
+              <div className="max-w-[460px] rounded-lg border bg-muted/10 p-4">
+                <Button type="submit" disabled={isSubmitting}>
+                  {isSubmitting ? "Saving..." : "Save"}
+                </Button>
+              </div>
 
               {/* Inner frame holds the form itself — no duplicate title row
-                  inside (the shell's own `title` above is the only title). */}
-              <div className="max-w-xl rounded-lg border bg-muted/10 p-2">
+                  inside (the shell's own `title` above is the only title).
+                  Narrowed to ~80% of the previous max-width per feedback. */}
+              <div className="max-w-[460px] rounded-lg border bg-muted/10 p-2">
                 <table className="w-full border-collapse text-sm">
                   <tbody>
                     {dailyRows.map((row) => (
                       <tr key={row.key}>
-                        <td className="border bg-muted/60 px-3 py-2 font-semibold w-1/2">{row.label}</td>
+                        <td className="whitespace-nowrap border bg-muted/60 px-3 py-2 font-semibold">{row.label}</td>
                         <td className="border bg-amber-50 dark:bg-amber-950/30 px-2 py-1.5">
                           {row.type === "date" && (
                             <Input
@@ -997,20 +998,21 @@ function FormsPageContent() {
   if (selectedForm === "date_entry") {
     return (
       <DashboardPageShell
-        padded={false}
-        contentClassName="p-[3px] space-y-[3px]"
+        contentClassName={FRAME_SECTION_GAP_CLASS}
         upLevel={{ onClick: handleFormBack }}
         title="ADD DATE"
       >
-            <form onSubmit={handleDateEntrySubmit} className="space-y-[3px]">
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? "Saving..." : "Save"}
-              </Button>
+            <form onSubmit={handleDateEntrySubmit} className={FRAME_SECTION_SPACE_Y_CLASS}>
+              <div className="max-w-[460px] rounded-lg border bg-muted/10 p-4">
+                <Button type="submit" disabled={isSubmitting}>
+                  {isSubmitting ? "Saving..." : "Save"}
+                </Button>
+              </div>
               <div className="max-w-xl rounded-lg border bg-muted/10 p-2">
               <table className="w-full border-collapse text-sm">
                 <tbody>
                 <tr>
-                  <td className="border bg-muted/60 px-3 py-2 font-semibold w-1/2">DATA</td>
+                  <td className="whitespace-nowrap border bg-muted/60 px-3 py-2 font-semibold">DATA</td>
                   <td className="border bg-amber-50 dark:bg-amber-950/30 px-2 py-1.5">
                     <Input
                       type="date"
@@ -1106,22 +1108,23 @@ function FormsPageContent() {
 
   return (
     <DashboardPageShell
-      padded={false}
-      contentClassName="p-[3px] space-y-[3px]"
+      contentClassName={FRAME_SECTION_GAP_CLASS}
       upLevel={{ onClick: handleFormBack }}
       title="ADD LEAD"
     >
-          <form onSubmit={handleLeadSubmit} className="space-y-[3px]">
+          <form onSubmit={handleLeadSubmit} className={FRAME_SECTION_SPACE_Y_CLASS}>
 
             {/* Top frame: Save + generated name, left-aligned (Story 62
-                standard). */}
-            <div className="flex flex-wrap items-center gap-3 rounded-lg border bg-muted/10 p-4">
+                standard). Generated name shown as a greyed, locked input,
+                same as ADD ACTION's Title field — not a plain span. */}
+            <div className="flex max-w-[500px] flex-wrap items-end gap-3 rounded-lg border bg-muted/10 p-3">
               <Button type="submit" disabled={isSubmitting || !isLeadFormValid}>
                 {isSubmitting ? "Saving..." : "Save"}
               </Button>
-              {leadNamePreview && (
-                <span className="font-mono text-sm text-primary font-semibold">{leadNamePreview}</span>
-              )}
+              <div className="space-y-1">
+                <Label>Title</Label>
+                <Input value={leadNamePreview} readOnly className="bg-muted font-mono w-[260px]" />
+              </div>
             </div>
 
             {/* Lead Name/Id Section */}

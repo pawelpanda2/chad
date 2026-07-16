@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/select";
 import { buildLeadDetailsHref } from "@/lib/lead-links";
 import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
+import { FRAME_SECTION_GAP_CLASS } from "@/components/shared/layout-tokens";
 import {
   RefreshCw,
   AlertCircle,
@@ -568,8 +569,7 @@ function StatusesPageContent() {
   if (view === "editor" && editorData) {
     return (
       <DashboardPageShell
-        padded={false}
-        contentClassName="p-[3px] space-y-[3px]"
+        contentClassName={FRAME_SECTION_GAP_CLASS}
         upLevel={{ onClick: closeEditor, label: "Back to list" }}
         title="STATUSES"
       >
@@ -707,31 +707,33 @@ function StatusesPageContent() {
     return (
       <DashboardPageShell
         scroll={false}
-        padded={false}
+        contentClassName={FRAME_SECTION_GAP_CLASS}
         title="STATUSES"
-        toolbarSecondRow={
-          <>
-            {modeSelect}
-            {numericRangeInput}
-            {nameFilterInput}
-            {matrixSaved && (
-              <span className="text-sm text-green-600 flex items-center gap-1">
-                <CheckCircle2 className="h-4 w-4" />
-                Saved!
-              </span>
-            )}
-            {matrixError && (
-              <span className="text-sm text-red-500 flex items-center gap-1">
-                <AlertCircle className="h-4 w-4" />
-                {matrixError}
-              </span>
-            )}
-            <span className="ml-auto text-sm text-muted-foreground">
-              {visibleLeads.length} of {leads.length} leads
-            </span>
-          </>
-        }
       >
+        {/* Page-specific controls now live inside the main frame, not above
+            it (Story 62 Round 3: toolbarSecondRow floated disconnected from
+            the frame it controls — moved in, standard gap below). */}
+        <div className="flex shrink-0 flex-wrap items-center gap-3">
+          {modeSelect}
+          {numericRangeInput}
+          {nameFilterInput}
+          {matrixSaved && (
+            <span className="text-sm text-green-600 flex items-center gap-1">
+              <CheckCircle2 className="h-4 w-4" />
+              Saved!
+            </span>
+          )}
+          {matrixError && (
+            <span className="text-sm text-red-500 flex items-center gap-1">
+              <AlertCircle className="h-4 w-4" />
+              {matrixError}
+            </span>
+          )}
+          <span className="ml-auto text-sm text-muted-foreground">
+            {visibleLeads.length} of {leads.length} leads
+          </span>
+        </div>
+
         {/* Main Content - Matrix Table, in its own inner frame (Story 62). */}
         {loading ? (
           <div className="flex items-center gap-2 py-4 text-muted-foreground">
@@ -744,7 +746,7 @@ function StatusesPageContent() {
             <span className="text-sm">No leads found</span>
           </div>
         ) : (
-          <div className="h-full overflow-auto overscroll-contain rounded-lg border bg-muted/10">
+          <div className="min-h-0 flex-1 overflow-auto overscroll-contain rounded-lg border bg-muted/10">
                 <table className="w-full border-collapse text-sm">
                   <thead className="bg-muted sticky top-0 z-10">
                     <tr>
@@ -973,18 +975,17 @@ function StatusesPageContent() {
   return (
     <DashboardPageShell
       title="STATUSES"
-      contentClassName="p-[3px]"
-      toolbarSecondRow={
-        <>
-          {modeSelect}
-          {numericRangeInput}
-          {nameFilterInput}
-          <span className="ml-auto text-sm text-muted-foreground">
-            {visibleLeads.length} of {leads.length} leads
-          </span>
-        </>
-      }
+      contentClassName={FRAME_SECTION_GAP_CLASS}
     >
+      <div className="flex shrink-0 flex-wrap items-center gap-3">
+        {modeSelect}
+        {numericRangeInput}
+        {nameFilterInput}
+        <span className="ml-auto text-sm text-muted-foreground">
+          {visibleLeads.length} of {leads.length} leads
+        </span>
+      </div>
+
       {/* Main Content, in its own inner frame (Story 62). */}
       <div className="rounded-lg border bg-muted/10 p-2">
       {loading ? (

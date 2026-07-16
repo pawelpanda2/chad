@@ -881,3 +881,92 @@ Error: Failed to parse JSON response. Args: ["IRepoService","IItemWorker","GetBy
 
 do tego znowu wywaliles dev panel ktory ma byc widoczny w lokalnej dev wersji
 taki dzyndzel z prawej storny niezaleznie od konce strony 150px tej wolnej przestrzeni on ma do od saemj krawedzie storny sie pojawiac
+
+## Input 10
+
+widze jeszce sporo bledow:
+## Legend
+W - Wrong, dużo rzeczy źle
+C - Correct, ok z wymaganiam, ale coś do poprawy jednak
+OK - wszystko dobrze
+
+## Forms
+
+# [C] FORMS MENU
+- wszystko idealnie
+- zewnetrzna ramka jest maksymalnie roszerzona
+- od tej zewnetrznej do ramek wewnetrznych widze jest ok 8 px.
+- przyjmijmy to za wzor i standard te 8 px
+- sprawdz czy to jest 8px jezeli wiecej to daj wiecej na standard
+- ale tyle ile tu jest
+
+# [W] ADD DAILY ENTRY
+- tutaj odstep od glownej ramki wydaje sie za maly nie jakos znacznie
+- ale widac ze jest to mniej niz np. w FORMS MENU
+- dodatkowo wloz save w osobna ramke u gory i wloz go w glowna ramke
+- mozesz zmiejszyc troche ta table z uzupelnianiem tak do jej 80% czyli minus 20%
+
+# [W] ADD DATE
+- tutaj podobnie jak w ADD DAILY ENTRY
+- czyli odstep miedzy glowna ramka ta ze scrodka troche wiekszy
+- oraz przycisk same do srodka do ramki i w ogobnej wewnetrznej ramce
+# [] ADD LEAD
+- tutaj tez podobnie ale tutaj to juz jakies mikro przerwy sa miedzy ta duza ramka a ramkami wewnetrznymi
+- a znowu ta pierwsza z przyciskiem save ma dziwnie duzo przestrzeni od wewnatrz sookola siebie
+- nazwa generowana powinna byc w takim wyszarzonym zablokowanym input tak jak w ADD ACTION
+# [] ADD ACTION
+- tutaj podobnie jak w ADD LEAD strasznie maly odstep miedzy duzo i mala ramka
+- usun napis "Title (auto-generated
+- wewnetrznie ramki jezeli sie da powinnny sie dosuwac do lwej do 500px jezeli sie da to taka domyslna wartosc dopychania ramek wewnetrznych do lewej
+
+reszta widokow tez probuj w tym standarcdzie poprawic, nie chcialo mi sie juz ich przegladac ale to sa te widoki:
+# [] ADD REPORT
+
+
+## Views
+
+# [W] DAILY TRACKER
+-
+# [W] DATES
+-
+# [W] LEADS
+-
+# [W] REPORTS
+-
+
+## Pozostałe
+
+# [W] Statuses
+-
+# [W] Msg Todo
+-
+# [W] Msg Planner
+-
+# [W] Beeper
+-
+# [W] Folder
+-
+# [W] Messages
+-
+# [W] Settings
+-
+# [W] Users
+-
+
+## Login
+
+# [W] Login
+-
+
+## Input 11 (mid-turn interrupt)
+
+w statuses tez tak zrob ze wsadz przyciski z drugiej lini do duzej ramka i odaj ten 8px czy jaki tam wyliczyles standardowy pomiedzy glowno ramka a ramka tabeli
+
+## Input 12 (mid-turn interrupt)
+
+w ADD DATE mozesz pierwsza kolumne dorownac do szerokosci napisow plus jakies 5-10px bo narazie jest szerokosc napisu plus bardzo duzo chyab ze 150px
+
+## Input 13 (mid-turn interrupt)
+
+w messages planner tez popraw odstep od glownej ramki (wyliczone na podstawie FORMS MENU odstep miedzy przyciskami a glowna ramka chyba 8px lub wiecej)
+i to odsuwanie do 500px jezeli sie da bo dane sa krotki albo do konca jzeli dane sa na tyle dlugie
