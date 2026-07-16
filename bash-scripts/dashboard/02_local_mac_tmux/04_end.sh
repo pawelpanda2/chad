@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Stops what re-start.sh started: the tmux session "chad-dashboard" (dba +
+# Stops what 03_restart.sh started: the tmux session "chad-dashboard" (dba +
 # dashboard + content-provider panes), and — ONLY if this session started it
 # — the Content Provider API container.
 #
@@ -7,8 +7,8 @@
 # (.tmp/dashboard/content-provider.owned, written by
 # run-content-provider-if-needed.sh only when IT started the container), not
 # guessed from the port or process name. If Content Provider API was already
-# running before re-start.sh ran, that marker is never created, and this script
-# will not touch it.
+# running before 03_restart.sh ran, that marker is never created, and this
+# script will not touch it.
 #
 # Never uses killall / broad pkill / kill-by-process-name.
 set -euo pipefail

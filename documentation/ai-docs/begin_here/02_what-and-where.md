@@ -52,31 +52,34 @@ zwłaszcza gdy odpowiedni endpoint/metoda `dba` jeszcze nie istnieje.
 środowisk (lokalnie z Dockerem, lokalnie przez tmux bez Dockera, QNAP TEST,
 QNAP PROD, współdzielony stack QNAP), MongoDB, Content Provider API jako
 usługa wdrożeniowa, `.env.qnap`/`.env.local`, standard skryptów
-build/re-start/end/status/deploy.
+build/restart/end/status/deploy (jeden stały zestaw numerowanych slotów,
+Story 63).
 
 **Lokalizacja:** `documentation/ai-docs/deploy/`
 
 **Najważniejsze dokumenty:**
 - [image-tagging-standard.md](../deploy/image-tagging-standard.md) — **przeczytaj
   zawsze przed jakimkolwiek buildem/deployem.** Własne obrazy CHAD nigdy nie
-  używają `:latest`; jeden zapisany tag na release, wspólny dla TEST i PROD.
+  używają `:latest`; jeden zapisany tag na release, wspólny dla TEST i PROD;
+  od Story 63 obraz TEST niesie też git SHA jako OCI label.
 - [qnap-data-path.md](../deploy/qnap-data-path.md) — incydent `/share` jako
   16MB tmpfs, jak go rozpoznać, jak skrypt to teraz waliduje.
 - [dashboard-deployment-scripts.md](../deploy/dashboard-deployment-scripts.md) —
   autorytatywny kontrakt skryptów Docker Compose (`00_qnap_shared`,
-  `03_local_mac_docker`, `04_qnap_test`, `05_qnap_prod`, `06_qnap_ssh`):
-  co robi `02_build.sh`/`03_re-start.sh`/`04_end.sh`/`05_status.sh`/
-  `06_deploy.sh`, architektura shared/test/prod, **sekcja o niespójności
-  nazewnictwa `re-start/end` (Docker) vs `start/end` (tmux) vs `begin_*`
-  (SSH wrappery)** (przeczytaj przed zmianą nazw jakiegokolwiek skryptu
-  deploymentowego).
+  `03_local_mac_docker`, `04_qnap_test`, `05_qnap_prod`) oraz SSH-remote
+  layer (`06_qnap_test_ssh`, `07_qnap_prod_ssh`): co robi
+  `02_build.sh`/`03_restart.sh`/`04_end.sh`/`05_status.sh`/`06_deploy.sh`,
+  architektura shared/test/prod, tabela stałych numerów operacji, dlaczego
+  PROD nie buduje (`07_qnap_prod_ssh/06_last_from_test.sh` promuje obraz z
+  TEST zamiast deployować niezależnie) (przeczytaj przed zmianą nazw
+  jakiegokolwiek skryptu deploymentowego).
 - [shared-qnap-services.md](../deploy/shared-qnap-services.md) — jedno wspólne
   MongoDB + jeden wspólny Content Provider dla TEST i PROD: decyzja
   architektoniczna, porty, mounty, procedura promocji obrazu, rollback,
   wyniki realnych testów na QNAP.
 - [dashboard-start-scripts.md](../deploy/dashboard-start-scripts.md) — lokalny
   dev flow BEZ Dockera (tmux/tmuxinator: `dba` watch + `next dev` + Content
-  Provider), `re-start.sh`/`end.sh`/`status.sh` z roota repo.
+  Provider), `restart.sh`/`end.sh`/`status.sh` z roota repo.
 - [2026-07-10_decision-beeper-mac-qnap-architecture.md](../deploy/2026-07-10_decision-beeper-mac-qnap-architecture.md) —
   matryca środowisk (Mac / local Docker / QNAP test / QNAP prod), konwencja
   portów właściciela (12020–29 = test, 12030–39 = prod).
@@ -336,6 +339,13 @@ dla `01_ai_start.md`/`02_what-and-where.md` (ten plik) samych.
   jako przestarzałą; nie twórz katalogu `architecture/`.
 - `02_what-and-where.md` (ten plik) — indeks, aktualizuj przy każdej nowej
   kategorii/ważnym dokumencie.
+- [bash-scripts-standard-compendium.md](../bash-scripts-standard-compendium.md)
+  (nowy, Story 63) — **przenośny** standard `bash-scripts/` (numeracja
+  slotów, `common/lib.sh`, Git preflight, promocja TEST→PROD) wyprowadzony
+  z faktycznie poprawionej struktury CHAD, przeznaczony do przekazania
+  Claude w INNYM repozytorium jako wzorzec — nie opisuje CHAD-owej
+  dokumentacji dla samego CHAD (do tego służy
+  `deploy/dashboard-deployment-scripts.md`).
 
 **Czytać gdy:** tworzysz nową dokumentację feature'a/buga w dowolnej
 kategorii — sprawdź wymaganą zawartość sekcji.

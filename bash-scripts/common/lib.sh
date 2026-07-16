@@ -112,9 +112,9 @@ ensure_docker_network() {
 }
 
 # Usage: require_shared_services_healthy 12024
-# Preflight for TEST/PROD dashboard re-start scripts: refuses to proceed
+# Preflight for TEST/PROD dashboard restart scripts: refuses to proceed
 # unless the shared chad-mongodb + chad-content-provider-api stack (started
-# separately by bash-scripts/dashboard/00_qnap_shared/03_re-start.sh) is
+# separately by bash-scripts/dashboard/00_qnap_shared/03_restart.sh) is
 # already up and healthy. Never starts/restarts shared services itself —
 # only reads state.
 require_shared_services_healthy() {
@@ -122,7 +122,7 @@ require_shared_services_healthy() {
 
   if ! docker network inspect chad-shared >/dev/null 2>&1; then
     log_error "Docker network 'chad-shared' does not exist."
-    log_error "  Fix: bash bash-scripts/dashboard/00_qnap_shared/03_re-start.sh (start shared services first)."
+    log_error "  Fix: bash bash-scripts/dashboard/00_qnap_shared/03_restart.sh (start shared services first)."
     return 1
   fi
 
@@ -130,13 +130,13 @@ require_shared_services_healthy() {
   mongo_state="$(docker inspect -f '{{.State.Health.Status}}' chad-mongodb 2>/dev/null || true)"
   if [ "$mongo_state" != "healthy" ]; then
     log_error "Shared chad-mongodb container is not running/healthy (state: ${mongo_state:-not found})."
-    log_error "  Fix: bash bash-scripts/dashboard/00_qnap_shared/03_re-start.sh"
+    log_error "  Fix: bash bash-scripts/dashboard/00_qnap_shared/03_restart.sh"
     return 1
   fi
 
   if ! docker ps --filter "name=^chad-content-provider-api$" --filter "status=running" --format '{{.Names}}' | grep -qx "chad-content-provider-api"; then
     log_error "Shared chad-content-provider-api container is not running."
-    log_error "  Fix: bash bash-scripts/dashboard/00_qnap_shared/03_re-start.sh"
+    log_error "  Fix: bash bash-scripts/dashboard/00_qnap_shared/03_restart.sh"
     return 1
   fi
 
@@ -229,7 +229,7 @@ ensure_port_available() {
 # ============================================================================
 # Release-tag mechanism for CHAD's own images (chad-dashboard,
 # chad-content-provider-api). Own images never use `:latest` — every build
-# writes ONE canonical, gitignored tag-record file; every re-start/deploy script
+# writes ONE canonical, gitignored tag-record file; every restart/deploy script
 # reads that same file and fails loudly if it's missing, instead of silently
 # defaulting to `:latest`. Full standard:
 # documentation/ai-docs/deploy/image-tagging-standard.md
@@ -260,7 +260,7 @@ write_image_tag() {
 # by `docker compose ... up`. Fails with a clear, actionable error if the file
 # is missing or empty — NEVER falls back to `:latest`. TEST and PROD read the
 # exact same tag-record file for chad-dashboard, so running the build ONCE
-# (from either environment) and then `re-start` in both is how a release is
+# (from either environment) and then `restart` in both is how a release is
 # promoted without a second build.
 require_image_tag() {
   local tag_file="$1" image_label="${2:-image}"
@@ -289,7 +289,7 @@ require_image_tag() {
 # never pull/run it). Returns the recorded tag if present, otherwise the
 # harmless placeholder "none" so `docker compose` doesn't hard-fail on a
 # stack that was never built/deployed. `require_image_tag` (used by
-# build/re-start) is what actually enforces a real, valid tag.
+# build/restart) is what actually enforces a real, valid tag.
 image_tag_for_readonly() {
   local tag_file="$1"
   if [ -f "$tag_file" ]; then
@@ -375,4 +375,260 @@ require_data_path_writable() {
   fi
 
   return 0
+}
+
+# ============================================================================
+# SSH / QNAP-remote-deploy helpers (Story 63). Used ONLY by
+# bash-scripts/dashboard/06_qnap_test_ssh/*.sh and
+# bash-scripts/dashboard/07_qnap_prod_ssh/*.sh — moved here from the old,
+# now-deleted bash-scripts/dashboard/06_qnap_ssh/lib.sh so both directories
+# share one library instead of duplicating it (per explicit decision: no
+# common_ssh/lib.sh, no per-directory lib.sh). Nothing else in the repo needs
+# to call these. Callers must have REPO_ROOT set (same requirement as the
+# rest of this file) before calling load_qnap_ssh_config.
+# ============================================================================
+
+# Usage: value="$(qnap_config_value KEY "$env_file" "default")"
+# A shell-env-var override (if already exported) wins over the file value,
+# which wins over the given default. Reuses read_env_var (above) for the
+# actual file parsing — not a second .env parser.
+qnap_config_value() {
+  local key="$1" env_file="$2" default_value="${3:-}"
+  local value="${!key:-}"
+  if [ -n "$value" ]; then echo "$value"; return 0; fi
+  value="$(read_env_var "$env_file" "$key")"
+  if [ -n "$value" ]; then echo "$value"; return 0; fi
+  echo "$default_value"
+}
+
+# Usage: load_qnap_ssh_config   (requires REPO_ROOT already set)
+# Sets/exports QNAP_SSH_HOST, QNAP_SSH_PORT, QNAP_SSH_USERNAME,
+# QNAP_REPO_DIR, QNAP_SSH_PASSWORD, SSH_TARGET, SSH_OPTS from
+# $REPO_ROOT/.env.qnap (repo root, gitignored) — never hardcode these in a
+# calling script. Returns 1 (with a clear fix-it message) if the file or any
+# required value is missing.
+load_qnap_ssh_config() {
+  QNAP_ENV_FILE="$REPO_ROOT/.env.qnap"
+  require_file "$QNAP_ENV_FILE" "cp .env.qnap.example .env.qnap and fill in real values" || return 1
+
+  QNAP_SSH_HOST="$(qnap_config_value QNAP_SSH_HOST "$QNAP_ENV_FILE")"
+  QNAP_SSH_PORT="$(qnap_config_value QNAP_SSH_PORT "$QNAP_ENV_FILE" 22)"
+  QNAP_SSH_USERNAME="$(qnap_config_value QNAP_SSH_USERNAME "$QNAP_ENV_FILE")"
+  QNAP_REPO_DIR="$(qnap_config_value QNAP_REPO_DIR "$QNAP_ENV_FILE")"
+  QNAP_SSH_PASSWORD="$(qnap_config_value QNAP_SSH_PASSWORD "$QNAP_ENV_FILE")"
+
+  local pair key value
+  for pair in "QNAP_SSH_HOST:$QNAP_SSH_HOST" "QNAP_SSH_USERNAME:$QNAP_SSH_USERNAME" "QNAP_REPO_DIR:$QNAP_REPO_DIR"; do
+    key="${pair%%:*}"; value="${pair#*:}"
+    if [ -z "$value" ]; then
+      log_error "Missing config: $key"
+      log_error "  Set it in $QNAP_ENV_FILE"
+      return 1
+    fi
+  done
+
+  SSH_TARGET="${QNAP_SSH_USERNAME}@${QNAP_SSH_HOST}"
+
+  # ConnectTimeout/ServerAlive*: bound how long a stuck/dropped connection can
+  # hang. StrictHostKeyChecking=accept-new: auto-trust a NEW host key (single
+  # known Tailscale-only host) without prompting, but still reject a CHANGED
+  # key — safe for non-interactive automation.
+  SSH_OPTS=(-o ConnectTimeout=10 -o ServerAliveInterval=5 -o ServerAliveCountMax=3 -o StrictHostKeyChecking=accept-new)
+
+  export QNAP_SSH_HOST QNAP_SSH_PORT QNAP_SSH_USERNAME QNAP_REPO_DIR QNAP_SSH_PASSWORD SSH_TARGET
+}
+
+# Runs one remote command over SSH, streaming output live. Password (if set)
+# via sshpass > expect > plain ssh (interactive prompt) fallback.
+#
+# No `-tt` (forced pseudo-TTY): confirmed by real reproduction (2026-07-13)
+# that `-tt` through sshpass in a non-interactive tool environment can hang
+# indefinitely after the remote command finishes — the PTY never signals
+# close, so the local ssh process just sits there. Plain ssh (no -t at all)
+# still streams output live for a human watching a real terminal; it just
+# doesn't force PTY allocation when stdin isn't one, which is exactly the
+# safe behavior here.
+run_remote() {
+  local label="$1" remote_cmd="$2"
+  echo ""
+  log_info "$label"
+  echo "\$ $remote_cmd"
+
+  if [ -n "$QNAP_SSH_PASSWORD" ] && command_exists sshpass; then
+    SSHPASS="$QNAP_SSH_PASSWORD" sshpass -e ssh "${SSH_OPTS[@]}" -p "$QNAP_SSH_PORT" "$SSH_TARGET" "bash -lc $(printf '%q' "$remote_cmd")"
+  elif [ -n "$QNAP_SSH_PASSWORD" ] && command_exists expect; then
+    EXPECT_QNAP_PASSWORD="$QNAP_SSH_PASSWORD" expect <<EOF
+set timeout 120
+log_user 1
+spawn ssh -o ConnectTimeout=10 -o ServerAliveInterval=5 -o ServerAliveCountMax=3 -o StrictHostKeyChecking=accept-new -p $QNAP_SSH_PORT $SSH_TARGET "bash -lc $(printf '%q' "$remote_cmd")"
+expect {
+  -re {(?i)yes/no} { send -- "yes\r"; exp_continue }
+  -re {(?i)password:} { send -- "$env(EXPECT_QNAP_PASSWORD)\r"; exp_continue }
+  eof
+}
+catch wait result
+exit [lindex \$result 3]
+EOF
+  else
+    ssh "${SSH_OPTS[@]}" -p "$QNAP_SSH_PORT" "$SSH_TARGET" "bash -lc $(printf '%q' "$remote_cmd")"
+  fi
+
+  log_ok "Done: $label"
+}
+
+# Usage: output="$(run_remote_capture "some read-only remote command")"
+# Like run_remote, but captures stdout instead of streaming to the terminal,
+# and prints no label/echo of its own — for read-only checks that need the
+# actual output (e.g. remote_repo_head, 06_last_from_test.sh's image
+# lookups). Only supports the sshpass and plain-ssh (key-based) auth paths
+# cleanly — if password auth falls all the way back to `expect`, this
+# returns empty (expect's interactive prompt-answering doesn't cleanly
+# separate from the command's own stdout); callers must treat an empty
+# result as "couldn't determine," never as a real answer.
+run_remote_capture() {
+  local remote_cmd="$1"
+  if [ -n "$QNAP_SSH_PASSWORD" ] && command_exists sshpass; then
+    SSHPASS="$QNAP_SSH_PASSWORD" sshpass -e ssh "${SSH_OPTS[@]}" -p "$QNAP_SSH_PORT" "$SSH_TARGET" "bash -lc $(printf '%q' "$remote_cmd")" 2>/dev/null
+  elif [ -z "$QNAP_SSH_PASSWORD" ]; then
+    ssh "${SSH_OPTS[@]}" -p "$QNAP_SSH_PORT" "$SSH_TARGET" "bash -lc $(printf '%q' "$remote_cmd")" 2>/dev/null
+  fi
+}
+
+# Runs one of the real 04_qnap_test/05_qnap_prod/00_qnap_shared scripts on
+# the QNAP host — never duplicates their logic, just: cd to the repo, pull
+# latest, run it.
+run_remote_script() {
+  local env_dir="$1" script_name="$2" label="$3"
+  run_remote "Update repo on QNAP" "cd '$QNAP_REPO_DIR' && git pull --ff-only"
+  run_remote "$label" "cd '$QNAP_REPO_DIR' && bash bash-scripts/dashboard/${env_dir}/${script_name}"
+}
+
+# ============================================================================
+# Git preflight for SSH deploy (Story 63, originally specified as its own
+# Story before being folded into this one — see backlog/stories/63/
+# 03_knowledge.md). Applies ONLY to 06_qnap_test_ssh/06_deploy.sh — the one
+# remaining operation that builds a new chad-dashboard image from current
+# source. Never called from any *_restart.sh/status.sh/end.sh, and never
+# from 07_qnap_prod_ssh/06_last_from_test.sh (PROD never builds from
+# source).
+# ============================================================================
+
+# Usage: NON_INTERACTIVE=0 git_deploy_preflight   (requires REPO_ROOT and,
+# for the no-new-commits check, load_qnap_ssh_config already called)
+# Prevents deploying a stale revision: uncommitted local changes, unpushed
+# commits, and a same-as-remote no-op deploy all get surfaced BEFORE any SSH
+# connection is made for the real deploy. Returns 1 (aborts) on any check
+# that isn't resolved — either automatically in --non-interactive mode, or
+# because the user declined when asked interactively.
+git_deploy_preflight() {
+  local branch upstream ahead local_head remote_head
+
+  branch="$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD)"
+  if [ "$branch" = "HEAD" ]; then
+    log_error "Repo jest w stanie detached HEAD — brak brancha, z którego można wypchnąć zmiany."
+    log_error "  Przełącz się na branch przed deploymentem."
+    return 1
+  fi
+
+  upstream="$(git -C "$REPO_ROOT" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)"
+  if [ -z "$upstream" ]; then
+    log_error "Branch '$branch' nie ma skonfigurowanego upstreamu."
+    log_error "  Ustaw go (np. git push -u origin $branch) przed deploymentem."
+    return 1
+  fi
+
+  log_info "Repo: $REPO_ROOT"
+  log_info "Branch: $branch (upstream: $upstream)"
+
+  if [ -n "$(git -C "$REPO_ROOT" status --porcelain)" ]; then
+    echo ""
+    git -C "$REPO_ROOT" status --short
+    echo ""
+    log_warn "Niezacommitowane zmiany istnieją lokalnie — NIE trafią na QNAP."
+
+    if [ "${NON_INTERACTIVE:-0}" = "1" ]; then
+      log_error "Tryb --non-interactive: niezacommitowane zmiany = błąd. Przerwano."
+      return 1
+    fi
+
+    local commit_confirm
+    read -r -p "Czy chcesz teraz zacommitować te zmiany? [y/N] " commit_confirm
+    if [ "$commit_confirm" != "y" ] && [ "$commit_confirm" != "Y" ]; then
+      log_error "Deployment cancelled."
+      return 1
+    fi
+
+    local commit_message
+    read -r -p "Podaj treść commit message: " commit_message
+    if [ -z "$commit_message" ]; then
+      log_error "Pusty commit message. Przerwano."
+      return 1
+    fi
+
+    if ! git -C "$REPO_ROOT" add -A; then
+      log_error "'git add -A' nie powiodło się. Przerwano."
+      return 1
+    fi
+    if ! git -C "$REPO_ROOT" commit -m "$commit_message"; then
+      log_error "'git commit' nie powiodło się. Przerwano."
+      return 1
+    fi
+    log_ok "Zacommitowano: $commit_message"
+  fi
+
+  ahead="$(git -C "$REPO_ROOT" rev-list --count "${upstream}..HEAD")"
+  if [ "$ahead" -gt 0 ]; then
+    log_warn "Lokalny branch jest $ahead commit(y) do przodu względem $upstream."
+
+    if [ "${NON_INTERACTIVE:-0}" = "1" ]; then
+      log_error "Tryb --non-interactive: brak push = błąd. Przerwano."
+      return 1
+    fi
+
+    local push_confirm
+    read -r -p "Czy wykonać git push przed deploymentem? [Y/n] " push_confirm
+    if [ -z "$push_confirm" ] || [ "$push_confirm" = "y" ] || [ "$push_confirm" = "Y" ]; then
+      if ! git -C "$REPO_ROOT" push; then
+        log_error "'git push' nie powiodło się. Przerwano."
+        return 1
+      fi
+      log_ok "Wypchnięto do $upstream."
+    else
+      log_error "Lokalne commity nie zostały wypchnięte — deployment przerwany (uruchomiłby starą wersję)."
+      return 1
+    fi
+  fi
+
+  # No-new-commits detection: compare local HEAD against what's actually
+  # checked out on the QNAP host right now — one extra, read-only SSH call,
+  # before the real deploy sequence. Requires load_qnap_ssh_config to already
+  # have been called by the caller; if remote_repo_head can't determine the
+  # remote commit (e.g. expect-only auth fallback), this check is skipped
+  # rather than guessed.
+  local_head="$(git -C "$REPO_ROOT" rev-parse HEAD)"
+  remote_head="$(remote_repo_head)"
+  if [ -n "$remote_head" ] && [ "$remote_head" = "$local_head" ]; then
+    log_warn "Na zdalnym repozytorium nie ma nowych commitów. Deployment najprawdopodobniej wdroży identyczną wersję aplikacji."
+
+    if [ "${NON_INTERACTIVE:-0}" = "1" ]; then
+      log_info "Tryb --non-interactive: kontynuuję mimo braku nowych commitów (informacja, nie błąd)."
+    else
+      local continue_confirm
+      read -r -p "Czy mimo to kontynuować deployment? [y/N] " continue_confirm
+      if [ "$continue_confirm" != "y" ] && [ "$continue_confirm" != "Y" ]; then
+        log_error "Deployment cancelled."
+        return 1
+      fi
+    fi
+  fi
+
+  log_ok "Git preflight passed."
+}
+
+# Usage: remote_repo_head   (requires load_qnap_ssh_config already called)
+# Reads the commit currently checked out in $QNAP_REPO_DIR on the QNAP host
+# — read-only, no git pull. Empty output means "couldn't determine," not
+# "no commits" — callers must treat it as inconclusive, never as a match.
+remote_repo_head() {
+  run_remote_capture "cd '$QNAP_REPO_DIR' && git rev-parse HEAD"
 }

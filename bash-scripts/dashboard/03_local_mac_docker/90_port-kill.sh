@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Frees a single port on this Mac, no questions asked — for automatic use by
-# 04_re-start.sh (and transitively 07_deploy.sh), and for direct manual use.
+# 03_restart.sh (and transitively 06_deploy.sh), and for direct manual use.
+# Numbered 90 (outside the 01-07 standard operation slots) because it's a
+# manual technical tool, not one of the seven standard operations — see
+# documentation/ai-docs/deploy/dashboard-deployment-scripts.md.
 #
 # Two cases, both handled by the shared kill_process_on_port() in
 # bash-scripts/common/lib.sh (this file is a thin CLI wrapper around it —
@@ -14,7 +17,7 @@
 # `docker system prune`, no `pkill`/`killall`, no `docker rm -f $(docker ps
 # -aq)`. No interactive confirmation, since this is called automatically.
 #
-# Usage: ./01_port_kill.sh <port>
+# Usage: ./90_port-kill.sh <port>
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"

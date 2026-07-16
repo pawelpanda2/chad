@@ -2,14 +2,14 @@
 # Builds the full local Mac stack (mongo + content-provider-api + dashboard)
 # under docker-compose. Only builds — never runs containers, never touches
 # a running environment, never `docker compose up`, never removes volumes.
-# See 04_re-start.sh (start, idempotent) / 05_end.sh (stop) / 06_status.sh /
-# 07_deploy.sh (build + re-start, one shot).
+# See 03_restart.sh (start, idempotent) / 04_end.sh (stop) / 05_status.sh /
+# 06_deploy.sh (build + restart, one shot).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel)"
 source "$REPO_ROOT/bash-scripts/common/lib.sh"
-source "$SCRIPT_DIR/02_config.sh"
+source "$SCRIPT_DIR/01_config.sh"
 
 require_command docker "install Docker" || exit 1
 require_file "$ENV_FILE" "cp .env.local.example .env.local and fill in real values (never commit .env.local)" || exit 1

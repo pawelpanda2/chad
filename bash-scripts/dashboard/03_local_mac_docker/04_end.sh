@@ -8,7 +8,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel)"
 source "$REPO_ROOT/bash-scripts/common/lib.sh"
-source "$SCRIPT_DIR/02_config.sh"
+source "$SCRIPT_DIR/01_config.sh"
 
 require_command docker "install Docker" || exit 1
 

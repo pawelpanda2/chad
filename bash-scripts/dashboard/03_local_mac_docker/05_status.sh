@@ -6,7 +6,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel)"
 source "$REPO_ROOT/bash-scripts/common/lib.sh"
-source "$SCRIPT_DIR/02_config.sh"
+source "$SCRIPT_DIR/01_config.sh"
 
 echo ""
 log_info "chad local-mac-docker — status"
@@ -18,7 +18,7 @@ cd "$REPO_ROOT"
 # present, otherwise a harmless placeholder (see image_tag_for_readonly).
 # Both images share one IMAGE_TAG var here (docker-compose.local.yml builds
 # them together), so read whichever tag file exists — they're written
-# together by 03_build.sh.
+# together by 02_build.sh.
 export IMAGE_TAG="$(image_tag_for_readonly "$(dashboard_image_tag_file)")"
 docker compose -p "$COMPOSE_PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps
 

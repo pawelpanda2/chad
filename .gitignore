@@ -186,6 +186,6 @@ Desktop.ini
 
 # Per-host release-tag records for CHAD's own Docker images (chad-dashboard,
 # chad-content-provider-api) — written by each environment's 02_build.sh,
-# read by 03_re-start.sh. State, not source of truth: never committed. See
+# read by 03_restart.sh. State, not source of truth: never committed. See
 # documentation/ai-docs/deploy/image-tagging-standard.md.
 .image-tag.*.env

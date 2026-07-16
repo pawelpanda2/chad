@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
 # Starts the full local Mac stack (mongo + content-provider-api + dashboard)
 # under docker-compose. Never builds. Idempotent: checks whether the stack
-# is already running; if so, calls 05_end.sh (docker compose down
-# --remove-orphans, never -v) then starts fresh. Use 07_deploy.sh for
-# build+re-start.
+# is already running; if so, calls 04_end.sh (docker compose down
+# --remove-orphans, never -v) then starts fresh. Use 06_deploy.sh for
+# build+restart.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel)"
 source "$REPO_ROOT/bash-scripts/common/lib.sh"
-source "$SCRIPT_DIR/02_config.sh"
+source "$SCRIPT_DIR/01_config.sh"
 
 require_command docker "install Docker" || exit 1
 require_file "$ENV_FILE" "cp .env.local.example .env.local and fill in real values" || exit 1
 
 echo ""
-log_info "chad local-mac-docker — re-start"
+log_info "chad local-mac-docker — restart"
 echo ""
 
 cd "$REPO_ROOT"
@@ -28,14 +28,14 @@ write_content_provider_appsettings
 
 if docker compose -p "$COMPOSE_PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps --format json 2>/dev/null | grep -q '"State":"running"'; then
   log_warn "chad-local stack is already running — stopping it first, then starting fresh."
-  bash "$SCRIPT_DIR/05_end.sh"
+  bash "$SCRIPT_DIR/04_end.sh"
 fi
 
 # Preflight: free up all ports this stack needs — Docker container (from
 # another compose project, or a manual `docker run`) OR plain process (e.g.
 # a stray `next dev`/`pnpm` from the 02_local_mac_tmux flow). Ports come
-# from 02_config.sh, never hardcoded here, so there's one place to change
-# them. 01_port_kill.sh (not ensure_port_available directly) does the actual
+# from 01_config.sh, never hardcoded here, so there's one place to change
+# them. 90_port-kill.sh (not ensure_port_available directly) does the actual
 # freeing — it's the same "official script" other flows call too, see that
 # file for exactly how it decides Docker-stop-and-remove vs
 # SIGTERM-then-SIGKILL. Once every port is confirmed free, only THEN is the
@@ -44,7 +44,7 @@ REQUIRED_PORTS=("$DASHBOARD_PORT" "$CONTENT_PROVIDER_API_PORT" "$MONGODB_PORT")
 
 log_info "Freeing required ports before starting: ${REQUIRED_PORTS[*]}"
 for port in "${REQUIRED_PORTS[@]}"; do
-  bash "$SCRIPT_DIR/01_port_kill.sh" "$port" || exit 1
+  bash "$SCRIPT_DIR/90_port-kill.sh" "$port" || exit 1
 done
 
 log_info "Re-checking port availability before starting the stack..."

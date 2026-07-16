@@ -1,4 +1,4 @@
-# Scoped tmuxinator profile for `re-start.sh` — only what
+# Scoped tmuxinator profile for `03_restart.sh` — only what
 # the dashboard actually needs today (dba watch-build + dashboard dev server
 # + content-provider, started only if not already running), not the full
 # multi-service stack from the root .tmuxinator.yml.
@@ -8,8 +8,8 @@
 # Root (from repo root, not this file's directory — tmuxinator's `root:` is
 # resolved relative to where `-p` is invoked from... actually resolved
 # relative to the project file itself is NOT guaranteed across versions, so
-# start.sh always invokes this with an absolute `root:` override via `-p`
-# plus cwd already set to REPO_ROOT; see start.sh).
+# 03_restart.sh always invokes this with an absolute `root:` override via
+# `-p` plus cwd already set to REPO_ROOT; see 03_restart.sh).
 
 name: chad-dashboard
 root: ./

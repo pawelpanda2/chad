@@ -20,7 +20,7 @@ Podczas deployu wielu zmian dashboardu, TEST i PROD zostały uruchomione przez
    `export`owaną tylko w obrębie własnego procesu skryptu.
 2. Tag **nigdy nie był zapisywany na dysk** — nie istniał żaden plik typu
    `.image-tag.env`.
-3. `03_re-start.sh` to **osobne uruchomienie skryptu** (osobny proces bash,
+3. `03_restart.sh` to **osobne uruchomienie skryptu** (osobny proces bash,
    często osobne połączenie SSH) — `IMAGE_TAG` z builda już nie istniał w
    jego środowisku.
 4. Pliki compose miały `image: chad-dashboard:${IMAGE_TAG:-latest}` — skoro
@@ -72,7 +72,7 @@ nie nadpisuje zapisanego tagu. Zapis jest atomowy (plik tymczasowy + `mv`).
 require_image_tag "$(dashboard_image_tag_file)" "chad-dashboard" || exit 1
 ```
 
-Wywoływane przez każdy `03_re-start.sh` PRZED `docker compose up`. Jeśli plik nie
+Wywoływane przez każdy `03_restart.sh` PRZED `docker compose up`. Jeśli plik nie
 istnieje albo `IMAGE_TAG` jest pusty — **czytelny błąd, exit 1**, żadnego
 fallbacku do `:latest`.
 
@@ -97,30 +97,35 @@ Nawet gdyby `require_image_tag` w jakimś skrypcie zostało pominięte, sam
 (`docker compose config` bez `IMAGE_TAG` → `error while interpolating
 services.dashboard.image: required variable IMAGE_TAG is missing a value`).
 
-## Jedna komenda dla release'u — TEST i PROD używają tego samego obrazu
+## Jedna komenda dla release'u — TEST buduje, PROD tylko promuje (Story 63)
 
-`04_qnap_test/02_build.sh` i `05_qnap_prod/02_build.sh` budują **dokładnie
-ten sam** obraz `chad-dashboard` (identyczny `context`/`dockerfile`/`target`
-w obu plikach compose) — więc oba zapisują do TEGO SAMEGO pliku
-`.image-tag.chad-dashboard.env`. Build wystarczy uruchomić raz — z
-KTÓREGOKOLWIEK z dwóch katalogów — żeby oba środowiska miały dostęp do tego
-samego zapisanego tagu.
+**Od Story 63, `04_qnap_test/02_build.sh` jest JEDYNYM miejscem, gdzie
+`chad-dashboard` jest budowany** — `05_qnap_prod/02_build.sh` zostało
+usunięte (PROD nie ma już nawet sekcji `build:` w swoim pliku compose, więc
+nie da się tego obejść ręcznym `docker compose build`). Wcześniej (przed
+Story 63) oba katalogi miały własny `02_build.sh` budujący identyczny obraz
+i zapisujący do tego samego pliku tagu — to działało, ale nic nie
+uniemożliwiało uruchomienia buildu bezpośrednio z PROD, co łamało promocję
+TEST→PROD po cichu. Dziś: build zapisuje też git SHA jako OCI label
+(`org.opencontainers.image.revision`), czytany przy promocji.
 
 ```bash
-# 1) Zbuduj i uruchom TEST (albo tylko zbuduj: bash bash-scripts/dashboard/06_qnap_ssh/deploy_test.sh
-#    uruchamia build + re-start + status za jednym razem)
-bash bash-scripts/dashboard/06_qnap_ssh/deploy_test.sh
+# 1) Zbuduj i uruchom TEST
+bash bash-scripts/dashboard/06_qnap_test_ssh/06_deploy.sh
 
 # 2) Sprawdź TEST ręcznie / wizualnie.
 
 # 3) Wypromuj DOKŁADNIE ten sam, już przetestowany obraz na PROD — bez
-#    ponownego builda. Wymaga wpisania "PROD".
-bash bash-scripts/dashboard/06_qnap_ssh/begin_prod.sh
+#    ponownego builda (PROD nie potrafi budować). Pokazuje tag/image ID/git
+#    SHA przed potwierdzeniem. Wymaga wpisania "PROD".
+bash bash-scripts/dashboard/07_qnap_prod_ssh/06_last_from_test.sh
 ```
 
-`begin_prod.sh` woła `05_qnap_prod/03_re-start.sh`, które czyta ten sam plik
-`.image-tag.chad-dashboard.env` zapisany przez krok 1 — nie ma tam żadnego
-buildu.
+`06_last_from_test.sh` odczytuje obraz **aktualnie uruchomiony** na
+`chad-dashboard-test` (nie tylko plik tagu), zapisuje
+`.image-tag.chad-dashboard.env` na tę samą wartość (jawne potwierdzenie
+zamiast domyślnego współdzielenia pliku), po czym woła
+`05_qnap_prod/03_restart.sh` — nie ma tam żadnego buildu.
 
 ### Weryfikacja, że TEST i PROD mają ten sam obraz
 
@@ -135,29 +140,30 @@ a `docker images` — jeden wiersz z tym tagiem, bez `latest`.
 
 ## Content Provider (shared)
 
-`00_qnap_shared/02_build.sh` / `03_re-start.sh` używają dokładnie tego samego
+`00_qnap_shared/02_build.sh` / `03_restart.sh` używają dokładnie tego samego
 mechanizmu, plik `.image-tag.chad-content-provider-api.env`. CP jest
 zbudowany rzadziej niż dashboard (osobny cykl release'u) — ten sam wzorzec
 mimo to.
 
 ## Local Mac Docker
 
-`03_local_mac_docker/03_build.sh` buduje OBA obrazy w jednym wywołaniu i
+`03_local_mac_docker/02_build.sh` buduje OBA obrazy w jednym wywołaniu i
 zapisuje OBA pliki tagów (ten sam znacznik czasowy dla obu, bo budowane razem).
-`04_re-start.sh` wymaga obu przed `docker compose up`.
+`03_restart.sh` wymaga obu przed `docker compose up`. (To jest lokalny,
+jednoplikowy stack — TEST/PROD-owa reguła "PROD nie buduje" go nie dotyczy.)
 
 ## Jak wymusić rebuild zamiast promocji
 
-Czasem chcesz faktycznie zbudować nową wersję zamiast promować już
-zbudowaną — po prostu uruchom `06_deploy.sh` (build+re-start+status) dla
-docelowego środowiska zamiast samego `03_re-start.sh`/`begin_*.sh`:
+Jedyne miejsce, gdzie można faktycznie zbudować nową wersję `chad-dashboard`,
+to TEST — uruchom `06_deploy.sh` (build+restart+status) tam:
 
 ```bash
-bash bash-scripts/dashboard/06_qnap_ssh/deploy_prod.sh   # buduje NOWY obraz i od razu go uruchamia na PROD
+bash bash-scripts/dashboard/06_qnap_test_ssh/06_deploy.sh   # buduje NOWY obraz i od razu go uruchamia na TEST
 ```
 
-To nadpisze `.image-tag.chad-dashboard.env` nowym znacznikiem — kolejne
-`begin_test.sh` też zacznie go używać.
+To nadpisze `.image-tag.chad-dashboard.env` nowym znacznikiem. PROD
+**nigdy** nie dostaje nowej wersji automatycznie — trzeba świadomie
+uruchomić `07_qnap_prod_ssh/06_last_from_test.sh`, które go promuje.
 
 ## Diagnostyka vs. jednorazowa naprawa vs. proces docelowy
 
