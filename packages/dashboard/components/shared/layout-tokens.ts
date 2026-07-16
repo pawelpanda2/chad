@@ -28,6 +28,15 @@ export const FRAME_SECTION_GAP_CLASS = "gap-[10px]";
 export const FRAME_SECTION_SPACE_Y_CLASS = "space-y-[10px]";
 
 /**
+ * Internal padding for the top frame that holds a page's Save/Create
+ * button (with or without a generated-name field). Deliberately tighter
+ * than a regular content frame's own padding (`p-4`/`p-3`) — a Save
+ * frame's content is short and close to the frame's edge on purpose
+ * (Story 62 Round 4).
+ */
+export const SAVE_FRAME_PADDING_CLASS = "p-[8px]";
+
+/**
  * Fixed width for an editable table's leading action column (pencil/save
  * icons, spinner, "Saved" label). Must stay constant across every state so
  * the column never changes width — apply to both the header cell and every

@@ -98,6 +98,9 @@ nobody has to re-discover the finding):
 | 24 | DONE     |             | ADD ACTION: redundant "(auto-generated)" label text removed, both inner frames left-anchored to a 500px default width instead of stretching full-width |
 | 25 | DONE     |             | STATUSES (matrix + migration list), Views (LEADS, REPORTS, DAILY TRACKER/DATES), MSG TODO, MSG PLANNER, USERS: page-specific controls (`toolbarSecondRow`) moved from floating above the outer frame into a row inside it, directly above the content's inner frame, with the standard gap between them |
 | 26 | DONE     |             | MESSAGES, LOGIN: fixed the same 0px/3px gap regression as Task 20 (`padded={false}` with no compensating padding on MESSAGES; a literal `p-[3px]` on LOGIN) |
+| 27 | DONE     |             | ADD DAILY ENTRY: the green "Saved" indicator now appears inline next to the Save button (was rendering at the bottom, below the whole table, easy to miss without scrolling); a minimum-visible "Saving..." duration keeps the transition smooth even when the round trip is near-instant |
+| 28 | N/A      |             | "Failed to fetch" after the post-save redirect to DAILY TRACKER — investigated, not caused by this Story's code (see write-up): a stale browser tab left open from before this session's own redeploy, not a reproducible bug |
+| 29 | DONE     |             | ADD ACTION: "Title" label removed entirely (not just "(auto-generated)"); Save-frame padding standardized to 8px across every page with a Save button (ADD REPORT, ADD ACTION, ADD DAILY ENTRY, ADD DATE, ADD LEAD, STATUSES editor) |
 
 # Task 1 — SETTINGS: single frame, ~3px gap, title in row 1
 
@@ -834,4 +837,115 @@ div wrapping its inner frame — changed to `p-[10px]`.
 is unauthenticated so wasn't in that same script run, but was checked
 directly: the `p-[3px]` string no longer exists in the file, confirmed via
 `grep`, matching the other pages' fix pattern exactly).
+**Status: DONE**
+
+**Round 4 (post-deploy follow-up) — inline save feedback, one page-specific
+UI cleanup, and an investigated (not code-caused) "Failed to fetch"
+report.** Three separate asks in one turn: bring back a green "saved"
+confirmation next to ADD DAILY ENTRY's Save button (it existed before but
+had drifted to the bottom of the page, below the whole table); investigate
+a "Failed to fetch" error the user hit right after being redirected to
+DAILY TRACKER; and, in a follow-up message, remove ADD ACTION's now-
+redundant "Title" label entirely and tighten Save-frame padding to 8px
+everywhere a Save button has one.
+
+# Task 27 — ADD DAILY ENTRY: inline save indicator + smooth minimum delay
+
+**Requested:** the green "successfully saved" text that used to appear
+after clicking Save should render right next to the Save button, not
+wherever it currently shows; if the save happens very fast, add a slight
+delay so the transition still looks smooth rather than flashing.
+**Done:** moved the `submitResult` success/error indicator from its old
+position (a separate block below the entire form/table, `mt-3`, easy to
+miss without scrolling past a 16-row table) into the Save frame itself, as
+a compact inline `<span>` next to the button — success in green with a
+checkmark, error in red with an alert icon. Shortened the success message
+from the old full sentence (`DAILY ENTRY saved as "X"! Path: views/daily`)
+to `Saved as "X"!`, since it now sits directly next to a button labeled
+"Save" and doesn't need to restate the form name or repeat a path nobody
+reads inline. Added a `MIN_SAVE_INDICATOR_MS = 450` floor: if the
+`fetch()` round trip resolves faster than that, the code awaits the
+remaining time before flipping from "Saving..." to the success indicator,
+so the button always visibly spends some time in its loading state instead
+of the label changing twice in the same frame. The existing 1200ms
+display-then-redirect timer (unchanged) still gives the user time to
+actually read the message before being sent to DAILY TRACKER.
+**Files changed:** `app/(dashboard)/dashboard/forms/page.tsx`.
+**Tested:** Real Playwright run against the running stack: filled STATE,
+clicked Save, screenshotted at +250ms (button reads "Saving...", frame
+otherwise unchanged) and again at +650ms (button reads "Save" again, green
+"Saved as "07"!" indicator visible directly to its right) before the
+1200ms redirect fired. Confirmed via a follow-up `GET /api/views` call
+that the entry was really persisted (itemName `"07"`, `STATE:
+"round4-test"`) — not just a UI-only success message.
+**Status: DONE**
+
+# Task 28 — "Failed to fetch" after the post-save redirect — investigated
+
+**Requested:** the user hit `error: Failed to fetch` right after being
+redirected to DAILY TRACKER following a Daily Entry save, and asked to
+find out why and fix it.
+**Investigated:** reproduced the exact same flow (fill ADD DAILY ENTRY →
+Save → wait for the redirect to `DAILY TRACKER`) twice via a fresh
+Playwright browser context against the running stack, with full
+request/response/console logging — both times every request
+(`/api/forms/daily-entry`, `/api/views`, `/api/views/reports`,
+`/api/leads-dashboard`) returned `200` with no client-side errors, and
+`docker logs` for the dashboard container over the same window shows no
+server-side failures either — every request that hit the backend
+succeeded. This, plus the timing (I had redeployed the dashboard image
+earlier in this same Round, changing the build's JS chunk hashes), points
+to the standard "stale tab after a redeploy" class of error: a browser tab
+that already had the previous build's JS loaded in memory, doing a
+client-side navigation (`router.push`) that tries to fetch a page-segment
+resource whose hash no longer exists on the freshly-redeployed server —
+the browser's `fetch()` throws the generic `TypeError: Failed to fetch`
+for that, unrelated to any application code. Not something introduced by
+this Story's changes (no commit this round touched `views/page.tsx`'s data
+loading, `forms/page.tsx`'s submit handler's fetch call, or any API route
+under `/api/views`/`/api/forms`) — a one-time side effect of me
+redeploying while the user's tab was already open, not a reproducible bug.
+**Done:** no code change — a global "reload on any fetch failure" handler
+was considered and deliberately not added, since ordinary application
+fetches (e.g. `views/page.tsx`'s own `fetchData()`) throw the exact same
+`"Failed to fetch"` message on a real network/backend problem (like the
+already-known, pre-existing `kamil_s` Content Provider issue), and a
+blanket auto-reload would silently mask that class of real error behind
+an unexplained page refresh instead of showing the user anything. The
+correct remedy for this class of issue is a normal hard refresh of the
+tab, which resolves it because the browser then re-fetches the current
+(matching) build. **Reported back to the user rather than silently
+"fixed."**
+**Files changed:** none.
+**Tested:** two independent Playwright repro attempts (fresh browser
+context each time) — zero errors both times; `docker logs` cross-checked
+over the same window — no server-side failures logged.
+**Status: N/A (investigated, not a code bug — see write-up)**
+
+# Task 29 — ADD ACTION "Title" label removed; Save-frame padding standardized to 8px
+
+**Requested:** the "Title" label above ADD ACTION's generated-name field
+is unnecessary now that the field is a locked, greyed input (Task 24
+already dropped the "(auto-generated)" part of the same label) — remove
+it entirely; also reduce the internal padding between the Save button and
+its enclosing frame to 8px, on this page and everywhere else a Save
+button has its own frame.
+**Done:** removed the `<Label>Title</Label>` element from ADD ACTION's
+Save frame (the input's own greyed/locked styling already makes clear
+what it is, same as it does on ADD LEAD). Added a new
+`SAVE_FRAME_PADDING_CLASS = "p-[8px]"` token to `layout-tokens.ts` and
+applied it to every frame that holds a Save/Create button in place of
+its previous `p-4`/`p-3`: ADD REPORT, ADD ACTION, ADD DAILY ENTRY, ADD
+DATE, ADD LEAD, and STATUSES' per-lead editor (Save/Cancel + identity).
+Frames that hold the *rest* of a form's fields (not the Save button
+itself) were left at their existing `p-4`, since only the Save frame's
+padding was asked to change.
+**Files changed:** `components/shared/layout-tokens.ts`;
+`app/(dashboard)/dashboard/forms/page.tsx`;
+`app/(dashboard)/dashboard/statuses/page.tsx`.
+**Tested:** Real Playwright screenshot of ADD ACTION against the running
+stack — confirms the "Title" label is gone and the Save frame is visibly
+tighter than before (Round 3's screenshot for comparison); `tsc
+--noEmit`/`eslint`/`next build` all clean; deployed to local-mac-docker
+and re-verified live.
 **Status: DONE**
