@@ -572,7 +572,7 @@ function StatusesPageContent() {
       <DashboardPageShell
         contentClassName={FRAME_SECTION_GAP_CLASS}
         upLevel={{ onClick: closeEditor, label: "Back to list" }}
-        title="STATUSES"
+        title="Statuses"
       >
             {/* Top frame: Save/Cancel + lead identity, left-aligned (Story 62
                 standard: save controls at the top). */}
@@ -708,7 +708,7 @@ function StatusesPageContent() {
     return (
       <DashboardPageShell
         contentClassName={cn(FRAME_SECTION_GAP_CLASS, "overscroll-contain overflow-x-auto")}
-        title="STATUSES"
+        title="Statuses"
       >
         {/* Page-specific controls now live inside the main frame, not above
             it (Story 62 Round 3: toolbarSecondRow floated disconnected from
@@ -978,7 +978,7 @@ function StatusesPageContent() {
 
   return (
     <DashboardPageShell
-      title="STATUSES"
+      title="Statuses"
       contentClassName={FRAME_SECTION_GAP_CLASS}
     >
       <div className="flex shrink-0 flex-wrap items-center gap-3">

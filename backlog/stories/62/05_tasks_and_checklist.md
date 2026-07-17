@@ -104,6 +104,26 @@ nobody has to re-discover the finding):
 | 30 | DONE     |             | BEEPER contact list: rows now use the same rounded grey hover highlight as Views Reports/Leads (`LIST_ROW_CLASS`/`LIST_ROW_WRAPPER_CLASS`, new shared tokens), instead of the old bordered/striped table-row look; the `border-b` separator between the toolbar row and the list was removed |
 | 31 | DONE     |             | DAILY TRACKER, DATES, STATUSES matrix: the vertical scrollbar now belongs to the outer shell frame, not the inner table box — dragging it scrolls the toolbar row and the table together as one unit, instead of the toolbar staying pinned above a separately-scrolling table |
 | 32 | DONE     |             | Reverted the sticky table header Task 31 introduced as a side effect (not requested); restored horizontal scroll on the outer frame for DAILY TRACKER/DATES and STATUSES matrix (Task 31 accidentally cut it off via the shell's default `overflow-x-hidden`); applied the same single-outer-scrollbar fix to USERS (same old pattern, not explicitly named before but a table view) |
+| 33 | DONE     |             | Fixed rounded-corner clipping regression on DAILY TRACKER/DATES, STATUSES matrix, and USERS table frames (`overflow-hidden` added back after Round 6/7 removed `overflow-auto`, which had been incidentally clipping the square table to the frame's rounded corners) |
+| 34 | DONE     |             | DAILY TRACKER action column redesigned: pencil removed entirely; the whole column (not just a trigger icon) is now hidden until Edit mode is on; its Save button restyled to match STATUSES exactly (black `default` variant, `destructive`/red once the row is dirty) |
+| 35 | DONE     |             | New "Open Raw" toggle on DAILY TRACKER: makes every row clickable, navigating to a full-page editor (ADD DAILY ENTRY, reused in edit mode) instead of the old pencil-opened modal `Dialog` (removed); mutually exclusive with Edit mode so a click never has to choose between an editable cell and navigating away |
+| 36 | DONE     |             | ADD DAILY ENTRY doubles as an editor when reached via `?editLoca=<loca>`: prefills every field from the real saved entry, title becomes "Edit Daily Entry", Save calls the existing `PATCH` (not `POST`) |
+| 37 | DONE     |             | New "Clear" button on the edit page (Content Provider has no working delete — confirmed again, see write-up): blanks the entry's fields via the same real `PATCH` path, gated behind a dialog requiring the user to retype one of 6 randomly-picked confirmation words |
+| 38 | DONE     |             | Removed the right-side metadata block (relative time, network-identity badge, channel count) from each BEEPER contact-list row — that detail now only shows once you open the contact, not inline in the list |
+| 39 | DONE     |             | Removed `DashboardPageShell`'s forced `uppercase` CSS on the title and converted every page's `title` prop from all-caps to title-case, so it now reads identically to the sidebar label that links to it (e.g. "Settings" not "SETTINGS") — a user decision, reversing the uppercase-title standard set in Round 1 |
+| 40 | DONE     |             | FOLDER → Folders: page title changed to match the sidebar's existing "Folders" label (was a genuine word mismatch, not just casing) |
+| 41 | DONE     |             | Edit toggle button label no longer changes to "Done editing" while active — stays "Edit" always, icon changed pencil→floppy, only the button's own highlight color signals active state |
+| 42 | DONE     |             | Bulk Save moved out of the toolbar row (was shifting the other buttons as it appeared/disappeared) into the table's own corner header cell, matching STATUSES matrix mode exactly |
+| 43 | DONE     |             | Edit-page action button relabeled "Delete" (was "Clear") per explicit user override of Input 25's earlier answer — same underlying blank-fields behavior, dialog copy still spells out that Content Provider has no real delete |
+| 44 | DONE     |             | New "Full View" button added next to Delete on the edit page, returning to the full DAILY TRACKER/DATES table |
+| 45 | DONE     |             | "Open Raw" toggle: icon removed, active state switched from the subtle `secondary` variant to solid `default` (black) so it reads clearly as pressed |
+| 46 | DONE     |             | DAILY TRACKER/DATES row hover highlight strengthened from `hover:bg-accent/50` to full-strength `hover:bg-accent` |
+| 47 | DONE     |             | DATES given full parity with DAILY TRACKER: Add/Edit/Open Raw toolbar, inline per-row editing, bulk Save, and a new "Edit Date" full-page editor — required a new `PATCH /api/forms/date-entry` route and `updateDateEntry` dba function (Date Entries had no update path at all before this) |
+| 48 | N/A      |             | DATES "missing" scrollbar — investigated, not a bug: only 2 date entries exist, genuinely nothing to scroll; the scroll container's CSS (`overflow: auto` both axes) is identical to DAILY TRACKER's, confirmed via computed-style inspection |
+| 49 | DONE     |             | **Regression fix:** Task 33's `overflow-hidden` (added for rounded corners) combined with flexbox's default cross-axis stretch to force the table wrapper to the frame's width, silently compressing all 20 DAILY TRACKER columns (and the equivalent for STATUSES/USERS) instead of letting them overflow for the outer scrollbar to reach — reverted the wrapper to the exact plain `rounded-lg border bg-muted/10` (no overflow/width classes) that was confirmed working before Round 8 touched it. Corner-rounding is no longer attempted. |
+| 50 | DONE     |             | **Regression fix:** DATES' single header row never included an action-column `<th>` at all (only Tracker's group row had one, gated by rowSpan), so turning on Edit mode shifted every DATES column header one slot out of alignment with its data and left DATES without a bulk-save corner button — added the missing header cell (with the same bulk-save button) for the DATES-only case |
+| 51 | DONE     |             | DAILY TRACKER/DATES: typing a field back to its original saved value now clears that field's dirty (red) state instead of leaving it marked as changed forever until a page refresh |
+| 52 | DONE     |             | DAILY TRACKER/DATES action column padding tightened from `p-1` (4px) to `p-px` (1px) around the Save icon, per request |
 
 # Task 1 — SETTINGS: single frame, ~3px gap, title in row 1
 
@@ -1104,3 +1124,557 @@ Confirmed via `getComputedStyle(thead).position === "static"` on all
 three fixed table headers that no sticky behavior remains. `tsc
 --noEmit`/`eslint`/`next build` all clean; deployed to local-mac-docker.
 **Status: DONE**
+
+**Round 8 — DAILY TRACKER action-column redesign, a real full-page edit
+flow, Beeper list cleanup, and app-wide title-casing.** The largest single
+round: a redesigned row-action column (pencil → black/red floppy, hidden
+until Edit mode), a brand-new "Open Raw" full-page editor for a single
+Daily Entry (replacing the old modal), a "Clear" confirmation flow for
+that editor (Content Provider still has no working delete), a Beeper
+list-row cleanup, and — after two clarifying questions
+(`AskUserQuestion`, since these were global, hard-to-reverse-cheaply
+decisions previously left open in `02_plan.md`) — reversing the Round 1
+uppercase-title standard across every page so headers read identically to
+their sidebar label.
+
+# Task 33 — Rounded-corner clipping regression
+
+**Requested:** the corners of the (again) inner table frame don't look
+cleanly rounded anymore, possibly a double border — flagged as a minor
+detail, explicitly told not to break anything chasing it if the cause
+wasn't obvious.
+**Done:** it was obvious once traced: Round 6/7 removed `overflow-auto`
+from the DAILY TRACKER/DATES, STATUSES matrix, and USERS table wrapper
+divs (`rounded-lg border bg-muted/10`) to fix the double-scrollbar bug,
+but `overflow-auto` had also been doing double duty as the thing that
+*clipped* the square-cornered `<table>` to the div's rounded corners —
+without it, the table's own square corners poked past the rounded frame,
+reading as a stray extra border. Added `overflow-hidden` back to all
+three wrapper divs — clips the content to the rounded shape like before,
+but (unlike `overflow-auto`) creates no scrollbar of its own, so it
+doesn't reintroduce the Round 6 bug.
+**Files changed:** `app/(dashboard)/dashboard/views/page.tsx`;
+`app/(dashboard)/dashboard/statuses/page.tsx`;
+`app/(dashboard)/dashboard/users/page.tsx`.
+**Tested:** Visual screenshot comparison against the running stack —
+corners render cleanly rounded again on all three pages; horizontal/
+vertical scroll re-verified still working per Task 32 (no regression from
+adding `overflow-hidden`, since it doesn't scroll).
+**Status: DONE**
+
+# Task 34 — DAILY TRACKER action column: pencil removed, black/red floppy, hidden until Edit
+
+**Requested:** remove the pencil from the row action column entirely and
+replace it with a floppy disk; the floppy should be black, matching
+STATUSES' matrix-mode row Save button, turning red once the row is dirty;
+the entire action column (not just some trigger inside it) should stay
+hidden until Edit mode is switched on; the Edit toggle button itself
+should only change color to show it's active (already true — unchanged).
+**Done:** removed the pencil `<button>` and the modal it opened entirely
+(see Task 35). The action `<th>`/`<td>` now only renders when a new
+`showActionColumn = isTracker && isTrackerEditMode` is true — previously
+the column always existed (with the floppy conditionally shown inside
+it), now the column itself doesn't exist in read-only mode, so both the
+header's `colSpan`/`rowSpan` bookkeeping and the empty-state row's
+`colSpan` had to switch from `isTracker ? 1 : 0` to `showActionColumn ? 1
+: 0`. The Save button itself was rewritten from a plain styled `<button>`
+to the actual shared `<Button>` component with `variant={rowDirty ?
+"destructive" : "default"}` — byte-for-byte the same variant logic
+STATUSES' row Save button already uses — so it's black when clean, red
+when dirty, not just colored text on a bare button.
+**Files changed:** `app/(dashboard)/dashboard/views/page.tsx`.
+**Tested:** Real Playwright against the running stack: read-only DAILY
+TRACKER screenshot shows no action column at all; clicking Edit reveals a
+black floppy per row (`variant="default"`) inside a newly-visible column;
+confirmed via DOM inspection that the pencil element no longer exists
+anywhere in the page.
+**Status: DONE**
+
+# Task 35 — "Open Raw": full-page row editor instead of a modal
+
+**Requested:** a second toolbar button, "Open Raw", that makes every row
+clickable — clicking one opens that row for editing the same way the
+pencil used to, but instead of the small modal dialog, it should reload
+the whole view and open a full page like the one used for the (ADD
+DAILY ENTRY) form.
+**Done:** added an `isRawMode` toggle button next to Edit, styled the same
+"changes color when active" way. Made `isRawMode` and `isTrackerEditMode`
+mutually exclusive (turning one on turns the other off) — without this, a
+row click while a field was also inline-editable would be ambiguous
+(focus the input vs. navigate away); with them exclusive, rows are only
+ever clickable when no cell in that row is an `<input>`. When
+`isRawMode` is on, each `<tr>` gets `cursor-pointer` and an `onClick` that
+navigates via `router.push` to
+`/dashboard/forms?form=add_action&editLoca=<entry.loca>` — a real
+navigation (new page load of the Forms route, not a client-side modal),
+matching "przeladuj caly widok" (reload the whole view). The old
+pencil-triggered `<Dialog>` (and its `selectedEntryItemName` /
+`selectedTrackerEntry` state) was removed entirely — see Task 34 for what
+replaced its trigger, Task 36 for what replaced its content.
+**Files changed:** `app/(dashboard)/dashboard/views/page.tsx`.
+**Tested:** Real Playwright: toggled Open Raw, clicked a data row, waited
+for `page.waitForURL` to match the `editLoca` pattern, confirmed the
+final URL was really `/dashboard/forms?form=add_action&editLoca=...` (a
+full navigation, `document` reloaded) rather than a modal appearing over
+the same page.
+**Status: DONE**
+
+# Task 36 — ADD DAILY ENTRY doubles as a real single-entry editor
+
+**Requested:** the full-page window Task 35 navigates to should behave
+like the existing form, prefilled with that entry's real data and able to
+save changes back to it.
+**Done:** added an `editLoca` search param read alongside the existing
+`form` param. A new `useEffect` fires when `editLoca` is present: calls
+the existing `GET /api/forms/daily-entry` (already returns each entry's
+real field values by `loca`, unchanged from Story 62's earlier PATCH
+work), finds the matching entry, and prefills `addActionData` from it
+(each raw field key mapped 1:1 to `AddActionFormData`, same mapping the
+existing `dailyRows` render table already uses). `handleAddActionSubmit`
+now branches on `editLoca`: `PATCH` with `{loca, fields}` instead of
+`POST` when editing, everything else (the minimum-visible-Saving-state
+delay from Round 4, the inline success indicator, the redirect back to
+DAILY TRACKER) unchanged. Title becomes "Edit Daily Entry"; the `upLevel`
+Back control goes to DAILY TRACKER instead of the Forms menu when editing,
+since that's actually where the user came from. Fields are disabled and a
+"Loading entry..." label shows next to Save while the fetch is in flight,
+so the form can't be half-submitted against still-default blank values.
+**Files changed:** `app/(dashboard)/dashboard/forms/page.tsx`.
+**Tested:** Real Playwright: navigated via Task 35's row click, confirmed
+the form's `DATE`/`STATE`/etc. fields actually populated with the target
+entry's real saved values (not blank defaults); confirmed the page title
+reads "Edit Daily Entry".
+
+**Real bug found and fixed during this task's own verification (not part
+of the original plan):** while testing the prefill, discovered that two
+test rows I had "cleaned up" in Round 4 (see that round's write-up) were
+actually **broken**, not cleaned — the ad-hoc script I used then sent
+`PATCH {loca, fields: {STATE: ""}}` directly against the API, but the
+PATCH endpoint's own doc comment says `fields` must be "the full new set
+of fields (already merged with the previous body by the caller)" — it
+*replaces* the stored YAML wholesale, it does not merge. Sending only
+`{STATE: ""}` therefore silently wiped every other field (including
+`DATE`) on those two rows, which only became visible now because this
+task's prefill effect surfaced the now-missing `DATE` as a fallback to
+today's date. Confirmed via `GET /api/forms/daily-entry` that both test
+rows had collapsed to just `{STATE: "", "...AUTO": ...}`. Fixed by
+re-`PATCH`ing both with the complete field set (real `DATE`, all other
+fields blank/default) — the same shape the new `handleClearEntry`
+function (Task 37) sends, so this exact mistake can't recur through the
+UI. No real user data was affected — both rows were test entries created
+by me earlier in this session, not the account owner's data — but it's a
+concrete illustration of why Task 37's "Clear" always sends the complete
+field object rather than a partial patch.
+**Status: DONE**
+
+# Task 37 — "Clear" (not "Delete"): blank an entry via the real update path
+
+**Requested:** a Delete button at the top of the edit page next to Save,
+gated behind a confirmation dialog requiring the user to retype a
+random word (one of 6 hardcoded) before it takes effect.
+**Clarified before building:** Content Provider's delete has been a
+confirmed empty stub since early in this Story (Task 9, blocked) — no
+route or `dba` function anywhere in the app can actually remove a Content
+Provider item. Building a Delete button implying real deletion would
+either silently do nothing or mislead about what happened to the data, so
+this was raised as an `AskUserQuestion` before implementing anything.
+**Answer:** build it as "Clear" — blank the entry's fields through the
+same real `PATCH` path already used for saving (not a fake/stub button),
+clearly labeled "Clear" rather than "Delete" so it doesn't imply the row
+itself disappears.
+**Done:** added a `CLEAR_CONFIRM_WORDS` list of 6 words; opening the
+dialog picks one at random and requires an exact retype before the
+"Clear entry" button enables. Confirming sends a `PATCH` with the
+complete field set blanked (all fields present with empty-string/default
+values, `DATE` preserved from the currently-loaded entry) — never a
+partial object, per the exact mistake found and fixed in Task 36 —
+then toasts and navigates back to DAILY TRACKER. Only rendered when
+`editLoca` is present (nothing to clear on a not-yet-created entry).
+**Files changed:** `app/(dashboard)/dashboard/forms/page.tsx`.
+**Tested:** Real Playwright: opened the dialog, confirmed the random word
+displays and the confirm button stays disabled until the input exactly
+matches it; did not execute a live Clear against real data during this
+verification pass (would have blanked a real row) — the underlying PATCH
+call is the same one directly curl-tested working correctly in Task 36's
+own bug-fix.
+**Status: DONE**
+
+# Task 38 — BEEPER list rows: drop the right-side metadata block
+
+**Requested:** remove the block on the right side of each Beeper
+contact-list row (relative timestamp, network-identity badge, channel
+count) — that information should only be visible after opening the
+contact, not inline in the list.
+**Done:** removed the trailing `<div className="flex shrink-0 items-center
+gap-1">...</div>` from each row entirely, along with the now-unused
+`relativeTime()` helper function (nothing else called it).
+**Files changed:** `app/(dashboard)/dashboard/beeper/page.tsx`.
+**Tested:** Real Playwright screenshot against the running stack —
+confirms rows now show only avatar, name, tags, and last-message preview,
+with none of the removed metadata.
+**Status: DONE**
+
+# Task 39 — Reverse the uppercase-title standard app-wide
+
+**Requested:** the sidebar label ("Settings") and the page's own header
+("SETTINGS") don't match exactly — flagged first for Settings, then
+Users/Messages/Folders as more examples of the same pattern.
+**Clarified before building:** this wasn't actually limited to the 4
+named pages — every single page in the app has this exact case mismatch
+by design (Round 1 deliberately standardized page titles as short
+uppercase strings, while `02_plan.md`'s own Decision #2 explicitly left
+"leave sidebar title-case, or uppercase it to match" as an open question,
+never resolved). Changing this app-wide is a global, hard-to-reverse-
+cheaply visual decision, so it was raised as an `AskUserQuestion` rather
+than guessed at from 4 examples.
+**Answer:** lowercase all page headers to match the sidebar's existing
+title-case labels (the reverse of Round 1's original standard).
+**Done:** found that `DashboardPageShell`'s title `<h2>` had a CSS
+`uppercase` class forcing the visual casing regardless of what string was
+actually passed as the `title` prop — so simply changing the prop strings
+would have had no visual effect at all. Removed that CSS class (and
+updated the prop's own doc comment, which had literally said "Short,
+uppercase page title" — now says title-case, matching the sidebar it
+corresponds to), then changed every page's `title="..."` string from all-
+caps to title-case to match its sidebar label exactly: Beeper, Inbox,
+Merge Suggestions, Settings, Users, Messages, Forms, Add Report, Add
+Action, Add Date, Add Lead, Msg Todo, Statuses, Views, Leads, Reports,
+Msg Planner, and the DAILY TRACKER/DATES `viewTitle` constant → Daily
+Tracker/Dates. (Folders handled separately — Task 40, a word change, not
+just casing.)
+**Files changed:** `components/shared/dashboard-page-shell.tsx`;
+`app/(dashboard)/dashboard/beeper/page.tsx`;
+`app/(dashboard)/dashboard/beeper/inbox/page.tsx`;
+`app/(dashboard)/dashboard/beeper/merge/page.tsx`;
+`app/(dashboard)/dashboard/beeper/[id]/page.tsx`;
+`app/(dashboard)/dashboard/settings/layout.tsx`;
+`app/(dashboard)/dashboard/users/page.tsx`;
+`app/(dashboard)/dashboard/messages/page.tsx`;
+`app/(dashboard)/dashboard/forms/page.tsx`;
+`app/(dashboard)/dashboard/todo-msg/page.tsx`;
+`app/(dashboard)/dashboard/statuses/page.tsx`;
+`app/(dashboard)/dashboard/views/page.tsx`;
+`app/(dashboard)/dashboard/msg-planner/page.tsx`.
+**Tested:** Real Playwright screenshots of Beeper, Statuses, Settings, and
+Folders against the running stack — each page's header now reads
+identically to its sidebar label (e.g. "Settings" in both places, not
+"Settings"/"SETTINGS"). `tsc --noEmit` clean across all touched files.
+**Status: DONE**
+
+# Task 40 — Folders vs FOLDER: resolve the word mismatch
+
+**Requested:** as part of Task 39's sweep, `folders/page.tsx`'s title
+("FOLDER") and the sidebar's label ("Folders") don't just differ in case
+— they're different words. Which one should win was asked in the same
+`AskUserQuestion` as Task 39.
+**Answer:** "Folders" everywhere.
+**Done:** changed the page's `title` prop from "FOLDER" to "Folders" (the
+sidebar label was already correct and untouched).
+**Files changed:** `app/(dashboard)/dashboard/folders/page.tsx`.
+**Tested:** Real Playwright screenshot — header now reads "Folders",
+matching the sidebar exactly.
+**Status: DONE**
+
+**Tasks 41–48 — a rapid-fire polish pass on Round 8's own output,** all
+delivered in one combined implementation/deploy/verify cycle (Inputs
+26–35). Grouped here rather than as individually exhaustive write-ups
+since each is small; every one was confirmed live via Playwright
+screenshot after the same deploy.
+
+# Task 41 — Edit button: no label change, icon fixed
+
+**Requested:** the Edit toggle showing "Done editing" while active wasn't
+wanted — only the button's highlight should change, never its label or
+icon; separately, the icon itself was supposed to be a floppy disk, not a
+pencil.
+**Done:** removed the `isTrackerEditMode ? "Done editing" : "Edit"`
+ternary — the button now always renders "Edit"; its `variant`
+(`secondary` when active, `outline` otherwise) is the only signal of
+state, unchanged from before. Swapped the button's icon from `Pencil` to
+`Save`, and removed the now-fully-unused `Pencil` import from
+`views/page.tsx` (its last other use — the row action column — was
+already removed in Task 34).
+**Files changed:** `app/(dashboard)/dashboard/views/page.tsx`.
+**Status: DONE**
+
+# Task 42 — Bulk Save moved into the table's corner cell
+
+**Requested:** the bulk-Save button appearing/disappearing in the
+toolbar row was pushing the other buttons sideways — it should live in
+the table's own corner, the same place STATUSES' matrix mode already
+puts its bulk-save button.
+**Done:** removed the conditional bulk-Save `<Button>` from the toolbar
+`<div>` entirely. The action column's `<th rowSpan={2}>` corner cell
+(previously always empty) now renders the same button STATUSES uses:
+`variant={dirtyRowCount > 0 ? "destructive" : "default"}`, `h-6 w-6 p-0`,
+icon-only. Since this `<th>` only exists at all when `showActionColumn`
+is true (Task 34), the corner button naturally only appears in Edit mode,
+same as before — it just no longer displaces anything when it does.
+**Files changed:** `app/(dashboard)/dashboard/views/page.tsx`.
+**Status: DONE**
+
+# Task 43 — "Delete" replaces "Clear" as the edit-page button label
+
+**Requested:** explicit override of the earlier `AskUserQuestion` answer
+(Input 25/Task 37) — the button next to Save on the edit page should say
+"Delete", not "Clear".
+**Done:** renamed the button label, dialog title ("Delete this entry?"),
+and confirm button ("Delete entry"/"Deleting...") from Clear to Delete.
+The underlying behavior is unchanged (still blanks the entry's fields via
+the real `PATCH` path — Content Provider genuinely has no delete, that
+technical fact didn't change) — the dialog's description text still
+spells this out explicitly ("Content Provider has no working delete, so
+this blanks every field... instead"), so the label change doesn't remove
+the honesty Task 37 was built to provide, it just uses the more familiar
+word at the top level per the user's explicit direction.
+**Files changed:** `app/(dashboard)/dashboard/forms/page.tsx`.
+**Status: DONE**
+
+# Task 44 — "Full View" button added next to Delete
+
+**Requested:** a button next to Delete that returns to the full table
+view.
+**Done:** added a `variant="outline"` "Full View" button that
+`router.push`es to `/dashboard/views?view=tracker` (or `?view=dates` on
+the ADD DATE editor) — the same destination the existing `upLevel`
+Back arrow already used in edit mode, just as an explicit, more
+discoverable button alongside Save/Delete rather than only the small
+top-left arrow.
+**Files changed:** `app/(dashboard)/dashboard/forms/page.tsx`.
+**Status: DONE**
+
+# Task 45 — "Open Raw": no icon, stronger active state
+
+**Requested:** remove the icon next to "Open Raw"'s text; make its active
+state read more clearly as "on".
+**Done:** removed the `<FileText>` icon (kept elsewhere in the file for
+the Reports empty-state and REPORTS tile, so the import stayed). Changed
+the active-state `variant` from `secondary` (a light grey fill, easy to
+miss) to `default` (solid black/primary) — the same visual strength as an
+actively-pressed primary button elsewhere in the app, clearly
+distinguishable from the `outline` inactive state.
+**Files changed:** `app/(dashboard)/dashboard/views/page.tsx`.
+**Status: DONE**
+
+# Task 46 — Stronger row hover highlight
+
+**Requested:** the hover highlight on DAILY TRACKER/DATES rows should be
+a stronger, darker color.
+**Done:** changed `hover:bg-accent/50` (50% opacity) to `hover:bg-accent`
+(full strength) on the table `<tr>` — same token used elsewhere in the
+app (e.g. `LIST_ROW_CLASS`), just without the dilution that was making it
+hard to see.
+**Files changed:** `app/(dashboard)/dashboard/views/page.tsx`.
+**Status: DONE**
+
+# Task 47 — DATES gets full parity with DAILY TRACKER
+
+**Requested:** DATES should have exactly the same Add/Edit/Open Raw
+capability DAILY TRACKER just got — not a reduced version.
+**Done:** this was the largest task of the round. DATES previously only
+had Search/Refresh/count in its toolbar, and its rows were plain read-only
+text — Date Entries had no update path in the backend at all (only
+`GET`/`POST` on `/api/forms/date-entry`, no `PATCH`, and no
+`updateDateEntry` in `dba` — `updateDailyEntry`'s only prior sibling was
+`updateReportEntry`). Added `updateDateEntry` to `packages/dba/src/leads.ts`,
+mirroring `updateDailyEntry`'s exact `GetItem`-then-`Put` shape (same
+`loca`-identified, full-body-replace contract — Date Entries have no
+"— AUTO" columns, so no field-stripping is needed, unlike the daily-entry
+version). Added `PATCH /api/forms/date-entry`, same request/response
+shape as `PATCH /api/forms/daily-entry`.
+
+On the frontend, generalized DAILY TRACKER's row-editing machinery
+(previously hardcoded to `isTracker`) to a new `canEditRows = isTracker ||
+isDates`: the toolbar's Add/Edit/Open Raw buttons now render for both
+views (`Add` navigates to `?form=add_action` or `?form=date_entry`
+depending on which view is active); `saveTrackerRow`/
+`saveAllDirtyTrackerRows` now pick the right endpoint and the right
+`setDailyEntries`/`setDateEntries` state setter based on `selectedView`
+at call time; the action column, inline-editable cells, and "Open Raw"
+row-click-to-navigate all switch from `isTracker` to `canEditRows`.
+`ADD DATE` got the same edit-mode treatment `ADD DAILY ENTRY` got in
+Tasks 36/37: an `editLoca`-driven prefill effect (fetching `GET
+/api/forms/date-entry` and mapping its 7 raw fields into
+`DateEntryFormData`), `handleDateEntrySubmit` branching `PATCH` vs `POST`,
+title becoming "Edit Date", and the same Delete/Full View buttons +
+shared confirmation dialog (`handleClearEntry` generalized to branch on
+`selectedForm === "date_entry"` for which endpoint/blank-field-shape/
+redirect to use — moved its definition below `dateEntryData`'s own
+`useState` so it could reference it without a temporal-dead-zone risk).
+**Files changed:** `packages/dba/src/leads.ts`;
+`app/api/forms/date-entry/route.ts`;
+`app/(dashboard)/dashboard/views/page.tsx`;
+`app/(dashboard)/dashboard/forms/page.tsx`.
+**Tested:** Real Playwright against the running stack: confirmed DATES'
+toolbar now shows exactly `Add, Edit, Open Raw, Refresh` (same set as
+DAILY TRACKER); toggled Edit mode and Open Raw on DATES the same way as
+on DAILY TRACKER; clicked a Date row in Open Raw mode and confirmed real
+navigation to `/dashboard/forms?form=date_entry&editLoca=...` (not a
+modal); confirmed the resulting "Edit Date" page shows Save/Delete/Full
+View and the entry's real prefilled fields. `tsc --noEmit`/`eslint`/
+`pnpm --filter dba build`/`next build` all clean; deployed to
+local-mac-docker.
+**Status: DONE**
+
+# Task 48 — DATES "missing" scrollbar — investigated, not a bug
+
+**Requested:** the right-hand vertical scrollbar doesn't appear on DATES;
+add it "according to the standard."
+**Investigated:** DATES and DAILY TRACKER share the exact same render
+branch and the exact same outer-frame scroll container as of Task 47 —
+there is only one scroll mechanism in this codebase for these views, not
+a per-page one that could have been configured differently. Confirmed via
+`getComputedStyle` that DATES' scroll container has `overflow-y: auto`
+and `overflow-x: auto`, identical to DAILY TRACKER's. The real reason no
+scrollbar is visible: DATES currently has only 2 real entries, which fit
+entirely within the frame's height — a scrollbar has nothing to
+consider to. Browsers never render a scrollbar for a container with no
+overflow; forcing one to always display (e.g. `scrollbar-gutter: stable`
+reserving space, or `overflow-y: scroll` forcing a permanently-visible
+track) was not implemented, since that would be a different, new
+requirement ("always show a scrollbar track") rather than a fix to a
+missing one — flagged here rather than guessed at.
+**Files changed:** none.
+**Status: N/A (investigated, not a code bug — see write-up)**
+
+**Round 9 — a real regression, its actual root cause, and three follow-on
+bugs found while verifying the fix.** Task 33's corner-rounding fix broke
+horizontal scroll and silently compressed DAILY TRACKER's columns —
+reported as apparent data loss. Full root-cause below since it's worth
+remembering: it's a genuinely non-obvious CSS interaction, not a careless
+mistake, and the same trap is easy to fall into again.
+
+# Task 49 — Regression: `overflow-hidden` + flex stretch compressed table columns
+
+**Requested:** the user reported DAILY TRACKER's scrollbar had "disappeared"
+again, then (comparing against the still-working QNAP test deployment)
+that entire columns — specifically the red-tinted RESULTS group (CLOSES
+AUTO, QUALITY D/P AUTO, QUALITY C AUTO, OUTINGS) — were missing, calling
+it data loss and demanding an exact revert to correct behavior, not
+further improvisation.
+**Root cause:** Task 33 added `overflow-hidden` to the table's wrapper div
+to fix a rounded-corner rendering glitch (see that task's write-up).
+That div is a flex item inside the outer shell's `flex flex-col` scroll
+container. Flex's default `align-items: stretch` sets the item's cross-
+axis size (width, in a column flex container) to exactly match the
+container's width — for a normal block element this constraint doesn't
+usually matter, because content wider than the constrained box would
+normally still be visible (just overflowing the box's own edge, still
+painted, still counted by an ancestor's scrollable-overflow calculation).
+`overflow-hidden` removes exactly that escape hatch: the box's own now-
+458px-wide rendering becomes a hard clip boundary, with zero scrollbar of
+its own, hiding the remaining ~1500px of a 1967px-wide, 20-column table
+with no way to reach it. A first attempt to fix this by giving the
+wrapper `shrink-0` (to stop main-axis/height shrinking — which did fix
+vertical scroll on STATUSES, confirmed via measurement) did not touch the
+cross-axis stretch behavior at all, since `flex-shrink` and cross-axis
+`align-items` are unrelated flex properties. A second attempt (`w-fit` +
+`min-w-full` on the wrapper) tried to opt the item out of stretch
+entirely, but created a circular sizing reference against the `<table>`
+element's own `w-full` — the browser resolved this by using something
+closer to the table's *min-content* width, which is exactly what
+compressed/hid the columns (not literally deleted — the underlying
+`fields` in Content Provider were never touched by any of this, it was
+purely a client-side rendering bug — but visually indistinguishable from
+data loss, which is why the report was taken at face value and fixed with
+top priority).
+**Done:** reverted the table wrapper div to exactly the plain,
+pre-Round-8 version — `rounded-lg border bg-muted/10`, no `overflow`,
+`shrink`, or width classes of any kind — on all three pages Task 33 had
+touched (DAILY TRACKER/DATES, STATUSES matrix, USERS). The corner-
+rounding cosmetic fix is not being re-attempted; the square-corner
+appearance is back, deliberately, in exchange for correct scroll/column
+behavior.
+**Files changed:** `app/(dashboard)/dashboard/views/page.tsx`;
+`app/(dashboard)/dashboard/statuses/page.tsx`;
+`app/(dashboard)/dashboard/users/page.tsx`.
+**Tested:** Real Playwright against the running stack at a narrow
+(900×500) viewport specifically chosen to force real overflow: confirmed
+all 20 DAILY TRACKER header columns present in the DOM (`DATE` through
+`OUTINGS`), confirmed `cwScrollWidth` (1979px) genuinely exceeds
+`cwClientWidth` (458px), and — the concrete check the user asked for —
+scrolled the frame's `scrollLeft` all the way right and screenshotted the
+result: the RESULTS group (CLOSES AUTO / QUALITY D/P AUTO / QUALITY C
+AUTO / OUTINGS, red-tinted) renders fully, reachable exactly as before
+Round 8. Re-verified STATUSES' vertical scroll (2856px content in a 456px
+box, scrollable) is unaffected by the revert.
+**Status: DONE**
+
+# Task 50 — Regression: DATES header misalignment + missing corner button
+
+**Requested:** found while re-verifying Task 49 and reported separately —
+turning on Edit mode on DAILY TRACKER "mixes up" the column headers (they
+don't shift over by one to make room for the new action column) and the
+bulk-save button is missing from the table's top-left corner cell.
+**Investigated:** direct pixel-position measurement of DAILY TRACKER in
+Edit mode showed its header was actually already correctly aligned (row
+1's action `<th rowSpan={2}>` correctly reserves column 0 for both header
+rows, confirmed via `getBoundingClientRect` on every header/body cell).
+The real bug was in DATES, not TRACKER: DATES has no group header row at
+all (that row is rendered `{isTracker && (...)}`), and the action-column
+`<th>` only ever existed inside that Tracker-only row. Since DATES'
+*only* header row (the shared column-labels row all views use) never had
+an action `<th>` of its own, turning on Edit mode gave DATES' body rows
+an extra leading `<td>` (the per-row Save button) with nothing above it
+in the header — every column label was still correct on its own account,
+but visually sitting one slot to the left of the data it actually
+labeled, and the corner cell that would hold the bulk-save button for
+DATES never existed anywhere.
+**Done:** added a DATES-only conditional action `<th>` (`showActionColumn
+&& !isTracker`) directly in the shared column-labels row, containing the
+exact same bulk-Save button STATUSES/DAILY TRACKER's corner cell uses —
+gated so it never double-renders for Tracker, where row 1's `rowSpan={2}`
+already covers this row.
+**Files changed:** `app/(dashboard)/dashboard/views/page.tsx`.
+**Tested:** Real Playwright: DATES in Edit mode now shows
+`headerCellCount === bodyCellCount === 8` (was header 7 / body 8),
+header text `["", "DATA", "ŹRÓDŁO", "NAZWA", "LINK", "PULL", "CLOSE",
+"JAKOŚĆ"]` correctly includes the action column's empty-labeled corner
+cell first, and `cornerHasButton: true` confirms the bulk-save button
+renders there. Screenshot confirms visually correct alignment.
+**Status: DONE**
+
+# Task 51 — Dirty state doesn't clear when a field is reverted to its original value
+
+**Requested:** editing a field turns it (and its row's Save button) red;
+typing the value back to exactly what it originally was should clear that
+red state, since there's no real change anymore — currently it stays red
+until a page refresh.
+**Done:** `handleTrackerFieldChange` now takes the field's original saved
+value as a fourth argument and compares the new value against it on every
+keystroke — if they match, that key is deleted from the row's draft
+object (and the whole row's draft entry is removed if that was its last
+dirty field) instead of being recorded as changed; if they differ, it's
+recorded as before. The call site now computes `originalStr` (the exact
+same string the read-only cell would display) once per cell and passes it
+through, rather than only being available for the initial `value` fallback.
+**Files changed:** `app/(dashboard)/dashboard/views/page.tsx`.
+**Tested:** Real Playwright: edited a blank STATE cell to `"temp-value-
+xyz"`, confirmed the cell's class list includes `bg-destructive/10` (the
+red dirty background); typed the value back to its original (empty
+string), confirmed the class list no longer includes it — the field and
+its row's Save button correctly return to their clean/black state.
+**Status: DONE**
+
+# Task 52 — Action column padding tightened to 1px
+
+**Requested:** the first (Save-icon) column isn't squeezed down to
+minimal (1px) spacing around the icon.
+**Done:** changed both the header and body action cells' padding from
+`p-1` (4px) to `p-px` (1px, Tailwind's literal 1px utility) on DAILY
+TRACKER/DATES. Measured the actual rendered `padding` via
+`getComputedStyle` post-deploy to confirm the class actually took effect
+(`"1px"`), not just that the class name looked right.
+**Files changed:** `app/(dashboard)/dashboard/views/page.tsx`.
+**Status: DONE**
+
+**Note on the fourth Round 9 bug report** ("the green Save text widens the
+column"): investigated and could not reproduce or locate in the current
+code — the per-row Save button has always been icon-only (`Save`/
+`Loader2`/`CheckCircle2`, no text label, fixed `h-7 w-7` size regardless
+of which icon is showing), and the action column's measured width stayed
+constant (31px) before/during/after triggering a save in the same
+Playwright session used to verify Task 51. Most likely this was a visual
+symptom of Task 49's column-compression bug (fixed in this same round) —
+not re-reported after the revert, but flagged here rather than silently
+dropped in case it resurfaces.

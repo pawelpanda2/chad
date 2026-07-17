@@ -11,6 +11,14 @@ import { cn } from "@/lib/utils";
 import { TextEditorWithToolbar } from "@/components/shared/text-editor-with-toolbar";
 import { VoiceRecordingPanel } from "@/components/shared/voice-recording-panel";
 import { ErrorBox } from "@/components/shared/error-box";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { Plus, X, CheckCircle2, AlertCircle } from "lucide-react";
 
@@ -19,6 +27,14 @@ import { Plus, X, CheckCircle2, AlertCircle } from "lucide-react";
 // ============================================================================
 
 const MIN_SAVE_INDICATOR_MS = 450;
+
+// Content Provider has no working delete anywhere in this app (confirmed
+// empty stub — see backlog/stories/62's Task 9/28 write-ups), so "Clear"
+// blanks the entry's fields via the same real PATCH path instead of
+// removing the row. One of these is picked at random each time the
+// confirmation dialog opens, so the user must actually read and retype
+// it rather than muscle-memory a fixed word (Story 62 Round 8).
+const CLEAR_CONFIRM_WORDS = ["DELETE", "CONFIRM", "CLEAR", "WYCZYSC", "USUN", "PERMANENT"];
 
 const APPROACH_KINDS = [
   { value: "p", label: "Daygame" },
@@ -231,6 +247,12 @@ function FormsPageContent() {
       ? formParam
       : null;
 
+  // ADD DAILY ENTRY doubles as an editor for an existing entry when
+  // reached with ?editLoca=<loca> (Story 62 Round 8 — DAILY TRACKER's
+  // "Open Raw" row click navigates here instead of opening a modal).
+  const editLoca = searchParams.get("editLoca");
+  const [editEntryStatus, setEditEntryStatus] = useState<"idle" | "loading" | "loaded" | "error">("idle");
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitResult, setSubmitResult] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
@@ -300,6 +322,104 @@ function FormsPageContent() {
     dates: "",
   });
 
+  // When reached via ?editLoca=..., fetch that entry's real saved fields
+  // and prefill the form instead of the blank-today defaults above — the
+  // same raw field keys the PATCH/POST payload already uses, so no
+  // reshaping needed beyond the label/key mapping `dailyRows` also uses.
+  useEffect(() => {
+    if (!editLoca || selectedForm !== "add_action") {
+      return;
+    }
+    let cancelled = false;
+    setEditEntryStatus("loading");
+    fetch("/api/forms/daily-entry")
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled) return;
+        const entry = (data.entries || []).find((e: { loca?: string }) => e.loca === editLoca);
+        if (!entry) {
+          setEditEntryStatus("error");
+          return;
+        }
+        const f: Record<string, unknown> = entry.fields || {};
+        const asStr = (v: unknown, fallback = "") => (v === undefined || v === null ? fallback : String(v));
+        setAddActionData({
+          date: asStr(f["DATE"], getTodayDate()),
+          state: asStr(f["STATE"]),
+          trainingTime: asStr(f["TRAINING TIME"]),
+          verbalExercises: asStr(f["VERBAL EXERCISES"], "NIE"),
+          infield: asStr(f["INFIELD"], "NIE"),
+          theory: asStr(f["THEORY"], "NIE"),
+          fieldReview: asStr(f["FIELD REVIEW"], "NIE"),
+          actionTime: asStr(f["ACTION TIME"]),
+          outings: asStr(f["OUTINGS"]),
+          approaches: asStr(f["APPROACHES"]),
+          longInteractions: asStr(f["LONG INTERACTIONS"]),
+          numbers: asStr(f["NUMBERS"]),
+          firstMessages: asStr(f["FIRST MESSAGES"]),
+          responses: asStr(f["RESPONSES"]),
+          datesSetUp: asStr(f["DATES SET UP"]),
+          dates: asStr(f["DATES"]),
+        });
+        setEditEntryStatus("loaded");
+      })
+      .catch(() => {
+        if (!cancelled) setEditEntryStatus("error");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [editLoca, selectedForm]);
+
+  // Same prefill pattern as above, for ADD DATE's edit mode.
+  useEffect(() => {
+    if (!editLoca || selectedForm !== "date_entry") {
+      return;
+    }
+    let cancelled = false;
+    setEditEntryStatus("loading");
+    fetch("/api/forms/date-entry")
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled) return;
+        const entry = (data.entries || []).find((e: { loca?: string }) => e.loca === editLoca);
+        if (!entry) {
+          setEditEntryStatus("error");
+          return;
+        }
+        const f: Record<string, unknown> = entry.fields || {};
+        const asStr = (v: unknown, fallback = "") => (v === undefined || v === null ? fallback : String(v));
+        setDateEntryData({
+          data: asStr(f["DATA"], getTodayDate()),
+          zrodlo: asStr(f["ŹRÓDŁO"]),
+          nazwa: asStr(f["NAZWA"]),
+          link: asStr(f["LINK"]),
+          pull: asStr(f["PULL"], "FALSE"),
+          close: asStr(f["CLOSE"], "NIE"),
+          jakosc: asStr(f["JAKOŚĆ"]),
+        });
+        setEditEntryStatus("loaded");
+      })
+      .catch(() => {
+        if (!cancelled) setEditEntryStatus("error");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [editLoca, selectedForm]);
+
+  // "Clear" confirmation dialog (edit mode only) — see CLEAR_CONFIRM_WORDS.
+  const [clearDialogOpen, setClearDialogOpen] = useState(false);
+  const [clearConfirmWord, setClearConfirmWord] = useState("");
+  const [clearConfirmInput, setClearConfirmInput] = useState("");
+  const [clearing, setClearing] = useState(false);
+
+  const openClearDialog = useCallback(() => {
+    setClearConfirmWord(CLEAR_CONFIRM_WORDS[Math.floor(Math.random() * CLEAR_CONFIRM_WORDS.length)]);
+    setClearConfirmInput("");
+    setClearDialogOpen(true);
+  }, []);
+
   // Date Entry form state
   const [dateEntryData, setDateEntryData] = useState<DateEntryFormData>({
     data: getTodayDate(),
@@ -310,6 +430,59 @@ function FormsPageContent() {
     close: "NIE",
     jakosc: "",
   });
+
+  // "Delete" (really: blank the entry's fields — see CLEAR_CONFIRM_WORDS)
+  // works the same way for both ADD DAILY ENTRY and ADD DATE's edit modes,
+  // branching on which form is currently selected.
+  const handleClearEntry = useCallback(async () => {
+    if (!editLoca || clearConfirmInput.trim() !== clearConfirmWord) return;
+    setClearing(true);
+    try {
+      const isDateForm = selectedForm === "date_entry";
+      const blankFields = isDateForm
+        ? {
+            "DATA": dateEntryData.data,
+            "ŹRÓDŁO": "",
+            "NAZWA": "",
+            "LINK": "",
+            "PULL": "FALSE",
+            "CLOSE": "NIE",
+            "JAKOŚĆ": "",
+          }
+        : {
+            "DATE": addActionData.date,
+            "STATE": "",
+            "TRAINING TIME": "",
+            "VERBAL EXERCISES": "NIE",
+            "INFIELD": "NIE",
+            "THEORY": "NIE",
+            "FIELD REVIEW": "NIE",
+            "ACTION TIME": "",
+            "OUTINGS": "",
+            "APPROACHES": "",
+            "LONG INTERACTIONS": "",
+            "NUMBERS": "",
+            "FIRST MESSAGES": "",
+            "RESPONSES": "",
+            "DATES SET UP": "",
+            "DATES": "",
+          };
+      const response = await fetch(isDateForm ? "/api/forms/date-entry" : "/api/forms/daily-entry", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ loca: editLoca, fields: blankFields }),
+      });
+      const result = await response.json();
+      if (!result.success) throw new Error(result.error || "Unknown error");
+      toast.success("Entry cleared");
+      setClearDialogOpen(false);
+      router.push(isDateForm ? "/dashboard/views?view=dates" : "/dashboard/views?view=tracker");
+    } catch (error) {
+      toast.error(`Error: ${error instanceof Error ? error.message : "Unknown error"}`);
+    } finally {
+      setClearing(false);
+    }
+  }, [editLoca, clearConfirmInput, clearConfirmWord, selectedForm, addActionData.date, dateEntryData.data, router]);
 
   // Contacts state
   const [contacts, setContacts] = useState<ContactLine[]>([]);
@@ -533,9 +706,9 @@ function FormsPageContent() {
       };
 
       const response = await fetch("/api/forms/daily-entry", {
-        method: "POST",
+        method: editLoca ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(editLoca ? { loca: editLoca, fields: payload } : payload),
       });
       const result = await response.json();
       if (result.success) {
@@ -545,11 +718,9 @@ function FormsPageContent() {
         if (elapsed < MIN_SAVE_INDICATOR_MS) {
           await new Promise((resolve) => setTimeout(resolve, MIN_SAVE_INDICATOR_MS - elapsed));
         }
-        setSubmitResult({
-          type: "success",
-          message: `Saved as "${result.itemName}"!`
-        });
-        toast.success(`DAILY ENTRY saved as "${result.itemName}"!`);
+        const successMessage = editLoca ? "Saved changes!" : `Saved as "${result.itemName}"!`;
+        setSubmitResult({ type: "success", message: successMessage });
+        toast.success(editLoca ? "Daily entry updated!" : `Daily entry saved as "${result.itemName}"!`);
         setTimeout(() => { setSubmitResult(null); resetAddActionForm(); router.push("/dashboard/views?view=tracker"); }, 1200);
       } else {
         throw new Error(result.error || "Unknown error");
@@ -566,6 +737,7 @@ function FormsPageContent() {
   const handleDateEntrySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
+    const startedAt = Date.now();
     try {
       // Build payload for date entry
       const payload = {
@@ -579,17 +751,19 @@ function FormsPageContent() {
       };
 
       const response = await fetch("/api/forms/date-entry", {
-        method: "POST",
+        method: editLoca ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(editLoca ? { loca: editLoca, fields: payload } : payload),
       });
       const result = await response.json();
       if (result.success) {
-        setSubmitResult({ 
-          type: "success", 
-          message: `DATE ENTRY saved as "${result.itemName}"! Path: ${result.path || 'views/dates'}`
-        });
-        toast.success(`DATE ENTRY saved as "${result.itemName}"!`);
+        const elapsed = Date.now() - startedAt;
+        if (elapsed < MIN_SAVE_INDICATOR_MS) {
+          await new Promise((resolve) => setTimeout(resolve, MIN_SAVE_INDICATOR_MS - elapsed));
+        }
+        const successMessage = editLoca ? "Saved changes!" : `Saved as "${result.itemName}"!`;
+        setSubmitResult({ type: "success", message: successMessage });
+        toast.success(editLoca ? "Date entry updated!" : `Date entry saved as "${result.itemName}"!`);
         setTimeout(() => { setSubmitResult(null); resetDateEntryForm(); router.push("/dashboard/views?view=dates"); }, 1200);
       } else {
         throw new Error(result.error || "Unknown error");
@@ -685,7 +859,7 @@ function FormsPageContent() {
 
   if (!selectedForm) {
     return (
-      <DashboardPageShell title="FORMS">
+      <DashboardPageShell title="Forms">
         {/*
           Fixed 4-column grid: buttons always sit on a 4-wide grid. A partial
           last row keeps each button at its column width and leaves the empty
@@ -744,7 +918,7 @@ function FormsPageContent() {
         scroll={!isReportCreated}
         contentClassName={FRAME_SECTION_GAP_CLASS}
         upLevel={{ onClick: handleFormBack }}
-        title="ADD REPORT"
+        title="Add Report"
       >
         <ErrorBox message={reportError} className="shrink-0" />
 
@@ -836,7 +1010,7 @@ function FormsPageContent() {
       <DashboardPageShell
         contentClassName={FRAME_SECTION_GAP_CLASS}
         upLevel={{ onClick: handleFormBack }}
-        title="ADD ACTION"
+        title="Add Action"
       >
             <form onSubmit={handleActionSubmit} className={FRAME_SECTION_SPACE_Y_CLASS}>
               {/* Top frame: Save + generated name, left-aligned (Story 62
@@ -930,20 +1104,54 @@ function FormsPageContent() {
       { label: "DATES", key: "dates", type: "text" },
     ];
 
+    const isEditingEntry = !!editLoca;
+    const entryStillLoading = isEditingEntry && editEntryStatus === "loading";
+    const entryLoadFailed = isEditingEntry && editEntryStatus === "error";
+
     return (
       <DashboardPageShell
         contentClassName={FRAME_SECTION_GAP_CLASS}
-        upLevel={{ onClick: handleFormBack }}
-        title="ADD DAILY ENTRY"
+        upLevel={{ onClick: isEditingEntry ? () => router.push("/dashboard/views?view=tracker") : handleFormBack }}
+        title={isEditingEntry ? "Edit Daily Entry" : "Add Daily Entry"}
       >
+            {entryLoadFailed && (
+              <ErrorBox message="Could not load this entry — it may have been changed or removed. Go back and try again." />
+            )}
             <form onSubmit={handleAddActionSubmit} className={FRAME_SECTION_SPACE_Y_CLASS}>
               {/* Save lives in its own top frame — Story 62 standard: save
                   controls always live at the top, inside the main frame,
-                  even when there's no generated-name field to group it with. */}
+                  even when there's no generated-name field to group it with.
+                  Clear (edit mode only) lives here too — Content Provider
+                  has no working delete, so this blanks the entry's fields
+                  via the same real PATCH path rather than removing the row
+                  (Story 62 Round 8). */}
               <div className={cn("flex flex-wrap items-center gap-3 max-w-[460px] rounded-lg border bg-muted/10", SAVE_FRAME_PADDING_CLASS)}>
-                <Button type="submit" disabled={isSubmitting}>
+                <Button type="submit" disabled={isSubmitting || entryStillLoading}>
                   {isSubmitting ? "Saving..." : "Save"}
                 </Button>
+                {isEditingEntry && (
+                  <>
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      disabled={entryStillLoading}
+                      onClick={openClearDialog}
+                      title="Content Provider has no working delete — this blanks the entry's fields instead of removing the row"
+                    >
+                      Delete
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => router.push("/dashboard/views?view=tracker")}
+                    >
+                      Full View
+                    </Button>
+                  </>
+                )}
+                {entryStillLoading && (
+                  <span className="text-sm text-muted-foreground">Loading entry...</span>
+                )}
                 {submitResult && (
                   <span className={`flex items-center gap-1 text-sm ${submitResult.type === "success" ? "text-green-600" : "text-red-600"}`}>
                     {submitResult.type === "success" ? <CheckCircle2 className="h-4 w-4 flex-shrink-0" /> : <AlertCircle className="h-4 w-4 flex-shrink-0" />}
@@ -967,6 +1175,7 @@ function FormsPageContent() {
                               type="date"
                               value={addActionData[row.key]}
                               onChange={(e) => setAddActionData({ ...addActionData, [row.key]: e.target.value })}
+                              disabled={entryStillLoading}
                               className="h-8 border-0 bg-transparent shadow-none focus-visible:ring-1"
                             />
                           )}
@@ -974,6 +1183,7 @@ function FormsPageContent() {
                             <select
                               value={addActionData[row.key]}
                               onChange={(e) => setAddActionData({ ...addActionData, [row.key]: e.target.value })}
+                              disabled={entryStillLoading}
                               className="h-8 w-full rounded-md border-0 bg-transparent px-1 text-sm outline-none"
                             >
                               <option value="NIE">NIE</option>
@@ -984,6 +1194,7 @@ function FormsPageContent() {
                             <Input
                               value={addActionData[row.key]}
                               onChange={(e) => setAddActionData({ ...addActionData, [row.key]: e.target.value })}
+                              disabled={entryStillLoading}
                               className="h-8 border-0 bg-transparent shadow-none text-right focus-visible:ring-1"
                             />
                           )}
@@ -994,6 +1205,48 @@ function FormsPageContent() {
                 </table>
               </div>
             </form>
+
+            {/* Delete confirmation — retype a randomly-picked word so this
+                can't be triggered by muscle memory (Story 62 Round 8). Labeled
+                "Delete" per the user's explicit choice, but Content Provider
+                still has no working delete — this really blanks the entry's
+                fields via the same PATCH path, spelled out below so nobody
+                is misled about what actually happens. */}
+            <Dialog open={clearDialogOpen} onOpenChange={(open) => !clearing && setClearDialogOpen(open)}>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Delete this entry?</DialogTitle>
+                  <DialogDescription>
+                    Content Provider has no working delete, so this blanks every field on this
+                    Daily Entry instead — the row itself stays in the table, empty. This can&apos;t
+                    be undone from here.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-2">
+                  <p className="text-sm">
+                    Type <span className="font-mono font-bold">{clearConfirmWord}</span> to confirm.
+                  </p>
+                  <Input
+                    value={clearConfirmInput}
+                    onChange={(e) => setClearConfirmInput(e.target.value)}
+                    placeholder={clearConfirmWord}
+                    autoFocus
+                  />
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setClearDialogOpen(false)} disabled={clearing}>
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    onClick={handleClearEntry}
+                    disabled={clearing || clearConfirmInput.trim() !== clearConfirmWord}
+                  >
+                    {clearing ? "Deleting..." : "Delete entry"}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
       </DashboardPageShell>
     );
   }
@@ -1003,17 +1256,53 @@ function FormsPageContent() {
   // ============================================================================
 
   if (selectedForm === "date_entry") {
+    const isEditingDateEntry = !!editLoca;
+    const dateEntryStillLoading = isEditingDateEntry && editEntryStatus === "loading";
+    const dateEntryLoadFailed = isEditingDateEntry && editEntryStatus === "error";
+
     return (
       <DashboardPageShell
         contentClassName={FRAME_SECTION_GAP_CLASS}
-        upLevel={{ onClick: handleFormBack }}
-        title="ADD DATE"
+        upLevel={{ onClick: isEditingDateEntry ? () => router.push("/dashboard/views?view=dates") : handleFormBack }}
+        title={isEditingDateEntry ? "Edit Date" : "Add Date"}
       >
+            {dateEntryLoadFailed && (
+              <ErrorBox message="Could not load this entry — it may have been changed or removed. Go back and try again." />
+            )}
             <form onSubmit={handleDateEntrySubmit} className={FRAME_SECTION_SPACE_Y_CLASS}>
-              <div className={cn("max-w-[460px] rounded-lg border bg-muted/10", SAVE_FRAME_PADDING_CLASS)}>
-                <Button type="submit" disabled={isSubmitting}>
+              <div className={cn("flex flex-wrap items-center gap-3 max-w-[460px] rounded-lg border bg-muted/10", SAVE_FRAME_PADDING_CLASS)}>
+                <Button type="submit" disabled={isSubmitting || dateEntryStillLoading}>
                   {isSubmitting ? "Saving..." : "Save"}
                 </Button>
+                {isEditingDateEntry && (
+                  <>
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      disabled={dateEntryStillLoading}
+                      onClick={openClearDialog}
+                      title="Content Provider has no working delete — this blanks the entry's fields instead of removing the row"
+                    >
+                      Delete
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => router.push("/dashboard/views?view=dates")}
+                    >
+                      Full View
+                    </Button>
+                  </>
+                )}
+                {dateEntryStillLoading && (
+                  <span className="text-sm text-muted-foreground">Loading entry...</span>
+                )}
+                {submitResult && (
+                  <span className={`flex items-center gap-1 text-sm ${submitResult.type === "success" ? "text-green-600" : "text-red-600"}`}>
+                    {submitResult.type === "success" ? <CheckCircle2 className="h-4 w-4 flex-shrink-0" /> : <AlertCircle className="h-4 w-4 flex-shrink-0" />}
+                    {submitResult.message}
+                  </span>
+                )}
               </div>
               <div className="max-w-xl rounded-lg border bg-muted/10 p-2">
               <table className="w-full border-collapse text-sm">
@@ -1025,6 +1314,7 @@ function FormsPageContent() {
                       type="date"
                       value={dateEntryData.data}
                       onChange={e => setDateEntryData({ ...dateEntryData, data: e.target.value })}
+                      disabled={dateEntryStillLoading}
                       className="h-8 border-0 bg-transparent shadow-none focus-visible:ring-1"
                     />
                   </td>
@@ -1035,6 +1325,7 @@ function FormsPageContent() {
                     <Input
                       value={dateEntryData.zrodlo}
                       onChange={e => setDateEntryData({ ...dateEntryData, zrodlo: e.target.value })}
+                      disabled={dateEntryStillLoading}
                       className="h-8 border-0 bg-transparent shadow-none text-right focus-visible:ring-1"
                     />
                   </td>
@@ -1045,6 +1336,7 @@ function FormsPageContent() {
                     <Input
                       value={dateEntryData.nazwa}
                       onChange={e => setDateEntryData({ ...dateEntryData, nazwa: e.target.value })}
+                      disabled={dateEntryStillLoading}
                       className="h-8 border-0 bg-transparent shadow-none text-right focus-visible:ring-1"
                     />
                   </td>
@@ -1055,6 +1347,7 @@ function FormsPageContent() {
                     <Input
                       value={dateEntryData.link}
                       onChange={e => setDateEntryData({ ...dateEntryData, link: e.target.value })}
+                      disabled={dateEntryStillLoading}
                       className="h-8 border-0 bg-transparent shadow-none text-right focus-visible:ring-1"
                     />
                   </td>
@@ -1066,6 +1359,7 @@ function FormsPageContent() {
                       type="checkbox"
                       checked={dateEntryData.pull === "TRUE"}
                       onChange={e => setDateEntryData({ ...dateEntryData, pull: e.target.checked ? "TRUE" : "FALSE" })}
+                      disabled={dateEntryStillLoading}
                       className="h-4 w-4 rounded border-gray-400"
                     />
                   </td>
@@ -1076,6 +1370,7 @@ function FormsPageContent() {
                     <select
                       value={dateEntryData.close}
                       onChange={e => setDateEntryData({ ...dateEntryData, close: e.target.value })}
+                      disabled={dateEntryStillLoading}
                       className="h-8 w-full rounded-md border-0 bg-transparent px-1 text-sm outline-none"
                     >
                       <option value="NIE">NIE</option>
@@ -1090,6 +1385,7 @@ function FormsPageContent() {
                     <Input
                       value={dateEntryData.jakosc}
                       onChange={e => setDateEntryData({ ...dateEntryData, jakosc: e.target.value })}
+                      disabled={dateEntryStillLoading}
                       className="h-8 border-0 bg-transparent shadow-none text-right focus-visible:ring-1"
                       placeholder="e.g. 8,0"
                     />
@@ -1099,12 +1395,44 @@ function FormsPageContent() {
               </table>
               </div>
             </form>
-        {submitResult && (
-          <div className={`mt-3 p-3 rounded-lg flex items-center gap-2 ${submitResult.type === "success" ? "bg-green-50 text-green-700 border border-green-200" : "bg-red-50 text-red-700 border border-red-200"}`}>
-            {submitResult.type === "success" ? <CheckCircle2 className="h-5 w-5 flex-shrink-0" /> : <AlertCircle className="h-5 w-5 flex-shrink-0" />}
-            <span className="text-sm">{submitResult.message}</span>
-          </div>
-        )}
+
+            {/* Delete confirmation — same shared flow as ADD DAILY ENTRY's
+                edit mode (Story 62 Round 8). */}
+            <Dialog open={clearDialogOpen} onOpenChange={(open) => !clearing && setClearDialogOpen(open)}>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Delete this entry?</DialogTitle>
+                  <DialogDescription>
+                    Content Provider has no working delete, so this blanks every field on this
+                    Date Entry instead — the row itself stays in the table, empty. This can&apos;t
+                    be undone from here.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-2">
+                  <p className="text-sm">
+                    Type <span className="font-mono font-bold">{clearConfirmWord}</span> to confirm.
+                  </p>
+                  <Input
+                    value={clearConfirmInput}
+                    onChange={(e) => setClearConfirmInput(e.target.value)}
+                    placeholder={clearConfirmWord}
+                    autoFocus
+                  />
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setClearDialogOpen(false)} disabled={clearing}>
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    onClick={handleClearEntry}
+                    disabled={clearing || clearConfirmInput.trim() !== clearConfirmWord}
+                  >
+                    {clearing ? "Deleting..." : "Delete entry"}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
       </DashboardPageShell>
     );
   }
@@ -1117,7 +1445,7 @@ function FormsPageContent() {
     <DashboardPageShell
       contentClassName={FRAME_SECTION_GAP_CLASS}
       upLevel={{ onClick: handleFormBack }}
-      title="ADD LEAD"
+      title="Add Lead"
     >
           <form onSubmit={handleLeadSubmit} className={FRAME_SECTION_SPACE_Y_CLASS}>
 

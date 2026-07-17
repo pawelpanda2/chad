@@ -1290,6 +1290,45 @@ export async function updateDailyEntry(loca: string, bodyYaml: string): Promise<
 }
 
 /**
+ * Updates an existing Date Entry's body in place, identified by its real
+ * `loca` — same `GetItem`-then-`Put` shape as `updateDailyEntry` above,
+ * for the same reasons (Story 62 Round 8: DATES gets edit-mode parity
+ * with DAILY TRACKER). No "— AUTO" fields exist on Date Entries, so no
+ * stripping is needed here.
+ *
+ * @param loca The numeric loca of the date entry item (from
+ *   `saveDateEntry`/`getAllDateEntries`)
+ * @param bodyYaml The full new YAML body content (not a partial patch —
+ *   callers should merge with the existing body themselves before calling)
+ */
+export async function updateDateEntry(loca: string, bodyYaml: string): Promise<void> {
+  const repoGuid = getCurrentRepoGuid();
+
+  const item = await invokeContentProvider([
+    "IRepoService",
+    "IItemWorker",
+    "GetItem",
+    repoGuid,
+    loca,
+  ]);
+
+  if (!item?.Settings?.name) {
+    throw new Error(`Could not find date entry at loca "${loca}" to update`);
+  }
+
+  await invokeContentProvider([
+    "IRepoService",
+    "IItemWorker",
+    "Put",
+    repoGuid,
+    loca,
+    item.Settings.type || "Text",
+    item.Settings.name,
+    bodyYaml,
+  ]);
+}
+
+/**
  * Generates the next sequential zero-padded numeric item name ("01", "02",
  * ...) that isn't already in existingNames. Item NAMES are just sequence
  * numbers, not dates — the actual date lives inside the entry's own body
