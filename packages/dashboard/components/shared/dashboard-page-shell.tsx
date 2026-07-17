@@ -6,11 +6,13 @@ interface DashboardPageShellProps {
   /** Main content rendered inside the standard rounded frame. */
   children: ReactNode;
   /**
-   * Short, uppercase page title (e.g. "SETTINGS", "DAILY TRACKER"),
-   * rendered in row 1 immediately after NavGroup (`Back`/`Forw`) — the
-   * standard row-1 order is `Back, Forw, TITLE` and nothing else. Prefer
-   * this over cramming a title into `toolbar` (Story 62). No subtitle/path
-   * — a single short string.
+   * Short page title (e.g. "Settings", "Daily Tracker"), rendered in row 1
+   * immediately after NavGroup (`Back`/`Forw`) — the standard row-1 order
+   * is `Back, Forw, Title` and nothing else. Prefer this over cramming a
+   * title into `toolbar` (Story 62). No subtitle/path — a single short
+   * string. Title-case, matching the sidebar label it corresponds to
+   * exactly (Story 62 Round 8 — was forced uppercase via CSS regardless of
+   * the string passed in, which visually diverged from the sidebar).
    */
   title?: string;
   /**
@@ -104,7 +106,7 @@ export function DashboardPageShell({
       */}
       <div className="flex min-h-9 shrink-0 flex-wrap items-center gap-x-3 gap-y-1 pl-14">
         <NavGroup upLevel={upLevel} />
-        {title && <h2 className="text-sm font-bold uppercase tracking-wide">{title}</h2>}
+        {title && <h2 className="text-sm font-bold tracking-wide">{title}</h2>}
         {toolbar}
       </div>
 

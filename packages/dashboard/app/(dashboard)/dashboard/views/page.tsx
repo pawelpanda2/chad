@@ -817,14 +817,18 @@ function ViewsPageContent() {
           render as wide/tall as the table actually is so that overflow
           bubbles up to the real scroll container above. `overflow-hidden`
           here (tried in Round 8 for rounded corners) reintroduced a
-          second, wrong scrollbar/clip point and got reverted (Round 9). */}
+          second, wrong scrollbar/clip point and got reverted (Round 9).
+          Rounded corners are instead applied per-cell (`rounded-tl-lg` etc.
+          on the actual outermost header/body cells, computed below) — pure
+          `border-radius`, no `overflow` involved, so it can't touch scroll
+          behavior at all (Round 9 second attempt). */}
       <div className="rounded-lg border bg-muted/10">
             <table className="w-full border-collapse text-xs">
               <thead>
                 {isTracker && (
                   <tr>
                     {showActionColumn && (
-                      <th rowSpan={2} className={cn("border p-px bg-muted text-center", TABLE_ACTION_COLUMN_WIDTH_CLASS)}>
+                      <th rowSpan={2} className={cn("rounded-tl-lg border p-px bg-muted text-center", TABLE_ACTION_COLUMN_WIDTH_CLASS)}>
                         {/* Bulk Save lives in the table's corner cell, matching
                             STATUSES' matrix mode — not in the toolbar, where it
                             would shift the other buttons as it appears/disappears
@@ -842,14 +846,18 @@ function ViewsPageContent() {
                       </th>
                     )}
                     <th
-                      className="border p-1 bg-muted"
+                      className={cn("border p-1 bg-muted", !showActionColumn && "rounded-tl-lg")}
                       colSpan={columns.filter((c) => c.group === "none").length}
                     />
                     {(["training", "action", "texting", "results"] as const).map((g) => (
                       <th
                         key={g}
                         colSpan={columns.filter((c) => c.group === g).length}
-                        className={`border p-1 text-center font-bold ${GROUP_HEADER_CLASS[g]}`}
+                        className={cn(
+                          "border p-1 text-center font-bold",
+                          GROUP_HEADER_CLASS[g],
+                          g === "results" && "rounded-tr-lg"
+                        )}
                       >
                         {g.toUpperCase()}
                       </th>
@@ -866,7 +874,7 @@ function ViewsPageContent() {
                       shifting every column header one slot out of place
                       whenever Edit mode revealed the action column). */}
                   {showActionColumn && !isTracker && (
-                    <th className={cn("border p-px bg-muted text-center", TABLE_ACTION_COLUMN_WIDTH_CLASS)}>
+                    <th className={cn("rounded-tl-lg border p-px bg-muted text-center", TABLE_ACTION_COLUMN_WIDTH_CLASS)}>
                       <Button
                         onClick={saveAllDirtyTrackerRows}
                         disabled={bulkSaving || dirtyRowCount === 0}
@@ -879,11 +887,19 @@ function ViewsPageContent() {
                       </Button>
                     </th>
                   )}
-                  {columns.map((col) => (
+                  {columns.map((col, colIdx) => (
                     <th
                       key={col.key}
                       onClick={() => toggleSort(col.key)}
-                      className={`border p-1.5 px-2 text-left font-semibold whitespace-nowrap cursor-pointer select-none hover:brightness-95 ${GROUP_HEADER_CLASS[col.group]}`}
+                      className={cn(
+                        "border p-1.5 px-2 text-left font-semibold whitespace-nowrap cursor-pointer select-none hover:brightness-95",
+                        GROUP_HEADER_CLASS[col.group],
+                        // Only round this row's own corners when it's the
+                        // true top row (DATES has no group row above it) —
+                        // Tracker's top row is always row 1, handled above.
+                        !isTracker && colIdx === 0 && !showActionColumn && "rounded-tl-lg",
+                        !isTracker && colIdx === columns.length - 1 && "rounded-tr-lg"
+                      )}
                     >
                       <span className="inline-flex items-center gap-1">
                         {col.label}
@@ -896,15 +912,16 @@ function ViewsPageContent() {
               <tbody>
                 {currentEntries.length === 0 ? (
                   <tr>
-                    <td colSpan={columns.length + (showActionColumn ? 1 : 0)} className="border h-8 text-center text-muted-foreground">
+                    <td colSpan={columns.length + (showActionColumn ? 1 : 0)} className="rounded-bl-lg rounded-br-lg border h-8 text-center text-muted-foreground">
                       No entries yet. Use Forms to add data.
                     </td>
                   </tr>
                 ) : (
-                  currentEntries.map((entry) => {
+                  currentEntries.map((entry, rowIdx) => {
                     const status: RowSaveStatus = rowSaveStatus[entry.itemName] || "idle";
                     const rowDirty = hasRowChanges(entry.itemName);
                     const rawClickable = canEditRows && isRawMode && !!entry.loca;
+                    const isLastRow = rowIdx === currentEntries.length - 1;
                     return (
                       <tr
                         key={entry.itemName}
@@ -912,7 +929,7 @@ function ViewsPageContent() {
                         onClick={rawClickable ? () => router.push(`/dashboard/forms?form=${addFormParam}&editLoca=${encodeURIComponent(entry.loca!)}`) : undefined}
                       >
                         {showActionColumn && (
-                          <td className={cn("border p-px text-center", TABLE_ACTION_COLUMN_WIDTH_CLASS)}>
+                          <td className={cn("border p-px text-center", isLastRow && "rounded-bl-lg", TABLE_ACTION_COLUMN_WIDTH_CLASS)}>
                             <Button
                               size="sm"
                               variant={rowDirty ? "destructive" : "default"}
@@ -932,7 +949,7 @@ function ViewsPageContent() {
                             </Button>
                           </td>
                         )}
-                        {columns.map((col) => {
+                        {columns.map((col, colIdx) => {
                           const raw = entry.body?.[col.key];
                           const isAuto = AUTO_FIELD_KEYS.has(col.key);
                           const originalStr =
@@ -941,17 +958,33 @@ function ViewsPageContent() {
                           const value = draft ?? originalStr;
                           const editable = canEditRows && isTrackerEditMode && !isAuto;
                           const dirty = canEditRows && isDirtyField(entry.itemName, col.key);
+                          // The DATE/DATA column's "YYYY-MM-DD" value doesn't
+                          // fit the general 70px minimum — give it more room
+                          // so the full date is always visible.
+                          const isDateColumn = col.key === "DATE" || col.key === "DATA";
+                          // Only the true bottom-left/bottom-right cells of
+                          // the whole table get rounded — the action column
+                          // (when present) owns bottom-left instead of this
+                          // row's own first cell.
+                          const roundBL = isLastRow && colIdx === 0 && !showActionColumn;
+                          const roundBR = isLastRow && colIdx === columns.length - 1;
                           if (editable) {
                             return (
                               <td
                                 key={col.key}
-                                className={cn("border p-0.5 px-1", dirty ? "bg-destructive/10" : CELL_CLASS[col.group])}
+                                className={cn(
+                                  "border p-0.5 px-1",
+                                  dirty ? "bg-destructive/10" : CELL_CLASS[col.group],
+                                  roundBL && "rounded-bl-lg",
+                                  roundBR && "rounded-br-lg"
+                                )}
                               >
                                 <input
                                   value={value}
                                   onChange={(e) => handleTrackerFieldChange(entry.itemName, col.key, e.target.value, originalStr)}
                                   className={cn(
-                                    "h-6 w-full min-w-[70px] max-w-[180px] rounded border-0 bg-transparent px-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring",
+                                    "h-6 w-full max-w-[180px] rounded border-0 bg-transparent px-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring",
+                                    isDateColumn ? "min-w-[100px]" : "min-w-[70px]",
                                     dirty && "text-destructive"
                                   )}
                                 />
@@ -961,7 +994,13 @@ function ViewsPageContent() {
                           return (
                             <td
                               key={col.key}
-                              className={`border p-1.5 px-2 whitespace-nowrap max-w-[180px] truncate ${CELL_CLASS[col.group]}`}
+                              className={cn(
+                                "border p-1.5 px-2 whitespace-nowrap max-w-[180px] truncate",
+                                isDateColumn && "min-w-[100px]",
+                                CELL_CLASS[col.group],
+                                roundBL && "rounded-bl-lg",
+                                roundBR && "rounded-br-lg"
+                              )}
                               title={value}
                             >
                               {value}

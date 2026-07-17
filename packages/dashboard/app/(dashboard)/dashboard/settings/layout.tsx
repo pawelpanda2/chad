@@ -88,7 +88,7 @@ interface SettingsLayoutProps {
 
 export default function SettingsLayout({ children }: SettingsLayoutProps) {
 	return (
-		<DashboardPageShell title="SETTINGS" contentClassName={FRAME_SECTION_GAP_CLASS}>
+		<DashboardPageShell title="Settings" contentClassName={FRAME_SECTION_GAP_CLASS}>
 			{/*
 				Section frames (backlog/stories/60 — page-frame standard): these
 				must read as sections INSIDE the shell's one outer frame, not as
