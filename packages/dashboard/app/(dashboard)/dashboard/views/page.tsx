@@ -188,6 +188,11 @@ function ViewsPageContent() {
   // click never has to choose between focusing an editable cell and
   // navigating away (Story 62 Round 8).
   const [isRawMode, setIsRawMode] = useState(false);
+  // Toggles a super-narrow extra column showing each row's real Content
+  // Provider item name (the sequential "01", "02", ... identifier
+  // generateEntryName assigns — not the DATE/DATA value) — independent of
+  // Edit/Open Raw mode (Story 62 Round 10).
+  const [showItemNameColumn, setShowItemNameColumn] = useState(false);
 
   const fetchData = useCallback(async () => {
     setIsLoading(true);
@@ -780,6 +785,15 @@ function ViewsPageContent() {
             >
               Open Raw
             </Button>
+            <Button
+              variant={showItemNameColumn ? "default" : "outline"}
+              size="sm"
+              className="h-7 w-7 p-0 text-xs"
+              title="Show the real Content Provider item name column (01, 02, ...)"
+              onClick={() => setShowItemNameColumn((v) => !v)}
+            >
+              n
+            </Button>
           </>
         )}
         <div className="relative">
@@ -862,6 +876,11 @@ function ViewsPageContent() {
                         </Button>
                       </th>
                     )}
+                    {showItemNameColumn && (
+                      <th rowSpan={2} className="w-[32px] border p-px bg-muted text-center text-[10px] text-muted-foreground">
+                        n
+                      </th>
+                    )}
                     <th
                       className="border p-1 bg-muted"
                       colSpan={columns.filter((c) => c.group === "none").length}
@@ -900,6 +919,11 @@ function ViewsPageContent() {
                       </Button>
                     </th>
                   )}
+                  {showItemNameColumn && !isTracker && (
+                    <th className="w-[32px] border p-px bg-muted text-center text-[10px] text-muted-foreground">
+                      n
+                    </th>
+                  )}
                   {columns.map((col) => (
                     <th
                       key={col.key}
@@ -917,7 +941,7 @@ function ViewsPageContent() {
               <tbody>
                 {currentEntries.length === 0 ? (
                   <tr>
-                    <td colSpan={columns.length + (showActionColumn ? 1 : 0)} className="border h-8 text-center text-muted-foreground">
+                    <td colSpan={columns.length + (showActionColumn ? 1 : 0) + (showItemNameColumn ? 1 : 0)} className="border h-8 text-center text-muted-foreground">
                       No entries yet. Use Forms to add data.
                     </td>
                   </tr>
@@ -951,6 +975,11 @@ function ViewsPageContent() {
                                 <Save className="h-3.5 w-3.5" />
                               )}
                             </Button>
+                          </td>
+                        )}
+                        {showItemNameColumn && (
+                          <td className="w-[32px] border p-px text-center font-mono text-[10px] text-muted-foreground">
+                            {entry.itemName}
                           </td>
                         )}
                         {columns.map((col) => {
