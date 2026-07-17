@@ -761,3 +761,161 @@ git_deploy_preflight() {
 remote_repo_head() {
   run_remote_capture "cd '$QNAP_REPO_DIR' && git rev-parse HEAD"
 }
+
+# ============================================================================
+# GHCR (GitHub Container Registry) helpers (Story 70). QNAP no longer builds
+# chad-dashboard — this is what replaces that: build+push happens LOCALLY
+# (Mac or GitHub Actions, never on QNAP), and QNAP only ever pulls. Used by
+# bash-scripts/dashboard/09_registry_test/{02_build,03_restart}.sh and
+# bash-scripts/dashboard/08_registry_prod/06_last_from_test.sh — one shared
+# implementation, not duplicated per environment. GHCR_REGISTRY/GHCR_OWNER/
+# GHCR_IMAGE are non-secret (each environment's own 01_config.sh sets them);
+# GHCR_*_TOKEN values come from .env.local (push) / .env.qnap (read) and are
+# never hardcoded here.
+# ============================================================================
+
+# Usage: ghcr_image_ref ["<tag>" | "sha256:<digest>"]
+# Prints the full GHCR reference, e.g. ghcr.io/pawelpanda2/chad-dashboard:
+# 260717_143022-abc1234, or (given a "sha256:..." value) the by-digest form
+# ghcr.io/pawelpanda2/chad-dashboard@sha256:.... With no argument, prints
+# the bare repository reference (no tag). Requires GHCR_REGISTRY/GHCR_OWNER/
+# GHCR_IMAGE already set.
+ghcr_image_ref() {
+  local ref="${1:-}"
+  if [ -z "$ref" ]; then
+    echo "${GHCR_REGISTRY}/${GHCR_OWNER}/${GHCR_IMAGE}"
+  elif [[ "$ref" == sha256:* ]]; then
+    echo "${GHCR_REGISTRY}/${GHCR_OWNER}/${GHCR_IMAGE}@${ref}"
+  else
+    echo "${GHCR_REGISTRY}/${GHCR_OWNER}/${GHCR_IMAGE}:${ref}"
+  fi
+}
+
+# Usage: ghcr_docker_login "$GHCR_REGISTRY" "$username" "$token"
+# Always via --password-stdin — the token is never a CLI argument (which
+# would leak into `ps`), never echoed, never appears in this function's own
+# log output.
+ghcr_docker_login() {
+  local registry="$1" username="$2" token="$3"
+  if [ -z "$token" ] || [ "$token" = "change_me" ]; then
+    log_error "GHCR token is missing (or still the placeholder 'change_me')."
+    log_error "  Set it in .env.local (push) or .env.qnap (read) — see that file's own comments for which GitHub token scope to create."
+    return 1
+  fi
+  if [ -z "$username" ] || [ "$username" = "change_me" ]; then
+    log_error "GHCR username is missing (or still the placeholder 'change_me')."
+    return 1
+  fi
+  log_info "Logging in to $registry as $username..."
+  if ! printf '%s' "$token" | docker login "$registry" --username "$username" --password-stdin >/dev/null 2>&1; then
+    log_error "docker login to $registry failed (bad token, wrong scope, expired token, or network issue)."
+    return 1
+  fi
+  log_ok "Logged in to $registry."
+}
+
+# Usage: TAG="$(ghcr_generate_tag)"   (requires REPO_ROOT)
+# <timestamp>-<short-git-sha> — immutable, never "latest", same YYMMDD_HHMMSS
+# timestamp convention as every other environment's own tag (see
+# image-tagging-standard.md) plus the git SHA this Story's registry flow
+# needs for traceability.
+ghcr_generate_tag() {
+  local ts sha
+  ts="$(date +'%y%m%d_%H%M%S')"
+  sha="$(git -C "$REPO_ROOT" rev-parse --short HEAD)"
+  echo "${ts}-${sha}"
+}
+
+# Usage: TAG="$(ghcr_build_tag_push)"   (requires REPO_ROOT, GHCR_* config,
+# GHCR_PUSH_USERNAME/GHCR_PUSH_TOKEN already exported; run LOCALLY — NEVER
+# on QNAP)
+# Builds chad-dashboard from the repo root using the SAME Dockerfile/target
+# every other environment's own 02_build.sh already uses (not a second
+# build definition), tags it for GHCR, records the git SHA as the same
+# org.opencontainers.image.revision OCI label Story 63 established, and
+# pushes ONLY after the build succeeds. Writes the same canonical
+# .image-tag.chad-dashboard.env file every environment already reads
+# (dashboard_image_tag_file/require_image_tag) — the registry flow doesn't
+# invent a second tag-record mechanism. Prints the resolved tag on stdout
+# (the only thing a caller should capture); everything else goes to
+# log_info/log_ok/log_error.
+ghcr_build_tag_push() {
+  require_command docker "install Docker" || return 1
+
+  local git_sha tag ref digest
+  git_sha="$(git -C "$REPO_ROOT" rev-parse HEAD)"
+  tag="$(ghcr_generate_tag)"
+  ref="$(ghcr_image_ref "$tag")"
+
+  log_info "Building $ref (commit $git_sha)..." >&2
+  if ! ( cd "$REPO_ROOT" && docker build \
+      -f packages/dashboard/Dockerfile \
+      --target runner \
+      --label "org.opencontainers.image.revision=$git_sha" \
+      -t "$ref" \
+      . ); then
+    log_error "Build failed — nothing pushed, no tag recorded." >&2
+    return 1
+  fi
+  log_ok "Built: $ref" >&2
+
+  log_info "Pushing $ref to GHCR..." >&2
+  if ! docker push "$ref"; then
+    log_error "Push failed — image was built locally but is NOT on GHCR. Not recording this tag." >&2
+    return 1
+  fi
+
+  digest="$(docker inspect --format='{{index .RepoDigests 0}}' "$ref" 2>/dev/null | sed 's/.*@//')"
+  log_ok "Pushed: $ref" >&2
+  log_info "Digest: ${digest:-unknown}" >&2
+
+  write_image_tag "$(dashboard_image_tag_file)" "$tag" >&2
+  echo "$tag"
+}
+
+# Usage: IMAGE_ID="$(ghcr_pull_and_retag "<tag_or_sha256_digest>")"  (run on
+# the QNAP host, typically via SSH)
+# Pulls the given tag (or "sha256:..." digest) from GHCR and re-tags it
+# locally as chad-dashboard:<tag> — the SAME bare local name every existing
+# compose file's `image:` field already expects
+# (docker-compose.qnap.{test,prod}.yml) — so 04_qnap_test/03_restart.sh and
+# 05_qnap_prod/03_restart.sh need ZERO changes to run it. Prints the pulled
+# image ID on stdout (the only thing a caller should capture); digest and
+# progress go to log_info/log_ok/log_error.
+ghcr_pull_and_retag() {
+  local tag_or_ref="$1"
+  local remote_ref digest image_id local_tag local_ref
+
+  remote_ref="$(ghcr_image_ref "$tag_or_ref")"
+
+  log_info "Pulling $remote_ref..." >&2
+  if ! docker pull "$remote_ref" >&2; then
+    log_error "docker pull failed for $remote_ref — check the tag/digest exists and the token is valid." >&2
+    return 1
+  fi
+
+  digest="$(docker inspect --format='{{index .RepoDigests 0}}' "$remote_ref" 2>/dev/null | sed 's/.*@//')"
+  image_id="$(docker inspect --format='{{.Id}}' "$remote_ref" 2>/dev/null)"
+  log_ok "Pulled $remote_ref" >&2
+  log_info "Digest: ${digest:-unknown}" >&2
+  log_info "Image ID: ${image_id:-unknown}" >&2
+
+  if [ -z "$image_id" ]; then
+    log_error "Could not resolve a local image ID after pulling $remote_ref — aborting rather than guessing." >&2
+    return 1
+  fi
+
+  # A digest ("sha256:...") isn't itself a valid docker tag string — reduce
+  # it to a short, tag-safe form for the local re-tag; a plain tag is used
+  # as-is.
+  local_tag="$tag_or_ref"
+  if [[ "$local_tag" == sha256:* ]]; then
+    local_tag="${local_tag#sha256:}"
+    local_tag="${local_tag:0:12}"
+  fi
+  local_ref="chad-dashboard:${local_tag}"
+  docker tag "$remote_ref" "$local_ref"
+  log_ok "Re-tagged locally as $local_ref (so the existing compose files' bare image: name resolves)." >&2
+
+  echo "$image_id"
+}
