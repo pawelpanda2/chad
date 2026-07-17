@@ -9,6 +9,16 @@
 # is the exact bug this Story exists to fix — "bash deploy_test.sh" silently
 # deploying stale code because local work was never committed/pushed).
 #
+# The actual build+restart+status runs DETACHED on the QNAP host, polled
+# over independent short-lived SSH connections (Story 66) — not attached to
+# one long-lived ssh session. This is a real fix, not a bigger timeout: a
+# `next build` on this QNAP can leave the whole host too scheduling-starved
+# to answer SSH keepalives in time, which previously killed the ssh session
+# mid-build with no way to tell afterward whether the remote side had
+# actually finished. Now the remote job survives that regardless, and this
+# script just reconnects periodically to report progress and pick up the
+# real exit code once it's done.
+#
 # Usage:
 #   ./06_deploy.sh                  # interactive (asks before committing/pushing)
 #   ./06_deploy.sh --non-interactive  # hard-fails instead of asking (for automation)
@@ -26,4 +36,5 @@ export NON_INTERACTIVE
 load_qnap_ssh_config || exit 1
 git_deploy_preflight || exit 1
 
-run_remote_script "04_qnap_test" "06_deploy.sh" "Deploy QNAP TEST"
+run_remote "Update repo on QNAP" "cd '$QNAP_REPO_DIR' && git pull --ff-only"
+run_remote_job_with_progress "Deploy QNAP TEST (build + restart + status)" "cd '$QNAP_REPO_DIR' && bash bash-scripts/dashboard/04_qnap_test/06_deploy.sh"
