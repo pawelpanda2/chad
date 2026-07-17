@@ -822,10 +822,14 @@ function ViewsPageContent() {
           tried (still no `overflow`, so still safe re: scroll) but doesn't
           render — `border-radius` on cells is not respected when the table
           uses `border-collapse` (a genuine browser limitation, not a bug
-          here), so square corners are being kept rather than switching to
-          `border-collapse: separate` (visible double borders between every
-          cell) without explicit sign-off. */}
-      <div className="rounded-lg border bg-muted/10">
+          here). Deliberately NOT `rounded-lg` on this wrapper either
+          anymore (was, until Round 9's third pass) — a rounded wrapper
+          around a square `<table>` left the table's own square corner
+          poking past the wrapper's curve, an odd-looking notch rather
+          than a clean shape either way. Square wrapper + square table now
+          match exactly, no mismatch to switch to `border-collapse:
+          separate` (visible double borders between every cell) for. */}
+      <div className="border bg-muted/10">
             {/* No `w-full` here (Round 9) — a table that's told to be
                 100% wide but doesn't have enough real column content
                 distributes the slack into every column instead of one

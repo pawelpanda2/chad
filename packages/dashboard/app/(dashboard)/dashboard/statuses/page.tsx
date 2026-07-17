@@ -750,7 +750,7 @@ function StatusesPageContent() {
             <span className="text-sm">No leads found</span>
           </div>
         ) : (
-          <div className="rounded-lg border bg-muted/10">
+          <div className="border bg-muted/10">
                 <table className="w-full border-collapse text-sm">
                   <thead className="bg-muted">
                     <tr>
