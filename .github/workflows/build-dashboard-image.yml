@@ -1,0 +1,70 @@
+name: Build & push chad-dashboard to GHCR
+
+# Manual only (Story 70) — this repo's own deployment standard prefers
+# explicit, deliberate build/deploy actions over auto-triggering on every
+# push (see documentation/ai-docs/deploy/image-tagging-standard.md and
+# documentation/ai-docs/deploy/dashboard-deployment-scripts.md). Use this
+# when you want CI (not your Mac) to build+push — functionally identical
+# to running bash-scripts/dashboard/09_registry_test/02_build.sh locally;
+# neither is required over the other.
+on:
+  workflow_dispatch: {}
+
+# Least privilege: only package-write (to push to GHCR) and read (to
+# checkout). No other permissions requested.
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        # No `submodules: true` — packages/net-content-provider is a
+        # submodule but is excluded via .dockerignore and never referenced
+        # by packages/dashboard/Dockerfile; the dashboard image build does
+        # not need it (confirmed by reading both files before adding this
+        # workflow, per Story 70's own "don't guess" instruction).
+
+      - name: Log in to GHCR
+        # GITHUB_TOKEN is automatically provided by GitHub Actions and is
+        # scoped by the `permissions:` block above (packages: write) — no
+        # separate Personal Access Token is needed here at all. Never
+        # printed; docker login reads it from stdin.
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io --username "${{ github.actor }}" --password-stdin
+
+      - name: Resolve tag (same format as the local build path)
+        id: tag
+        # Reuses bash-scripts/common/lib.sh's ghcr_generate_tag — not a
+        # second implementation of the tag format.
+        run: |
+          REPO_ROOT="$GITHUB_WORKSPACE"
+          source bash-scripts/common/lib.sh
+          TAG="$(ghcr_generate_tag)"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "git_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Build
+        run: |
+          docker build \
+            -f packages/dashboard/Dockerfile \
+            --target runner \
+            --label "org.opencontainers.image.revision=${{ steps.tag.outputs.git_sha }}" \
+            -t "ghcr.io/pawelpanda2/chad-dashboard:${{ steps.tag.outputs.tag }}" \
+            .
+
+      - name: Push
+        run: docker push "ghcr.io/pawelpanda2/chad-dashboard:${{ steps.tag.outputs.tag }}"
+
+      - name: Show digest
+        run: |
+          docker inspect --format='{{index .RepoDigests 0}}' \
+            "ghcr.io/pawelpanda2/chad-dashboard:${{ steps.tag.outputs.tag }}"
+
+      # Deliberately no further steps: this workflow builds and pushes only.
+      # It never SSHes into QNAP, never deploys TEST, never touches PROD —
+      # deployment stays a deliberate, separate action
+      # (bash-scripts/dashboard/09_registry_test/03_restart.sh, run from a
+      # Mac that has the QNAP SSH credentials — this workflow doesn't).

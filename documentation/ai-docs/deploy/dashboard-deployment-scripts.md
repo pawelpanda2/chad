@@ -1,11 +1,22 @@
 # Dashboard stack deployment — docker-compose (`bash-scripts/dashboard/`)
 
-Status: aktualne (Story 63, 2026-07-16/17) — jeden stały, globalny kontrakt
-numeracji operacji dla wszystkich środowisk, `restart` (bez myślnika) jako
-jedyna nazwa dla tej operacji w całym repo, `06_qnap_ssh` zastąpiony przez
-dwa katalogi (`06_qnap_test_ssh`/`07_qnap_prod_ssh`), PROD bez własnego
-builda/deploya. Historia wcześniejszych zmian (architektura shared/test/prod
-z 2026-07-11, rename `begin`→`re-start` z 2026-07-14) — patrz "Historia
+Status: aktualne (Story 70, 2026-07-17) — dodany **równoległy** mechanizm
+GHCR: build+push z Maca lub GitHub Actions, QNAP `docker pull`uje i
+restartuje (patrz sekcja "Registry flow (GHCR) — Story 70" niżej), przez
+NOWE katalogi `08_registry_prod`/`09_registry_test`. To jest opcja
+dodatkowa, nie zamiennik — `04_qnap_test/{02_build,06_deploy}.sh` i
+`06_qnap_test_ssh/06_deploy.sh` (build na QNAP) działają dokładnie tak jak
+przed Story 70, bez zmian, i pozostają w pełni poprawną drogą deploymentu
+TEST. Wybór między "buduj na QNAP" (`04_qnap_test`/`06_qnap_test_ssh`) a
+"buduj przez GHCR" (`09_registry_test`) należy do użytkownika. Poprzedni
+stan (Story 63, 2026-07-16/17): jeden stały, globalny kontrakt numeracji
+operacji dla wszystkich środowisk, `restart` (bez myślnika) jako jedyna
+nazwa dla tej operacji w całym repo, `06_qnap_ssh` zastąpiony przez dwa
+katalogi (`06_qnap_test_ssh`/`07_qnap_prod_ssh`), PROD bez własnego
+builda/deploya —
+wciąż aktualne, tylko TEST-owy build (dawniej na QNAP) przeniósł się poza
+QNAP. Historia wcześniejszych zmian (architektura shared/test/prod z
+2026-07-11, rename `begin`→`re-start` z 2026-07-14) — patrz "Historia
 zmian" na końcu tego dokumentu.
 
 ## Czym to jest
@@ -45,18 +56,28 @@ nie kolidowały z żadnym przyszłym slotem.
 **Zawsze sprawdzaj `ls bash-scripts/dashboard/<katalog>/` zamiast zakładać
 numerację z pamięci** — nie każdy katalog ma wszystkie siedem plików.
 
-## Struktura katalogów (potwierdzona `ls`, Story 63)
+## Struktura katalogów (potwierdzona `ls`, Story 70)
 
 ```
 bash-scripts/dashboard/
 ├── 00_qnap_shared/        # docker-compose.qnap.shared.yml (mongo + content-provider-api, wspólne dla TEST i PROD) — działa NA QNAP, bez SSH-wrapperów (patrz niżej)
 ├── 02_local_mac_tmux/     # tmux/pnpm, BEZ Dockera (lokalny dev flow)
 ├── 03_local_mac_docker/   # docker-compose.local.yml (mongo+CP+dashboard razem, tylko lokalnie)
-├── 04_qnap_test/          # docker-compose.qnap.test.yml (TYLKO dashboard TEST) — jedyne miejsce, gdzie chad-dashboard jest budowany
-├── 05_qnap_prod/          # docker-compose.qnap.prod.yml (TYLKO dashboard PROD) — bez build/deploy, tylko restart/end/status
-├── 06_qnap_test_ssh/      # cienkie wrappery SSH nad 04_qnap_test (z Maca)
-└── 07_qnap_prod_ssh/      # cienkie wrappery SSH nad 05_qnap_prod — plus 06_last_from_test.sh (jedyna operacja wdrożeniowa PROD)
+├── 04_qnap_test/          # docker-compose.qnap.test.yml (TYLKO dashboard TEST) — build na QNAP (02_build.sh/06_deploy.sh), BEZ ZMIAN od Story 63, nadal w pełni działający wariant
+├── 05_qnap_prod/          # docker-compose.qnap.prod.yml (TYLKO dashboard PROD) — bez build/deploy od Story 63, nadal tak
+├── 06_qnap_test_ssh/      # cienkie wrappery SSH nad 04_qnap_test (build na QNAP), BEZ ZMIAN od Story 63
+├── 07_qnap_prod_ssh/      # cienkie wrappery SSH nad 05_qnap_prod — plus 06_last_from_test.sh (Story 63, promuje przez współdzielony lokalny cache Dockera), BEZ ZMIAN
+├── 08_registry_prod/      # (NOWY, Story 70, RÓWNOLEGŁY wariant) promocja PROD przez GHCR — 06_last_from_test.sh pobiera dokładnie obraz TEST z rejestru PO DIGEŚCIE
+└── 09_registry_test/      # (NOWY, Story 70, RÓWNOLEGŁY wariant) pełny deployment TEST przez GHCR — 02_build.sh buduje+pushuje LOKALNIE (Mac), 03_restart.sh pulluje na QNAP i restartuje
 ```
+
+**Story 70 jest w całości addytywna.** `04_qnap_test`, `05_qnap_prod`,
+`06_qnap_test_ssh`, `07_qnap_prod_ssh` nie zostały zmienione w żaden
+sposób — build na QNAP (`04_qnap_test/02_build.sh`/`06_deploy.sh`,
+`06_qnap_test_ssh/06_deploy.sh`) nadal działa dokładnie tak jak wcześniej.
+`08_registry_prod`/`09_registry_test` to nowa, RÓWNOLEGŁA droga — wybór
+między nimi a starą drogą należy do użytkownika za każdym razem, kiedy
+deployuje.
 
 ### `00_qnap_shared/` — 6 plików: `01_config`, `02_build`, `03_restart`, `04_end`, `05_status`, `06_deploy`
 
@@ -94,11 +115,14 @@ ten podział dotyczy wyłącznie QNAP.
 
 ### `04_qnap_test/` — 6 plików: `01_config`, `02_build`, `03_restart`, `04_end`, `05_status`, `06_deploy`.
 
-**Jedyne miejsce, gdzie `chad-dashboard` jest kiedykolwiek budowany**
-(Story 63 — patrz niżej, dlaczego PROD nie ma własnego `02_build.sh`).
-`02_build.sh` dodatkowo zapisuje SHA aktualnego commita jako standardowy
-OCI label `org.opencontainers.image.revision` na budowanym obrazie — patrz
-[image-tagging-standard.md](image-tagging-standard.md).
+**Bez zmian od Story 63.** `02_build.sh` nadal buduje `chad-dashboard` NA
+QNAP (jak zawsze) i zapisuje git SHA jako OCI label; `06_deploy.sh` nadal
+robi `02_build.sh` → `03_restart.sh` → `05_status.sh`. To pozostaje w pełni
+poprawna droga deploymentu TEST. Od Story 70 istnieje też równoległa,
+opcjonalna droga bez buildu na QNAP — `09_registry_test/03_restart.sh`
+woła zdalnie *ten sam, niezmieniony* `03_restart.sh` z tego katalogu, tyle
+że po `docker pull` zamiast po `docker compose build` — patrz sekcja
+"Registry flow (GHCR)" niżej.
 
 ### `05_qnap_prod/` — 4 pliki: `01_config`, `03_restart`, `04_end`, `05_status`. **Bez `02_build`, bez `06_deploy`.**
 
@@ -394,6 +418,131 @@ został zweryfikowany na TEST. Kontrakt:
 Jeśli obraz TEST nie da się jednoznacznie ustalić albo nie istnieje lokalnie
 — przerywa, nie zgaduje.
 
+## Registry flow (GHCR) — Story 70: opcjonalna, RÓWNOLEGŁA droga bez builda na QNAP
+
+**To jest dodatkowa opcja, nie zamiennik.** Story 70 jest w całości
+addytywna — `04_qnap_test/{02_build,06_deploy}.sh`,
+`06_qnap_test_ssh/06_deploy.sh` i `docker-compose.qnap.test.yml` (wraz z
+jego sekcją `build:`) pozostają dokładnie takie jak w Story 63, bez zmiany
+zachowania. Poniższy przepływ to nowa, osobna droga, uruchamiana wyłącznie
+przez `09_registry_test/06_deploy.sh`/`08_registry_prod/06_last_from_test.sh`
+— nigdy automatycznie, nigdy jako podmiana starej drogi:
+
+```
+Mac (09_registry_test/02_build.sh) LUB GitHub Actions (workflow_dispatch)
+    → docker build + tag <timestamp>-<short-git-sha> + OCI label revision
+    → docker push do ghcr.io/pawelpanda2/chad-dashboard
+    → 09_registry_test/03_restart.sh: SSH → docker login (read-only token)
+      → docker pull → docker tag (na lokalną nazwę chad-dashboard:<tag>,
+      dokładnie tę, której 04_qnap_test/03_restart.sh już oczekuje)
+      → zapis .image-tag.chad-dashboard.env → 04_qnap_test/03_restart.sh
+      (BEZ ZMIAN, dokładnie ten sam plik co dla starej drogi budowania na
+      QNAP) → 04_qnap_test/05_status.sh (BEZ ZMIAN)
+```
+
+`docker-compose.qnap.test.yml` **nadal ma** sekcję `build:` (Story 70 jej
+nie usunęła) — `04_qnap_test/02_build.sh` może nadal budować na QNAP
+dokładnie jak wcześniej. `09_registry_test`'s droga po prostu z tej sekcji
+nie korzysta (pull + retag zastępuje wynik, jaki dałby lokalny build), nie
+usuwając możliwości budowania na QNAP dla kogoś, kto woli starą drogę.
+
+### Obraz i tagi
+
+- **Nazwa obrazu:** `ghcr.io/pawelpanda2/chad-dashboard` — `pawelpanda2` to
+  faktyczny właściciel tego repo na GitHubie (`git remote -v`), potwierdzone
+  przed implementacją, nie zgadywane; `chad-dashboard` to ta sama nazwa
+  lokalna używana wszędzie od zawsze.
+- **Format tagu:** `<YYMMDD_HHMMSS>-<short-git-sha>`, np.
+  `260717_143022-abc1234` — niezmienny, nigdy `latest`
+  (`bash-scripts/common/lib.sh`'s `ghcr_generate_tag()`).
+- **Digest:** GHCR generuje go automatycznie przy pushu; nie jest osobno
+  przechowywany — czytany na żądanie przez `docker image inspect -f
+  '{{index .RepoDigests 0}}'` (patrz `ghcr_pull_and_retag`/
+  `08_registry_prod/06_last_from_test.sh`). Promocja na PROD pobiera
+  jawnie po tym digeście, nie tylko po tagu.
+- **`.image-tag.chad-dashboard.env`** — ten sam kanoniczny plik z Story 63,
+  bez zmian; zapisywany przez `04_qnap_test/02_build.sh` (po buildzie na
+  QNAP, stara droga, bez zmian) ALBO przez `09_registry_test/03_restart.sh`
+  (po pullu z GHCR, nowa droga) — który ostatnio zapisał, ten wygrywa,
+  dokładnie tak jak dwa źródła zapisu tego samego pliku już działały wcześniej.
+
+### Sekcja GHCR w `bash-scripts/common/lib.sh`
+
+Wspólna logika, używana przez `09_registry_test` i `08_registry_prod` (nie
+duplikowana): `ghcr_image_ref`, `ghcr_docker_login` (zawsze
+`--password-stdin`, token nigdy nie trafia do logów ani argumentów CLI),
+`ghcr_generate_tag`, `ghcr_build_tag_push` (build lokalny + push, tylko po
+udanym buildzie), `ghcr_pull_and_retag` (pull + retag na lokalną,
+compose-kompatybilną nazwę).
+
+### `09_registry_test/` — pełny deployment TEST przez GHCR
+
+| Plik | Gdzie działa | Co robi |
+|---|---|---|
+| `01_config.sh` | — | stałe: `GHCR_REGISTRY`/`GHCR_OWNER`/`GHCR_IMAGE` (niesekretne) |
+| `02_build.sh` | **lokalnie (Mac)** | build + tag + push do GHCR; wymaga `.env.local`'s `GHCR_PUSH_USERNAME`/`GHCR_PUSH_TOKEN` |
+| `03_restart.sh` | SSH → QNAP | login (read token) + pull + retag lokalny + zapis tagu + woła `04_qnap_test/03_restart.sh` |
+| `04_end.sh` / `05_status.sh` | SSH → QNAP | cienki passthrough do `04_qnap_test/{04_end,05_status}.sh` (identyczne jak `06_qnap_test_ssh`'s) |
+| `06_deploy.sh` | lokalnie + SSH | git preflight → `02_build.sh` → `03_restart.sh` → `05_status.sh` — nowy główny punkt wejścia, zastępuje rolę `06_qnap_test_ssh/06_deploy.sh` |
+
+Brak `07_logs.sh` — `04_qnap_test` go nie ma, nie ma czego owijać.
+
+### `08_registry_prod/` — promocja PROD przez GHCR
+
+| Plik | Gdzie działa | Co robi |
+|---|---|---|
+| `01_config.sh` | — | te same stałe co `09_registry_test/01_config.sh` (jeden obraz, dwie kopie stałych — ten sam wzorzec co `04_qnap_test`/`05_qnap_prod`) |
+| `03_restart.sh` / `04_end.sh` / `05_status.sh` | SSH → QNAP | identyczne jak `07_qnap_prod_ssh`'s (wymagają `PROD` tam gdzie tamte też wymagały) |
+| `06_last_from_test.sh` | SSH → QNAP | **jedyna operacja wdrożeniowa PROD** — pobiera tag/digest/SHA z TEST, pokazuje, pyta `PROD`, pulluje z GHCR PO DIGEŚCIE, retaguje lokalnie na tag TEST, restart, status, weryfikacja shared+TEST+zgodności image ID |
+
+**Bez `02_build.sh`/`06_deploy.sh`** — PROD nigdy nie buduje, tak jak od
+Story 63.
+
+**Uwaga:** `07_qnap_prod_ssh/06_last_from_test.sh` (Story 63) nadal działa
+i nie została tknięta — polega na współdzielonym lokalnym cache Dockera
+(TEST i PROD na tym samym hoście), nie na jawnym pullu z rejestru.
+`08_registry_prod/06_last_from_test.sh` jest bardziej rygorystycznym,
+GHCR-natywnym następcą (jawna weryfikacja przez digest) — oba bezpieczne,
+`08_registry_prod` jest zalecaną drogą na przyszłość.
+
+### Sekrety GHCR
+
+Dwa osobne tokeny GitHub (Personal Access Token, classic), nigdy ten sam:
+
+| Zmienna | Plik | Zakres | Użycie |
+|---|---|---|---|
+| `GHCR_PUSH_USERNAME`/`GHCR_PUSH_TOKEN` | `.env.local` (Mac) | `write:packages` **tylko** | `09_registry_test/02_build.sh` |
+| `GHCR_READ_USERNAME`/`GHCR_READ_TOKEN` | `.env.qnap` (QNAP) | `read:packages` **tylko** | `09_registry_test/03_restart.sh`, `08_registry_prod/06_last_from_test.sh` |
+
+Utworzenie: https://github.com/settings/tokens → "Generate new token
+(classic)" → zaznacz **wyłącznie** odpowiedni scope → wygeneruj → wklej do
+`.env.local`/`.env.qnap` (NIE do `.env.local.example`/`.env.qnap.example` —
+te zawierają tylko `change_me`). GitHub Actions nie potrzebuje żadnego z
+tych tokenów — używa automatycznego `GITHUB_TOKEN`, ograniczonego przez
+workflow'a własny blok `permissions: packages: write`.
+
+### GitHub Actions
+
+`.github/workflows/build-dashboard-image.yml` — **tylko
+`workflow_dispatch`**, nigdy automatycznie na `push` (zgodnie z tą samą
+zasadą "deploy jest świadomą akcją", co reszta tego dokumentu). Buduje,
+taguje (`ghcr_generate_tag`, ten sam kod co lokalny build), ustawia OCI
+label, pushuje, pokazuje digest. Nigdy nie SSHuje na QNAP, nigdy nie
+deployuje — to zawsze osobny, świadomy krok z Maca.
+
+### Rollback
+
+Do poprzedniego, wcześniej wypchniętego tagu:
+
+```bash
+bash bash-scripts/dashboard/09_registry_test/03_restart.sh <poprzedni-tag>
+```
+
+(pull tego konkretnego tagu z GHCR, retag, restart — bez żadnego builda).
+Dla PROD: `08_registry_prod/06_last_from_test.sh` zawsze promuje to, co
+TEST aktualnie uruchamia — żeby cofnąć PROD, najpierw cofnij TEST
+powyższą komendą, potem uruchom promocję ponownie.
+
 ## Różnica względem `packages/net-content-provider/03_scripts/qnap/*.sh`
 
 To DWA NIEZALEŻNE systemy, celowo:
@@ -404,6 +553,21 @@ To DWA NIEZALEŻNE systemy, celowo:
   + wspólne mongo/CP, sterowany docker-compose.
 
 ## Historia zmian
+
+**2026-07-17/18 — Story 70: dodana RÓWNOLEGŁA droga budowania
+`chad-dashboard` przez GHCR, opcjonalna.** Nowe katalogi `09_registry_test/`
+(pełny deployment TEST: build+push lokalnie/CI, potem pull+restart na
+QNAP) i `08_registry_prod/` (promocja PROD przez GHCR, po digeście) —
+alternatywa dla, nie zamiennik, budowania na QNAP. Motywacja: budowanie
+Next.js na słabym QNAP-owym CPU jest kosztowne i (patrz Story 66) może
+powodować zrywanie połączeń SSH przez wygasający keepalive przy bardzo
+długich buildach — GHCR to opcjonalny sposób tego uniknąć, dla kogoś kto
+go woli. **Story 70 jest w całości addytywna** (poprawka 2026-07-18, po
+pierwotnej, zbyt inwazyjnej wersji): `04_qnap_test/{02_build,06_deploy}.sh`,
+`06_qnap_test_ssh/06_deploy.sh` i `docker-compose.qnap.test.yml`'s sekcja
+`build:` NIE zostały zmienione — stara droga budowania na QNAP działa
+dokładnie tak jak w Story 63/66. Pełny opis: sekcja "Registry flow (GHCR)"
+wyżej, `backlog/stories/70/`.
 
 **2026-07-11 — architektura shared/test/prod.** Migracja z jednego pliku
 compose (osobne mongo/CP na środowisko) na shared/test/prod, zweryfikowana
