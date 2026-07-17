@@ -1127,3 +1127,22 @@ bugi
 ## Input 41 (mid-turn interrupt)
 
 daelj jak powrcac do oryginalnych danych to dyskietka tego nie wyrkywa i nie przestaje byc czerwona razem z tym polem ktore zmienilem i tez jest czerwone
+
+## Input 42
+
+kolumne z data troche za bardzo zciasniles tak ze nie widac daty minimalnie ja porzez do widocznosci calej daty
+
+## Input 43 (mid-turn interrupt)
+
+rogi tabeli dalej brzydko wygldaja cos sie dziwnie naklada, wczesniej byly ladne zaokraglone
+
+## Input 44 (mid-turn interrupt)
+
+jeszcze popraw dosuniecie kolumn, szczegolnie to widac przy zwiekszeniu do 50%
+wrzucam Ci screen powinny byc dosuniete do lewej te kolumny
+a ostatnie kolumna pusta powinno po prostu wypelniac te 70% wolnej przestrzeni
+na screenie jest aktualny stan i to zle wyglada, dosun do lewej na tyle na ile sie da zostawiajac minimalne odstep wzgledem dlugosci danych
+
+(Note: the attached screenshot did not transmit successfully; this fix
+was implemented from the text description alone and verified visually
+against a real wide-viewport screenshot before being reported as done.)
