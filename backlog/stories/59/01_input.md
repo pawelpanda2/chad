@@ -413,3 +413,32 @@ Na końcu pokaż:
 - listę commitów.
 
 Nie przechodź jeszcze do QNAP TEST ani PROD.
+
+## Input 5
+
+Dobrze. Lokalną migrację uznaję za zakończoną warunkowo.
+
+Otworzę ręcznie Beeper Desktop.
+
+Po jego uruchomieniu wykonaj tylko:
+
+1. bash bash-scripts/beeper/05_sync.sh
+2. bash bash-scripts/beeper/02_re-start.sh
+3. bash bash-scripts/beeper/04_status.sh
+
+Następnie sprawdź:
+
+- czy incremental sync użył istniejącego sync_state;
+- ile dokumentów było przed i po;
+- czy nie powstały duplikaty;
+- czy beeper-ws utrzymuje połączenie;
+- czy nowy event trafia do lokalnego Mongo chad;
+- czy dashboard pokazuje nową wiadomość/event po refreshu albo SSE.
+
+Nie wykonuj force sync.
+Nie dotykaj QNAP.
+Nie wprowadzaj nowych zmian architektonicznych.
+
+Po tym zaktualizuj Story 59 i podaj finalny raport lokalnej integracji.
+
+Po przejściu tego testu możesz uznać, że lokalny chad całkowicie przejął funkcjonalność starego contacts.

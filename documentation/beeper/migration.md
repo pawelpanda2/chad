@@ -150,10 +150,10 @@ standalone `contacts` repo (verified by Story 59 Task 3 — see
   (gitignored — copy from `.env.mac-beeper.example`) for `beeper-ws`/
   `beeper-sync`: `MONGODB_URI` (same local Mongo, database `beeper`),
   `BEEPER_API_KEY`, `BEEPER_WS_URL`, `BEEPER_REST_URL`.
-- **Dashboard:** `bash-scripts/dashboard/03_local_mac_docker/07_deploy.sh`
-  (or `04_re-start.sh` for an env-only restart) — reads `beeper` data
-  exclusively through `packages/dba`, never connects to Mongo directly from
-  a route handler.
+- **Dashboard:** `bash-scripts/dashboard/03_local_mac_docker/06_deploy.sh`
+  (rebuilds + restarts the whole local stack, Mongo included — data volume
+  is preserved, not recreated) — reads `beeper` data exclusively through
+  `packages/dba`, never connects to Mongo directly from a route handler.
 - **`beeper-ws`** (Mac-only, long-lived): `bash bash-scripts/beeper/02_re-start.sh`
   to start, `03_end.sh` to stop, `04_status.sh` for full status (Mongo
   reachability + `beeper` collection counts, Beeper Desktop reachability,
@@ -170,12 +170,24 @@ standalone `contacts` repo (verified by Story 59 Task 3 — see
   (dry-run) / `pnpm mongo:migrate-contacts:apply`, pointed at the local
   target — see "Running the data migration" above.
 
-**Known limitation:** an actual incremental REST sync run and a real live
-WS event were not exercised end-to-end this pass — both need Beeper
-Desktop open, which could not be launched from the automated session that
-did this work (see `backlog/stories/59/06_others_from_report.md`). The
-preflight/config path up to that point (Mongo reachable, scripts fail
-clean without Beeper Desktop rather than crashing) is verified.
+**Live-verified (2026-07-17, Beeper Desktop open):** a real incremental
+`05_sync.sh` run used the migrated `sync_state` correctly (166 of 171
+channels skipped as already-synced), pulled 1 new channel + 4 new messages
+with zero duplicates (checked against the unique indexes); `beeper-ws`
+connected to real Beeper Desktop, held the connection, and wrote 2 new
+events to `beeper_events`; the dashboard reflected all of it both via a
+fresh refresh and via SSE. See `backlog/stories/59/05_tasks_and_checklist.md`
+Task 3 for the full before/after counts.
+
+**Real bug found and fixed in this round:** `dba.subscribeToBeeperChanges()`'s
+polling fallback (for when MongoDB change streams aren't available — true
+for every standalone/non-replica-set Mongo, i.e. every deployment so far)
+never actually ran: `db.watch()` fails asynchronously against a standalone
+Mongo, not synchronously, so the old `try/catch` never caught it. SSE
+live-updates had been silently non-functional since the feature was
+written. Fixed by falling back to polling from the stream's `'error'`
+event handler, not just a synchronous catch. See the Task 3 write-up
+above for how this was found and verified.
 
 ## Blockers / remaining work
 
@@ -205,15 +217,14 @@ clean without Beeper Desktop rather than crashing) is verified.
    twice in its `channels` array (see the `dba: fix duplicate direct
    channel...` commit) — not user-visible today since the UI doesn't render
    that array, but a genuine correctness bug now fixed.
-   **Still not runtime-tested:** the Next.js API-route layer (only
-   statically verified via `tsc --noEmit` + `next lint`, both clean — a
-   live `next dev` + browser click-through was not done this pass) and
-   `beeper-ws`/`beeper-sync`/`beeper-oplog` (need a real Beeper Desktop
-   instance, Mac-only, not available in a coding session). Before relying
-   on the UI in production: run `pnpm dashboard` against a MongoDB seeded
-   via the migration script (dry-run-verified first) and click through
-   `/dashboard/beeper`, `/dashboard/beeper/[id]`, `/dashboard/beeper/inbox`,
-   `/dashboard/beeper/merge`.
+   **Still not runtime-tested (at the time, 2026-07-12):** the Next.js
+   API-route layer and `beeper-ws`/`beeper-sync`/`beeper-oplog`. **Update
+   (Story 59, 2026-07-15/17):** the API-route layer is now fully
+   runtime-tested (authenticated HTTP calls against a real, migrated local
+   database — reads, writes, empty states, error states), and
+   `beeper-ws`/`beeper-sync` are now runtime-tested against real Beeper
+   Desktop (see "Local runtime" above). `beeper-oplog` remains untested —
+   still blocked on the replica-set decision (item 2 below).
 6. **`beeper-sync`'s many one-off diagnostic/repair scripts**
    (`fix-senderid-index.mjs`, `cleanup-ghosts.mjs`,
    `fix-image-attachments.mjs`, etc.) were migrated verbatim (env-path

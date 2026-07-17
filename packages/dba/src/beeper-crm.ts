@@ -1057,21 +1057,49 @@ ${historyStr}`;
  */
 export async function subscribeToBeeperChanges(onChange: () => void): Promise<() => void> {
   const db = await getMongoDb();
+
+  let pollInterval: ReturnType<typeof setInterval> | null = null;
+  let closed = false;
+  const startPolling = () => {
+    if (pollInterval || closed) return;
+    pollInterval = setInterval(onChange, 5000);
+  };
+
   try {
     const stream = db.watch([], { fullDocument: "updateLookup" });
     stream.on("change", () => onChange());
+    // db.watch() against a standalone (non-replica-set) MongoDB does NOT
+    // throw synchronously here — the driver returns a ChangeStream object
+    // immediately and the "not supported" failure only surfaces later as an
+    // async 'error' event. The try/catch below only ever catches a
+    // synchronous throw, so without this handler the fallback-to-polling
+    // branch was silent dead code on every standalone deployment (found
+    // during Story 59 local runtime verification: SSE never delivered a
+    // single "data: update" over a 17s window with real writes happening
+    // mid-stream, while the poll fallback — once actually reached — worked
+    // correctly).
     stream.on("error", (err) => {
-      console.error("[beeper-crm] change stream error:", err.message);
+      console.warn(
+        "[beeper-crm] change stream failed (standalone MongoDB, not a replica set) — falling back to polling.",
+        err instanceof Error ? err.message : err
+      );
+      stream.close().catch(() => {});
+      startPolling();
     });
     return () => {
+      closed = true;
       stream.close().catch(() => {});
+      if (pollInterval) clearInterval(pollInterval);
     };
   } catch (err) {
     console.warn(
       "[beeper-crm] db.watch() unavailable (standalone MongoDB, not a replica set) — falling back to polling.",
       err instanceof Error ? err.message : err
     );
-    const interval = setInterval(onChange, 5000);
-    return () => clearInterval(interval);
+    startPolling();
+    return () => {
+      closed = true;
+      if (pollInterval) clearInterval(pollInterval);
+    };
   }
 }
