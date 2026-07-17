@@ -127,6 +127,7 @@ nobody has to re-discover the finding):
 | 53 | DONE     |             | DATE/DATA column widened (`min-w-[70px]` → `min-w-[100px]`, both read-only and edit-mode cells) — the 10-character `YYYY-MM-DD` value was being clipped |
 | 54 | N/A      |             | Third attempt at rounded table corners, this time via per-cell `border-radius` (no `overflow` touched at all, provably safe re: scroll) — CSS confirmed applying correctly, but doesn't render: `border-radius` on `<td>`/`<th>` is a documented no-op when the table uses `border-collapse: collapse`, a genuine browser limitation. Reverted the (harmless but non-functional) per-cell classes rather than ship dead code; square corners kept rather than switching to `border-collapse: separate` (visible double borders between every cell) without explicit sign-off. |
 | 55 | DONE     |             | Columns were stretching to fill all available table width instead of hugging their content — most visible at a wide/zoomed-out viewport. Removed the table's own `w-full`, so it sizes to its natural content width and stays left-aligned; the wrapper's own background simply shows through on the right instead of every column being padded wider than its data needs. Unaffected: DAILY TRACKER's 20 columns still overflow correctly and scroll when they exceed the frame. |
+| 56 | DONE     |             | Table wrapper corners: resolved the "weird shape" left over after Task 54's revert — a `rounded-lg` wrapper around a plain square `<table>` let the table's own corner poke past the wrapper's curve. Removed `rounded-lg` from the wrapper on DAILY TRACKER/DATES, STATUSES matrix, and USERS so both shapes match exactly (square + square) — a one-line, zero-risk change with no interaction with scroll/width at all. |
 
 # Task 1 — SETTINGS: single frame, ~3px gap, title in row 1
 
@@ -1774,4 +1775,41 @@ empty space after, not individually padded. DAILY TRACKER's table
 measures ~1984px at the same viewport (unchanged, all 20 columns visible
 and correctly colored by group, confirming no regression from this
 change).
+**Status: DONE**
+
+# Task 56 — Corners: the actual fix, in the opposite direction from every prior attempt
+
+**Requested:** the user pushed back a fourth time — after Task 54's
+revert (back to a plain square wrapper), the corner now looked "weird,"
+not simply square, describing it as something oddly overlapping rather
+than a clean shape.
+**Root cause:** Task 54's revert left the wrapper `<div>` still carrying
+`rounded-lg` (unchanged from the original Round 1 styling), sitting
+around a plain rectangular `<table>` with no rounding of its own. A
+zoomed screenshot of the actual corner pixels confirmed it directly: the
+wrapper's border visibly curves inward per its `rounded-lg` radius, but
+the table's own square corner still extends all the way to where a
+*straight* border edge would have been — so right at the curve, a small
+square notch of the table's own background shows past the wrapper's
+rounded border line, reading as neither cleanly square nor cleanly
+round.
+**Done:** the opposite fix from every previous attempt (which all tried
+to round the *table* to match the wrapper) — instead, removed
+`rounded-lg` from the *wrapper* to match the table's actual (square)
+shape. Now both the wrapper's border/background and the table inside it
+are plain rectangles with no radius anywhere, so there's nothing for
+either shape to mismatch against. Applied to all three affected pages:
+DAILY TRACKER/DATES, STATUSES matrix, USERS. This is a single class
+removed from a plain `<div>` — no `overflow`, no `width`, no flex
+property touched at all, so it carries none of the regression risk every
+earlier corner attempt did.
+**Files changed:** `app/(dashboard)/dashboard/views/page.tsx`;
+`app/(dashboard)/dashboard/statuses/page.tsx`;
+`app/(dashboard)/dashboard/users/page.tsx`.
+**Tested:** Real Playwright at 3x device scale, cropped tightly to the
+exact corner pixels: confirms a single clean straight-line corner with
+no notch or curve mismatch. Re-confirmed horizontal scroll (`cwScrollWidth`
+1995px vs `cwClientWidth` 998px) and all 20 header columns still present
+— this change has no way to have affected either, and the measurement
+confirms it didn't.
 **Status: DONE**

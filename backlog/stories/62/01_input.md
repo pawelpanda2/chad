@@ -1146,3 +1146,7 @@ na screenie jest aktualny stan i to zle wyglada, dosun do lewej na tyle na ile s
 (Note: the attached screenshot did not transmit successfully; this fix
 was implemented from the text description alone and verified visually
 against a real wide-viewport screenshot before being reported as done.)
+
+## Input 45
+
+dalej ta kolorowa tabele w srodku jej ramka srodkowa ma rogi w takim dziwnym ksztalcie zamiast ladnych okraglych
