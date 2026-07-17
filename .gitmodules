@@ -1,0 +1,3 @@
+[submodule "packages/net-content-provider"]
+	path = packages/net-content-provider
+	url = git@github.com:pawelpanda2/contentprovider.git
