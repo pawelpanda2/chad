@@ -340,6 +340,35 @@ nie duplikowana. **Nie dotyczy** `03_restart.sh` (nie buduje) ani
 odpowiednikiem przejrzystości jest wyświetlenie promowanego obrazu przed
 potwierdzeniem, patrz niżej).
 
+### Odporność `06_deploy.sh` na zerwane połączenie SSH podczas długiego builda (Story 66)
+
+Realny incydent: długi `next build` na QNAP zostawił hosta zbyt
+zajętego/wygłodzonego CPU-wise, żeby odpowiedzieć na keepalive SSH w czasie
+— klient ssh poddał się własnym, wbudowanym komunikatem OpenSSH
+`Timeout, server <host> not responding.` w połowie buildu, bez żadnej
+informacji, czy zdalna strona faktycznie skończyła.
+
+Naprawa jest architektoniczna, nie tylko większy timeout:
+`06_qnap_test_ssh/06_deploy.sh` uruchamia faktyczny
+`04_qnap_test/06_deploy.sh` **odpięty (detached)** na hoście QNAP
+(`nohup`, `disown`, bez kontrolującego terminala, output przekierowany do
+pliku logu pod `$QNAP_REPO_DIR/.runtime/remote-jobs/`) — zamiast trzymać go
+przywiązanym do jednej, długo żyjącej sesji SSH. Lokalna strona
+(`run_remote_job_with_progress` w `bash-scripts/common/lib.sh`) łączy się
+ponownie co kilka-kilkanaście sekund (krótkie, tanie połączenia) żeby
+pokazać nowy fragment logu i sprawdzić, czy zadanie się zakończyło —
+nieudana próba połączenia w trakcie pollingu jest traktowana jako
+"nadal działa, spróbuj ponownie", nigdy jako porażka zadania. O
+sukcesie/porażce decyduje wyłącznie realny kod wyjścia zapisany przez
+zdalne zadanie po zakończeniu, nigdy sam fakt, że któreś połączenie SSH się
+powiodło lub nie.
+
+Dodatkowo: bazowy `SSH_OPTS`'s `ServerAliveInterval`/`ServerAliveCountMax`
+podniesiony z 5s×3 (15s tolerancji) na 10s×12 (120s) dla wszystkich
+operacji — obrona w głębi, na wypadek gdyby host był chwilowo wolny
+(np. podczas normalnego 60-sekundowego oczekiwania na healthcheck w
+`03_restart.sh`), nie tylko podczas samego builda.
+
 ### Promocja obrazu TEST → PROD: `06_last_from_test.sh`
 
 PROD nigdy nie buduje — dostaje dokładnie ten obraz, który już działa i

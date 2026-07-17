@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import * as yaml from 'js-yaml';
 import {
   saveDateEntry,
+  updateDateEntry,
   getAllDateEntries,
   generateEntryName,
   runWithRepoContext,
@@ -166,5 +167,52 @@ export async function POST(request: Request) {
       error: error instanceof Error ? error.message : "Unknown error",
       debug: debugResponse,
     }, { status: 500 });
+  }
+}
+
+/**
+ * PATCH /api/forms/date-entry
+ *
+ * Updates an existing date entry's fields in place, identified by its real
+ * `loca` — never by `DATA`, never via `generateEntryName`/`saveDateEntry`
+ * on update. Added alongside the existing POST (still create-only,
+ * unchanged), same shape as `PATCH /api/forms/daily-entry` (Story 62
+ * Round 8 — DATES gets edit-mode parity with DAILY TRACKER).
+ *
+ * Body: { loca: string, fields: Record<string, unknown> } — `fields` is
+ * the full new set of fields (already merged with the previous body by
+ * the caller). Date Entries have no computed "— AUTO" columns, so unlike
+ * the daily-entry PATCH, nothing needs stripping here.
+ */
+export async function PATCH(request: Request) {
+  const payload = await request.json();
+  const user = await getCurrentUserFromCookies();
+
+  if (!user) {
+    return NextResponse.json({ success: false, error: "Not authenticated" }, { status: 401 });
+  }
+
+  const loca = payload.loca as string | undefined;
+  const fields = payload.fields as Record<string, unknown> | undefined;
+
+  if (!loca || typeof loca !== "string") {
+    return NextResponse.json({ success: false, error: "Missing loca" }, { status: 400 });
+  }
+  if (!fields || typeof fields !== "object") {
+    return NextResponse.json({ success: false, error: "Missing fields" }, { status: 400 });
+  }
+
+  try {
+    await runWithRepoContext(user, async () => {
+      const bodyYaml = yaml.dump(fields);
+      await updateDateEntry(loca, bodyYaml);
+    });
+
+    return NextResponse.json({ success: true, loca });
+  } catch (error) {
+    return NextResponse.json(
+      { success: false, error: error instanceof Error ? error.message : "Unknown error" },
+      { status: 500 }
+    );
   }
 }

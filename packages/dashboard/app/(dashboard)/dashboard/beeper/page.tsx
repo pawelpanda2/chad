@@ -36,19 +36,6 @@ const TAB_OPTIONS = [
 	{ value: "friends", label: "Friends" },
 ] as const;
 
-function relativeTime(iso: string | null): string {
-	if (!iso) return "";
-	const diffMs = Date.now() - new Date(iso).getTime();
-	const mins = Math.round(diffMs / 60000);
-	if (mins < 1) return "now";
-	if (mins < 60) return `${mins}m`;
-	const hours = Math.round(mins / 60);
-	if (hours < 24) return `${hours}h`;
-	const days = Math.round(hours / 24);
-	if (days < 30) return `${days}d`;
-	return new Date(iso).toLocaleDateString();
-}
-
 export default function BeeperContactsPage() {
 	const [tab, setTab] = useState<(typeof TAB_OPTIONS)[number]["value"]>("all");
 	const [contacts, setContacts] = useState<BeeperContactListItem[]>([]);
@@ -78,7 +65,7 @@ export default function BeeperContactsPage() {
 	const filtered = contacts.filter((c) => c.displayName.toLowerCase().includes(query.toLowerCase()));
 
 	return (
-		<DashboardPageShell title="BEEPER">
+		<DashboardPageShell title="Beeper">
 			{/*
 				Standard header (line 1, above the frame) is reserved for the menu
 				handle, Back/Forw and a short page name only — see
@@ -159,19 +146,6 @@ export default function BeeperContactsPage() {
 										<p className="truncate text-xs text-muted-foreground">{c.lastMessage.text}</p>
 									) : (
 										<p className="truncate text-xs italic text-muted-foreground/60">No messages</p>
-									)}
-								</div>
-								<div className="flex shrink-0 items-center gap-1">
-									{c.lastMessage?.timestamp && (
-										<span className="text-[10px] text-muted-foreground">{relativeTime(c.lastMessage.timestamp)}</span>
-									)}
-									{[...new Set(c.identities.map((i) => i.network))].map((n) => (
-										<Badge key={n} variant="outline" className="h-4 px-1 text-[9px]">
-											{n}
-										</Badge>
-									))}
-									{c.channelCount > 0 && (
-										<span className="text-[10px] text-muted-foreground">{c.channelCount}ch</span>
 									)}
 								</div>
 							</Link>

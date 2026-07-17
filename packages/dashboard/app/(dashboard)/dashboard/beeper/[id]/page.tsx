@@ -235,7 +235,7 @@ export default function BeeperContactDetailPage({ params }: { params: Promise<{ 
 
 	if (loading) {
 		return (
-			<DashboardPageShell upLevel={{ href: "/dashboard/beeper" }} title="BEEPER">
+			<DashboardPageShell upLevel={{ href: "/dashboard/beeper" }} title="Beeper">
 				<div className="flex items-center justify-center py-24 text-muted-foreground gap-2">
 					<RefreshCw className="h-4 w-4 animate-spin" /> Loading contact...
 				</div>
@@ -244,7 +244,7 @@ export default function BeeperContactDetailPage({ params }: { params: Promise<{ 
 	}
 	if (!detail) {
 		return (
-			<DashboardPageShell upLevel={{ href: "/dashboard/beeper" }} title="BEEPER">
+			<DashboardPageShell upLevel={{ href: "/dashboard/beeper" }} title="Beeper">
 				<div className="py-24 text-center text-muted-foreground">Contact not found.</div>
 			</DashboardPageShell>
 		);
@@ -266,7 +266,7 @@ export default function BeeperContactDetailPage({ params }: { params: Promise<{ 
 		<DashboardPageShell
 			scroll={false}
 			upLevel={{ href: "/dashboard/beeper" }}
-			title="BEEPER"
+			title="Beeper"
 		>
 			{/* Second row inside the outer frame — see backlog/stories/60. Contact
 			    name shown here since the shell's own title stays page-level. */}

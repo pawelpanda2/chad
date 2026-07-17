@@ -96,7 +96,7 @@ export default function BeeperMergePage() {
 	return (
 		<DashboardPageShell
 			upLevel={{ href: "/dashboard/beeper" }}
-			title="MERGE SUGGESTIONS"
+			title="Merge Suggestions"
 		>
 			{/* Second row inside the outer frame — see backlog/stories/60. */}
 			<div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b pb-3 mb-3">

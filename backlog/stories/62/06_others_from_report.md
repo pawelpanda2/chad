@@ -265,3 +265,56 @@ was actually wrong and why Round 2 didn't catch it:
   its toolbar row inside the frame) — the other pages touched this round
   (STATUSES, MSG TODO, MSG PLANNER, USERS, Views LEADS/REPORTS) were only
   verified on the 1440px desktop viewport.
+
+## Round 8: two decisions raised as `AskUserQuestion` before building
+
+Both were global, hard-to-reverse-cheaply changes previously left open in
+`02_plan.md` as unresolved Decisions — rather than guess from a handful of
+examples, they were asked directly. Full detail in
+`05_tasks_and_checklist.md` Tasks 37/39/40.
+
+- **Delete → "Clear".** Content Provider's delete has been a confirmed
+  empty stub since Task 9 (blocked, early in this Story). The user's
+  request for a Delete button with a random-word confirmation implied real
+  deletion was possible — asked first, confirmed it should instead blank
+  the entry's fields via the real update path, labeled "Clear" so it's
+  never mistaken for actually removing the row.
+- **Title casing reversed app-wide.** Round 1 deliberately made every page
+  title a short uppercase string; the sidebar labels were deliberately
+  left title-case (`02_plan.md` Decision #2, explicitly unresolved). The
+  user's examples (Settings, then Users/Messages/Folders) turned out to
+  be the same mismatch on every single page, not just those four — asked
+  whether to uppercase the sidebar or lowercase the headers before
+  sweeping all ~19 pages; chose to lowercase the headers to title-case,
+  matching the sidebar. `DashboardPageShell` had a CSS `uppercase` class
+  forcing the visual casing independent of the `title` prop string, which
+  had to be found and removed for the prop changes to have any visible
+  effect at all.
+
+**Real bug found and fixed during this round's own verification (not part
+of the original plan):** Round 4's ad-hoc test-data cleanup script sent a
+partial `PATCH {fields: {STATE: ""}}` directly against the API, but the
+PATCH endpoint replaces the entry's stored body wholesale rather than
+merging — silently wiping every other field (including `DATE`) on the two
+test rows it touched. Only surfaced now because Task 36's edit-page
+prefill effect exposed the now-missing `DATE` falling back to today's
+date. Fixed by re-`PATCH`ing both rows with their complete field set. No
+real user data was affected (both rows were test entries created earlier
+in this session, not the account owner's), but it's the concrete reason
+Task 37's "Clear" always sends a complete field object, never a partial
+one — full detail in Task 36's write-up.
+
+## Known limitations after Round 8
+
+- Task 37's "Clear" flow was verified structurally (dialog opens, random
+  word required, confirm button gated correctly) but not exercised
+  end-to-end against a real entry during this round's own verification,
+  to avoid blanking real data as a side effect of testing — the
+  underlying PATCH call itself was separately confirmed working via the
+  Task 36 bug-fix.
+- The `toolbarSecondRow` prop remains unused by every real call site (see
+  Round 3's note) but still hasn't been removed from
+  `dashboard-page-shell.tsx`.
+- Title-casing was applied to every `DashboardPageShell`-based page's
+  `title` prop; the `(auth)` route group (`login` and siblings) doesn't
+  use this prop at all and was unaffected either way.
