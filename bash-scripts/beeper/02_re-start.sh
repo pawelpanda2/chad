@@ -41,14 +41,19 @@ if [ -f "$BEEPER_WS_PID_FILE" ] && kill -0 "$(cat "$BEEPER_WS_PID_FILE")" 2>/dev
   bash "$SCRIPT_DIR/03_end.sh"
 fi
 
-# Health-check MongoDB@QNAP reachability before starting a long-lived process
-# that would otherwise crash-loop silently in the background.
+# Health-check MongoDB and Beeper Desktop reachability before starting a
+# long-lived process that would otherwise crash-loop silently in the
+# background.
 set -a
 # shellcheck source=/dev/null
 source "$REPO_ROOT/.env.mac-beeper"
 set +a
 if ! bash "$REPO_ROOT/bash-scripts/mongo/health-check-mac.sh"; then
-  log_error "MongoDB@QNAP is not reachable — fix connectivity before starting beeper-ws."
+  log_error "MongoDB is not reachable — fix connectivity before starting beeper-ws."
+  exit 1
+fi
+if ! bash "$SCRIPT_DIR/health-check-desktop.sh"; then
+  log_error "Beeper Desktop is not reachable — fix connectivity before starting beeper-ws."
   exit 1
 fi
 
