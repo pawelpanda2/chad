@@ -1,5 +1,18 @@
 # Story 66 — Others (decisions, problems, limitations, proposals)
 
+## Correction to an earlier assumption in this Story
+
+`02_plan.md`'s original diagnosis noted the fix was "implemented and
+locally verified... real-QNAP end-to-end verification blocked," without
+addressing whether it had been committed. When Task 5 needed real Git
+history to restore the prior behavior from, it turned out **both the
+before and after versions of `06_qnap_test_ssh/06_deploy.sh` were already
+committed** (`55a898e` = Story 63's original streamed version, `ce34967` =
+this Story's detached version, = `HEAD` at the time) — this session never
+ran `git commit` itself; something else in this environment did. Noted
+here rather than silently corrected, since it's a real gap in this
+session's own model of the repo's state, not just a stray detail.
+
 ## Problems encountered
 
 - **The QNAP host is currently completely unreachable** (100% ping loss,

@@ -6,6 +6,7 @@
 | 2 | DONE      |             | Identify the real root cause of the "Timeout, server ... not responding." disconnect |
 | 3 | DONE      |             | Fix `06_qnap_test_ssh/06_deploy.sh` so a long build survives a dropped/slow SSH connection instead of leaving the real outcome unknown |
 | 4 | NOT DONE  |             | Confirm the fix for real, end-to-end, against the actual QNAP host |
+| 5 | DONE      |             | `06_qnap_test_ssh/06_deploy.sh` streams live by default again (Task 3's detached mode moved behind an explicit `--detached` flag) |
 
 # Task 1 — Real current state of QNAP TEST
 
@@ -135,3 +136,43 @@ uruchamiaj od razu kolejnego deploymentu."
 **Status:** NOT DONE — blocked on QNAP reachability, not on missing code.
 Retry once the host responds again (see `06_others_from_report.md` for the
 concrete next steps).
+
+# Task 5 — Restore live streaming as the default; detached mode becomes `--detached`
+
+**Requested:** (`01_input.md`, Input 4) — Task 3's detached-by-default
+change was a real UX regression for daily dev use (deploy now returns
+almost immediately after printing a job ID, instead of streaming the whole
+build/restart/healthcheck/status live and blocking until the real
+success/failure is known). Restore the previous, attached/streamed
+behavior as the default; keep the detached mechanism available behind an
+explicit `--detached` flag, for the rare case it's actually needed (very
+long unattended deploys, future CI). Find the prior implementation in Git
+history first, rather than reimplementing streaming from scratch.
+
+**Done:** Checked actual Git history for this file — contrary to this
+Story's own earlier assumption that nothing had been committed yet (see
+`06_others_from_report.md`'s correction note), it turns out both versions
+*were* committed (`55a898e` = the original Story 63 streamed version using
+`run_remote_script`; `ce34967` = this Story's detached version, = HEAD).
+Restored `55a898e`'s body as the default path (unchanged,
+`run_remote_script "04_qnap_test" "06_deploy.sh" ...` — fully attached,
+streams live via the same `run_remote` every other fast operation already
+uses, blocks until done, propagates the real exit code via `set -euo
+pipefail`), and kept Task 3's detached mechanism reachable via a new
+`--detached` flag. Argument parsing rewritten as a `for arg in "$@"` loop
+so `--non-interactive` and `--detached` combine freely in either order
+(the previous single `"${1:-}" = "--non-interactive"` check only handled
+one flag in one position).
+
+**Files changed:** `bash-scripts/dashboard/06_qnap_test_ssh/06_deploy.sh`
+only — no changes needed in `bash-scripts/common/lib.sh` (both
+`run_remote_script` and `run_remote_job_with_progress` already existed;
+this task only changes which one `06_deploy.sh` calls by default).
+
+**Tested:** `bash -n` passes. Not run against the real QNAP (still
+unreachable, see Task 4) — the default path is a straight revert to
+`55a898e`'s exact, previously-working body, so it carries the same
+confidence that version already had; the `--detached` path is unchanged
+from Task 3's own testing.
+
+**Status:** DONE.
