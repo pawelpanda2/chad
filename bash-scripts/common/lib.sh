@@ -433,7 +433,20 @@ load_qnap_ssh_config() {
   # hang. StrictHostKeyChecking=accept-new: auto-trust a NEW host key (single
   # known Tailscale-only host) without prompting, but still reject a CHANGED
   # key — safe for non-interactive automation.
-  SSH_OPTS=(-o ConnectTimeout=10 -o ServerAliveInterval=5 -o ServerAliveCountMax=3 -o StrictHostKeyChecking=accept-new)
+  #
+  # ServerAliveInterval=10/ServerAliveCountMax=12 (120s tolerance) — raised
+  # from 5/3 (15s) after a real incident (Story 66): a long `next build` on
+  # the QNAP left the host too CPU/scheduling-starved to answer even
+  # protocol-level keepalive probes in time, and the client gave up with
+  # OpenSSH's own "Timeout, server <host> not responding." mid-deploy, with
+  # no way to tell afterward whether the remote build/restart had actually
+  # succeeded. 120s is still short enough to catch a genuinely dead
+  # connection quickly for fast ops (restart/end/status/logs). For the one
+  # operation that's genuinely long-running and silent for minutes at a
+  # time (the TEST build, inside 06_deploy.sh) — see
+  # run_remote_job_with_progress() below instead of relying on any timeout
+  # value here being "big enough."
+  SSH_OPTS=(-o ConnectTimeout=10 -o ServerAliveInterval=10 -o ServerAliveCountMax=12 -o StrictHostKeyChecking=accept-new)
 
   export QNAP_SSH_HOST QNAP_SSH_PORT QNAP_SSH_USERNAME QNAP_REPO_DIR QNAP_SSH_PASSWORD SSH_TARGET
 }
@@ -460,7 +473,7 @@ run_remote() {
     EXPECT_QNAP_PASSWORD="$QNAP_SSH_PASSWORD" expect <<EOF
 set timeout 120
 log_user 1
-spawn ssh -o ConnectTimeout=10 -o ServerAliveInterval=5 -o ServerAliveCountMax=3 -o StrictHostKeyChecking=accept-new -p $QNAP_SSH_PORT $SSH_TARGET "bash -lc $(printf '%q' "$remote_cmd")"
+spawn ssh -o ConnectTimeout=10 -o ServerAliveInterval=10 -o ServerAliveCountMax=12 -o StrictHostKeyChecking=accept-new -p $QNAP_SSH_PORT $SSH_TARGET "bash -lc $(printf '%q' "$remote_cmd")"
 expect {
   -re {(?i)yes/no} { send -- "yes\r"; exp_continue }
   -re {(?i)password:} { send -- "$env(EXPECT_QNAP_PASSWORD)\r"; exp_continue }
@@ -501,6 +514,122 @@ run_remote_script() {
   local env_dir="$1" script_name="$2" label="$3"
   run_remote "Update repo on QNAP" "cd '$QNAP_REPO_DIR' && git pull --ff-only"
   run_remote "$label" "cd '$QNAP_REPO_DIR' && bash bash-scripts/dashboard/${env_dir}/${script_name}"
+}
+
+# ============================================================================
+# Detached remote job + polling (Story 66). For long-running remote
+# operations — today, only the TEST build inside 06_qnap_test_ssh/06_deploy.sh
+# — that must survive the LOCAL ssh connection dropping, whether from a real
+# network blip or from the remote host being too resource-starved under load
+# to answer SSH keepalives within any tolerance we pick (see the real
+# incident this fixes: a long, silent `next build` phase left the QNAP host
+# unable to answer keepalives in time, and the client gave up with OpenSSH's
+# own "Timeout, server <host> not responding.", with no way afterward to
+# tell whether the remote build/restart had actually succeeded).
+#
+# The fix is architectural, not just a bigger timeout: the remote command
+# runs detached (nohup, disowned, no controlling terminal) so it keeps
+# running independent of any one ssh session's lifetime, and the local side
+# reconnects periodically (short-lived, low-risk polls) to report progress
+# and detect completion — a poll attempt itself failing to connect is
+# treated as "still running, retry," never as the job having failed. Only
+# the remote-recorded exit code decides success/failure.
+# ============================================================================
+
+# Usage: JOBID="$(remote_job_start "cd '$QNAP_REPO_DIR' && ...")"
+# Starts remote_cmd detached on the QNAP host under
+# $QNAP_REPO_DIR/.runtime/remote-jobs/. Prints the job ID (empty if the
+# start itself couldn't connect).
+#
+# remote_cmd is base64-encoded before being embedded in the outer heredoc —
+# NOT passed through as literal text inside a nested `bash -c '...'`. An
+# earlier version of this function did the latter and broke the instant
+# remote_cmd contained its own single quotes (which it always does in the
+# one real call site, `cd '$QNAP_REPO_DIR' && ...` — caught by testing
+# against a mocked run_remote_capture before this ever touched the real
+# QNAP, see backlog/stories/66/06_others_from_report.md). Base64 makes the
+# encoded payload pure `[A-Za-z0-9+/=]` text, safe to splice into the
+# heredoc with zero quoting concerns regardless of what remote_cmd contains.
+remote_job_start() {
+  local user_cmd="$1"
+  local encoded
+  encoded="$(printf '%s' "$user_cmd" | base64 | tr -d '\n')"
+  local remote_cmd
+  remote_cmd=$(cat <<EOF
+mkdir -p "\$QNAP_REPO_DIR/.runtime/remote-jobs"
+JOBID="\$(date +%s)-\$\$"
+LOGFILE="\$QNAP_REPO_DIR/.runtime/remote-jobs/\${JOBID}.log"
+DONEFILE="\$QNAP_REPO_DIR/.runtime/remote-jobs/\${JOBID}.done"
+( echo "$encoded" | base64 -d | bash > "\$LOGFILE" 2>&1; echo \$? > "\$DONEFILE" ) < /dev/null &
+disown
+echo "\$JOBID"
+EOF
+)
+  run_remote_capture "$remote_cmd"
+}
+
+# Usage: STATUS="$(remote_job_status "$JOBID")"  -> "RUNNING" or the exit code
+# Empty output (e.g. this poll couldn't connect) is also normalized to
+# "RUNNING" — a failed poll must never be mistaken for a failed job.
+remote_job_status() {
+  local jobid="$1"
+  local out
+  out="$(run_remote_capture "cat \"\$QNAP_REPO_DIR/.runtime/remote-jobs/${jobid}.done\" 2>/dev/null")"
+  if [ -z "$out" ]; then
+    echo "RUNNING"
+  else
+    echo "$out"
+  fi
+}
+
+# Usage: remote_job_tail "$JOBID"  -> last ~4000 bytes of the job's remote log
+# Deliberately a blunt "last N bytes" (not incremental byte-offset tailing)
+# — some duplicate output between polls is a fine trade-off for not needing
+# exact stream bookkeeping across independent, possibly-failed connections.
+remote_job_tail() {
+  local jobid="$1"
+  run_remote_capture "tail -c 4000 \"\$QNAP_REPO_DIR/.runtime/remote-jobs/${jobid}.log\" 2>/dev/null"
+}
+
+# Usage: run_remote_job_with_progress "<label>" "<remote_cmd>" [poll_interval_seconds]
+# Orchestrates start + poll-until-done. Returns 0/1 matching the remote
+# command's own real exit code — never assumed from "the ssh call
+# returned"/"the connection didn't error."
+run_remote_job_with_progress() {
+  local label="$1" remote_cmd="$2" poll_interval="${3:-15}"
+  echo ""
+  log_info "$label (running detached on the QNAP host — survives a dropped SSH connection)"
+
+  local jobid
+  jobid="$(remote_job_start "$remote_cmd")"
+  if [ -z "$jobid" ]; then
+    log_error "Could not start the remote job (no job ID returned) — check SSH connectivity to $QNAP_SSH_HOST."
+    return 1
+  fi
+  log_info "Remote job ID: $jobid (log: \$QNAP_REPO_DIR/.runtime/remote-jobs/${jobid}.log on the QNAP host)"
+
+  local status tail_out
+  while true; do
+    sleep "$poll_interval"
+    status="$(remote_job_status "$jobid")"
+    tail_out="$(remote_job_tail "$jobid")"
+    if [ -n "$tail_out" ]; then
+      echo "--- remote progress ($(date '+%H:%M:%S')) ---"
+      echo "$tail_out"
+    else
+      log_info "(no output yet, or couldn't reach the QNAP host this poll — will retry)"
+    fi
+
+    if [ "$status" != "RUNNING" ]; then
+      if [ "$status" = "0" ]; then
+        log_ok "Done: $label (remote exit code 0)"
+        return 0
+      else
+        log_error "$label failed on the QNAP host (remote exit code: $status)"
+        return 1
+      fi
+    fi
+  done
 }
 
 # ============================================================================
