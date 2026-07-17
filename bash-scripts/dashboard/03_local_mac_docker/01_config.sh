@@ -27,6 +27,21 @@ export DASHBOARD_PORT CONTENT_PROVIDER_API_PORT MONGODB_PORT
 # PreparerModule__* environment variable overrides. /data/repos is the
 # in-container mount point for CP_REPOS_HOST_PATH (see docker-compose.local.yml),
 # not a real host path — the real host path lives in .env.local, not here.
+#
+# NoSqlRepoSearchPaths must include the trailing "repos" segment itself
+# (net-content-provider Story 68, 2026-07-17): GuidGroupsHelper.
+# GetGuidGroupsForSearchFolders no longer appends "repos" automatically and
+# now scans every configured path directly for GUID-named folders. The real
+# GUID folders live one level under CP_REPOS_HOST_PATH (i.e. under
+# .../repos/<guid>), so the search path must say /data/repos/repos, not
+# /data/repos.
+#
+# Second path /data/repos2/repos (Story 68): the chad_admin login repo
+# (users/users-list) physically lives under CP_REPOS_HOST_PATH_2's Dropbox
+# share, not under CP_REPOS_HOST_PATH — without this second path, login
+# fails with "Content Provider API is unavailable" even though /health
+# reports repos found (confirmed 2026-07-17: chad_admin's config.yaml was
+# only found under /Volumes/Dropbox/kamilgame042/repos on this Mac).
 read -r -d '' CONTENT_PROVIDER_APPSETTINGS_JSON <<'EOF' || true
 {
   "ApiUrls": "http://0.0.0.0:12024",
@@ -38,7 +53,8 @@ read -r -d '' CONTENT_PROVIDER_APPSETTINGS_JSON <<'EOF' || true
     "DbIdentityParentFolderSearchExpression": "/data/repos",
     "SettingsSearchExpr": "0(0,1)",
     "NoSqlRepoSearchPaths": [
-      "/data/repos"
+      "/data/repos/repos",
+      "/data/repos2/repos"
     ]
   }
 }

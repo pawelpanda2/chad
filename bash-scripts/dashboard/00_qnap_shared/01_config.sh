@@ -29,10 +29,33 @@ export DOCKER_CONFIG="$DOCKER_CONFIG_DIR"
 # Content Provider's own config module (appsettings.json) — identical
 # across local-mac-docker/QNAP TEST/QNAP PROD/QNAP SHARED, since TEST and
 # PROD now share this one Content Provider instance and data set. Not a
-# secret, so the full file lives here as text. /data/repos is the
-# in-container mount point for CP_REPOS_HOST_PATH (see
-# docker-compose.qnap.shared.yml), not a real host path — the real host
-# path (/share/Dropbox) lives in .env.qnap, not here.
+# secret, so the full file lives here as text. /data/repos and /data/repos2
+# are the in-container mount points for CP_REPOS_HOST_PATH/CP_REPOS_HOST_PATH_2
+# (see docker-compose.qnap.shared.yml), not real host paths — the real host
+# paths live in .env.qnap, not here.
+#
+# Story 68 (corrected 2026-07-17): the real QNAP Dropbox mount
+# (/share/Dropbox, a symlink to /share/CACHEDEV1_DATA/Dropbox) contains two
+# separate account subfolders, "pawelpanda2" (36 repos) and "kamilgame042"
+# (4 repos, including chad_admin's login repo and the shared repo
+# 21d11bdc-... used by leads/reports/beeper) — confirmed via a live SSH
+# check, 2026-07-17. There is no bare "/share/Dropbox/repos" and no
+# "/shared/..." path on this QNAP — an earlier draft of this fix assumed
+# "/shared/Dropbox/..." without verifying against the real filesystem; that
+# path does not exist. GuidGroupsHelper.GetGuidGroupsForSearchFolders no
+# longer appends "repos" automatically, so both entries below need it
+# explicit, matching the 03_local_mac_docker/01_config.sh convention exactly
+# (CP_REPOS_HOST_PATH/_2 are each the ACCOUNT root, i.e. the parent of that
+# account's own "repos" folder, not the repos folder itself).
+#
+# IMPORTANT — this fixes a live, latent crash-loop risk: the running
+# chad-content-provider-api container currently reports repoCount:38 from an
+# in-memory scan cached at its last startup, from BEFORE the Dropbox was
+# reorganized into these two account subfolders. The single old search path
+# ("/data/repos" -> old bare /share/Dropbox/repos, which no longer exists)
+# would make the container crash-loop on its NEXT restart (QNAP reboot, OOM,
+# `docker compose up` after this config lands) unless this fix is deployed
+# first.
 read -r -d '' CONTENT_PROVIDER_APPSETTINGS_JSON <<'EOF' || true
 {
   "ApiUrls": "http://0.0.0.0:12024",
@@ -44,7 +67,8 @@ read -r -d '' CONTENT_PROVIDER_APPSETTINGS_JSON <<'EOF' || true
     "DbIdentityParentFolderSearchExpression": "/data/repos",
     "SettingsSearchExpr": "0(0,1)",
     "NoSqlRepoSearchPaths": [
-      "/data/repos"
+      "/data/repos/repos",
+      "/data/repos2/repos"
     ]
   }
 }
