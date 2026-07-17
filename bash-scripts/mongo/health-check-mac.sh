@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# Health check: Mac -> MongoDB@QNAP (over Tailscale).
+# Health check: Mac -> MongoDB (local chad Mongo today; QNAP over Tailscale
+# once Story 59 Phase 2/3 re-points it there).
 #
 # Run this on the Mac before starting beeper-ws/beeper-sync, to fail fast and
-# clearly if MongoDB on QNAP isn't reachable, instead of the long-lived
-# process silently hanging or crash-looping.
+# clearly if MongoDB isn't reachable, instead of the long-lived process
+# silently hanging or crash-looping.
 #
 # Reads MONGODB_URI from env (source your local, gitignored .env.mac-beeper
 # first — see .env.mac-beeper.example). Never prints the password or the
@@ -14,9 +15,13 @@
 #   1 = MONGODB_URI not set
 #   2 = host:port not reachable (network/Tailscale/firewall problem)
 #   3 = TCP reachable but MongoDB did not respond to ping (auth/db problem)
-#   4 = mongosh not installed, so only the TCP check could be performed
+#   4 = neither mongosh nor the Node mongodb driver is available, so only
+#       the TCP check could be performed
 
 set -euo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd -- "$SCRIPT_DIR/../.." && pwd)"
 
 if [ -z "${MONGODB_URI:-}" ]; then
   echo "Error: MONGODB_URI is not set. Source your .env.mac-beeper first:" >&2
@@ -64,13 +69,38 @@ fi
 
 echo "OK: TCP reachable."
 
-if ! command -v mongosh >/dev/null 2>&1; then
-  echo "mongosh not installed — skipping application-level ping. Install mongosh for a full check." >&2
+if command -v mongosh >/dev/null 2>&1; then
+  echo "Pinging MongoDB (mongosh) ..."
+  if mongosh "$MONGODB_URI" --quiet --eval "db.runCommand({ ping: 1 })" >/dev/null 2>&1; then
+    echo "OK: MongoDB responded to ping."
+    exit 0
+  else
+    echo "FAIL: TCP reachable but MongoDB did not respond to ping (check credentials / authSource / replica set state)." >&2
+    exit 3
+  fi
+fi
+
+# mongosh isn't guaranteed to be installed on a Mac set up only for this
+# repo's own scripts (unlike the old `contacts` project's dev setup) — fall
+# back to a ping via the Node mongodb driver, resolved from beeper-sync's
+# own node_modules (it already depends on `mongodb`) so this needs nothing
+# beyond `pnpm install`.
+MONGO_DRIVER_DIR="$REPO_ROOT/packages/beeper-sync/node_modules/mongodb"
+if [ ! -d "$MONGO_DRIVER_DIR" ]; then
+  echo "mongosh not installed and the Node mongodb driver isn't available either (run: pnpm install) — skipping application-level ping." >&2
   exit 4
 fi
 
-echo "Pinging MongoDB ..."
-if mongosh "$MONGODB_URI" --quiet --eval "db.runCommand({ ping: 1 })" >/dev/null 2>&1; then
+echo "Pinging MongoDB (node) ..."
+if MONGODB_URI="$MONGODB_URI" node -e "
+const { MongoClient } = require('$MONGO_DRIVER_DIR');
+const client = new MongoClient(process.env.MONGODB_URI, { serverSelectionTimeoutMS: 5000 });
+client.connect()
+  .then(() => client.db().command({ ping: 1 }))
+  .then(() => { process.exit(0); })
+  .catch(() => { process.exit(1); })
+  .finally(() => client.close());
+" >/dev/null 2>&1; then
   echo "OK: MongoDB responded to ping."
   exit 0
 else

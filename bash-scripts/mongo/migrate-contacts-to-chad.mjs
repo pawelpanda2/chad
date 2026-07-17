@@ -32,6 +32,11 @@
  */
 
 import { MongoClient } from "mongodb";
+import { fileURLToPath } from "node:url";
+import { existsSync } from "node:fs";
+import path from "node:path";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const args = process.argv.slice(2);
 const APPLY = args.includes("--apply");
@@ -142,9 +147,27 @@ async function main() {
   if (!APPLY) {
     console.log(`Re-run with --apply to actually write.`);
   } else {
-    console.log(
-      `Reminder: start any of beeper-ws / beeper-sync / the dashboard once against the target DB to (re)create indexes (dba.ensureBeeperIndexes()).`
-    );
+    await sourceClient.close();
+    await targetClient.close();
+    // dba's ensureBeeperIndexes() always reads its target from
+    // process.env.MONGODB_URI (see packages/dba/src/mongo.ts) — point it at
+    // the same target this migration just wrote to, even if --target
+    // overrode the default.
+    process.env.MONGODB_URI = TARGET_URI;
+    const dbaDist = path.join(__dirname, "..", "..", "packages", "dba", "dist", "beeper-crm.js");
+    if (!existsSync(dbaDist)) {
+      console.error(
+        `\nWarning: ${dbaDist} not found — skipping index creation. Run "pnpm dba:build" then re-run this script to (re)create indexes.`
+      );
+      process.exit(0);
+    }
+    const { ensureBeeperIndexes } = await import(dbaDist);
+    await ensureBeeperIndexes();
+    console.log(`Indexes (re)created on the target via dba.ensureBeeperIndexes().`);
+    // dba's getMongoDb() keeps its MongoClient open for the lifetime of the
+    // process (by design, for long-lived callers like the dashboard) — this
+    // is a one-shot script, so exit explicitly instead of hanging forever.
+    process.exit(0);
   }
 
   await sourceClient.close();

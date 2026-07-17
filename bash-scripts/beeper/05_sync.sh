@@ -28,7 +28,16 @@ source "$REPO_ROOT/.env.mac-beeper"
 set +a
 
 if ! bash "$REPO_ROOT/bash-scripts/mongo/health-check-mac.sh"; then
-  log_error "MongoDB@QNAP is not reachable — fix connectivity before syncing."
+  log_error "MongoDB is not reachable — fix connectivity before syncing."
+  exit 1
+fi
+
+# --sqlite reads a local Beeper SQLite export only, no Beeper Desktop REST
+# call involved — every other mode (default, --force, --all) hits the REST
+# API, so check it first instead of letting the process crash with a raw
+# ECONNREFUSED stack trace.
+if [ "${1:-}" != "--sqlite" ] && ! bash "$SCRIPT_DIR/health-check-desktop.sh"; then
+  log_error "Beeper Desktop is not reachable — fix connectivity before syncing."
   exit 1
 fi
 
