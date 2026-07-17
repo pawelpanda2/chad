@@ -247,7 +247,9 @@ function ViewsPageContent() {
   useEffect(() => {
     setFilter("");
     setSortKey(selectedView === "dates" ? "DATA" : selectedView === "tracker" ? "DATE" : "");
-    setSortDir(selectedView === "dates" ? "desc" : "asc");
+    // Oldest-first by default on both tables (Story 62 Round 10) — was
+    // newest-first on DATES only, inconsistent with Tracker.
+    setSortDir("asc");
     setSelectedReportLoca(null);
     setIsTrackerEditMode(false);
     setIsRawMode(false);
@@ -924,18 +926,30 @@ function ViewsPageContent() {
                       n
                     </th>
                   )}
-                  {columns.map((col) => (
-                    <th
-                      key={col.key}
-                      onClick={() => toggleSort(col.key)}
-                      className={`border p-1.5 px-2 text-left font-semibold whitespace-nowrap cursor-pointer select-none hover:brightness-95 ${GROUP_HEADER_CLASS[col.group]}`}
-                    >
-                      <span className="inline-flex items-center gap-1">
-                        {col.label}
-                        {sortKey === col.key && (sortDir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)}
-                      </span>
-                    </th>
-                  ))}
+                  {columns.map((col) => {
+                    // Sorting is only meaningful (and only offered) on the
+                    // date column — every other column used to re-sort the
+                    // whole table on click too, which wasn't wanted (Story
+                    // 62 Round 10). The date column keeps its click-to-
+                    // reverse behavior.
+                    const isSortable = col.key === "DATE" || col.key === "DATA";
+                    return (
+                      <th
+                        key={col.key}
+                        onClick={isSortable ? () => toggleSort(col.key) : undefined}
+                        className={cn(
+                          "border p-1.5 px-2 text-left font-semibold whitespace-nowrap select-none",
+                          isSortable ? "cursor-pointer hover:brightness-95" : "cursor-default",
+                          GROUP_HEADER_CLASS[col.group]
+                        )}
+                      >
+                        <span className="inline-flex items-center gap-1">
+                          {col.label}
+                          {sortKey === col.key && (sortDir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)}
+                        </span>
+                      </th>
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody>
