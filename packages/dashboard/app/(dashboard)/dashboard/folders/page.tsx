@@ -213,7 +213,7 @@ export default function FoldersPage() {
   }
 
   return (
-    <DashboardPageShell title="FOLDER">
+    <DashboardPageShell title="Folders">
       <ErrorBox message={error} className="mb-3" />
 
       {/* Single nested frame wrapping nav + info + item content — previously nav had its own frame separate from the rest, extended per explicit request to cover everything down through the editor. */}

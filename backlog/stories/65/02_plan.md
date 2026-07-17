@@ -53,7 +53,50 @@ modifies anything.
 Per requirement 9, **neither backup will be deleted until the user
 confirms the whole operation and their own tests are complete.**
 
-## Etap 3 (proposed, NOT YET EXECUTED) — Replace the standalone repo's working tree with chad's content, commit
+## Etap 3 (DONE) — Replace the standalone repo's working tree with chad's content, commit, push
+
+Executed exactly as planned below, with two added safeguards the user
+requested before authorizing execution:
+
+1. **Dry run first** (`rsync -a --delete --dry-run -i`, excluding `.git`,
+   `bin/`, `obj/`, `node_modules/`, `.next/`, `Binaries/`): 1267 planned
+   operations — 524 deletions, ~554 updates, ~12 new files/dirs. Every one
+   of the 524 deletions was individually checked against
+   `git ls-files --error-unmatch` in the standalone repo: **zero were
+   git-tracked** (all untracked local junk — `.vscode`, `.env*` variants,
+   `.DS_Store`, `TestResults/`, `.idea/`). The string `.git` appeared 7
+   times in the dry-run output but all 7 were `.gitignore` files
+   (substring false positive) — the real `.git` directory was never
+   touched (it's excluded from the rsync).
+2. **Real sync** (same command, minus `--dry-run`): exit 0, 1267
+   operations, matching the dry run exactly.
+3. **Post-sync verification**: `diff -rq` between
+   `chad/packages/net-content-provider` and `content-provider`, excluding
+   `.git`/`bin`/`obj`/`node_modules`/`.next`/`Binaries`/`.DS_Store` →
+   **completely empty** (zero differences). File counts under the same
+   exclusions: **553 = 553**. Confirms the only differences between the
+   two directories are exactly `.git` and the consciously-excluded
+   build-artifact dirs, as required.
+4. `git add -A` + reviewed `git diff --cached --stat` before committing:
+   17 real files changed (785 insertions, 56 deletions) — exactly the
+   "chad is ahead" content identified in the audit (`DefaultPreparer.cs`
+   health-diagnostics rewrite, QNAP scripts, install/startup scripts,
+   `.env.qnap-test.example`). Zero git-tracked files deleted
+   (`git diff --cached --name-status | awk '$1=="D"'` → empty). The repo's
+   2 previously-uncommitted stray edits (port revert, cosmetic reformat)
+   were naturally superseded — confirmed no longer present in `git status`
+   after the sync.
+5. Committed: **`5934fdf6be873d05c88745664cf9a188f65c0fd6`**
+   ("Replace working tree with current chad/packages/net-content-provider
+   snapshot", 2026-07-17 02:33:58 +0200). Full message references this
+   Story's audit trail.
+6. Pushed to `origin/main`: `1438998..5934fdf main -> main`. Confirmed
+   `origin/main` now points at `5934fdf...` — this is **the exact commit**
+   chad's submodule reference will be pinned to in Etap 6.
+
+**Original (pre-execution) plan text, kept for the record:**
+
+Replace the standalone repo's working tree with chad's content, commit
 
 1. Inside `content-provider` (the standalone repo, real one, not the
    backup): remove everything from the working tree **except `.git`**
@@ -87,7 +130,79 @@ the normal flow — no separate action needed, and nothing is "lost" in a
 history sense because they were never committed anywhere to begin with
 (and are preserved for the record in Backup #2 regardless).
 
-## Etap 4 (proposed, NOT YET EXECUTED) — Convert `chad/packages/net-content-provider` into a submodule
+## Etap 6 (DONE) — Convert `chad/packages/net-content-provider` into a submodule
+
+Executed per the user's explicit go-ahead and numbered requirements
+(re-numbered by the user as "Etap 6" in their confirmation message).
+
+1. Final safety gate immediately before deletion: re-verified Backup #1
+   still matched the live directory exactly (`diff -rq` empty, 1370 = 1370
+   files) — confirmed identical.
+2. `git rm -r --cached packages/net-content-provider` (552 entries
+   unstaged from the index; files still on disk at this point).
+3. `rm -rf packages/net-content-provider` (physical deletion — safe, since
+   Backup #1 was just re-verified).
+4. `git submodule add git@github.com:pawelpanda2/contentprovider.git packages/net-content-provider`
+   — cloned fresh from the remote; landed exactly on
+   `5934fdf6be873d05c88745664cf9a188f65c0fd6` (the tip of `main`, i.e. the
+   Etap 3 commit) without needing a separate checkout, then an explicit
+   `git checkout 5934fdf...` was run anyway inside the submodule to
+   guarantee the exact pin rather than relying on "whatever main currently
+   is."
+5. **Verification commands, all as requested:**
+   - `git submodule status` → `5934fdf6be873d05c88745664cf9a188f65c0fd6 packages/net-content-provider (heads/main)`
+   - `git ls-files --stage packages/net-content-provider` → single gitlink
+     entry, mode `160000`, exact SHA.
+   - `git status` → clean for this path (only unrelated, pre-existing
+     concurrent-session changes elsewhere in the tree, untouched).
+   - `git rev-parse --show-toplevel` (run inside the submodule) → correctly
+     resolves to the submodule's own path, not chad's root.
+   - `git rev-parse --show-superproject-working-tree` (run inside the
+     submodule) → correctly resolves back to chad's root.
+6. **Build/test verification:** `dotnet build` of `SharpContainerApi.csproj`
+   (the actual deployed API) succeeds — 0 errors (382 pre-existing
+   nullable-reference warnings, unrelated). The 4 test projects
+   (`SharpRepoServiceTests`, `SharpOperationsTests`,
+   `SharpButtonActionsTests`, `SharpFileServiceTests`) have pre-existing
+   compile errors (missing `internal` type references — a pre-existing
+   test-project wiring problem) and one pre-existing environment-dependent
+   test failure (`SharpOperationsTests.Test1`, hardcoded Dropbox path that
+   doesn't exist on this machine). **Confirmed not a regression**: the
+   exact same failures were reproduced by building/testing the identical
+   projects inside Backup #1 (the untouched pre-migration copy).
+7. **Clean clone test:** `git clone --recurse-submodules` of the local
+   `chad` repo (not pushed anywhere — chad's own history hasn't been
+   pushed yet, only the submodule's remote, which already had `5934fdf`
+   from Etap 3) into a scratch directory. The submodule was correctly
+   fetched from `git@github.com:pawelpanda2/contentprovider.git` and
+   checked out at exactly `5934fdf...`. Content diffed against Backup #1
+   (excluding `.git`/build artifacts): identical, with exactly one expected
+   difference — `.env.qnap-test` (gitignored, contains real local values,
+   correctly absent from a fresh clone; its `.example` template is
+   present and tracked). Scratch clone deleted after verification.
+8. **Commit in chad, scoped exclusively to the submodule migration** (per
+   requirement 1). This required extra care: a concurrent, unrelated
+   session was actively committing its own work in this same repo at the
+   same time (`backlog/stories/62/*`, dashboard `page.tsx` files). A first
+   commit attempt using `git commit -- .gitmodules packages/net-content-provider`
+   failed ("pathspec did not match") because of an index race with that
+   other session's own commit cycle — the *files on disk* (including the
+   submodule checkout itself) were never affected, only the staged index
+   state was momentarily lost. Re-ran `git rm -r --cached` +
+   `git add .gitmodules packages/net-content-provider` + the same
+   pathspec-scoped commit immediately after, which succeeded cleanly:
+   **`57864ed4d3f21f1d73a8d5f1a41e409be5302192`** — 554 changes (`.gitmodules`
+   created, gitlink created, 552 old individually-tracked blobs removed),
+   verified to touch **zero** paths outside `.gitmodules`/
+   `packages/net-content-provider`, and **zero** touches to
+   `backlog/stories/*` (Story 62's concurrent work, and Stories 63/64,
+   all confirmed untouched).
+9. **Not pushed** — chad is 2 commits ahead of `origin/main` (this
+   migration commit, plus the concurrent session's own unrelated commit,
+   both unpushed). Stopping here per requirement 10.
+10. **Backups**: both untouched, still present, not deleted.
+
+## Etap 4 (superseded by Etap 6 above, kept for the record) — Convert `chad/packages/net-content-provider` into a submodule
 
 1. In `chad`: confirm the working tree is otherwise clean around this path
    (`git status --short packages/net-content-provider` — was empty at
