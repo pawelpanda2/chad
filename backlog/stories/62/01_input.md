@@ -1150,3 +1150,23 @@ against a real wide-viewport screenshot before being reported as done.)
 ## Input 45
 
 dalej ta kolorowa tabele w srodku jej ramka srodkowa ma rogi w takim dziwnym ksztalcie zamiast ladnych okraglych
+
+## Input 46
+
+potrzebuje jeszcze dodatkowy przycisk do tabel super maly i krotki na szerokosc z napiem n
+ktory bedzie odkrywal kolumne z liczbe porzadkowa z content providera taka sueper waska kolumne z liczbami 01, 02 itd.
+
+## Input 47 (mid-turn interrupt)
+
+kontynuuj z ta dodatkowa kolumna odkrywana przyciskiem
+wzoruj sie na edit on robi cos podobnego tylko pokazuje kolumne z dyskietkami
+
+## Input 48 (clarifying question answer)
+
+Which page does "reports" refer to for the default-sort-by-oldest-date + disable-other-column-sorting request?
+Answer: "Both Daily Tracker and Dates"
+
+(Original message, before the clarifying question:)
+w reports daj domyslnie segrowanie po najstarszej daty
+i wylacz zmiany segregacji po kliknieciu w inne kolumny to jest zbedne
+ale zostaw przy dacie zeby mozna bylo to odwrocic

@@ -128,6 +128,8 @@ nobody has to re-discover the finding):
 | 54 | N/A      |             | Third attempt at rounded table corners, this time via per-cell `border-radius` (no `overflow` touched at all, provably safe re: scroll) — CSS confirmed applying correctly, but doesn't render: `border-radius` on `<td>`/`<th>` is a documented no-op when the table uses `border-collapse: collapse`, a genuine browser limitation. Reverted the (harmless but non-functional) per-cell classes rather than ship dead code; square corners kept rather than switching to `border-collapse: separate` (visible double borders between every cell) without explicit sign-off. |
 | 55 | DONE     |             | Columns were stretching to fill all available table width instead of hugging their content — most visible at a wide/zoomed-out viewport. Removed the table's own `w-full`, so it sizes to its natural content width and stays left-aligned; the wrapper's own background simply shows through on the right instead of every column being padded wider than its data needs. Unaffected: DAILY TRACKER's 20 columns still overflow correctly and scroll when they exceed the frame. |
 | 56 | DONE     |             | Table wrapper corners: resolved the "weird shape" left over after Task 54's revert — a `rounded-lg` wrapper around a plain square `<table>` let the table's own corner poke past the wrapper's curve. Removed `rounded-lg` from the wrapper on DAILY TRACKER/DATES, STATUSES matrix, and USERS so both shapes match exactly (square + square) — a one-line, zero-risk change with no interaction with scroll/width at all. |
+| 57 | DONE     |             | New super-narrow "n" toggle button on DAILY TRACKER/DATES (mirrors the Edit toggle's pattern): reveals a compact extra column showing each row's real Content Provider item name (the sequential `01`, `02`, ... identifier `generateEntryName` assigns), independent of Edit/Open Raw mode |
+| 58 | DONE     |             | DAILY TRACKER and DATES both now default to oldest-first sort order (DATES previously defaulted newest-first, inconsistent with Tracker); clicking any column header other than the date column (DATE/DATA) no longer re-sorts the table — only the date column remains clickable, still toggling ascending/descending |
 
 # Task 1 — SETTINGS: single frame, ~3px gap, title in row 1
 
@@ -1813,3 +1815,86 @@ no notch or curve mismatch. Re-confirmed horizontal scroll (`cwScrollWidth`
 — this change has no way to have affected either, and the measurement
 confirms it didn't.
 **Status: DONE**
+
+**Round 10 — a new "n" (item-name) column, and Tracker/Dates sort
+restrictions.** Two independent asks landed in the same turn; a
+mid-conversation Docker/disk-space incident (documented separately below,
+not a code issue) briefly blocked deployment.
+
+# Task 57 — "n": a toggle-able Content Provider item-name column
+
+**Requested:** an additional super-small, narrow toggle button (labeled
+"n") for the tables, revealing a very narrow extra column showing each
+row's real Content Provider sequential item name (`01`, `02`, ...) —
+explicitly asked to model it on how the Edit toggle reveals the action
+column.
+**Done:** added `showItemNameColumn` state and a compact `h-7 w-7 p-0`
+button labeled "n" next to Open Raw, using the same `variant={active ?
+"default" : "outline"}` active-state pattern as Edit/Open Raw. The new
+column (`w-[32px]`, monospace, muted) shows `entry.itemName` — the real
+Content Provider name, distinct from the DATE/DATA field — and follows
+the exact same conditional-rendering shape the action column already
+established: a `rowSpan={2}` header cell in Tracker's group row (covering
+both header rows), a same-row header cell for DATES (which has no group
+row to inherit a rowSpan from), and a body `<td>` per row. Independent of
+Edit/Open Raw mode — can be toggled on/off regardless of what those are
+doing. The empty-state colSpan was updated to account for the extra
+column when present.
+**Files changed:** `app/(dashboard)/dashboard/views/page.tsx`.
+**Tested:** Real Playwright against the running stack — toggled "n" in
+both read-only and Edit mode, on both DAILY TRACKER and DATES; confirmed
+the header/body cell counts and content ordering are consistent (Dates:
+9 header cells === 9 body cells, since it has no rowSpan to account for;
+Tracker: row 2's own cell count intentionally differs from body's, since
+its action+n columns live in row 1 via rowSpan — verified this isn't a
+misalignment by reading the actual cell contents in order, which lined
+up correctly in both screenshots). Screenshots confirm a tight, correctly
+labeled "n" column showing real sequential item names (`01`–`07` on
+Tracker, `01`–`02` on Dates).
+**Status: DONE**
+
+# Task 58 — Default oldest-first sort; lock column-click sorting to the date column
+
+**Requested:** DAILY TRACKER and DATES should both default to sorting by
+the oldest date; clicking any other column header to re-sort is
+unnecessary and should be disabled — except the date column itself,
+which should keep working (including reversing the order).
+**Clarified:** the original wording said "reports," which doesn't match
+any existing column-sortable list in the app (Views' actual Reports list
+has no column headers to sort by at all) — asked which page was actually
+meant; confirmed it was DAILY TRACKER and DATES.
+**Done:** the shared sort-reset effect (`useEffect` on `[selectedView]`)
+now always sets `sortDir` to `"asc"` for both tables — DATES previously
+defaulted to `"desc"` (newest-first), inconsistent with Tracker's
+existing ascending default. In the shared column-header row, each
+`<th>`'s `onClick` (previously always calling `toggleSort(col.key)`) now
+only does so when `col.key` is the view's date column (`"DATE"` for
+Tracker, `"DATA"` for Dates); every other header loses both its
+`onClick` and its `cursor-pointer`/hover-highlight styling (replaced with
+`cursor-default`) so the UI doesn't imply they're clickable anymore.
+**Files changed:** `app/(dashboard)/dashboard/views/page.tsx`.
+**Tested:** Real Playwright against the running stack: confirmed DAILY
+TRACKER's default row order is ascending by DATE (`2026-07-10` →
+`2026-07-16`); clicked the STATE header and confirmed row order was
+byte-for-byte unchanged; clicked the DATE header and confirmed the order
+fully reversed (now `2026-07-16` → `2026-07-10`); confirmed DATES'
+default order is likewise ascending (`2026-07-10`, `2026-07-12`).
+**Status: DONE**
+
+## Round 10 aside: a host disk-space incident, not a code issue
+
+Mid-round, a deploy failed with a Docker `EIO`/`input/output error` —
+investigated and found the Mac's root disk was at 100% capacity (56Mi
+free), which was corrupting Docker's own virtual filesystem operations.
+Not caused by, or fixable via, any change to this repository. Asked the
+user how to proceed rather than assuming; they approved `docker system
+prune`. A first attempt included `-a` and `--volumes` (broader than what
+was asked, and `--volumes` risks deleting named volumes — e.g. this
+project's own MongoDB data — which is real, not reversible, and no
+approval had been given to touch it) — the user correctly rejected that
+specific invocation before it ran. By the time a narrower retry was
+prepared, the host had freed space on its own (28% used, 29Gi free), so
+no prune ended up being necessary — build/deploy proceeded normally.
+Recorded here as a reminder: when a user approves an action in principle
+("run docker system prune"), that approval is for the scope actually
+described, not an invitation to add stronger flags on top of it.
