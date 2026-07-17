@@ -215,6 +215,48 @@ na 16MB tmpfs (`/share` samo w sobie), co spowodowało crash-loop
 wolumen 4.5TB) — pełny opis incydentu, przyczyny i skryptowej walidacji, która
 teraz to wykrywa przed startem: [qnap-data-path.md](qnap-data-path.md).
 
+## 10a. Troubleshooting — `DirectoryNotFoundException` dla ścieżki repo/GUID
+
+Objaw: Dashboard zwraca błąd typu (przez `PostByNames`/`ReadManyWorker`):
+
+```
+DirectoryNotFoundException: Could not find a part of the path
+'/data/repos/repos/<guid>'.
+```
+
+**Podwójny segment `repos/repos` (albo `repos2/repos`) jest ZAMIERZONY, nie
+błędem** — `CP_REPOS_HOST_PATH`/`CP_REPOS_HOST_PATH_2` (`.env.qnap`) to
+korzenie kont Dropbox (`/share/Dropbox/pawelpanda2`,
+`/share/Dropbox/kamilgame042`), zamontowane odpowiednio jako `/data/repos`/
+`/data/repos2` — każdy z własnym podfolderem `repos/` w środku (Story 68,
+`GuidGroupsHelper` w `packages/net-content-provider` nie dodaje już `repos`
+samodzielnie, więc musi być w skonfigurowanej ścieżce). Nie "napraw" tego
+usuwając segment z configu.
+
+Zanim założysz stały bug w kodzie/konfiguracji albo zrestartujesz
+`chad-content-provider-api` "na wszelki wypadek" (restart dotyka OBU
+środowisk naraz, patrz sekcja 8), zweryfikuj przez SSH na żywym hoście:
+
+```bash
+# 1) Czy /health w ogóle widzi oba korzenie repo jako dostępne
+curl -s http://100.117.139.83:12024/health
+# oczekiwane: obie ścieżki w "pathDiagnostics" mają "exists":true, "accessible":true
+
+# 2) Czy konkretny GUID faktycznie istnieje na dysku (nie w configu/kodzie)
+ssh <user>@100.117.139.83 "ls /share/Dropbox/pawelpanda2/repos | grep <guid>"
+ssh <user>@100.117.139.83 "ls /share/Dropbox/kamilgame042/repos | grep <guid>"
+```
+
+Jeśli `/health` raportuje oba korzenie jako dostępne, ale konkretny GUID
+akurat nie był widoczny w momencie błędu — najbardziej prawdopodobna
+przyczyna to **opóźnienie synchronizacji Dropbox** (folder jeszcze nie
+zmaterializował się fizycznie na QNAP w chwili żądania z Dashboardu), nie
+stały problem. Zweryfikowane 2026-07-18: folder istniał na dysku i
+`/health` raportował go poprawnie zaledwie chwilę po zgłoszonym błędzie,
+bez żadnej zmiany configu/kodu/restartu. Jeśli błąd **utrzymuje się**
+mimo że `ls` na hoście potwierdza istnienie folderu — to dopiero wtedy
+sygnał do głębszej diagnozy (a nie zgadywania z pamięci dokumentacji).
+
 ## 10. Znane ograniczenia / co zostało do decyzji
 
 - ~~Promocja obrazu TEST→PROD jest ręczna (retag), bez dedykowanego skryptu~~

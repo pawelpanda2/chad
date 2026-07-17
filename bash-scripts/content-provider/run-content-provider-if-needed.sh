@@ -73,6 +73,7 @@ docker run -d \
   -p "$CONTENT_PROVIDER_API_PORT:$CONTENT_PROVIDER_API_PORT" \
   -v "$APPSETTINGS_FILE:/app/appsettings.json:ro" \
   -v "/Users/pawelfluder/Dropbox:/Users/pawelfluder/Dropbox" \
+  -v "/Volumes/Dropbox/kamilgame042:/Volumes/Dropbox/kamilgame042" \
   "$CONTENT_PROVIDER_API_IMAGE" >/dev/null
 
 echo "$NAME" > "$OWNERSHIP_FILE"

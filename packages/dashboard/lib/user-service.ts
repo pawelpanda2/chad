@@ -340,11 +340,27 @@ export async function findUserByUsername(username: string): Promise<CpUser | nul
 }
 
 /**
+ * Cache for users to avoid repeated Sharp runner calls within a short time window.
+ * This is a simple in-memory cache that lasts for the duration of the process.
+ */
+let usersCache: { data: AppUser[]; timestamp: number } | null = null;
+const CACHE_TTL_MS = 30000; // 30 seconds cache
+
+/**
  * Resolves the current user's { repoGuid, username } from the raw id stored
  * in the session cookie (see app/api/auth/login/route.ts — the cookie value
  * IS the user's repoGuid). Validates the id against chad_admin's real user
  * list rather than trusting the cookie blindly, so a forged/arbitrary GUID
  * in a tampered cookie can't be used to read another repo's data.
+ *
+ * Uses the same cache as getCachedUsers() — this is called on EVERY
+ * authenticated API route (see lib/session.ts), so an uncached Sharp
+ * runner round-trip here was multiplying with every concurrent request a
+ * page fires (e.g. the Beeper tab alone loads several endpoints at once).
+ * The Content Provider API's GetByNames call also degrades badly under
+ * concurrent load (observed 3ms -> 900ms -> ~4s -> full hang for the
+ * identical call within one dashboard session) — caching this collapses
+ * many redundant concurrent calls into one.
  *
  * Returns null if the id doesn't match any known user (invalid session, or
  * an account like test2/test3 that has no repo provisioned yet).
@@ -352,20 +368,13 @@ export async function findUserByUsername(username: string): Promise<CpUser | nul
 export async function resolveCurrentUser(
   repoGuidFromCookie: string
 ): Promise<{ repoGuid: string; username: string } | null> {
-  const users = await getRawUsersFromSharp();
-  const user = users.find(u => u.repoGuid === repoGuidFromCookie);
+  const users = await getCachedUsers();
+  const user = users.find(u => u.id === repoGuidFromCookie);
   if (!user) {
     return null;
   }
-  return { repoGuid: user.repoGuid, username: user.username };
+  return { repoGuid: user.id, username: user.username };
 }
-
-/**
- * Cache for users to avoid repeated Sharp runner calls within a short time window.
- * This is a simple in-memory cache that lasts for the duration of the process.
- */
-let usersCache: { data: AppUser[]; timestamp: number } | null = null;
-const CACHE_TTL_MS = 30000; // 30 seconds cache
 
 /**
  * Fetches users with caching to avoid repeated Sharp runner calls.

@@ -1,12 +1,26 @@
 # Image tagging standard — no `:latest` for own CHAD images
 
-Status: wdrożone i zweryfikowane na realnym QNAP, 2026-07-13.
+Status: wdrożone i zweryfikowane na realnym QNAP, 2026-07-13. Story 70
+(2026-07-17/18) dodała RÓWNOLEGŁĄ, opcjonalną drogę: `chad-dashboard` może
+też być budowany i pushowany do `ghcr.io/pawelpanda2/chad-dashboard` (Mac
+lub GitHub Actions, przez `09_registry_test/`), skąd QNAP go pulluje —
+zamiast (nie: obok, wybór) budowania bezpośrednio na QNAP przez
+`04_qnap_test/02_build.sh`, które działa bez zmian. Zasada tagowania niżej
+(jeden tag, nigdy `latest`) obowiązuje w obu wariantach; droga GHCR dodaje
+przyrostek `-<short-git-sha>` (`ghcr_generate_tag()` w
+`bash-scripts/common/lib.sh`) — droga QNAP-owa nadal używa samego
+`YYMMDD_HHMMSS`, bez zmian. Pełny opis obu przepływów:
+`documentation/ai-docs/deploy/dashboard-deployment-scripts.md`, sekcja
+"Registry flow (GHCR)".
 
 ## Zasada
 
 **Własne obrazy CHAD (`chad-dashboard`, `chad-content-provider-api`) nigdy
 nie używają tagu `latest`.** Każdy build tworzy dokładnie jeden tag —
-znacznik czasowy `YYMMDD_HHMMSS`. Zewnętrzne, wersjonowane obrazy (np.
+znacznik czasowy `YYMMDD_HHMMSS` (jeśli budowany przez GHCR-ową drogę z
+Story 70: `YYMMDD_HHMMSS-<short-git-sha>` zamiast — patrz sekcja "Registry
+flow (GHCR)" w `dashboard-deployment-scripts.md`). Zewnętrzne, wersjonowane
+obrazy (np.
 `mongo:4.4` w `docker-compose.qnap.shared.yml`) pozostają bez zmian — ta
 zasada dotyczy wyłącznie obrazów budowanych z tego repo.
 
