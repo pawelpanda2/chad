@@ -203,3 +203,61 @@ pawelfluder@Pawes-Air 06_qnap_test_ssh %
 ## Input 3
 
 zapisz to jako nowa historyjke
+
+## Input 4
+
+Możesz wysłać mu taki prompt:
+
+Znalazłem regresję w `06_qnap_test_ssh/06_deploy.sh`.
+
+Proszę przywróć wcześniejsze zachowanie skryptu.
+
+Obecnie po uruchomieniu:
+
+```bash
+bash 06_deploy.sh
+```
+
+skrypt uruchamia deployment jako detached background job i kończy działanie:
+
+```
+[info] Remote job ID: ...
+```
+
+To jest regresja.
+
+W poprzedniej wersji działało to znacznie lepiej:
+
+po SSH było widać cały przebieg deploymentu na żywo,
+logi były streamowane do lokalnej konsoli,
+było widać build Dockera,
+restart kontenerów,
+healthcheck,
+status,
+końcowy sukces albo błąd.
+
+Po zakończeniu użytkownik od razu wiedział, czy deployment się udał.
+
+Teraz tego nie wiadomo — trzeba ręcznie sprawdzać logi lub wykonywać status.
+
+Proszę:
+
+Przejrzyj historię Git i znajdź commit, w którym `06_deploy.sh` działał jeszcze w trybie streamowania logów.
+Zrozum, dlaczego został zmieniony na detached background job.
+Przywróć poprzednie zachowanie.
+Deployment powinien ponownie:
+streamować logi na żywo do lokalnej konsoli,
+zakończyć się dopiero po zakończeniu deploymentu,
+zwrócić końcowy status sukces/błąd,
+pokazać wynik healthchecka,
+zakończyć odpowiednim kodem wyjścia.
+
+Jeżeli chcesz zachować możliwość uruchamiania detached (np. przy bardzo długich deploymentach lub przyszłym CI), dodaj ją jako opcjonalny tryb, np.:
+
+`--detached`
+
+Natomiast domyślnym zachowaniem ma być ponownie streamowanie logów na żywo, ponieważ jest to znacznie wygodniejsze podczas codziennej pracy developerskiej.
+
+Przed wprowadzeniem zmian sprawdź historię Git, aby odtworzyć wcześniejsze działanie zamiast implementować je od nowa.
+
+To jest lepsze niż prośba "zmień na streaming", bo każe mu najpierw znaleźć wcześniejszą implementację w historii Git, która już działała poprawnie.
