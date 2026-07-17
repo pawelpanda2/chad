@@ -24,6 +24,22 @@ CONTENT_PROVIDER_API_IMAGE="chad-content-provider-api:latest"
 # straight at the real Dropbox folder, matching the original proven config
 # (packages/net-content-provider's own now-removed .env used the identical
 # value for both keys below).
+#
+# NoSqlRepoSearchPaths must include the trailing "repos" segment itself
+# (net-content-provider Story 68, 2026-07-17): GuidGroupsHelper.
+# GetGuidGroupsForSearchFolders no longer appends "repos" automatically and
+# now scans every configured path directly for GUID-named folders. The real
+# GUID folders live under /Users/pawelfluder/Dropbox/repos/<guid>, so the
+# search path must say that, not just /Users/pawelfluder/Dropbox.
+#
+# Second search root (Story 68, corrected 2026-07-17): the "kamilgame042"
+# Dropbox account is mounted separately on this Mac at
+# /Volumes/Dropbox/kamilgame042 — its own repos/ subfolder holds repos not
+# present under the main /Users/pawelfluder/Dropbox account, including
+# chad_admin (used by login) and the shared repo (21d11bdc-...) used by
+# leads/reports/beeper. Confirmed on disk 2026-07-17 (`ls -ld`); an earlier
+# `/Volume/...` (singular) value was a typo and does not exist. Needs its own
+# `docker run -v` mount too — see run-content-provider-if-needed.sh.
 read -r -d '' CONTENT_PROVIDER_APPSETTINGS_JSON <<'EOF' || true
 {
   "ApiUrls": "http://0.0.0.0:12024",
@@ -35,7 +51,8 @@ read -r -d '' CONTENT_PROVIDER_APPSETTINGS_JSON <<'EOF' || true
     "DbIdentityParentFolderSearchExpression": "/Users/pawelfluder/Dropbox",
     "SettingsSearchExpr": "0(0,1)",
     "NoSqlRepoSearchPaths": [
-      "/Users/pawelfluder/Dropbox"
+      "/Users/pawelfluder/Dropbox/repos",
+      "/Volumes/Dropbox/kamilgame042/repos"
     ]
   }
 }
