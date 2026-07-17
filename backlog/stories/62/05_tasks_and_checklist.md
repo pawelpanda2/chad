@@ -124,6 +124,9 @@ nobody has to re-discover the finding):
 | 50 | DONE     |             | **Regression fix:** DATES' single header row never included an action-column `<th>` at all (only Tracker's group row had one, gated by rowSpan), so turning on Edit mode shifted every DATES column header one slot out of alignment with its data and left DATES without a bulk-save corner button — added the missing header cell (with the same bulk-save button) for the DATES-only case |
 | 51 | DONE     |             | DAILY TRACKER/DATES: typing a field back to its original saved value now clears that field's dirty (red) state instead of leaving it marked as changed forever until a page refresh |
 | 52 | DONE     |             | DAILY TRACKER/DATES action column padding tightened from `p-1` (4px) to `p-px` (1px) around the Save icon, per request |
+| 53 | DONE     |             | DATE/DATA column widened (`min-w-[70px]` → `min-w-[100px]`, both read-only and edit-mode cells) — the 10-character `YYYY-MM-DD` value was being clipped |
+| 54 | N/A      |             | Third attempt at rounded table corners, this time via per-cell `border-radius` (no `overflow` touched at all, provably safe re: scroll) — CSS confirmed applying correctly, but doesn't render: `border-radius` on `<td>`/`<th>` is a documented no-op when the table uses `border-collapse: collapse`, a genuine browser limitation. Reverted the (harmless but non-functional) per-cell classes rather than ship dead code; square corners kept rather than switching to `border-collapse: separate` (visible double borders between every cell) without explicit sign-off. |
+| 55 | DONE     |             | Columns were stretching to fill all available table width instead of hugging their content — most visible at a wide/zoomed-out viewport. Removed the table's own `w-full`, so it sizes to its natural content width and stays left-aligned; the wrapper's own background simply shows through on the right instead of every column being padded wider than its data needs. Unaffected: DAILY TRACKER's 20 columns still overflow correctly and scroll when they exceed the frame. |
 
 # Task 1 — SETTINGS: single frame, ~3px gap, title in row 1
 
@@ -1678,3 +1681,97 @@ Playwright session used to verify Task 51. Most likely this was a visual
 symptom of Task 49's column-compression bug (fixed in this same round) —
 not re-reported after the revert, but flagged here rather than silently
 dropped in case it resurfaces.
+
+# Task 53 — DATE/DATA column too narrow to show the full date
+
+**Requested:** the DATE column was squeezed too tight to show the full
+date — widen it just enough for the whole value to be visible.
+**Done:** added a per-column check (`isDateColumn = col.key === "DATE" ||
+col.key === "DATA"`) and gave that one column `min-w-[100px]` instead of
+the general `min-w-[70px]` (edit-mode `<input>`) / no minimum (read-only
+`<td>`) — the `YYYY-MM-DD` value is 10 characters and simply didn't fit
+70px at this font size. Every other column keeps its existing width
+behavior; this is a single-column, minimal-as-requested change.
+**Files changed:** `app/(dashboard)/dashboard/views/page.tsx`.
+**Tested:** Real Playwright — measured the DATE cell's actual text
+content and rendered width post-deploy: `"2026-07-10"` at `100px`, fully
+visible, not truncated.
+**Status: DONE**
+
+# Task 54 — Third attempt at rounded corners: real browser limitation found, reverted
+
+**Requested:** the user pushed back a third time on the table's square
+corners ("something weirdly overlaps, they used to look nice and
+rounded"), after Round 8's `overflow-hidden` attempt (Task 33) had to be
+reverted (Task 49) for breaking scroll.
+**Done:** implemented a fundamentally different technique this time —
+`border-radius` applied directly to the actual outermost header/body
+cells (`rounded-tl-lg` on the true top-left cell, `rounded-tr-lg` on the
+true top-right, `rounded-bl-lg`/`rounded-br-lg` on the last row's first/
+last cell, each conditionally computed across DAILY TRACKER's two-row
+grouped header, DATES' single-row header, and the action column's
+presence/absence). Deliberately chose this because it involves **zero**
+`overflow` or `width` properties on any container — provably unable to
+reintroduce Task 49's regression, unlike the previous two attempts.
+Deployed and measured: `getComputedStyle` confirmed the class applied and
+`border-radius` computed correctly (`0px 0px 0px 10px` on the bottom-left
+cell, exactly as intended) — but visually, no rounding appeared in the
+screenshot. Root cause: `border-radius` on table cells is a well-known,
+spec-acknowledged no-op when the table has `border-collapse: collapse`
+(which this table uses, and needs, for its grid-line borders) — browsers
+render the collapsed border grid as a flat rectangle regardless of any
+individual cell's radius. This is a genuine platform limitation, not a
+mistake in the implementation.
+**Resolved by:** reverting all the per-cell `rounded-*` classes and the
+`colIdx`/`isLastRow`/`roundBL`/`roundBR` plumbing added to compute them —
+shipping classes that don't visually do anything would just be
+misleading dead code. Square corners are being kept. The only remaining
+way to get genuinely rounded corners on this table would be switching to
+`border-collapse: separate` (each cell gets its own independent border,
+meaning visible double-width borders between every adjacent cell unless
+extensively restyled) — not attempted without the user explicitly
+choosing that trade-off, given three consecutive attempts in this area
+have each cost real time and, twice, caused a real regression.
+**Files changed:** `app/(dashboard)/dashboard/views/page.tsx` (net: no
+change vs. before this task — added then fully reverted).
+**Status: N/A (genuine CSS/browser limitation, not fixable without a
+larger visual trade-off — see write-up)**
+
+# Task 55 — Columns stretching to fill the frame instead of hugging their content
+
+**Requested:** at a wide/zoomed-out viewport, the columns were visibly
+padded out to fill the available width instead of sitting tight against
+their own data, with a lot of dead space distributed *into* every column
+rather than concentrated in one place; asked to pull columns left with
+only a minimal gap relative to the data length.
+**Root cause:** the `<table>` had `w-full` (`width: 100%`) — with
+`table-layout: auto` (the default, unchanged), when a table's specified
+width exceeds the sum of its columns' natural content widths, the browser
+distributes the extra space across the columns proportionally rather
+than leaving it as trailing empty space. At a normal viewport this was
+invisible (DAILY TRACKER's 20 columns are wider than most viewports
+anyway), but on a wide/zoomed-out view — or on DATES, with only 7 short
+columns — every column visibly stretched wider than its content needed.
+**Done:** removed `w-full` from the table entirely. Without a forced
+width, the table now sizes to its own natural (`auto`) content width and
+renders left-aligned by default block-level behavior; the wrapper div
+behind it (still full-width, unaffected) simply shows its own background
+through the remaining space on the right instead of every column being
+stretched to reach it. Verified this doesn't reintroduce Task 49's bug by
+construction — DAILY TRACKER's 20-column table, which is naturally wider
+than the frame, is completely unaffected either way (it already
+overflowed the frame regardless of whether the table also claimed
+`width: 100%`), so removing an unenforceable width instruction changes
+nothing for that case and only affects tables/viewports where the natural
+content is narrower than the frame.
+**Files changed:** `app/(dashboard)/dashboard/views/page.tsx`.
+**Tested:** Real Playwright at a 2880px-wide viewport (chosen to simulate
+the "zoomed out to 50%" scenario, where a normal 1440px design would
+otherwise leave ~1440px of dead space): DATES' table now measures 451px
+(its natural content width) instead of stretching to the full ~2418px
+wrapper width — screenshot confirms columns sit flush left with clean
+empty space after, not individually padded. DAILY TRACKER's table
+measures ~1984px at the same viewport (unchanged, all 20 columns visible
+and correctly colored by group, confirming no regression from this
+change).
+**Status: DONE**
