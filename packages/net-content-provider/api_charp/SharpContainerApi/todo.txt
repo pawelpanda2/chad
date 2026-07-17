@@ -1,4 +1,0 @@
-//
-    - wszystkie Folde item maja zwrocone w body swoje dzieci
-    - przy wywolaniu roznych metod tak samo maja w body
-    
