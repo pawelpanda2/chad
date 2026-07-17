@@ -65,14 +65,14 @@ export default function UsersPage() {
 
 	if (loading) {
 		return (
-			<DashboardPageShell title="USERS">
+			<DashboardPageShell title="Users">
 				<div className="py-4 text-sm text-muted-foreground">Loading users...</div>
 			</DashboardPageShell>
 		);
 	}
 
 	return (
-		<DashboardPageShell contentClassName={cn(FRAME_SECTION_GAP_CLASS, "overscroll-contain overflow-x-auto")} title="USERS">
+		<DashboardPageShell contentClassName={cn(FRAME_SECTION_GAP_CLASS, "overscroll-contain overflow-x-auto")} title="Users">
 			<span className="shrink-0 text-xs text-muted-foreground">{users.length} users</span>
 			<div className="rounded-lg border bg-muted/10">
 				{users.length === 0 ? (

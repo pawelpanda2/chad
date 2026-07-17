@@ -12,13 +12,6 @@ import { TextEditorWithToolbar } from "@/components/shared/text-editor-with-tool
 import { TABLE_ACTION_COLUMN_WIDTH_CLASS, FRAME_SECTION_GAP_CLASS, LIST_ROW_CLASS, LIST_ROW_WRAPPER_CLASS } from "@/components/shared/layout-tokens";
 import { cn } from "@/lib/utils";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
-import {
   RefreshCw,
   Search,
   ArrowUp,
@@ -27,7 +20,6 @@ import {
   CheckCircle2,
   FileText,
   Plus,
-  Pencil,
   Save,
   Loader2,
 } from "lucide-react";
@@ -190,7 +182,12 @@ function ViewsPageContent() {
   const [editedRows, setEditedRows] = useState<Record<string, Record<string, string>>>({});
   const [rowSaveStatus, setRowSaveStatus] = useState<Record<string, RowSaveStatus>>({});
   const [bulkSaving, setBulkSaving] = useState(false);
-  const [selectedEntryItemName, setSelectedEntryItemName] = useState<string | null>(null);
+  // "Open Raw": makes every row clickable, navigating to a full-page editor
+  // (the ADD DAILY ENTRY form, reused in edit mode) instead of the old
+  // pencil-opened modal. Mutually exclusive with inline Edit mode so a
+  // click never has to choose between focusing an editable cell and
+  // navigating away (Story 62 Round 8).
+  const [isRawMode, setIsRawMode] = useState(false);
 
   const fetchData = useCallback(async () => {
     setIsLoading(true);
@@ -248,9 +245,9 @@ function ViewsPageContent() {
     setSortDir(selectedView === "dates" ? "desc" : "asc");
     setSelectedReportLoca(null);
     setIsTrackerEditMode(false);
+    setIsRawMode(false);
     setEditedRows({});
     setRowSaveStatus({});
-    setSelectedEntryItemName(null);
   }, [selectedView]);
 
   const handleRefresh = () => {
@@ -279,11 +276,27 @@ function ViewsPageContent() {
   // Daily Tracker inline edit — dirty tracking, per-row/bulk save (Story 62)
   // ==========================================================================
 
-  const handleTrackerFieldChange = (itemName: string, key: string, value: string) => {
-    setEditedRows((prev) => ({
-      ...prev,
-      [itemName]: { ...prev[itemName], [key]: value },
-    }));
+  /**
+   * Typing a value back to exactly what it originally was clears that
+   * field's dirty state instead of leaving it marked as changed — matches
+   * the user's expectation that "no real change" means "not dirty."
+   */
+  const handleTrackerFieldChange = (itemName: string, key: string, value: string, originalValue: string) => {
+    setEditedRows((prev) => {
+      const rowEdits = { ...prev[itemName] };
+      if (value === originalValue) {
+        delete rowEdits[key];
+      } else {
+        rowEdits[key] = value;
+      }
+      const next = { ...prev };
+      if (Object.keys(rowEdits).length === 0) {
+        delete next[itemName];
+      } else {
+        next[itemName] = rowEdits;
+      }
+      return next;
+    });
     // A fresh edit invalidates a previous "saved" confirmation for this row.
     setRowSaveStatus((prev) => (prev[itemName] === "saved" ? { ...prev, [itemName]: "idle" } : prev));
   };
@@ -292,14 +305,16 @@ function ViewsPageContent() {
   const hasRowChanges = (itemName: string) => Object.keys(editedRows[itemName] || {}).length > 0;
 
   /**
-   * Saves one Daily Entry row's changed fields for real via
-   * PATCH /api/forms/daily-entry (updateDailyEntry in dba) — never shows
+   * Saves one row's (Daily Entry or Date Entry) changed fields for real via
+   * PATCH /api/forms/daily-entry or /api/forms/date-entry (updateDailyEntry/
+   * updateDateEntry in dba, picked by which view is active) — never shows
    * "Saved" unless the write actually succeeded (Story 62 explicit
-   * requirement: no pretend Save). AUTO columns are never sent — they are
-   * computed server-side on every read and would be silently overwritten
-   * with a stale snapshot otherwise.
+   * requirement: no pretend Save). Daily Entry AUTO columns are never
+   * sent — they are computed server-side on every read and would be
+   * silently overwritten with a stale snapshot otherwise (Date Entries
+   * have no AUTO columns, so this is a no-op there).
    */
-  const saveTrackerRow = async (entry: DailyEntryRecord): Promise<boolean> => {
+  const saveTrackerRow = async (entry: DailyEntryRecord | DateEntryRecord): Promise<boolean> => {
     const changes = editedRows[entry.itemName];
     if (!changes || Object.keys(changes).length === 0) return true;
     if (!entry.loca) {
@@ -308,12 +323,13 @@ function ViewsPageContent() {
     }
     if (rowSaveStatus[entry.itemName] === "saving") return false; // in-flight guard
 
+    const isTrackerRow = selectedView === "tracker";
     setRowSaveStatus((prev) => ({ ...prev, [entry.itemName]: "saving" }));
     try {
       const fields: Record<string, unknown> = { ...entry.body, ...changes };
       for (const key of AUTO_FIELD_KEYS) delete fields[key];
 
-      const response = await fetch("/api/forms/daily-entry", {
+      const response = await fetch(isTrackerRow ? "/api/forms/daily-entry" : "/api/forms/date-entry", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ loca: entry.loca, fields }),
@@ -321,9 +337,13 @@ function ViewsPageContent() {
       const result = await response.json();
       if (!result.success) throw new Error(result.error || "Save failed");
 
-      setDailyEntries((prev) =>
-        prev.map((e) => (e.itemName === entry.itemName ? { ...e, body: { ...e.body, ...changes } } : e))
-      );
+      const applyChanges = (e: DailyEntryRecord | DateEntryRecord) =>
+        e.itemName === entry.itemName ? { ...e, body: { ...e.body, ...changes } } : e;
+      if (isTrackerRow) {
+        setDailyEntries((prev) => prev.map(applyChanges));
+      } else {
+        setDateEntries((prev) => prev.map(applyChanges));
+      }
       setEditedRows((prev) => {
         const next = { ...prev };
         delete next[entry.itemName];
@@ -348,9 +368,11 @@ function ViewsPageContent() {
     if (dirtyItemNames.length === 0) return;
     setBulkSaving(true);
     try {
+      const sourceEntries: Array<DailyEntryRecord | DateEntryRecord> =
+        selectedView === "tracker" ? dailyEntries : dateEntries;
       const results = await Promise.all(
         dirtyItemNames.map((itemName) => {
-          const entry = dailyEntries.find((e) => e.itemName === itemName);
+          const entry = sourceEntries.find((e) => e.itemName === itemName);
           return entry ? saveTrackerRow(entry) : Promise.resolve(false);
         })
       );
@@ -364,11 +386,6 @@ function ViewsPageContent() {
       setBulkSaving(false);
     }
   };
-
-  const selectedTrackerEntry = useMemo(
-    () => dailyEntries.find((e) => e.itemName === selectedEntryItemName) || null,
-    [dailyEntries, selectedEntryItemName]
-  );
 
   // Computed unconditionally (before any early return) — Rules of Hooks:
   // useMemo can't be called after a conditional return.
@@ -462,7 +479,7 @@ function ViewsPageContent() {
 
   if (!selectedView) {
     return (
-      <DashboardPageShell title="VIEWS">
+      <DashboardPageShell title="Views">
         {/*
           Fixed 4-column grid (same as Forms): the 3 buttons occupy 3 cells and
           the 4th cell stays empty — buttons keep their column width instead of
@@ -511,7 +528,7 @@ function ViewsPageContent() {
     return (
       <DashboardPageShell
         upLevel={{ onClick: handleBack }}
-        title="LEADS"
+        title="Leads"
         contentClassName={FRAME_SECTION_GAP_CLASS}
       >
         <div className="flex shrink-0 flex-wrap items-center gap-3">
@@ -617,7 +634,7 @@ function ViewsPageContent() {
           onClick: selectedReport ? () => setSelectedReportLoca(null) : handleBack,
           label: selectedReport ? "Back to reports list" : "Back to Views menu",
         }}
-        title="REPORTS"
+        title="Reports"
       >
         {selectedReport ? (
           <TextEditorWithToolbar
@@ -697,9 +714,18 @@ function ViewsPageContent() {
   // ============================================================================
 
   const columns = selectedView === "dates" ? DATE_COLUMNS : DAILY_COLUMNS;
-  const viewTitle = selectedView === "dates" ? "DATES" : "DAILY TRACKER";
+  const viewTitle = selectedView === "dates" ? "Dates" : "Daily Tracker";
   const isTracker = selectedView === "tracker";
+  const isDates = selectedView === "dates";
+  // DATES has the same Add/Edit/Open Raw/inline-edit capability as DAILY
+  // TRACKER (Story 62 Round 8) — both are "row-editable" views, unlike
+  // LEADS/REPORTS which aren't reached through this branch at all.
+  const canEditRows = isTracker || isDates;
   const dirtyRowCount = Object.keys(editedRows).filter((name) => hasRowChanges(name)).length;
+  // Action column (row Save) only exists while editing — hidden entirely
+  // otherwise, not just its pencil trigger (Story 62 Round 8).
+  const showActionColumn = canEditRows && isTrackerEditMode;
+  const addFormParam = isTracker ? "add_action" : "date_entry";
 
   return (
     <DashboardPageShell
@@ -717,26 +743,13 @@ function ViewsPageContent() {
           instead of leaving the toolbar pinned while only the table
           scrolls in its own nested scrollbar (Story 62 Round 6). */}
       <div className="flex flex-wrap items-center gap-3">
-        {isTracker ? (
+        {canEditRows && (
           <>
-            {isTrackerEditMode && (
-              <Button
-                variant={dirtyRowCount > 0 ? "destructive" : "outline"}
-                size="sm"
-                onClick={saveAllDirtyTrackerRows}
-                disabled={bulkSaving || dirtyRowCount === 0}
-                className="gap-2 h-7 text-xs"
-                title="Save all changed rows"
-              >
-                {bulkSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
-                Save{dirtyRowCount > 0 ? ` (${dirtyRowCount})` : ""}
-              </Button>
-            )}
             <Button
               variant="outline"
               size="sm"
               className="gap-2 h-7 text-xs"
-              onClick={() => router.push("/dashboard/forms?form=add_action")}
+              onClick={() => router.push(`/dashboard/forms?form=${addFormParam}`)}
             >
               <Plus className="h-3 w-3" />
               Add
@@ -745,60 +758,52 @@ function ViewsPageContent() {
               variant={isTrackerEditMode ? "secondary" : "outline"}
               size="sm"
               className="gap-2 h-7 text-xs"
-              onClick={() => setIsTrackerEditMode((v) => !v)}
+              onClick={() => setIsTrackerEditMode((v) => {
+                const next = !v;
+                if (next) setIsRawMode(false);
+                return next;
+              })}
             >
-              <Pencil className="h-3 w-3" />
-              {isTrackerEditMode ? "Done editing" : "Edit"}
+              <Save className="h-3 w-3" />
+              Edit
             </Button>
-            <div className="relative">
-              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-              <Input
-                value={filter}
-                onChange={(e) => setFilter(e.target.value)}
-                placeholder="Filter rows..."
-                className="pl-7 h-7 text-xs w-[220px]"
-              />
-            </div>
             <Button
-              variant="outline"
+              variant={isRawMode ? "default" : "outline"}
               size="sm"
-              onClick={handleRefresh}
-              disabled={isLoading}
-              className="gap-2 h-7 text-xs"
+              className="h-7 text-xs"
+              title="Click a row to open it in a full editable page"
+              onClick={() => setIsRawMode((v) => {
+                const next = !v;
+                if (next) setIsTrackerEditMode(false);
+                return next;
+              })}
             >
-              <RefreshCw className={`h-3 w-3 ${isLoading ? "animate-spin" : ""}`} />
-              Refresh
+              Open Raw
             </Button>
-            <span className="text-xs text-muted-foreground">
-              {currentEntries.length} of {dailyEntries.length}
-            </span>
-          </>
-        ) : (
-          <>
-            <div className="relative">
-              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-              <Input
-                value={filter}
-                onChange={(e) => setFilter(e.target.value)}
-                placeholder="Filter rows..."
-                className="pl-7 h-7 text-xs w-[220px]"
-              />
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleRefresh}
-              disabled={isLoading}
-              className="gap-2 h-7 text-xs"
-            >
-              <RefreshCw className={`h-3 w-3 ${isLoading ? "animate-spin" : ""}`} />
-              Refresh
-            </Button>
-            <span className="text-xs text-muted-foreground">
-              {currentEntries.length} of {dateEntries.length}
-            </span>
           </>
         )}
+        <div className="relative">
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+          <Input
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            placeholder="Filter rows..."
+            className="pl-7 h-7 text-xs w-[220px]"
+          />
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleRefresh}
+          disabled={isLoading}
+          className="gap-2 h-7 text-xs"
+        >
+          <RefreshCw className={`h-3 w-3 ${isLoading ? "animate-spin" : ""}`} />
+          Refresh
+        </Button>
+        <span className="text-xs text-muted-foreground">
+          {currentEntries.length} of {isTracker ? dailyEntries.length : dateEntries.length}
+        </span>
       </div>
 
       {/* Error display */}
@@ -807,15 +812,35 @@ function ViewsPageContent() {
       {/* Inner frame (Story 62 standard: outer shell frame always holds at
           least one inner frame around its content, even single-element
           pages). No longer its own scroll box (Round 6) — the outer shell
-          frame owns the one scrollbar now, so this frame just sizes to its
-          content. Header is NOT sticky (Round 7 — explicitly not
-          requested, removed). */}
+          frame owns the one scrollbar now (both axes), so this div must
+          NOT have its own overflow/width constraint — it has to be free to
+          render as wide/tall as the table actually is so that overflow
+          bubbles up to the real scroll container above. `overflow-hidden`
+          here (tried in Round 8 for rounded corners) reintroduced a
+          second, wrong scrollbar/clip point and got reverted (Round 9). */}
       <div className="rounded-lg border bg-muted/10">
             <table className="w-full border-collapse text-xs">
               <thead>
                 {isTracker && (
                   <tr>
-                    <th rowSpan={2} className={cn("border p-1 bg-muted", TABLE_ACTION_COLUMN_WIDTH_CLASS)} />
+                    {showActionColumn && (
+                      <th rowSpan={2} className={cn("border p-px bg-muted text-center", TABLE_ACTION_COLUMN_WIDTH_CLASS)}>
+                        {/* Bulk Save lives in the table's corner cell, matching
+                            STATUSES' matrix mode — not in the toolbar, where it
+                            would shift the other buttons as it appears/disappears
+                            (Story 62 Round 8). */}
+                        <Button
+                          onClick={saveAllDirtyTrackerRows}
+                          disabled={bulkSaving || dirtyRowCount === 0}
+                          variant={dirtyRowCount > 0 ? "destructive" : "default"}
+                          size="sm"
+                          className="h-6 w-6 p-0"
+                          title="Save all changed rows"
+                        >
+                          {bulkSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                        </Button>
+                      </th>
+                    )}
                     <th
                       className="border p-1 bg-muted"
                       colSpan={columns.filter((c) => c.group === "none").length}
@@ -832,6 +857,28 @@ function ViewsPageContent() {
                   </tr>
                 )}
                 <tr>
+                  {/* DATES has no group row above (that's Tracker-only), so
+                      its action column header lives directly in this row
+                      instead of relying on a rowSpan from row 1 — Tracker's
+                      own action `<th>` above already covers this row via
+                      rowSpan={2} and must not get a second one here (Story
+                      62 Round 9: this cell was missing entirely for DATES,
+                      shifting every column header one slot out of place
+                      whenever Edit mode revealed the action column). */}
+                  {showActionColumn && !isTracker && (
+                    <th className={cn("border p-px bg-muted text-center", TABLE_ACTION_COLUMN_WIDTH_CLASS)}>
+                      <Button
+                        onClick={saveAllDirtyTrackerRows}
+                        disabled={bulkSaving || dirtyRowCount === 0}
+                        variant={dirtyRowCount > 0 ? "destructive" : "default"}
+                        size="sm"
+                        className="h-6 w-6 p-0"
+                        title="Save all changed rows"
+                      >
+                        {bulkSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                      </Button>
+                    </th>
+                  )}
                   {columns.map((col) => (
                     <th
                       key={col.key}
@@ -849,7 +896,7 @@ function ViewsPageContent() {
               <tbody>
                 {currentEntries.length === 0 ? (
                   <tr>
-                    <td colSpan={columns.length + (isTracker ? 1 : 0)} className="border h-8 text-center text-muted-foreground">
+                    <td colSpan={columns.length + (showActionColumn ? 1 : 0)} className="border h-8 text-center text-muted-foreground">
                       No entries yet. Use Forms to add data.
                     </td>
                   </tr>
@@ -857,57 +904,43 @@ function ViewsPageContent() {
                   currentEntries.map((entry) => {
                     const status: RowSaveStatus = rowSaveStatus[entry.itemName] || "idle";
                     const rowDirty = hasRowChanges(entry.itemName);
+                    const rawClickable = canEditRows && isRawMode && !!entry.loca;
                     return (
-                      <tr key={entry.itemName} className="hover:bg-accent/50">
-                        {isTracker && (
-                          <td className={cn("border p-1 text-center", TABLE_ACTION_COLUMN_WIDTH_CLASS)}>
-                            <div className="flex items-center justify-center gap-1">
-                              <button
-                                type="button"
-                                onClick={() => setSelectedEntryItemName(entry.itemName)}
-                                title="Edit item"
-                                aria-label="Edit item"
-                                className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
-                              >
-                                <Pencil className="h-3.5 w-3.5" />
-                              </button>
-                              {isTrackerEditMode && (
-                                <button
-                                  type="button"
-                                  onClick={() => saveTrackerRow(entry)}
-                                  disabled={status === "saving"}
-                                  title={rowDirty ? "Save changes" : "No changes"}
-                                  aria-label="Save row"
-                                  className={cn(
-                                    "rounded p-1",
-                                    status === "saved"
-                                      ? "text-green-600"
-                                      : rowDirty
-                                        ? "text-destructive hover:bg-destructive/10"
-                                        : "text-muted-foreground hover:bg-accent"
-                                  )}
-                                >
-                                  {status === "saving" ? (
-                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                  ) : status === "saved" ? (
-                                    <CheckCircle2 className="h-3.5 w-3.5" />
-                                  ) : (
-                                    <Save className="h-3.5 w-3.5" />
-                                  )}
-                                </button>
+                      <tr
+                        key={entry.itemName}
+                        className={cn("hover:bg-accent", rawClickable && "cursor-pointer")}
+                        onClick={rawClickable ? () => router.push(`/dashboard/forms?form=${addFormParam}&editLoca=${encodeURIComponent(entry.loca!)}`) : undefined}
+                      >
+                        {showActionColumn && (
+                          <td className={cn("border p-px text-center", TABLE_ACTION_COLUMN_WIDTH_CLASS)}>
+                            <Button
+                              size="sm"
+                              variant={rowDirty ? "destructive" : "default"}
+                              disabled={status === "saving"}
+                              onClick={() => saveTrackerRow(entry)}
+                              title={rowDirty ? "Save changes" : "No changes"}
+                              aria-label="Save row"
+                              className="h-7 w-7 p-0"
+                            >
+                              {status === "saving" ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : status === "saved" ? (
+                                <CheckCircle2 className="h-3.5 w-3.5" />
+                              ) : (
+                                <Save className="h-3.5 w-3.5" />
                               )}
-                            </div>
+                            </Button>
                           </td>
                         )}
                         {columns.map((col) => {
                           const raw = entry.body?.[col.key];
                           const isAuto = AUTO_FIELD_KEYS.has(col.key);
+                          const originalStr =
+                            typeof raw === "number" ? (Number.isInteger(raw) ? String(raw) : raw.toFixed(1)) : String(raw ?? "");
                           const draft = editedRows[entry.itemName]?.[col.key];
-                          const value =
-                            draft ??
-                            (typeof raw === "number" ? (Number.isInteger(raw) ? String(raw) : raw.toFixed(1)) : String(raw ?? ""));
-                          const editable = isTracker && isTrackerEditMode && !isAuto;
-                          const dirty = isTracker && isDirtyField(entry.itemName, col.key);
+                          const value = draft ?? originalStr;
+                          const editable = canEditRows && isTrackerEditMode && !isAuto;
+                          const dirty = canEditRows && isDirtyField(entry.itemName, col.key);
                           if (editable) {
                             return (
                               <td
@@ -916,7 +949,7 @@ function ViewsPageContent() {
                               >
                                 <input
                                   value={value}
-                                  onChange={(e) => handleTrackerFieldChange(entry.itemName, col.key, e.target.value)}
+                                  onChange={(e) => handleTrackerFieldChange(entry.itemName, col.key, e.target.value, originalStr)}
                                   className={cn(
                                     "h-6 w-full min-w-[70px] max-w-[180px] rounded border-0 bg-transparent px-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring",
                                     dirty && "text-destructive"
@@ -942,44 +975,6 @@ function ViewsPageContent() {
               </tbody>
             </table>
       </div>
-
-      {/* Single-entry detail view (pencil target) — Story 62. Delete lives
-          only here, per instruction, but is disabled: Content Provider's
-          own delete is an empty stub project-wide (see
-          documentation/dashboard/forms/features/daily-tracker-dates.md §7),
-          so this says so rather than silently omitting the option. */}
-      <Dialog open={selectedEntryItemName !== null} onOpenChange={(open) => !open && setSelectedEntryItemName(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Daily Entry — {selectedEntryItemName}</DialogTitle>
-          </DialogHeader>
-          {selectedTrackerEntry && (
-            <div className="max-h-[60vh] space-y-2 overflow-y-auto pr-1 text-sm">
-              {DAILY_COLUMNS.filter((c) => !AUTO_FIELD_KEYS.has(c.key)).map((col) => (
-                <div key={col.key} className="flex items-baseline justify-between gap-4 border-b pb-1">
-                  <span className="text-muted-foreground">{col.label}</span>
-                  <span className="text-right font-mono">
-                    {String(selectedTrackerEntry.body?.[col.key] ?? "")}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-          <DialogFooter className="sm:justify-between">
-            <Button
-              variant="destructive"
-              size="sm"
-              disabled
-              title="Delete isn't available yet — Content Provider has no working delete (empty stub)"
-            >
-              Delete
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => setSelectedEntryItemName(null)}>
-              Close
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </DashboardPageShell>
   );
 }

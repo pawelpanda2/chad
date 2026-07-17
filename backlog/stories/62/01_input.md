@@ -999,3 +999,131 @@ przenies te scroll bary
 zrobiles cos takiego ze naglowki z tabeli zostaja w miejscu w trakcie przesuwania scroll bara nei prosilem o taka funkcjonalnosc usun ja
 natomaist to co miales zrobic to brakuje bo dolny scroll bar nie istnieje w wisoku tracker i nie moge przesuwac w prawo miales nie usuwac go calkowicie tylko przeniesc do zewnetrznej ramki
 popraw wszystkie widoki z tabelami w ten sposb czyli tez statuses
+
+## Input 20
+
+super teraz jest ok z tymi scroll barami
+sprawdz jeszcze dlaczego rogi w tej znowu wewnetrznej ramce nie sa teraz takie ladne okrable czy tam nie ma jakiego podwonego obramowania, ale to drobniutki szczegol nie zepsuj wszystkiego jak nie wiesz jak to poprawic
+a najwazniejsze to usun te olowki z pierwszej kolumny obok przycisku edit daj dyskietki
+i do pierwszej kolumny daj czarne dyskietki tak jak w statuses
+i one maja sie pojawiac cala ta pierwsza ukryta kolumna jak elasnie klikne edit
+i to edit ma sie tylko zmieniac kolor jakby byl zaznaczony
+i od tej pory pola sa edytowalne a jak cos sie zmieni to dyskietka sie robi czerowana
+
+drugi przycisk jaki dodasz to open raw i on bedzie powodowal ze wszystkie wiersze sa teraz klikalne i da sie otworzyc wiersz kokretny po jego kliknieciu tak jak przy olowku w tej chwili
+tylko nie otwieraj mi nowego okienka tak jak jest w tej chwili tylko przeladuj caly widok i otworz takie okno jak jest przy formularzu
+
+## Input 21 (mid-turn interrupt)
+
+z ta roznica ze u gory jak jest przycisk save to ma byc jeszcze przycisk delete i po jego klinieciu male okienko (cos jak teraz przy olowku) z pytaniem czy na pewno chce usunac ten wiersz i wymagnie przepisania randomowego slowa jedneog z 6 zahardowanych na potwierdzenie ze na pewno chcesz usunac wiersz
+
+## Input 22 (mid-turn interrupt)
+
+i usun z beepera ta brzydka czesc z prawej strony danego itemu listy
+ta z data i id beeperoweym i 1ch.
+takie dane powinny byc widoczne juz po kliknieciu
+
+## Input 23 (mid-turn interrupt)
+
+nie zgadaja mi sie dokladnie tez nazwy np. Setting jak sie otiwera to w naglowku SETTINGS powinno byc zgodne z tym tytulem ktory otiweram
+
+## Input 24 (mid-turn interrupt)
+
+podobnie users messages and folders
+
+## Input 25 — clarifying question answers
+
+1. Sidebar labels vs uppercase page headers mismatch: chose "Lowercase all page headers to match sidebar (title case)".
+2. Folders vs FOLDER wording mismatch: chose "\"Folders\" everywhere".
+3. Delete button on the new edit page, given Content Provider has no working delete: chose "Build it as \"clear fields\"" (labeled "Clear", not "Delete").
+
+## Input 26
+
+edit juz fajnie odkrywa kolumne z dyskietkami
+ale neistety dalej jest ten napis ktory nei chcialem czyli "Done editing"
+miales po prostu podswietlic ten przycisk zrobic zeby wygladal na aktywny i tylko i nie robic zmiany jego wygladu czy jego napisu
+
+## Input 27 (mid-turn interrupt)
+
+i przycisk zbiorczy save sie wstawia zamiast w tabele w jej rog tak jak to jest w statuses to wstawia sie w pierwsza linie pryzciskow je przesuwajac. to nie tak mialo byc
+
+## Input 28 (mid-turn interrupt)
+
+i przycisk po kliknieciu open raw mial byc delete a nie clear (ten obok save juz po otwarciu konkretnego raw)
+
+## Input 29 (mid-turn interrupt)
+
+dodaj jeszcze obok delete przycisk Full View ktory wraca do pelnego widoku
+
+## Input 30 (mid-turn interrupt)
+
+z ta roznica ze u gory jak jest przycisk save to ma byc jeszcze przycisk delete i po jego klinieciu male okienko (cos jak teraz przy olowku) z pytaniem czy na pewno chce usunac ten wiersz i wymagnie przepisania randomowego slowa jedneog z 6 zahardowanych na potwierdzenie ze na pewno chcesz usunac wiersz
+
+(Note: this instruction arrived earlier in the same turn, before Input 26,
+but is recorded here in the order it was actually processed relative to
+the other mid-turn interrupts — see 05_tasks_and_checklist.md Round 8 for
+the true chronological implementation order.)
+
+## Input 31 (mid-turn interrupt)
+
+i dla przycisku open raw usun ikonke ktora jest obok napisu i zrob zeby wyrazniej byl widac ze przycisk jest aktywny
+
+## Input 32 (mid-turn interrupt)
+
+i tez podswietlenie po najechaniu na row tez zeby bylo mocniejszym ciemniejszym kolorem
+
+## Input 33 (mid-turn interrupt)
+
+i przycisk edit w ogole mial zamaist olowka miec dyskeitke a ma olowek dalej
+
+## Input 34 (mid-turn interrupt)
+
+dates powinno miec dokladnie takie same opcje z +Add, Edit, Open raw
+
+## Input 35 (mid-turn interrupt)
+
+widze ze w dates nie pokazuje sie scrollbar ten z prawej wertykalny
+dodaj go wedlug standardu
+
+## Input 36
+
+cos znowu popsules w ostatnich zmianach ze scroll barem
+w Dates i Daily Tracker zniknely scroll bary
+na wersji ktora jest wrzucona na test jeszcze sa ok
+jezeli zalogoujesz sie na qnap to powinno byc juz. w obrazie umieszczona informacja ktory to commit
+wiec mozesz porownac
+albo z lokalnych zmian git sprobuj wywnioskowac
+
+## Input 37 (mid-turn interrupt)
+
+pamietaj ze na zewnetrznej ramce ma byc scroll bar
+zarowno ten wertykalny jak i horyzontalny ma byc na zewnetrznej ramce
+
+## Input 38 (mid-turn interrupt)
+
+wrzucam Ci zdjecie z testu po zwiekszeniu do 50%
+wiec nie zmieniaj czasem widoku na takie male
+po prostu chce Ci pokazac ile kolumn zgubiles
+wzgledem tego co bylo na test przed chwila deployowane
+kurwa jakie Ty jestes pojebany ze robisz mi ciagle regresjie
+przywroc te pola w tracker
+to jest przeciez utrata danych kurwa
+skup sie id okladnie rob polecenia bez wymyslania dodatkow
+
+## Input 39
+
+jeszcze znalazlem bugi:
+1) po wcisnieu edit odkrywa sie pierwsza kolumna ale mieszaja sie naglowki kolumn, nie przesuwaja sie o 1 tylko zostaja i nie sa poprawnie podpisane
+2) brakuje zbiorczego przycisku save w pierszej komorce tabeli w lewym gornym rogu
+3) pierwsza kolumna z dyskietakami nie jest maksymalnie sciznieta do 1px odstepow
+4) po przycisniecu dyskietki zielony napis save roszerze kolumne, a powienine pojawiac sie zamiast dyskietki na chwile i nie zajmowac wiecej miejsca niz ona tak zeby nie rozszerzyc kolumny
+
+## Input 40 (mid-turn interrupt)
+
+bugi
+1) znowu rogi wygladaja brzydko w tabeli nie sa zaokraglone
+2) jak zmienie dane i podswietli sie na czerwo i wroce wartosc do poprzedniej to juz tego nei wykrywa a powinno wiedziec ze teraz dane sa takie jka byly na poczatku i sie odswietlic przestac byc czerwony
+
+## Input 41 (mid-turn interrupt)
+
+daelj jak powrcac do oryginalnych danych to dyskietka tego nie wyrkywa i nie przestaje byc czerwona razem z tym polem ktore zmienilem i tez jest czerwone
