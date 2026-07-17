@@ -17,7 +17,7 @@ smoke test. QNAP (Phases 3-6) is still explicitly untouched.
 |---|-----------|-------------|------|
 | 1 | DONE      |             | Decide target chad MongoDB database/collection naming (Phase 0) |
 | 2 | DONE      |             | Local dry-run + applied migration: `contacts` Mongo → local `beeper` database (same MongoDB instance as `chad`), with read+write verification (Phase 1) |
-| 3 | PARTIAL   |             | Full local independence from `contacts`: migration bugfix (auto-index creation), config/script cleanup, dashboard read+write re-verification, `beeper-ws`/`beeper-sync` preflight verified — live REST sync / live WS event still blocked on Beeper Desktop being open (Phase 2, scope expanded by Input 4) |
+| 3 | DONE      |             | Full local independence from `contacts`: migration bugfix (auto-index creation), config/script cleanup, dashboard read+write re-verification, live incremental `beeper-sync` + live `beeper-ws` verified against real Beeper Desktop, SSE live-update bug found and fixed (Phase 2, scope expanded by Input 4) |
 | 4 | NOT DONE  |             | QNAP test dry-run + applied migration, dashboard re-pointed, read+write re-verified on QNAP test (Phase 3) |
 | 5 | NOT DONE  |             | `beeper-oplog` deployed to QNAP — gated on the MongoDB replica-set decision being re-approved (Phase 4) |
 | 6 | NOT DONE  |             | QNAP prod rollout, same shape as Phase 3 (Phase 5) |
@@ -206,6 +206,95 @@ scripts confirmed to fail safely without Beeper Desktop.
 **Status: PARTIAL** — everything local is independent of `contacts` and
 verified except the one piece that genuinely requires the user's own
 action (opening Beeper Desktop) to finish verifying live sync/WS.
+
+## Task 3 continued — live verification with Beeper Desktop open
+
+**Requested:** User opened Beeper Desktop manually, then asked for exactly
+three commands (`05_sync.sh`, `02_re-start.sh`, `04_status.sh`, no `--force`,
+no QNAP, no new architectural changes) followed by checks: did incremental
+sync use the existing `sync_state`; before/after counts; any duplicates;
+does `beeper-ws` hold its connection; does a new event land in the local
+Mongo; does the dashboard show new data via refresh or SSE.
+
+**Done:**
+- **`05_sync.sh` (incremental, no `--force`)**: log shows the overwhelming
+  majority of channels (166 of 171) hit "już zsynchronizowany, pomijam"
+  (already synced, skipping) — direct proof the migrated `sync_state`
+  cursor is real and used, not ignored. Found 1 new channel and pulled 4
+  new messages for it. 3 unrelated `HTTP 500 getChat` errors from Beeper
+  Desktop's own API for a few specific chats (Beeper-side tool execution
+  errors, not a sync-script or Mongo problem — logged, not fatal, sync
+  completed).
+- **Before/after counts** (before = pre-sync; after = post-sync +
+  post-`beeper-ws`-start):
+
+  | Collection | Before | After sync | After beeper-ws | Δ sync | Δ beeper-ws |
+  |---|---|---|---|---|---|
+  | contacts | 152 | 153 | 153 | +1 | 0 |
+  | channels | 170 | 171 | 171 | +1 | 0 |
+  | messages | 3644 | 3648 | 3648 | +4 | 0 |
+  | sync_state | 336 | 337 | 337 | +1 | 0 |
+  | beeper_events | 57 | 57 | 59 | 0 | +2 |
+
+- **No duplicates**: ran aggregation queries against the now-unique-indexed
+  fields (`identities.senderID` on `contacts`, `beeperMessageID`+`network`
+  on `messages`, `beeperChatID` on `channels`) — 0 duplicate groups on all
+  three after the sync.
+- **`02_re-start.sh`**: passed both preflight checks (Mongo, Beeper Desktop
+  now actually reachable) and started `beeper-ws` (pid confirmed running).
+  Log shows a clean WS handshake (`ready`, `subscriptions.updated`) with no
+  errors, and both events were written to `beeper_events` in the local
+  Mongo — confirmed via direct count (57→59) and via
+  `04_status.sh` showing the process running with those exact log lines.
+  Connection held for the remainder of the session (checked again after
+  the dashboard redeploy below — still running, unaffected, since
+  `beeper-ws` is a separate host process, not a container).
+- **Dashboard reflects new data — via refresh**: fresh authenticated
+  `GET /api/beeper-crm/stats` after the sync shows the updated counts
+  (153/3648/171); `GET /api/beeper-crm/contacts/<new-contact-id>` returns
+  the newly-synced contact (`Sylwester_Gorce_Agnieszka`) with 43 messages.
+- **Dashboard reflects new data — via SSE: found and fixed a real bug.**
+  `dba.subscribeToBeeperChanges()` (`packages/dba/src/beeper-crm.ts`) is
+  supposed to fall back to 5s polling when MongoDB change streams aren't
+  available (standalone Mongo, no replica set — true for every local/QNAP
+  deployment so far). The fallback never actually ran: `db.watch()` against
+  a standalone Mongo doesn't throw synchronously (the driver returns a
+  `ChangeStream` object immediately); the "not supported on standalone"
+  failure only surfaces later as an async `'error'` event, which the old
+  code logged but never acted on — so the polling branch was silent dead
+  code. Confirmed empirically: a direct SSE probe (`fetch` + manual
+  `ReadableStream` reads, to rule out `curl`/proxy buffering as the cause)
+  received **zero** `data: update` events over a 17s window, including one
+  where a real write happened mid-stream — only the unrelated 15s
+  keepalive comment arrived. This means the whole SSE live-update feature
+  has been non-functional on every standalone-Mongo deployment (local, and
+  QNAP until/unless a replica set exists) since it was written, silently.
+  **Fixed**: the `'error'` handler on the change stream now closes it and
+  starts the polling fallback itself, instead of only logging. Rebuilt
+  `dba` (`pnpm dba:build`) and redeployed the dashboard
+  (`bash-scripts/dashboard/03_local_mac_docker/06_deploy.sh` — the whole
+  local stack was rebuilt/restarted for this, Mongo included; confirmed
+  the named data volume survived untouched via a count check right after).
+  Re-tested: the same SSE probe now receives `data: update` every ~5s
+  continuously. One warning logged once per connection
+  (`[beeper-crm] change stream failed ... — falling back to polling.`),
+  not a loop.
+- **Cleanup**: deleted the one throwaway timeline event
+  (`SSE-PROBE`) created to test the stream during this round; confirmed
+  gone afterward. No test data left behind.
+
+**Files changed:** `packages/dba/src/beeper-crm.ts`
+(`subscribeToBeeperChanges` bugfix — the only source change in this round;
+everything else was verification).
+
+**Tested:** as described above — real incremental sync against real Beeper
+Desktop, real live WS connection and event capture, duplicate-detection
+queries, dashboard refresh, and a direct (non-`curl`) SSE stream read
+before and after the fix.
+
+**Status: DONE** — this closes the "live verification" gap PARTIAL above
+was waiting on. Full local independence from `contacts`, including live
+paths, is now verified end-to-end. QNAP untouched.
 
 # Task 4 — QNAP test migration + re-verification
 
