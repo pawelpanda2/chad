@@ -104,7 +104,7 @@ export function splitAddress(address: string): { repoGuid: string; segments: str
   return { repoGuid, segments };
 }
 
-export function joinAddress(repoGuid: string, segments: string[]): string {
+export function joinCpAddress(repoGuid: string, segments: string[]): string {
   return segments.length === 0 ? repoGuid : `${repoGuid}/${segments.join("/")}`;
 }
 

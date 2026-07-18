@@ -115,7 +115,7 @@ export class DbaDataRouter {
     const result = await primary.getByNames2(input);
     this.maybeShadowRead(
       "getByNames2",
-      () => this.resolveFollowerProvider()?.getByNames2(input),
+      () => this.resolveFollowerProvider()?.getByNames2(input).then((trail) => (trail.length > 0 ? trail[trail.length - 1] : null)),
       result.length > 0 ? result[result.length - 1] : null
     );
     return result;
