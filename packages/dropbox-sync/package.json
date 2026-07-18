@@ -1,0 +1,31 @@
+{
+  "name": "dropbox-sync",
+  "version": "1.0.0",
+  "description": "Dropbox history sync engine (auth, cursor sync, diff/snapshot/grouping, Mongo persistence) for the CHAD History feature. Consumed only by packages/dba — no UI, no HTTP server.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx src/diff.test.ts && tsx src/snapshot-rules.test.ts && tsx src/grouping.test.ts && tsx src/normalize.test.ts"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "diff": "^7.0.0",
+    "dropbox": "^10.34.0",
+    "mongodb": "^7.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "typescript": "^5.3.3",
+    "tsx": "^4.19.0"
+  }
+}
