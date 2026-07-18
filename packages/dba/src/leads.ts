@@ -8,7 +8,7 @@
 import { invokeContentProvider } from "./client.js";
 import { getCurrentRepoGuid } from "./repo-context.js";
 import { loadDataProvidersConfig } from "./data-providers/config.js";
-import { getDataRouter, getMongoProvider } from "./data-router-instance.js";
+import { getMongoProvider } from "./data-router-instance.js";
 import { buildCreateChildItemCommand, buildPutItemCommand } from "./data-commands.js";
 import { addressToRepoAndLoca } from "./cp-model.js";
 import { systemClock } from "./data-clock.js";
@@ -1009,20 +1009,24 @@ export interface DailyEntryItem {
  * @param parentNames - logical-name path to the folder, e.g. ["views", "dates"]
  */
 /**
- * Mongo-backed equivalent of `getAllChildTextItems` below, used when
- * `primaryBackend === "mongo"` (wired in for Daily/Date Entry as the
- * first real business-function use of the Story 72 router/provider
- * layer — everything else in this file still goes straight to CP).
+ * Mongo-backed equivalent of `getAllChildTextItems` below.
+ *
+ * Deliberately simple, per explicit direction after an initial pass built
+ * this through `DbaDataRouter` (follower outbox, primary/follower
+ * resolution, etc.): no router, no provider-selection abstraction here —
+ * this calls `MongoCpProvider` directly. The public functions below
+ * decide Mongo vs. Content Provider with a plain `if (config.mongoEnabled)`
+ * / `if (config.contentProviderEnabled)` pair, nothing more.
  */
 async function getAllChildTextItemsMongo(
   parentNames: string[]
 ): Promise<Array<{ itemName: string; loca: string; body?: string }>> {
   const repoGuid = getCurrentRepoGuid();
-  const router = getDataRouter();
-  const folder = await router.getByNames({ repoGuid, names: parentNames });
+  const mongo = getMongoProvider();
+  const folder = await mongo.getByNames({ repoGuid, names: parentNames });
   if (!folder) return [];
 
-  const children = await getMongoProvider().getChildItems(folder.config.address);
+  const children = await mongo.getChildItems(folder.config.address);
   return children.map((item) => ({
     itemName: item.config.name,
     loca: addressToRepoAndLoca(item.config.address).loca,
@@ -1037,7 +1041,7 @@ async function getAllChildTextItemsMongo(
  */
 async function findOrCreateFolderChainMongo(parentNames: string[]): Promise<CpItem> {
   const repoGuid = getCurrentRepoGuid();
-  const router = getDataRouter();
+  const mongo = getMongoProvider();
 
   let parent: CpItem = {
     _id: repoGuid,
@@ -1046,7 +1050,7 @@ async function findOrCreateFolderChainMongo(parentNames: string[]): Promise<CpIt
   };
   // If the repo root itself is already a real migrated item, use it as
   // the actual parent record instead of this synthetic stand-in.
-  const realRoot = await getMongoProvider().getItem({ address: repoGuid });
+  const realRoot = await mongo.getItem({ address: repoGuid });
   if (realRoot) parent = realRoot;
 
   for (const name of parentNames) {
@@ -1054,7 +1058,7 @@ async function findOrCreateFolderChainMongo(parentNames: string[]): Promise<CpIt
       { parentItemId: parent._id, parentAddress: parent.config.address, name, type: "Folder" },
       systemClock
     );
-    const result = await router.executeWrite(command);
+    const result = await mongo.executeWrite(command);
     parent = result.item;
   }
   return parent;
@@ -1069,14 +1073,14 @@ async function saveChildTextItemMongo(
   itemName: string,
   bodyYaml: string
 ): Promise<{ itemName: string; loca: string; success: boolean }> {
-  const router = getDataRouter();
+  const mongo = getMongoProvider();
   const folder = await findOrCreateFolderChainMongo(parentNames);
 
   const command = buildCreateChildItemCommand(
     { parentItemId: folder._id, parentAddress: folder.config.address, name: itemName, type: "Text", body: bodyYaml },
     systemClock
   );
-  const result = await router.executeWrite(command);
+  const result = await mongo.executeWrite(command);
 
   return {
     itemName: result.item.config.name,
@@ -1093,13 +1097,13 @@ async function saveChildTextItemMongo(
 async function updateItemBodyMongo(loca: string, bodyYaml: string): Promise<void> {
   const repoGuid = getCurrentRepoGuid();
   const address = loca ? `${repoGuid}/${loca}` : repoGuid;
-  const router = getDataRouter();
-  const existing = await getMongoProvider().getItem({ address });
+  const mongo = getMongoProvider();
+  const existing = await mongo.getItem({ address });
   if (!existing) {
     throw new Error(`Could not find item at loca "${loca}" to update (Mongo)`);
   }
   const command = buildPutItemCommand({ ...existing, body: bodyYaml }, systemClock);
-  await router.executeWrite(command);
+  await mongo.executeWrite(command);
 }
 
 async function getAllChildTextItems(
@@ -1194,10 +1198,15 @@ async function getAllChildTextItems(
  *   the folder not existing
  */
 export async function getAllDateEntries(): Promise<DateEntryItem[]> {
-  if (loadDataProvidersConfig().primaryBackend === "mongo") {
-    return getAllChildTextItemsMongo(["views", "dates"]);
+  const config = loadDataProvidersConfig();
+  let result: DateEntryItem[] = [];
+  if (config.mongoEnabled) {
+    result = await getAllChildTextItemsMongo(["views", "dates"]);
   }
-  return getAllChildTextItems(["views", "dates"]);
+  if (config.contentProviderEnabled) {
+    result = await getAllChildTextItems(["views", "dates"]);
+  }
+  return result;
 }
 
 /**
@@ -1215,10 +1224,15 @@ export async function getAllDateEntries(): Promise<DateEntryItem[]> {
  *   the folder not existing
  */
 export async function getAllDailyEntries(): Promise<DailyEntryItem[]> {
-  if (loadDataProvidersConfig().primaryBackend === "mongo") {
-    return getAllChildTextItemsMongo(["views", "daily"]);
+  const config = loadDataProvidersConfig();
+  let result: DailyEntryItem[] = [];
+  if (config.mongoEnabled) {
+    result = await getAllChildTextItemsMongo(["views", "daily"]);
   }
-  return getAllChildTextItems(["views", "daily"]);
+  if (config.contentProviderEnabled) {
+    result = await getAllChildTextItems(["views", "daily"]);
+  }
+  return result;
 }
 
 /**
@@ -1238,9 +1252,28 @@ export async function saveDateEntry(
   itemName: string,
   bodyYaml: string
 ): Promise<{ itemName: string; loca: string; success: boolean }> {
-  if (loadDataProvidersConfig().primaryBackend === "mongo") {
-    return saveChildTextItemMongo(["views", "dates"], itemName, bodyYaml);
+  const config = loadDataProvidersConfig();
+  let result: { itemName: string; loca: string; success: boolean } = { itemName, loca: "", success: false };
+  if (config.mongoEnabled) {
+    result = await saveDateEntryMongo(itemName, bodyYaml);
   }
+  if (config.contentProviderEnabled) {
+    result = await saveDateEntryContentProvider(itemName, bodyYaml);
+  }
+  return result;
+}
+
+async function saveDateEntryMongo(
+  itemName: string,
+  bodyYaml: string
+): Promise<{ itemName: string; loca: string; success: boolean }> {
+  return saveChildTextItemMongo(["views", "dates"], itemName, bodyYaml);
+}
+
+async function saveDateEntryContentProvider(
+  itemName: string,
+  bodyYaml: string
+): Promise<{ itemName: string; loca: string; success: boolean }> {
   // Step 1: Get or create views folder under root
   const viewsResult = await invokeContentProvider([
     "IRepoService",
@@ -1328,9 +1361,28 @@ export async function saveDailyEntry(
   itemName: string,
   bodyYaml: string
 ): Promise<{ itemName: string; loca: string; success: boolean }> {
-  if (loadDataProvidersConfig().primaryBackend === "mongo") {
-    return saveChildTextItemMongo(["views", "daily"], itemName, bodyYaml);
+  const config = loadDataProvidersConfig();
+  let result: { itemName: string; loca: string; success: boolean } = { itemName, loca: "", success: false };
+  if (config.mongoEnabled) {
+    result = await saveDailyEntryMongo(itemName, bodyYaml);
   }
+  if (config.contentProviderEnabled) {
+    result = await saveDailyEntryContentProvider(itemName, bodyYaml);
+  }
+  return result;
+}
+
+async function saveDailyEntryMongo(
+  itemName: string,
+  bodyYaml: string
+): Promise<{ itemName: string; loca: string; success: boolean }> {
+  return saveChildTextItemMongo(["views", "daily"], itemName, bodyYaml);
+}
+
+async function saveDailyEntryContentProvider(
+  itemName: string,
+  bodyYaml: string
+): Promise<{ itemName: string; loca: string; success: boolean }> {
   // Step 1: Get or create views folder under root
   const viewsResult = await invokeContentProvider([
     "IRepoService",
@@ -1422,9 +1474,16 @@ export async function saveDailyEntry(
  *   callers should merge with the existing body themselves before calling)
  */
 export async function updateDailyEntry(loca: string, bodyYaml: string): Promise<void> {
-  if (loadDataProvidersConfig().primaryBackend === "mongo") {
-    return updateItemBodyMongo(loca, bodyYaml);
+  const config = loadDataProvidersConfig();
+  if (config.mongoEnabled) {
+    await updateItemBodyMongo(loca, bodyYaml);
   }
+  if (config.contentProviderEnabled) {
+    await updateDailyEntryContentProvider(loca, bodyYaml);
+  }
+}
+
+async function updateDailyEntryContentProvider(loca: string, bodyYaml: string): Promise<void> {
   const repoGuid = getCurrentRepoGuid();
 
   const item = await invokeContentProvider([
@@ -1464,9 +1523,16 @@ export async function updateDailyEntry(loca: string, bodyYaml: string): Promise<
  *   callers should merge with the existing body themselves before calling)
  */
 export async function updateDateEntry(loca: string, bodyYaml: string): Promise<void> {
-  if (loadDataProvidersConfig().primaryBackend === "mongo") {
-    return updateItemBodyMongo(loca, bodyYaml);
+  const config = loadDataProvidersConfig();
+  if (config.mongoEnabled) {
+    await updateItemBodyMongo(loca, bodyYaml);
   }
+  if (config.contentProviderEnabled) {
+    await updateDateEntryContentProvider(loca, bodyYaml);
+  }
+}
+
+async function updateDateEntryContentProvider(loca: string, bodyYaml: string): Promise<void> {
   const repoGuid = getCurrentRepoGuid();
 
   const item = await invokeContentProvider([

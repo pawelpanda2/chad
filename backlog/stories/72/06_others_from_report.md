@@ -158,6 +158,90 @@ descriptive message, as `db97401`.
   `documentation/dba/data-providers-config.md`.
 - Closing the same-GUID-parity gap by adding a new CP-side write method.
 
+## Follow-up round: root cause of "Daily Tracker empty", PutItemConfig, real migration
+
+A later session in this same Story reported Daily Tracker showing "0 of 0"
+with an apparently-stuck loading state.
+
+**Root cause, confirmed via curl (no browser-automation tool is available
+in this environment) and direct CP `/invoke` calls, not assumed:**
+`pawel_f`'s `views/daily` and `views/dates` folders exist in Content
+Provider but their body was **literally `{}`** — genuinely zero Daily/Date
+Entry records, confirmed both via the CP wire API directly and via the
+filesystem (`find` on the QNAP-mounted repo path showed only `config.yaml`
+under those two folders, no numbered children). This predates this
+Story's work entirely — the existing 83/24-row CSV import documented in
+`daily-tracker-dates.md` was done for `kamil_s`, never `pawel_f`. Confirmed
+this was **not** a data-flow bug: `/api/views` itself returned
+`{"success":true,"dateEntries":[],"dailyEntries":[]}` cleanly, no error, no
+hang — "0 of 0" was the correct result for the data that actually existed.
+User's decision (via `AskUserQuestion`): leave it empty, move on.
+
+**`PutItemConfig` implemented and closes the previously-documented
+same-GUID-parity gap.** Added `IItemWorker.PutItemConfig(repo, loca,
+configJson)` to the real Content Provider (writes the full config dict
+as-is via `ConfigWorker.PutConfig`, preserving the supplied `id` and every
+custom field — separate `repo`/`loca` string params and a JSON-serialized
+config string, since tuple and `Dictionary` parameters aren't invocable
+over the reflection-based `/invoke` protocol). `LegacyContentProviderAdapter.
+putItem` now does `Put` (ensure body/directory) + `PutItemConfig` (fix
+identity) as a two-step write. Verified live against the real running
+Content Provider: `GetItem` afterward returns the exact `id`/custom fields
+AND the body together. New real-CP tests: `legacy-cp-provider.test.ts`
+(4/4, run against the actual running container on a disposable loca).
+Also found and fixed, live: `GetItem` on a genuinely-nonexistent item
+returns an empty response body (CP's own "not found" signal), which
+`client.ts`'s shared error handling treated as a hard error for every
+non-`Put` method — fixed locally in the adapter (translated to `null`),
+not in the shared `client.ts`.
+
+**Architecture simplified per explicit direction, mid-round.** The first
+pass wired Daily/Date Entry onto `DbaDataRouter` (follower outbox,
+primary/follower resolution). The user asked for something much simpler:
+each `dba` function split into two private implementations
+(`xMongo`/`xContentProvider`), with the public function running
+`if (config.mongoEnabled) ... if (config.contentProviderEnabled) ...`
+independently — no router, no outbox, no provider-selection abstraction
+for this pass. `getAllDateEntries`/`getAllDailyEntries`/`saveDateEntry`/
+`saveDailyEntry`/`updateDailyEntry`/`updateDateEntry` in `leads.ts` were
+rewritten to this exact shape. `DbaDataRouter`/`data-outbox`/the provider
+abstraction remain in the codebase (untouched, still tested) for later —
+this round simply doesn't route through them for these six functions.
+Config default changed (in `docker-compose.local.yml` and
+`.env.local.example`): `DBA_CONTENT_PROVIDER_ENABLED` now defaults to
+`false` locally (Content Provider is **not removed** — its full code and
+data are untouched — just not the active read/write path right now).
+
+**Real migration run for `pawel_f`'s actual repo** (`21d11bdc-f1f4-44d1-b61a-3fa6b039c641`,
+into the dashboard's real `beeper` Mongo database, not a test DB): 376
+items scanned. One migration-robustness bug found and fixed along the way:
+a single unreadable item used to abort the *entire* tree walk (CP computes
+a Folder's children map synchronously as part of reading the *parent*, so
+one corrupted child broke `GetItem` on its parent too) — `walk()` now
+catches per-node errors and continues, counting them as `itemsFailed`
+instead of crashing.
+
+**Incident during this round, corrected:** a disposable test loca (`98`)
+created earlier for `PutItemConfig` testing got stuck in a locked state
+("Device or resource busy" — `/Volumes/Dropbox/kamilgame042` is a QNAP
+network volume mounted on this Mac, not a local Dropbox app; the lock is
+SMB/network-share behavior, not Dropbox desktop sync, per the user's
+correction) with a corrupted `config.yaml` (missing `name`) that blocked
+migration of `pawel_f`'s *entire* repo, since it broke reading the repo
+root. Fixed in place (rewrote the config to be valid, clearly labeled
+`broken-test-artifact-please-ignore`) rather than force-deleting — no real
+data was touched. Separately, the `chad-local` Docker stack (containers,
+not volumes) disappeared from `docker ps -a` outside of any action taken
+here; the named data volumes were confirmed fully intact
+(`chad-mongodb-local-mac-docker-db` etc. all present) and the stack was
+brought back up via the official `03_restart.sh` script, which reattaches
+to existing volumes — no data was lost. The user separately flagged
+concern about deletions/mount changes mid-session; confirmed and shown
+directly: `docker-compose.local.yml`'s diff is purely additive (new env
+vars only), Content Provider's C# code has only the additive
+`PutItemConfig` commit (0 deletions), and no real CP data under `pawel_f`'s
+repo was removed (only the one disposable test folder was ever touched).
+
 ## Commits
 
 - (pre-existing, by the background commit sweep described above) `e8f3d9d`,
