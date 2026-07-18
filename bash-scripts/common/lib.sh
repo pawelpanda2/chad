@@ -832,17 +832,23 @@ ghcr_docker_login() {
     return 1
   fi
 
-  # Isolate this login from the host's default ~/.docker/config.json.
-  # Confirmed on QNAP (2026-07-18): Container Station's docker CLI wrapper
-  # (/lib/container-station/ld-wrapper.sh) unconditionally overrides $HOME
-  # to a QPKG-managed "homes/<user>" directory that may not exist/be
-  # writable for the SSH user — real failure was "mkdir .../homes/
-  # pawelfluder: permission denied", masked entirely by this function's own
-  # >/dev/null 2>&1 into a misleading "bad token" error. DOCKER_CONFIG is
-  # not touched by that wrapper, so pointing it at a writable, per-repo,
-  # gitignored directory sidesteps the problem on any host, not just QNAP.
-  export DOCKER_CONFIG="${DOCKER_CONFIG:-$REPO_ROOT/.runtime/docker-config}"
-  mkdir -p "$DOCKER_CONFIG"
+  # If the caller has already exported DOCKER_CONFIG (QNAP call sites do —
+  # see deploy.sh in 09_registry_test/08_registry_prod), make sure it
+  # exists. Never set a default here: on QNAP, Container Station's docker
+  # CLI wrapper (/lib/container-station/ld-wrapper.sh) unconditionally
+  # overrides $HOME to a QPKG-managed "homes/<user>" directory that may not
+  # exist/be writable for the SSH user (real failure was "mkdir .../homes/
+  # pawelfluder: permission denied", masked by this function's own
+  # >/dev/null 2>&1 into a misleading "bad token" error) — DOCKER_CONFIG
+  # sidesteps that. But forcing a default here unconditionally broke the
+  # LOCAL Mac build/push step instead: Docker Desktop resolves its actual
+  # socket through a "desktop-linux" context whose metadata lives inside
+  # the real ~/.docker — pointing DOCKER_CONFIG at a fresh directory with no
+  # context store made `docker build` fail with "Cannot connect to the
+  # Docker daemon at unix:///var/run/docker.sock" (confirmed 2026-07-18).
+  if [ -n "${DOCKER_CONFIG:-}" ]; then
+    mkdir -p "$DOCKER_CONFIG"
+  fi
 
   log_info "Logging in to $registry as $username..."
   if ! printf '%s' "$token" | docker login "$registry" --username "$username" --password-stdin >/dev/null 2>&1; then
