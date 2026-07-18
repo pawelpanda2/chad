@@ -904,7 +904,7 @@ ghcr_build_tag_push() {
   log_ok "Built: $ref" >&2
 
   log_info "Pushing $ref to GHCR..." >&2
-  if ! docker push "$ref"; then
+  if ! docker push "$ref" >&2; then
     log_error "Push failed — image was built locally but is NOT on GHCR. Not recording this tag." >&2
     return 1
   fi
