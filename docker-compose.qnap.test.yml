@@ -40,6 +40,17 @@ services:
       # this dashboard is a separate project from docker-compose.qnap.shared.yml.
       - CONTENT_PROVIDER_API_URL=http://chad-content-provider-api:12024
       - DATABASE_URL=file:/app/data/dev.db
+      # Same shared chad-mongodb this file's own header comment describes
+      # (TEST is not an isolated environment — it reads/writes the SAME
+      # data as PROD, same as it already does for Content Provider). Added
+      # to close a gap where this env block was never updated when Mongo
+      # was wired into packages/dba (docker-compose.local.yml already had
+      # this) — without it, MongoCpProvider throws "MONGODB_URI environment
+      # variable is not set" on every request.
+      - MONGODB_URI=mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@chad-mongodb:27017/beeper?authSource=admin
+      - DBA_MONGO_ENABLED=${DBA_MONGO_ENABLED:-true}
+      - DBA_CONTENT_PROVIDER_ENABLED=${DBA_CONTENT_PROVIDER_ENABLED:-false}
+      - DBA_PRIMARY_BACKEND=${DBA_PRIMARY_BACKEND:-mongo}
     volumes:
       - chad-dashboard-test-data:/app/data
     logging:
