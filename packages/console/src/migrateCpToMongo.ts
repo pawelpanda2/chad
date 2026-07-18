@@ -187,6 +187,7 @@ async function processItem(ctx: WalkContext, item: CpItem): Promise<void> {
 
   if (ctx.seenIds.has(item._id)) {
     ctx.report.duplicateIds.push(item._id);
+    ctx.log(`  [DUP-ID] "${item._id}" also at "${item.config.address}" (type=${item.config.type}, name="${item.config.name}")`);
   }
   ctx.seenIds.add(item._id);
 
