@@ -170,6 +170,12 @@ function ViewsPageContent() {
   const [reportSaved, setReportSaved] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Dates and Daily Tracker fetch errors are kept separate (mirroring
+  // reportsError above) — a Content Provider failure fetching one no longer
+  // silently discards the other's already-fetched data, and each view shows
+  // its own specific error instead of a shared, generic one.
+  const [dateEntriesError, setDateEntriesError] = useState<string | null>(null);
+  const [dailyEntriesError, setDailyEntriesError] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
   const [sortKey, setSortKey] = useState<string>("");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
@@ -197,6 +203,8 @@ function ViewsPageContent() {
   const fetchData = useCallback(async () => {
     setIsLoading(true);
     setError(null);
+    setDateEntriesError(null);
+    setDailyEntriesError(null);
     setReportsError(null);
     try {
       const [viewsRes, leadsRes, reportsRes] = await Promise.all([
@@ -211,6 +219,17 @@ function ViewsPageContent() {
       if (viewsResult.success) {
         setDateEntries(viewsResult.dateEntries || []);
         setDailyEntries(viewsResult.dailyEntries || []);
+        // Independent per-list errors (Content Provider timeout/failure on
+        // just one of the two) — never silently shown as "0 entries", and
+        // never blocks the other list from rendering.
+        if (viewsResult.dateEntriesError) {
+          setDateEntriesError(viewsResult.dateEntriesError);
+          toast.error(`Dates: ${viewsResult.dateEntriesError}`);
+        }
+        if (viewsResult.dailyEntriesError) {
+          setDailyEntriesError(viewsResult.dailyEntriesError);
+          toast.error(`Daily Tracker: ${viewsResult.dailyEntriesError}`);
+        }
       } else {
         setError(viewsResult.error || "Failed to fetch data");
         toast.error(viewsResult.error || "Failed to fetch data");
@@ -822,8 +841,10 @@ function ViewsPageContent() {
         </span>
       </div>
 
-      {/* Error display */}
-      <ErrorBox message={error} className="mb-1 shrink-0" />
+      {/* Error display — view-specific: Tracker shows a daily-entries
+          failure, Dates shows a date-entries failure. A failure fetching
+          one never blanks out the other view's data (see /api/views). */}
+      <ErrorBox message={isTracker ? dailyEntriesError : dateEntriesError} className="mb-1 shrink-0" />
 
       {/* Inner frame (Story 62 standard: outer shell frame always holds at
           least one inner frame around its content, even single-element
@@ -953,7 +974,16 @@ function ViewsPageContent() {
                 </tr>
               </thead>
               <tbody>
-                {currentEntries.length === 0 ? (
+                {isLoading ? (
+                  <tr>
+                    <td colSpan={columns.length + (showActionColumn ? 1 : 0) + (showItemNameColumn ? 1 : 0)} className="border h-8 text-center text-muted-foreground">
+                      <span className="inline-flex items-center gap-2">
+                        <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                        Loading...
+                      </span>
+                    </td>
+                  </tr>
+                ) : currentEntries.length === 0 ? (
                   <tr>
                     <td colSpan={columns.length + (showActionColumn ? 1 : 0) + (showItemNameColumn ? 1 : 0)} className="border h-8 text-center text-muted-foreground">
                       No entries yet. Use Forms to add data.
@@ -966,7 +996,13 @@ function ViewsPageContent() {
                     const rawClickable = canEditRows && isRawMode && !!entry.loca;
                     return (
                       <tr
-                        key={entry.itemName}
+                        // loca (the physical Content Provider path), not
+                        // itemName — itemName is a display/logical name, not
+                        // guaranteed unique (accounts can end up with two
+                        // physical entries sharing one name). A duplicate
+                        // key made React's reconciliation misrender rows as
+                        // repeating blocks after any sort/re-render.
+                        key={entry.loca}
                         className={cn("hover:bg-accent", rawClickable && "cursor-pointer")}
                         onClick={rawClickable ? () => router.push(`/dashboard/forms?form=${addFormParam}&editLoca=${encodeURIComponent(entry.loca!)}`) : undefined}
                       >

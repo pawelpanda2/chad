@@ -969,21 +969,36 @@ export interface DailyEntryItem {
 }
 
 /**
- * Gets every child Text-item of a single folder (identified by parent
- * logical-name path, e.g. ["views", "dates"]), with each child's own
- * body fetched individually.
+ * Gets every child Text-item of a single flat folder (identified by parent
+ * logical-name path, e.g. ["views", "dates"]) in ONE batched Content
+ * Provider call for all bodies, instead of one GetItem per child.
  *
- * This mirrors the PROVEN working pattern from getMsgPlannerDateFolders
- * (documentation/dba/data-access.md §5-7), NOT IManyItemsWorker.GetList —
- * GetList takes a C# ValueTuple parameter that the /invoke string-args
- * resolver (FindParameters.ConvertParamFromString) cannot construct
- * (confirmed real failure: "InvalidCastException: Invalid cast from
- * 'System.String' to 'System.ValueTuple`2[...]'" — this method is not
- * callable via /invoke at all, for any data, regardless of args). The
- * documented, already-working approach for "list every child of one
- * folder" is: GetByNames on the folder, then walk its Body map
- * (physicalKey -> logicalName), building each child's loca as
- * `${folderLoca}/${physicalKey}` — exactly what Msg Planner does.
+ * Flow (Task 2, Story 71 — replaces the old per-child GetItem loop, which
+ * timed out on real repos with dozens of entries over a network-mounted
+ * Content Provider data root):
+ *
+ * 1. `PostByNames(repoGuid, "Folder", ...parentNames)` resolves (creating
+ *    if missing, idempotent — same semantics as PostParentItem, used
+ *    elsewhere in this file for writes) the folder, giving its current
+ *    `loca` and its `Body` — a physicalKey -> logicalName map of every
+ *    direct child. No GetItem needed for this step.
+ * 2. `IManyItemsWorker.GetListOfBody(repoGuid, folderLoca)` fetches every
+ *    direct child's body content in a single call. This was previously
+ *    uncallable via /invoke (ValueTuple parameter — see
+ *    documentation/dba/bugs/getlist-valuetuple-and-date-entries-mismap.md);
+ *    Story 71 changed `IManyItemsWorker.GetListOfBody`'s C# signature to
+ *    take `(string repo, string loca)` as two plain parameters instead of
+ *    one ValueTuple, and rewrote its internal implementation
+ *    (`ReadManyWorker.GetManyItemsBody`) to read only body.txt per child
+ *    (no config.yaml at all) — both confirmed live against real data.
+ * 3. The two results are cross-checked in memory (no extra requests): the
+ *    child count from the parent's Body map must equal the batch result's
+ *    length. A mismatch throws rather than silently returning a partial or
+ *    empty list — Content Provider integrity issues must be visible, not
+ *    masked as "no data" (see getAllDateEntries/getAllDailyEntries above).
+ * 4. Rows are zipped by index — GetListOfBody returns bodies in ascending
+ *    numeric physical-key order (confirmed live), matching the same order
+ *    the parent Body's `Object.entries` is sorted into below.
  *
  * @param parentNames - logical-name path to the folder, e.g. ["views", "dates"]
  */
@@ -991,14 +1006,18 @@ async function getAllChildTextItems(
   parentNames: string[]
 ): Promise<Array<{ itemName: string; loca: string; body?: string }>> {
   const repoGuid = getCurrentRepoGuid();
+  const label = parentNames.join("/");
+  const startedAt = Date.now();
 
   const folderResult = await invokeContentProvider([
     "IRepoService",
     "IItemWorker",
-    "GetByNames",
+    "PostByNames",
     repoGuid,
+    "Folder",
     ...parentNames,
   ]);
+  console.log(`[dba] ${label} parent requests: 1`);
 
   if (!folderResult?.Settings?.address) {
     return [];
@@ -1011,45 +1030,71 @@ async function getAllChildTextItems(
     return [];
   }
 
-  const childEntries = Object.entries(childrenBody).filter(
-    ([physicalKey, logicalName]) =>
-      typeof physicalKey === "string" && physicalKey.length > 0 && typeof logicalName === "string"
-  ) as Array<[string, string]>;
+  // Sorted by physical key (numeric) — GetListOfBody below returns bodies
+  // in this same ascending order, so index-based zipping lines up.
+  const expectedChildren = Object.entries(childrenBody)
+    .filter(
+      ([physicalKey, logicalName]) =>
+        typeof physicalKey === "string" && physicalKey.length > 0 && typeof logicalName === "string"
+    )
+    .sort(([a], [b]) => Number(a) - Number(b))
+    .map(([physicalKey, logicalName]) => ({
+      physicalKey,
+      logicalName: logicalName as string,
+      loca: `${folderLoca}/${physicalKey}`,
+    }));
 
-  const entries: Array<{ itemName: string; loca: string; body?: string }> = [];
-  for (const [physicalKey, logicalName] of childEntries) {
-    const childLoca = `${folderLoca}/${physicalKey}`;
+  const bodies = await invokeContentProvider([
+    "IRepoService",
+    "IManyItemsWorker",
+    "GetListOfBody",
+    repoGuid,
+    folderLoca,
+  ]);
+  const bodyList: string[] = Array.isArray(bodies) ? bodies : [];
+  console.log(`[dba] ${label} batch requests: 1, per-row requests: 0`);
+  console.log(
+    `[dba] ${label} children declared in parent Body: ${expectedChildren.length}, items returned by batch: ${bodyList.length}`
+  );
 
-    const itemResult = await invokeContentProvider([
-      "IRepoService",
-      "IItemWorker",
-      "GetItem",
-      repoGuid,
-      childLoca,
-    ]);
-
-    let body: string | undefined;
-    if (itemResult?.Body) {
-      body = typeof itemResult.Body === "string" ? itemResult.Body : JSON.stringify(itemResult.Body);
-    }
-
-    entries.push({ itemName: logicalName, loca: childLoca, body });
+  if (expectedChildren.length !== bodyList.length) {
+    console.error(`[dba] ${label} integrity comparison: ERROR`);
+    throw new Error(
+      `Batch fetch integrity error for ${label}: parent declares ${expectedChildren.length} children, ` +
+        `but GetListOfBody returned ${bodyList.length} bodies`
+    );
   }
+  console.log(`[dba] ${label} integrity comparison: OK`);
 
+  const entries = expectedChildren.map((child, index) => ({
+    itemName: child.logicalName,
+    loca: child.loca,
+    body: bodyList[index],
+  }));
+
+  console.log(`[dba] ${label} total loading time: ${Date.now() - startedAt}ms`);
   return entries;
 }
 
 /**
  * Gets all date entries from the views/dates folder.
  *
+ * Distinguishes (same contract as getAllReportEntries):
+ * - folder not found -> [] (getAllChildTextItems already treats a missing
+ *   folder as empty, not an error)
+ * - any other failure (CP timeout/network/500) -> throws, so the caller/route
+ *   surfaces an explicit error instead of a silent, indistinguishable-from-
+ *   real-data empty list. Previously this caught and swallowed EVERY error
+ *   (including timeouts) into `[]` — a real CP timeout on a slow/large
+ *   folder looked exactly like "no entries yet" with zero indication
+ *   anything had failed.
+ *
  * @returns Promise resolving to array of date entry items
+ * @throws Error if the Content Provider call fails for a reason other than
+ *   the folder not existing
  */
 export async function getAllDateEntries(): Promise<DateEntryItem[]> {
-  try {
-    return await getAllChildTextItems(["views", "dates"]);
-  } catch {
-    return [];
-  }
+  return getAllChildTextItems(["views", "dates"]);
 }
 
 /**
@@ -1058,14 +1103,16 @@ export async function getAllDateEntries(): Promise<DateEntryItem[]> {
  * Note: The body is returned as a raw string. YAML parsing should be done
  * in the dashboard layer where js-yaml is available.
  *
+ * Distinguishes (same contract as getAllReportEntries): folder-not-found ->
+ * [], any other failure -> throws. See getAllDateEntries for why this no
+ * longer swallows every error into [].
+ *
  * @returns Promise resolving to array of daily entry items
+ * @throws Error if the Content Provider call fails for a reason other than
+ *   the folder not existing
  */
 export async function getAllDailyEntries(): Promise<DailyEntryItem[]> {
-  try {
-    return await getAllChildTextItems(["views", "daily"]);
-  } catch {
-    return [];
-  }
+  return getAllChildTextItems(["views", "daily"]);
 }
 
 /**
