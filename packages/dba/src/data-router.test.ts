@@ -39,6 +39,10 @@ class FakeProvider implements CpCompatibleDataProvider {
   async getByNames2(_input: GetByNames2Input): Promise<CpItem[]> {
     return [];
   }
+  async putItemConfig(item: CpItem): Promise<CpItem> {
+    this.items.set(item._id, item);
+    return item;
+  }
   async executeWrite(command: DataWriteCommand): Promise<DataWriteResult> {
     this.writeCalls++;
     if (this.failWrites) throw new Error(`${this.name} write failed`);

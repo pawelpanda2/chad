@@ -1283,3 +1283,158 @@ MongoDB follower
 ```
 
 bez przepisywania logiki biznesowej `dba`.
+
+## Input 2 (follow-up session — Daily Tracker reported empty)
+
+Story 72 nie jest jeszcze zakończone funkcjonalnie.
+
+Na uruchomionym dashboardzie widok Daily Tracker nie pokazuje żadnych danych:
+
+- tabela jest pusta;
+- licznik pokazuje `0 of 0`;
+- request wygląda, jakby cały czas się ładował;
+- dane nie pojawiają się w panelu.
+
+Nie interesuje mnie teraz samo stwierdzenie, że testy jednostkowe lub integracyjne przechodzą. Musisz uruchomić prawdziwy playground i sprawdzić cały przepływ od dashboardu do DBA, a następnie do MongoDB lub Content Providera.
+
+Dane logowania do lokalnego dashboardu:
+
+login:
+pawel_f
+
+hasło:
+changeme
+
+### Cel
+
+Doprowadź aktualny lokalny system do stanu, w którym po zalogowaniu i otwarciu Daily Tracker dane rzeczywiście wyświetlają się w tabeli.
+
+Nie kończ pracy na testach backendowych. Zweryfikuj działanie w przeglądarce.
+
+### Co masz zrobić
+
+1. Najpierw przeczytaj obowiązującą dokumentację projektu zgodnie z aktualną strukturą repozytorium.
+
+2. Uruchom właściwy lokalny playground całego systemu:
+   - dashboard;
+   - DBA;
+   - MongoDB;
+   - Content Provider, jeżeli jest potrzebny w aktualnej konfiguracji primary/follower.
+
+3. Zaloguj się przez UI danymi:
+
+   pawel_f / changeme
+
+4. Otwórz widok Daily Tracker i odtwórz problem widoczny na screenshotcie:
+   - pusta tabela;
+   - `0 of 0`;
+   - trwające ładowanie;
+   - brak danych.
+
+5. Użyj narzędzi przeglądarkowych lub Playwrighta i sprawdź:
+   - requesty wysyłane przez frontend;
+   - statusy HTTP;
+   - odpowiedzi JSON;
+   - błędy w konsoli;
+   - błędy DBA;
+   - błędy MongoDB;
+   - błędy Content Providera;
+   - konfigurację routera primary/follower;
+   - czy istniejące endpointy DBA zostały faktycznie przepięte na nową warstwę danych.
+
+6. Znajdź rzeczywistą przyczynę braku danych.
+
+7. Napraw przepływ tak, aby Daily Tracker wyświetlał istniejące dane.
+
+8. Nie twórz sztucznych danych tylko po to, żeby tabela przestała być pusta, chyba że jawnie potwierdzisz, że w źródle nie ma żadnych danych. Najpierw sprawdź istniejące dane użytkownika `pawel_f`.
+
+9. Sprawdź, czy problem wynika z jednej z wcześniej niewykonanych rzeczy ze Story 72:
+   - istniejące funkcje DBA nie korzystają jeszcze z `DbaDataRouter`;
+   - worker outboxa nie jest uruchomiony;
+   - provider jest skonfigurowany, ale nieużywany;
+   - frontend nadal odpytuje stary endpoint;
+   - odpowiedź nowego providera ma inny kontrakt niż oczekuje tabela;
+   - migracja CP → MongoDB nie została wykonana dla prawdziwego repo użytkownika.
+
+10. Jeżeli MongoDB jest primary, ale nie zawiera danych Daily Trackera:
+    - wykonaj najpierw bezpieczny dry-run migracji dla właściwego repo użytkownika;
+    - pokaż wynik;
+    - następnie wykonaj migrację tylko po potwierdzeniu, że źródło i mapowanie są poprawne;
+    - nie testuj na przypadkowym fixture zamiast prawdziwego repo.
+
+11. Po naprawie ponownie otwórz Daily Tracker i potwierdź przez UI:
+    - tabela zawiera wiersze;
+    - licznik nie pokazuje `0 of 0`, jeżeli dane istnieją;
+    - loading się kończy;
+    - nie ma błędów w konsoli;
+    - request zwraca poprawne dane;
+    - dane są zgodne ze źródłem.
+
+### Zmiana dotycząca config (PutItemConfig)
+
+Problem polegający na tym, że Content Provider przy zwykłym zapisie generuje nowy GUID i gubi niestandardowe pola config, rozwiążemy przez osobną metodę `PutItemConfig`, dodaną do wspólnego kontraktu i zaimplementowaną w Content Providerze oraz w warstwie MongoDB:
+
+- `PutItem` — zapisuje lub aktualizuje Item i body zgodnie z jego podstawowym kontraktem;
+- `PutItemConfig` — zapisuje pełny config Itemu; zachowuje przekazane `config.id`; zachowuje wszystkie niestandardowe pola config; nie generuje nowego GUID, jeżeli ID zostało przekazane; umożliwia followerowi CP odtworzenie tego samego Itemu, który powstał w MongoDB.
+
+Sygnatura ma używać osobnych parametrów repo i loca, bez tuple. Zaprojektować zgodnie z aktualnym wspólnym modelem CpItem i istniejącą konwencją interfejsów, bez tworzenia równoległego, niespójnego modelu config.
+
+### Warunki zakończenia
+
+Nie uznawaj zadania za zakończone, dopóki: nie uruchomisz rzeczywistego playgroundu; nie zalogujesz się przez UI; nie odtworzysz problemu; nie naprawisz rzeczywistego przepływu danych; Daily Tracker nie pokaże danych; nie zweryfikujesz poprawnego requestu i odpowiedzi; nie dodasz oraz nie przetestujesz PutItemConfig; nie opiszesz dokładnie, jaka była przyczyna; nie zapiszesz screenshotu lub wyników Playwrighta potwierdzających działanie.
+
+Na końcu podaj: rzeczywistą przyczynę pustej tabeli; zmienione pliki; sposób podłączenia istniejących funkcji DBA do routera; źródło danych używane po naprawie; wynik prawdziwego testu w UI; testy dla PutItemConfig; rzeczy, które nadal pozostały niedokończone; commity; informację, czy zmiany zostały wypchnięte na GitHub.
+
+Nie restartuj bez potrzeby współdzielonych kontenerów. Jeżeli restart jest konieczny, najpierw sprawdź ich aktualny stan i używane mounty. Nie używaj przypadkowego katalogu fixture zamiast rzeczywistej konfiguracji `.env.local`.
+
+Dołączony też kompendium migracji wcześniej przygotowane: `ai-docs/26-07-11_content-provider-mongodb-final-item-model.md` (zapisane w tej sesji).
+
+## Input 3 (mid-turn, while investigating)
+
+jak procentowo oceniasz ukonczenie
+
+## Input 4 (mid-turn, root-cause hint)
+
+jezeli content provider wolno odpowiada mozesz sam przejsc te sciezki:
+/Volumes/Dropbox/kamilgame042/repos/21d11bdc-f1f4-44d1-b61a-3fa6b039c641/07
+
+## Input 5 (mid-turn, correction)
+
+ale to co jest w /Volumes/Dropbox/kamilgame042/repos/21d11bdc-f1f4-44d1-b61a-3fa6b039c641/07 to jest volume qnapowy zamontowany na mac tam nie ma odpalonego dropbox na mac do tego miejsca. co najwyzej hbs dziala tam na qnap ale to sie dzieje tu lokallnie na mac
+
+## Input 6 (mid-turn, priority pivot after PutItemConfig was pushed)
+
+skup sie na tym zeby dane byly przemigrowane i zadzialala ta czesc z mongo db jak masz problem z ta druga z cp to nie jest to tak istotnie bedziemy to poprawiac. teraz wazne zeby zadzialalo to wszystko na mongo i dane byly zmigrowane mozesz nawet ustawic ta flage false zeby nie dziala ta czesc zwianazna z cp
+
+## Input 7 (explicit priority list)
+
+Priorytet na teraz:
+
+1. MongoDB ma działać jako jedyne aktywne źródło danych.
+2. Wyłącz tymczasowo follower Content Providera:
+   - ustaw odpowiednią flagę na false;
+   - nie blokuj działania MongoDB błędami CP;
+   - nie próbuj teraz kończyć synchronizacji Mongo → CP.
+3. Zmigruj prawdziwe dane użytkownika pawel_f z CP do MongoDB.
+4. Nie testuj tylko na fixture ani mockach.
+5. Po migracji ustaw MongoDB jako primary.
+6. Podepnij istniejący endpoint Daily Tracker do DbaDataRouter/MongoCpProvider.
+7. Uruchom dashboard i zaloguj się:
+   login: pawel_f
+   hasło: changeme
+8. Sprawdź w Playwright/browserze, że:
+   - Daily Tracker przestaje się kręcić;
+   - request kończy się poprawnym statusem;
+   - tabela pokazuje rzeczywiste dane;
+   - licznik nie pokazuje 0 of 0, jeżeli dane istnieją;
+   - nie ma błędów w konsoli ani DBA.
+9. Dopiero po tym zajmuj się PutItemConfig i zgodnością followera CP.
+
+Nie uznawaj zadania za zakończone tylko dlatego, że testy backendowe przechodzą.
+
+Minimalny warunek sukcesu:
+- prawdziwe dane są w MongoDB;
+- aplikacja czyta je z MongoDB;
+- Daily Tracker pokazuje je w UI.
+
+Jeżeli część CP przeszkadza, wyłącz ją bezpiecznie flagą i zostaw dokładnie opisaną jako dalsze zadanie.

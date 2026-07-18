@@ -7,6 +7,12 @@
 
 import { invokeContentProvider } from "./client.js";
 import { getCurrentRepoGuid } from "./repo-context.js";
+import { loadDataProvidersConfig } from "./data-providers/config.js";
+import { getDataRouter, getMongoProvider } from "./data-router-instance.js";
+import { buildCreateChildItemCommand, buildPutItemCommand } from "./data-commands.js";
+import { addressToRepoAndLoca } from "./cp-model.js";
+import { systemClock } from "./data-clock.js";
+import type { CpItem } from "./cp-model.js";
 
 /**
  * Gets all leads from the shared repository.
@@ -1002,6 +1008,100 @@ export interface DailyEntryItem {
  *
  * @param parentNames - logical-name path to the folder, e.g. ["views", "dates"]
  */
+/**
+ * Mongo-backed equivalent of `getAllChildTextItems` below, used when
+ * `primaryBackend === "mongo"` (wired in for Daily/Date Entry as the
+ * first real business-function use of the Story 72 router/provider
+ * layer — everything else in this file still goes straight to CP).
+ */
+async function getAllChildTextItemsMongo(
+  parentNames: string[]
+): Promise<Array<{ itemName: string; loca: string; body?: string }>> {
+  const repoGuid = getCurrentRepoGuid();
+  const router = getDataRouter();
+  const folder = await router.getByNames({ repoGuid, names: parentNames });
+  if (!folder) return [];
+
+  const children = await getMongoProvider().getChildItems(folder.config.address);
+  return children.map((item) => ({
+    itemName: item.config.name,
+    loca: addressToRepoAndLoca(item.config.address).loca,
+    body: item.body,
+  }));
+}
+
+/**
+ * Mongo-backed find-or-create of a nested folder chain under the repo
+ * root (e.g. ["views", "daily"]) — the Mongo equivalent of the CP
+ * PostParentItem chain in `saveDailyEntry`/`saveDateEntry` below.
+ */
+async function findOrCreateFolderChainMongo(parentNames: string[]): Promise<CpItem> {
+  const repoGuid = getCurrentRepoGuid();
+  const router = getDataRouter();
+
+  let parent: CpItem = {
+    _id: repoGuid,
+    config: { id: repoGuid, address: repoGuid, type: "Folder", name: "root" },
+    body: "",
+  };
+  // If the repo root itself is already a real migrated item, use it as
+  // the actual parent record instead of this synthetic stand-in.
+  const realRoot = await getMongoProvider().getItem({ address: repoGuid });
+  if (realRoot) parent = realRoot;
+
+  for (const name of parentNames) {
+    const command = buildCreateChildItemCommand(
+      { parentItemId: parent._id, parentAddress: parent.config.address, name, type: "Folder" },
+      systemClock
+    );
+    const result = await router.executeWrite(command);
+    parent = result.item;
+  }
+  return parent;
+}
+
+/**
+ * Mongo-backed equivalent of the "ensure folder chain, then create the
+ * text item, then set its body" flow in `saveDailyEntry`/`saveDateEntry`.
+ */
+async function saveChildTextItemMongo(
+  parentNames: string[],
+  itemName: string,
+  bodyYaml: string
+): Promise<{ itemName: string; loca: string; success: boolean }> {
+  const router = getDataRouter();
+  const folder = await findOrCreateFolderChainMongo(parentNames);
+
+  const command = buildCreateChildItemCommand(
+    { parentItemId: folder._id, parentAddress: folder.config.address, name: itemName, type: "Text", body: bodyYaml },
+    systemClock
+  );
+  const result = await router.executeWrite(command);
+
+  return {
+    itemName: result.item.config.name,
+    loca: addressToRepoAndLoca(result.item.config.address).loca,
+    success: true,
+  };
+}
+
+/**
+ * Mongo-backed equivalent of `updateDailyEntry`/`updateDateEntry`'s
+ * GetItem-then-Put shape: overwrites an existing item's body in place,
+ * identified by its real `loca` (never by re-deriving from a name/date).
+ */
+async function updateItemBodyMongo(loca: string, bodyYaml: string): Promise<void> {
+  const repoGuid = getCurrentRepoGuid();
+  const address = loca ? `${repoGuid}/${loca}` : repoGuid;
+  const router = getDataRouter();
+  const existing = await getMongoProvider().getItem({ address });
+  if (!existing) {
+    throw new Error(`Could not find item at loca "${loca}" to update (Mongo)`);
+  }
+  const command = buildPutItemCommand({ ...existing, body: bodyYaml }, systemClock);
+  await router.executeWrite(command);
+}
+
 async function getAllChildTextItems(
   parentNames: string[]
 ): Promise<Array<{ itemName: string; loca: string; body?: string }>> {
@@ -1094,6 +1194,9 @@ async function getAllChildTextItems(
  *   the folder not existing
  */
 export async function getAllDateEntries(): Promise<DateEntryItem[]> {
+  if (loadDataProvidersConfig().primaryBackend === "mongo") {
+    return getAllChildTextItemsMongo(["views", "dates"]);
+  }
   return getAllChildTextItems(["views", "dates"]);
 }
 
@@ -1112,6 +1215,9 @@ export async function getAllDateEntries(): Promise<DateEntryItem[]> {
  *   the folder not existing
  */
 export async function getAllDailyEntries(): Promise<DailyEntryItem[]> {
+  if (loadDataProvidersConfig().primaryBackend === "mongo") {
+    return getAllChildTextItemsMongo(["views", "daily"]);
+  }
   return getAllChildTextItems(["views", "daily"]);
 }
 
@@ -1132,6 +1238,9 @@ export async function saveDateEntry(
   itemName: string,
   bodyYaml: string
 ): Promise<{ itemName: string; loca: string; success: boolean }> {
+  if (loadDataProvidersConfig().primaryBackend === "mongo") {
+    return saveChildTextItemMongo(["views", "dates"], itemName, bodyYaml);
+  }
   // Step 1: Get or create views folder under root
   const viewsResult = await invokeContentProvider([
     "IRepoService",
@@ -1219,6 +1328,9 @@ export async function saveDailyEntry(
   itemName: string,
   bodyYaml: string
 ): Promise<{ itemName: string; loca: string; success: boolean }> {
+  if (loadDataProvidersConfig().primaryBackend === "mongo") {
+    return saveChildTextItemMongo(["views", "daily"], itemName, bodyYaml);
+  }
   // Step 1: Get or create views folder under root
   const viewsResult = await invokeContentProvider([
     "IRepoService",
@@ -1310,6 +1422,9 @@ export async function saveDailyEntry(
  *   callers should merge with the existing body themselves before calling)
  */
 export async function updateDailyEntry(loca: string, bodyYaml: string): Promise<void> {
+  if (loadDataProvidersConfig().primaryBackend === "mongo") {
+    return updateItemBodyMongo(loca, bodyYaml);
+  }
   const repoGuid = getCurrentRepoGuid();
 
   const item = await invokeContentProvider([
@@ -1349,6 +1464,9 @@ export async function updateDailyEntry(loca: string, bodyYaml: string): Promise<
  *   callers should merge with the existing body themselves before calling)
  */
 export async function updateDateEntry(loca: string, bodyYaml: string): Promise<void> {
+  if (loadDataProvidersConfig().primaryBackend === "mongo") {
+    return updateItemBodyMongo(loca, bodyYaml);
+  }
   const repoGuid = getCurrentRepoGuid();
 
   const item = await invokeContentProvider([

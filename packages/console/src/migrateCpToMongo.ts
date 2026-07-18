@@ -125,7 +125,22 @@ export async function migrateRepo(
 
 async function walk(ctx: WalkContext, repo: string, loca: string): Promise<void> {
   const address = repoAndLocaToAddress(repo, loca);
-  const item = await ctx.legacy.getItem({ address });
+
+  let item;
+  try {
+    item = await ctx.legacy.getItem({ address });
+  } catch (error) {
+    // One corrupted/unreadable item (bad config.yaml, filesystem lock,
+    // etc.) must never abort the whole migration run — report and move
+    // on. We can't tell if this was a Folder, so its children (if any)
+    // are simply unreachable from this walk; re-running after the
+    // underlying problem is fixed will pick them up (migration is
+    // naturally resumable — see this file's top doc comment).
+    ctx.report.itemsScanned++;
+    ctx.report.itemsFailed++;
+    ctx.log(`  [FAIL] "${address}": ${error instanceof Error ? error.message : String(error)}`);
+    return;
+  }
   if (!item) {
     ctx.log(`  [skip] no item at "${address}" (nothing to migrate here)`);
     return;
@@ -134,7 +149,14 @@ async function walk(ctx: WalkContext, repo: string, loca: string): Promise<void>
   await processItem(ctx, item);
 
   if (item.config.type === "Folder") {
-    const children = await ctx.getFolderChildrenFn(repo, loca);
+    let children;
+    try {
+      children = await ctx.getFolderChildrenFn(repo, loca);
+    } catch (error) {
+      ctx.report.itemsFailed++;
+      ctx.log(`  [FAIL] could not list children of "${address}": ${error instanceof Error ? error.message : String(error)}`);
+      return;
+    }
     for (const child of children) {
       const childLoca = loca ? `${loca}/${child.index}` : child.index;
       await walk(ctx, repo, childLoca);
