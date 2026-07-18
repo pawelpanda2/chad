@@ -40,7 +40,7 @@ import type {
   GetItemInput,
 } from "./types.js";
 
-export class LegacyContentProviderAdapter implements CpCompatibleDataProvider {
+export class NetFileCpProvider implements CpCompatibleDataProvider {
   readonly name = "content-provider" as const;
 
   async getItem(input: GetItemInput): Promise<CpItem | null> {
@@ -52,7 +52,7 @@ export class LegacyContentProviderAdapter implements CpCompatibleDataProvider {
     // `GetByGuid`, which resolves a Ref item's target — not a general
     // id lookup); this provider only supports the address form.
     throw new Error(
-      "LegacyContentProviderAdapter.getItem: lookup by bare id is not supported by the " +
+      "NetFileCpProvider.getItem: lookup by bare id is not supported by the " +
         "legacy Content Provider wire API — pass { address } instead."
     );
   }
@@ -120,6 +120,40 @@ export class LegacyContentProviderAdapter implements CpCompatibleDataProvider {
     return trail;
   }
 
+  /**
+   * `CpCompatibleDataProvider.getChildren` — lists a Folder's direct
+   * children via the existing `getFolderChildren` (reads the parent's
+   * computed Body index-map, one real CP call), then fetches each child's
+   * full item individually (real CP has no batch "get full items" method
+   * other than the body-only `GetListOfBody` some business functions use
+   * directly — see `leads.ts`'s `getAllChildTextItems` — this generic
+   * operation needs full `config` too, not just body, so it can't reuse
+   * that batch call).
+   */
+  async getChildren(parentAddress: string): Promise<CpItem[]> {
+    const { repo, loca } = addressToRepoAndLoca(parentAddress);
+    const children = await getFolderChildren(repo, loca);
+    const items: CpItem[] = [];
+    for (const child of children) {
+      const childLoca = loca ? `${loca}/${child.index}` : child.index;
+      const item = await this.getItemByRepoLoca(repo, childLoca);
+      if (item) items.push(item);
+    }
+    return items;
+  }
+
+  /**
+   * `CpCompatibleDataProvider.findRecursively` — real
+   * `IMethodWorker.FindRecursively`, one CP call, results mapped to
+   * `CpItem`.
+   */
+  async findRecursively(rootAddress: string, phrase: string): Promise<CpItem[]> {
+    const { repo, loca } = addressToRepoAndLoca(rootAddress);
+    const raw = await invokeContentProvider(["IRepoService", "IMethodWorker", "FindRecursively", repo, loca, phrase]);
+    if (!Array.isArray(raw)) return [];
+    return raw.map(rawToCpItemOrNull).filter((item): item is CpItem => item !== null);
+  }
+
   async executeWrite(command: DataWriteCommand): Promise<DataWriteResult> {
     if (command.kind === "put-item") {
       return this.putItem(command.item);
@@ -163,24 +197,72 @@ export class LegacyContentProviderAdapter implements CpCompatibleDataProvider {
     const written = rawToCpItemOrNull({ ...(raw as object), Body: item.body });
     if (!written) {
       throw new Error(
-        `LegacyContentProviderAdapter.putItemConfig: CP returned no item for address "${item.config.address}"`
+        `NetFileCpProvider.putItemConfig: CP returned no item for address "${item.config.address}"`
       );
     }
     return written;
   }
 
+  /**
+   * Two cases, matching `MongoCpProvider.createChild`'s own split:
+   *
+   * - Follower replay (`command.item` already decided by the primary):
+   *   write at the EXACT decided address via `putItem` — never
+   *   `PostParentItem`, which would let CP allocate its own next index
+   *   (see class doc comment, same-GUID-parity gap).
+   * - CP-as-primary (`command.item` is null — no other provider has
+   *   decided anything yet): real find-or-create via `PostParentItem`,
+   *   CP's own create-or-get by exact name. CP mints its own id here,
+   *   which is correct and expected when CP is the primary (there is
+   *   nothing else it needs to match) — the parity gap only matters when
+   *   CP is a *follower* replaying someone else's decision.
+   */
   private async createChild(
     command: Extract<DataWriteCommand, { kind: "create-child-item" }>
   ): Promise<DataWriteResult> {
-    if (!command.item) {
+    if (command.item) {
+      return this.putItem(command.item);
+    }
+
+    const { repo, loca: parentLoca } = addressToRepoAndLoca(command.parentAddress);
+    const raw = await invokeContentProvider([
+      "IRepoService",
+      "IItemWorker",
+      "PostParentItem",
+      repo,
+      parentLoca,
+      command.type,
+      command.name,
+    ]);
+    const created = rawToCpItemOrNull(raw);
+    if (!created) {
       throw new Error(
-        "LegacyContentProviderAdapter.createChild: command.item must already be decided " +
-          "by the primary provider before being replayed to the follower (Story 72 §8/§23)."
+        `NetFileCpProvider.createChild: PostParentItem returned no item for ` +
+          `"${command.name}" under "${command.parentAddress}"`
       );
     }
-    // Write at the EXACT decided address — never PostParentItem, which
-    // would let CP allocate its own next index (see class doc comment).
-    return this.putItem(command.item);
+
+    if (command.body && created.body !== command.body) {
+      const { repo: childRepo, loca: childLoca } = addressToRepoAndLoca(created.config.address);
+      await invokeContentProvider([
+        "IRepoService",
+        "IItemWorker",
+        "Put",
+        childRepo,
+        childLoca,
+        created.config.type,
+        created.config.name,
+        command.body,
+      ]);
+      created.body = command.body;
+    }
+
+    // CP's raw PostParentItem response doesn't cheaply distinguish
+    // "found existing" from "just created" (unlike Mongo's explicit
+    // pre-check) — `alreadyExisted` has no real consumer today (grepped:
+    // zero non-test usages), so it isn't worth a second CP round trip
+    // just to populate it accurately.
+    return { item: created, alreadyExisted: false };
   }
 }
 

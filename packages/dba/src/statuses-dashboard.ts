@@ -7,19 +7,9 @@
  * The dashboard calls these functions through API routes (thin wrapper pattern).
  */
 
-import { invokeContentProvider } from "./client.js";
-import { getCurrentRepoGuid } from "./repo-context.js";
-import {
-  GetAllLeads,
-  createStatusForLead,
-  findStatusForLead,
-  getStatusLocaFromItem,
-  putStatusContent,
-  getStatusItem,
-  parseStatusBody,
-  hasField
-} from "./leads.js";
-import { chad_GetLeadsLoca, chad_GetLeadsStatuses } from "./path-resolver.js";
+import { parseStatusBody, hasField } from "./leads.js";
+import { resolveByNames, getChildrenOf, createOrGetChild, putItemBody } from "./item-ops.js";
+import { addressToRepoAndLoca, type CpItem } from "./cp-model.js";
 
 // =============================================================================
 // Types
@@ -314,85 +304,70 @@ export function parseRange(rangeStr: string, totalItems: number): number[] {
 }
 
 // =============================================================================
+// Shared lead/status resolution (routes through item-ops -> DbaDataRouter;
+// see provider-migration-audit.md — one universal CpItem, no per-feature
+// schema, no if(mongoEnabled) here)
+// =============================================================================
+
+async function getLeadsFolder(): Promise<CpItem> {
+  const folder = await resolveByNames(["leads", "all items"]);
+  if (!folder) {
+    throw new Error("statuses-dashboard: leads/all items folder not found");
+  }
+  return folder;
+}
+
+async function findLeadChild(leadsFolder: CpItem, leadKey: string): Promise<CpItem | null> {
+  const children = await getChildrenOf(leadsFolder.config.address);
+  return children.find((c) => c.config.address === `${leadsFolder.config.address}/${leadKey}`) ?? null;
+}
+
+/** A lead's own "status" item is always its direct child, named "status". */
+async function findLeadStatus(lead: CpItem): Promise<CpItem | null> {
+  const children = await getChildrenOf(lead.config.address);
+  return children.find((c) => c.config.name === "status") ?? null;
+}
+
+// =============================================================================
 // Dashboard List
 // =============================================================================
 
 /**
  * Gets the list of leads with their status information for the dashboard.
- * 
+ *
  * This is the main function called by the dashboard API.
  * Returns leads sorted by newest first (descending by leadKey number).
- * 
+ *
  * @param range Optional range filter string (e.g., "-10", "1-20", "1,2,3")
  * @returns Array of StatusLeadItem sorted newest first
  */
 export async function getStatusesDashboardList(range?: string): Promise<StatusLeadItem[]> {
-  // Step 1: Get all leads
-  const allLeadsResponse = await GetAllLeads();
-  
-  if (!allLeadsResponse || !allLeadsResponse.Body || typeof allLeadsResponse.Body !== "object") {
-    return [];
-  }
-  
-  const leadsMap: Record<string, string> = allLeadsResponse.Body;
-  
-  // Step 2: Get all statuses
-  const statusItems = await chad_GetLeadsStatuses();
-  
-  // Step 3: Get leads base loca
-  const leadsBaseLoca = await chad_GetLeadsLoca();
-  
-  // Step 4: Build status map (leadKey -> status info)
-  const statusMap = new Map<string, { loca: string; body: string }>();
-  
-  if (Array.isArray(statusItems)) {
-    for (const item of statusItems) {
-      const address = item?.Settings?.address || "";
-      if (!address) continue;
-      
-      // Strip repo GUID prefix to get numeric loca
-      const loca = address.startsWith(`${getCurrentRepoGuid()}/`) 
-        ? address.substring(`${getCurrentRepoGuid()}/`.length) 
-        : address;
-      
-      // Extract leadKey from loca
-      if (loca.startsWith(leadsBaseLoca + "/")) {
-        const relativeLoca = loca.substring(leadsBaseLoca.length + 1);
-        const leadKey = relativeLoca.split("/")[0];
-        const body = item?.Body || "";
-        statusMap.set(leadKey, { loca, body });
-      }
-    }
-  }
-  
-  // Step 5: Build lead items
-  const items: StatusLeadItem[] = [];
-  
-  for (const [leadKey, leadName] of Object.entries(leadsMap)) {
-    const statusInfo = statusMap.get(leadKey);
-    const statusCategory = statusInfo 
-      ? classifyStatus(statusInfo.body) 
-      : "missing";
-    
-    items.push({
+  const leadsFolder = await getLeadsFolder();
+  const leadChildren = await getChildrenOf(leadsFolder.config.address);
+  const statusChildren = await Promise.all(leadChildren.map((lead) => findLeadStatus(lead)));
+
+  const items: StatusLeadItem[] = leadChildren.map((lead, i) => {
+    const leadKey = lead.config.address.slice(leadsFolder.config.address.length + 1);
+    const status = statusChildren[i];
+    return {
       leadKey,
-      leadName,
-      leadLoca: `${leadsBaseLoca}/${leadKey}`,
-      statusCategory,
-      statusLoca: statusInfo?.loca,
-      statusBody: statusInfo?.body,
-    });
-  }
-  
-  // Step 6: Sort by leadKey descending (newest first)
+      leadName: lead.config.name,
+      leadLoca: addressToRepoAndLoca(lead.config.address).loca,
+      statusCategory: status ? classifyStatus(status.body) : "missing",
+      statusLoca: status ? addressToRepoAndLoca(status.config.address).loca : undefined,
+      statusBody: status?.body,
+    };
+  });
+
+  // Sort by leadKey descending (newest first)
   items.sort((a, b) => parseInt(b.leadKey) - parseInt(a.leadKey));
-  
-  // Step 7: Apply range filter if provided
+
+  // Apply range filter if provided
   if (range) {
     const indices = parseRange(range, items.length);
-    return indices.map(i => items[i]);
+    return indices.map((i) => items[i]);
   }
-  
+
   return items;
 }
 
@@ -402,109 +377,69 @@ export async function getStatusesDashboardList(range?: string): Promise<StatusLe
 
 /**
  * Gets the status editor data for a specific lead.
- * 
+ *
  * @param leadKey The lead's key (numeric ID)
  * @returns StatusEditorData or null if lead not found
  */
 export async function getLeadStatusEditor(leadKey: string): Promise<StatusEditorData | null> {
-  // Step 1: Get all leads to find the lead name
-  const allLeadsResponse = await GetAllLeads();
-  
-  if (!allLeadsResponse || !allLeadsResponse.Body || typeof allLeadsResponse.Body !== "object") {
-    return null;
-  }
-  
-  const leadsMap: Record<string, string> = allLeadsResponse.Body;
-  const leadName = leadsMap[leadKey];
-  
-  if (!leadName) {
-    return null;
-  }
-  
-  // Step 2: Get leads base loca
-  const leadsBaseLoca = await chad_GetLeadsLoca();
-  const leadLoca = `${leadsBaseLoca}/${leadKey}`;
-  
-  // Step 3: Try to get existing status
-  let statusLoca = "";
-  let statusBody = "";
-  let statusCategory: StatusCategory = "missing";
-  
-  try {
-    const statusItem = await findStatusForLead(leadLoca);
-    if (statusItem) {
-      statusLoca = getStatusLocaFromItem(statusItem);
-      statusBody = statusItem.Body;
-      statusCategory = classifyStatus(statusBody);
-    }
-  } catch (e) {
-    // Status doesn't exist yet
-    statusCategory = "missing";
-  }
-  
+  const leadsFolder = await getLeadsFolder();
+  const lead = await findLeadChild(leadsFolder, leadKey);
+  if (!lead) return null;
+
+  const leadLoca = addressToRepoAndLoca(lead.config.address).loca;
+  const status = await findLeadStatus(lead);
+
   return {
     leadKey,
-    leadName,
+    leadName: lead.config.name,
     leadLoca,
-    statusLoca,
-    statusBody,
-    statusCategory,
+    statusLoca: status ? addressToRepoAndLoca(status.config.address).loca : "",
+    statusBody: status?.body ?? "",
+    statusCategory: status ? classifyStatus(status.body) : "missing",
   };
 }
 
 /**
  * Saves the status for a lead.
- * 
- * Uses PostParentItem (create-or-get) to ensure the status item exists,
- * then uses Put to save the content. This is the correct pattern:
- * 1. POST = create-or-get: ensures item exists, returns existing or creates new
- * 2. PUT = save content: updates the item at the resolved numeric loca
- * 
+ *
+ * Uses create-or-get (find-or-create by exact name "status" under the
+ * lead) to ensure the status item exists, then overwrites its body. This
+ * is the same POST-then-PUT pattern the previous CP-only implementation
+ * used, now routed through the universal Item provider contract.
+ *
  * @param leadKey The lead's key (numeric ID)
  * @param fields The status fields to save
  * @returns true on success
  */
 export async function saveLeadStatus(leadKey: string, fields: StatusFields): Promise<boolean> {
-  // Step 1: Get leads base loca
-  const leadsBaseLoca = await chad_GetLeadsLoca();
-  const leadLoca = `${leadsBaseLoca}/${leadKey}`;
-  
-  // Step 2: Use PostParentItem to create-or-get the status item
-  // This is idempotent: if status exists, returns existing; if not, creates new
-  // The returned item has the correct numeric loca in Settings.address
-  const statusItem = await createStatusForLead(leadLoca);
-  const statusLoca = getStatusLocaFromItem(statusItem);
-  
-  // Step 3: Get existing body to preserve any additional (non-standard) fields
-  const existingBody = statusItem?.Body || "";
-  
-  // Step 4: Serialize the new body with all fields
-  const newBody = serializeStatusFields(fields, existingBody);
-  
-  // Step 5: Save the content using Put with the resolved numeric loca
-  await putStatusContent(statusLoca, newBody);
-  
+  const leadsFolder = await getLeadsFolder();
+  const lead = await findLeadChild(leadsFolder, leadKey);
+  if (!lead) {
+    throw new Error(`saveLeadStatus: lead "${leadKey}" not found`);
+  }
+
+  const statusItem = await createOrGetChild(lead, "status", "Text");
+  const newBody = serializeStatusFields(fields, statusItem.body || "");
+  await putItemBody(statusItem.config.address, newBody);
+
   return true;
 }
 
 /**
  * Creates a default status for a lead.
- * 
+ *
  * @param leadKey The lead's key (numeric ID)
  * @returns true on success
  */
 export async function createLeadStatus(leadKey: string): Promise<boolean> {
-  // Step 1: Get leads base loca
-  const leadsBaseLoca = await chad_GetLeadsLoca();
-  const leadLoca = `${leadsBaseLoca}/${leadKey}`;
-  
-  // Step 2: Create the status item
-  const statusItem = await createStatusForLead(leadLoca);
-  const statusLoca = getStatusLocaFromItem(statusItem);
-  
-  // Step 3: Save default content
-  const defaultBody = createDefaultStatusBody();
-  await putStatusContent(statusLoca, defaultBody);
-  
+  const leadsFolder = await getLeadsFolder();
+  const lead = await findLeadChild(leadsFolder, leadKey);
+  if (!lead) {
+    throw new Error(`createLeadStatus: lead "${leadKey}" not found`);
+  }
+
+  const statusItem = await createOrGetChild(lead, "status", "Text");
+  await putItemBody(statusItem.config.address, createDefaultStatusBody());
+
   return true;
 }

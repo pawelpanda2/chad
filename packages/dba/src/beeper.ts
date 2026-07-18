@@ -15,6 +15,7 @@
 
 import { invokeContentProvider } from "./client.js";
 import { getCurrentRepoGuid } from "./repo-context.js";
+import { resolveByNames, getChildrenOf } from "./item-ops.js";
 
 /**
  * Result of finding a conversation for a lead
@@ -388,96 +389,23 @@ export async function getAllBeeperWhatsappLeads(): Promise<string[]> {
  */
 export async function getBeeperWhatsappConversation(leadName: string): Promise<string | null> {
   try {
-    // Step 1: Get the beeper folder
-    const beeperItem = await invokeContentProvider([
-      "IRepoService",
-      "IItemWorker",
-      "GetByNames",
-      getCurrentRepoGuid(),
-      "beeper",
-    ]);
-    
-    if (!beeperItem?.Settings?.address) {
-      return null;
-    }
-    
-    const beeperAddress = beeperItem.Settings.address;
-    const beeperBody = readBodyMap(beeperItem);
-    
-    if (Object.keys(beeperBody).length === 0) {
-      return null;
-    }
-    
+    const beeperFolder = await resolveByNames(["beeper"]);
+    if (!beeperFolder) return null;
+
     // Step 2: Search through all channels for this lead
-    for (const [channelKey] of Object.entries(beeperBody)) {
-      const channelAddress = joinAddress(beeperAddress, channelKey);
-      const { repo, loca } = parseAddressToRepoLoca(channelAddress);
-      
-      const channelItem = await invokeContentProvider([
-        "IRepoService",
-        "IItemWorker",
-        "GetItem",
-        repo,
-        loca,
-      ]);
-      
-      if (!channelItem) {
-        continue;
-      }
-      
-      const channelBody = readBodyMap(channelItem);
-      
-      // Step 3: Look for the lead name in this channel
-      const foundEntry = Object.entries(channelBody).find(([key, value]) => value === leadName);
-      
-      if (foundEntry) {
-        const [leadKey] = foundEntry;
-        
-        // Step 4: Get the lead's item and look for "beeper" child
-        const leadAddress = joinAddress(channelAddress, leadKey);
-        const { repo: leadRepo, loca: leadLoca } = parseAddressToRepoLoca(leadAddress);
-        
-        const leadItem = await invokeContentProvider([
-          "IRepoService",
-          "IItemWorker",
-          "GetItem",
-          leadRepo,
-          leadLoca,
-        ]);
-        
-        if (leadItem) {
-          const leadBody = readBodyMap(leadItem);
-          
-          // CP body format is usually { "01": "beeper" }, so the key is numeric.
-          const beeperEntry = Object.entries(leadBody).find(
-            ([, value]) => value.toLowerCase() === "beeper"
-          );
-          const beeperKey = beeperEntry?.[0];
-          
-          if (beeperKey) {
-            const beeperAddress = joinAddress(leadAddress, beeperKey);
-            const { repo: beeperRepo, loca: beeperLoca } = parseAddressToRepoLoca(beeperAddress);
-            
-            const beeperConversationItem = await invokeContentProvider([
-              "IRepoService",
-              "IItemWorker",
-              "GetItem",
-              beeperRepo,
-              beeperLoca,
-            ]);
-            
-            if (beeperConversationItem?.Body) {
-              return typeof beeperConversationItem.Body === "string" 
-                ? beeperConversationItem.Body 
-                : JSON.stringify(beeperConversationItem.Body);
-            }
-          }
-        }
-      }
+    const channels = await getChildrenOf(beeperFolder.config.address);
+    for (const channel of channels) {
+      const channelChildren = await getChildrenOf(channel.config.address);
+      const lead = channelChildren.find((c) => c.config.name === leadName);
+      if (!lead) continue;
+
+      // Step 4: Look for the lead's "beeper" child (case-insensitive)
+      const leadChildren = await getChildrenOf(lead.config.address);
+      const beeperChild = leadChildren.find((c) => c.config.name.toLowerCase() === "beeper");
+      if (beeperChild) return beeperChild.body;
     }
-    
+
     return null;
-    
   } catch (error) {
     console.error(`Error fetching conversation for lead ${leadName}:`, error);
     return null;
@@ -494,29 +422,14 @@ export async function getBeeperWhatsappConversation(leadName: string): Promise<s
  */
 export async function getAllLeadsFromRepository(): Promise<string[]> {
   try {
-    const result = await invokeContentProvider([
-      "IRepoService",
-      "IItemWorker",
-      "GetByNames",
-      getCurrentRepoGuid(),
-      "leads",
-      "all items",
-    ]);
+    const folder = await resolveByNames(["leads", "all items"]);
+    if (!folder) return [];
 
-    if (!result?.Body) {
-      return [];
-    }
-
-    const body = result.Body;
-    if (typeof body !== "object" || body === null) {
-      return [];
-    }
-
-    // Body is a map like { "01": "26-05-11_pn_Luba", "02": "26-05-29_pn_Amelia", ... }
-    const leads = Object.values(body).filter(
-      (v): v is string => typeof v === "string" && v.length > 0
-    );
-    return leads.sort();
+    const children = await getChildrenOf(folder.config.address);
+    return children
+      .map((c) => c.config.name)
+      .filter((n): n is string => typeof n === "string" && n.length > 0)
+      .sort();
   } catch (error) {
     console.error("Error fetching all lead names:", error);
     return [];

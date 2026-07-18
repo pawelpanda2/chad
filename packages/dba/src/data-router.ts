@@ -122,6 +122,24 @@ export class DbaDataRouter {
   }
 
   /**
+   * No shadow-read comparison here (unlike `getItem`/`getByNames`/
+   * `getByNames2`): `recordShadowReadMismatch` compares one `CpItem`
+   * against another, not two children lists — comparing address *sets*
+   * is a different shape of diagnostic this Story doesn't need yet.
+   * `getChildren` still fully participates in primary/follower selection.
+   */
+  async getChildren(parentAddress: string): Promise<CpItem[]> {
+    const primary = this.resolvePrimaryProvider();
+    return primary.getChildren(parentAddress);
+  }
+
+  /** Same no-shadow-read rationale as `getChildren` — a list result, not one `CpItem`. */
+  async findRecursively(rootAddress: string, phrase: string): Promise<CpItem[]> {
+    const primary = this.resolvePrimaryProvider();
+    return primary.findRecursively(rootAddress, phrase);
+  }
+
+  /**
    * Fire-and-forget comparison against the follower (§16) — never awaited
    * by the caller, never allowed to change the response, never throws
    * into the caller's context.

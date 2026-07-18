@@ -11,7 +11,7 @@
 
 import { loadDataProvidersConfig } from "./data-providers/config.js";
 import { MongoCpProvider } from "./data-providers/mongo-cp-provider.js";
-import { LegacyContentProviderAdapter } from "./data-providers/legacy-cp-provider.js";
+import { NetFileCpProvider } from "./data-providers/net-file-cp-provider.js";
 import { DbaDataRouter } from "./data-router.js";
 import type { CpCompatibleDataProvider, DataBackendName } from "./data-providers/types.js";
 
@@ -23,7 +23,7 @@ export function getDataRouter(): DbaDataRouter {
     const config = loadDataProvidersConfig();
     const providers: Partial<Record<DataBackendName, CpCompatibleDataProvider>> = {};
     if (config.mongoEnabled) providers.mongo = getMongoProvider();
-    if (config.contentProviderEnabled) providers["content-provider"] = new LegacyContentProviderAdapter();
+    if (config.contentProviderEnabled) providers["content-provider"] = new NetFileCpProvider();
 
     instance = new DbaDataRouter({
       config,
