@@ -31,5 +31,6 @@ export * from './data-providers/mongo-cp-provider.js';
 export * from './data-providers/legacy-cp-provider.js';
 export * from './data-outbox.js';
 export * from './data-router.js';
+export * from './data-router-instance.js';
 export * from './data-outbox-worker.js';
 export * from './data-sync-diagnostics.js';

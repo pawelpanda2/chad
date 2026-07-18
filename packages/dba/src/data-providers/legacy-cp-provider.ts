@@ -3,31 +3,30 @@
  * Provider — wraps `invokeContentProvider` (`../client.js`), never makes a
  * direct HTTP call of its own (Story 72 §9, `05_endpoint-rules.md` §2).
  *
- * IMPORTANT, audited limitation of the real CP wire contract (Story 72
- * `02_plan.md`, "Correction" below): `IItemWorker.Put` and
- * `PostParentItem`'s underlying `WriteTextWorker.IfMinePut`/
- * `WriteFolderWorker.IfMinePut` ALWAYS mint a brand-new `Guid.NewGuid()`
- * and replace `Settings` with only `{id, type, name, address}` — they do
- * NOT accept or preserve an externally-decided `id`, and they DROP any
- * custom config fields on every write. `IItemWorker.PutConfig` (which
- * would write an arbitrary full config dict as-is, preserving `id`) takes
- * a `Dictionary<string, object>` parameter, which
- * `StringArgsResolver/FindParameters.cs`'s `ConvertParamFromString` has no
- * case for — it is **not callable through the reflection-based `/invoke`
- * string-args wire protocol at all**.
+ * **Same-GUID-parity gap CLOSED** (was documented as an open limitation in
+ * Story 72's first pass; fixed in this session's follow-up). `IItemWorker.
+ * Put`/`PostParentItem`'s underlying `WriteTextWorker.IfMinePut`/
+ * `WriteFolderWorker.IfMinePut` still ALWAYS mint a brand-new `Guid.
+ * NewGuid()` and replace `Settings` with only `{id, type, name, address}`
+ * on every write — that part of the real CP code is unchanged. The gap is
+ * closed by a new CP-side method, `IItemWorker.PutItemConfig(repo, loca,
+ * configJson)`, added specifically for this: it writes the full config
+ * dict as-is via `ConfigWorker.PutConfig` (bypassing `WriteTextWorker`/
+ * `WriteFolderWorker` entirely), preserving the supplied `id` and every
+ * custom field, no body write. `configJson` is a JSON-serialized dict
+ * (not a `Dictionary` parameter — `FindParameters.ConvertParamFromString`
+ * has no case for that) and `repo`/`loca` are separate string parameters
+ * (not a tuple — also not invocable via `/invoke`), matching the same
+ * wire-protocol constraints already documented for every other method
+ * here.
  *
- * Practical consequence: when Content Provider is the FOLLOWER, this
- * adapter can and does guarantee the **same address** as the primary
- * decided (Story 72 §23's emphasized invariant — achieved by calling
- * `Put` at the exact repo+loca the command already carries, never
- * `PostParentItem`, which would let CP re-run its own next-index
- * allocation). It CANNOT currently guarantee the same `id`/GUID as the
- * primary (Story 72 §8/§29) — CP always assigns its own. This is a real,
- * confirmed limitation of the current Content Provider API, not a
- * shortcut taken here; closing it would require adding a new CP-side
- * write method that accepts a caller-supplied id (a `packages/net-content-provider`
- * change, explicitly out of this Story's scope per §27). Recorded as a
- * known risk in `06_others_from_report.md`.
+ * `putItem` below now does the two-step dance this enables: `Put` first
+ * (ensures the directory/body exist, accepting CP's own transient GUID),
+ * then `PutItemConfig` (overwrites the config with the exact id/custom
+ * fields the command already decided). Verified live against the real
+ * running Content Provider container (see Story 72's follow-up report):
+ * `GetItem` afterward returns the body written in step 1 AND the exact
+ * config written in step 2, together.
  */
 
 import { invokeContentProvider } from "../client.js";
@@ -58,9 +57,29 @@ export class LegacyContentProviderAdapter implements CpCompatibleDataProvider {
     );
   }
 
+  /**
+   * Real, confirmed bug found while testing this against the live running
+   * Content Provider (not a mock — a mock wouldn't have caught this):
+   * `ItemWorker.GetItem` returns a literal empty string, not an error, when
+   * the item genuinely doesn't exist (`GetItemWorker.cs`: `if (s01) {...}
+   * return string.Empty;`). `client.ts`'s `invokeContentProvider` has a
+   * carve-out for empty bodies only on `Put` operations; every other empty
+   * body — including this legitimate "not found" case for `GetItem` — is
+   * treated as a hard error and thrown. Caught here specifically (by
+   * message, not by changing the shared `client.ts`, which other callers
+   * rely on) and translated to `null`, matching this method's own return
+   * type contract.
+   */
   private async getItemByRepoLoca(repo: string, loca: string): Promise<CpItem | null> {
-    const raw = await invokeContentProvider(["IRepoService", "IItemWorker", "GetItem", repo, loca]);
-    return rawToCpItemOrNull(raw);
+    try {
+      const raw = await invokeContentProvider(["IRepoService", "IItemWorker", "GetItem", repo, loca]);
+      return rawToCpItemOrNull(raw);
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith("Empty response body from /invoke")) {
+        return null;
+      }
+      throw error;
+    }
   }
 
   async getByNames(input: GetByNamesInput): Promise<CpItem | null> {
@@ -111,7 +130,10 @@ export class LegacyContentProviderAdapter implements CpCompatibleDataProvider {
   private async putItem(item: CpItem): Promise<DataWriteResult> {
     const { repo, loca } = addressToRepoAndLoca(item.config.address);
     const existing = await this.getItemByRepoLoca(repo, loca);
-    const raw = await invokeContentProvider([
+
+    // Step 1: Put — ensures the directory/body exist. CP mints its own
+    // transient id/config here; that's expected and fixed in step 2.
+    await invokeContentProvider([
       "IRepoService",
       "IItemWorker",
       "Put",
@@ -121,13 +143,30 @@ export class LegacyContentProviderAdapter implements CpCompatibleDataProvider {
       item.config.name,
       item.body,
     ]);
-    const written = rawToCpItemOrNull(raw);
+
+    // Step 2: PutItemConfig — overwrites config with the exact id/custom
+    // fields this command already decided (see class doc comment).
+    const written = await this.putItemConfig(item);
+    return { item: { ...written, body: item.body }, alreadyExisted: !!existing };
+  }
+
+  async putItemConfig(item: CpItem): Promise<CpItem> {
+    const { repo, loca } = addressToRepoAndLoca(item.config.address);
+    const raw = await invokeContentProvider([
+      "IRepoService",
+      "IItemWorker",
+      "PutItemConfig",
+      repo,
+      loca,
+      JSON.stringify(item.config),
+    ]);
+    const written = rawToCpItemOrNull({ ...(raw as object), Body: item.body });
     if (!written) {
       throw new Error(
-        `LegacyContentProviderAdapter.putItem: CP returned no item for address "${item.config.address}"`
+        `LegacyContentProviderAdapter.putItemConfig: CP returned no item for address "${item.config.address}"`
       );
     }
-    return { item: written, alreadyExisted: !!existing };
+    return written;
   }
 
   private async createChild(

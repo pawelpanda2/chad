@@ -136,11 +136,48 @@ export class MongoCpProvider implements CpCompatibleDataProvider {
     return trail;
   }
 
+  /**
+   * Lists a Folder item's direct children, sorted by their numeric index
+   * segment — the Mongo-side equivalent of `getFolderChildren` in
+   * `legacy-cp-provider.ts` (which parses CP's own computed `Body` map).
+   * Not part of `CpCompatibleDataProvider` (mirrors that same asymmetry —
+   * both are read-model conveniences for callers that need to enumerate
+   * an unknown folder's contents, e.g. `leads.ts`'s Daily/Date Entry
+   * listing functions).
+   */
+  async getChildItems(parentAddress: string): Promise<CpItem[]> {
+    const db = await this.db();
+    const collection = db.collection<ItemDoc>(ITEMS_COLLECTION);
+    const docs = await collection
+      .find({ "config.address": { $regex: `^${escapeRegex(parentAddress)}/[0-9]{2,3}$` } })
+      .toArray();
+    return docs
+      .map(docToItem)
+      .sort((a, b) => a.config.address.localeCompare(b.config.address, undefined, { numeric: true }));
+  }
+
   async executeWrite(command: DataWriteCommand): Promise<DataWriteResult> {
     if (command.kind === "put-item") {
       return this.putItem(command.item);
     }
     return this.createChild(command);
+  }
+
+  /**
+   * Config-only write, preserving the supplied `_id`/custom fields exactly
+   * (see `CpCompatibleDataProvider.putItemConfig`'s doc comment). Mongo
+   * never had the "always mints a new id" problem `putItem` has to work
+   * around on the CP side, so this is just `putItem` with the existing
+   * document's `body` preserved unchanged (or `""` if the document is new
+   * — matching `PutItemConfig`'s "config only, no body write" contract on
+   * the CP side).
+   */
+  async putItemConfig(item: CpItem): Promise<CpItem> {
+    const db = await this.db();
+    const collection = db.collection<ItemDoc>(ITEMS_COLLECTION);
+    const existing = await collection.findOne({ _id: item._id });
+    const result = await this.putItem({ ...item, body: existing?.body ?? "" });
+    return result.item;
   }
 
   private async putItem(item: CpItem): Promise<DataWriteResult> {

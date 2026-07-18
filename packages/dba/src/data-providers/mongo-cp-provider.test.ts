@@ -270,6 +270,39 @@ async function runTests() {
     assert(allowed !== null, "should be readable with the correct repo guid");
   });
 
+  await test("putItemConfig preserves the supplied id/custom fields and leaves body untouched", async () => {
+    const initial: CpItem = {
+      _id: "config-only-id",
+      config: { id: "config-only-id", address: `${REPO}/20`, type: "Text", name: "cfg" },
+      body: "original body",
+    };
+    await provider.executeWrite(putCommand(initial));
+
+    const updated = await provider.putItemConfig({
+      _id: "config-only-id",
+      config: { id: "config-only-id", address: `${REPO}/20`, type: "Text", name: "cfg-renamed", extra: "kept" },
+      body: "IGNORED — putItemConfig must not touch body",
+    });
+
+    assertEquals(updated.config.name, "cfg-renamed");
+    assertEquals(updated.config.extra, "kept");
+    assertEquals(updated.body, "original body");
+
+    const reread = await provider.getItem({ id: "config-only-id" });
+    assertEquals(reread?.body, "original body");
+    assertEquals(reread?.config.name, "cfg-renamed");
+  });
+
+  await test("putItemConfig on a brand-new id creates it with empty body", async () => {
+    const created = await provider.putItemConfig({
+      _id: "config-only-new",
+      config: { id: "config-only-new", address: `${REPO}/21`, type: "Text", name: "brand-new" },
+      body: "should be ignored",
+    });
+    assertEquals(created.body, "");
+    assertEquals(created.config.name, "brand-new");
+  });
+
   console.log(`\n${passed} passed, ${failed} failed`);
   await closeMongoConnection();
   process.exit(failed > 0 ? 1 : 0);
