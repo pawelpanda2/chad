@@ -10,7 +10,7 @@
  * rest of `packages/dba`.
  */
 
-export type DataBackendName = "mongo" | "content-provider";
+import type { DataBackendName } from "./types.js";
 
 export interface DbaDataProvidersConfig {
   mongoEnabled: boolean;

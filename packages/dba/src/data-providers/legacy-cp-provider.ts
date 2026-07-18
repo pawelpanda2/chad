@@ -152,6 +152,30 @@ export class LegacyContentProviderAdapter implements CpCompatibleDataProvider {
  * to `""` here to match `MongoCpProvider`'s "folder body is always empty,
  * children are always derived" convention (Story 72 `03_knowledge.md`).
  */
+/**
+ * Lists a Folder item's direct children (index segment -> logical name),
+ * exactly as `ReadFolderWorker.ListOfIndexesQNames` computes it on the
+ * real Content Provider: `GetItem` on a Folder returns that computed map
+ * as its raw `Body` (normalized away to `""` by `rawToCpItemOrNull` for
+ * the general `CpItem` shape, since folder bodies aren't meaningful
+ * content — but the migrator needs the raw map to walk an unknown repo
+ * tree, since there is no generic "list children" method on the real
+ * `/invoke` wire API). Not part of `CpCompatibleDataProvider` — this is a
+ * migrator-only concern, exported for `packages/console`'s
+ * `migrateCpToMongo.ts` to use, keeping the actual CP wire-shape knowledge
+ * inside `packages/dba` per `05_endpoint-rules.md` §2.
+ */
+export async function getFolderChildren(
+  repo: string,
+  loca: string
+): Promise<{ index: string; name: string }[]> {
+  const raw = await invokeContentProvider(["IRepoService", "IItemWorker", "GetItem", repo, loca]);
+  if (!raw || typeof raw !== "object") return [];
+  const body = (raw as { Body?: unknown }).Body;
+  if (!body || typeof body !== "object") return [];
+  return Object.entries(body as Record<string, string>).map(([index, name]) => ({ index, name }));
+}
+
 function rawToCpItemOrNull(raw: unknown): CpItem | null {
   if (!raw || typeof raw !== "object") return null;
   const settings = (raw as { Settings?: Record<string, unknown> }).Settings;

@@ -103,7 +103,8 @@ export class MongoCpProvider implements CpCompatibleDataProvider {
   }
 
   async getByNames(input: GetByNamesInput): Promise<CpItem | null> {
-    return this.getByNames2({ repoGuid: input.repoGuid, loca: "", names: input.names });
+    const trail = await this.getByNames2({ repoGuid: input.repoGuid, loca: "", names: input.names });
+    return trail.length > 0 ? trail[trail.length - 1] : null;
   }
 
   /**
@@ -238,10 +239,21 @@ export class MongoCpProvider implements CpCompatibleDataProvider {
     const seedIndexString = nextChildIndexFromSiblings(parentAddress, siblingAddresses);
     const seedIndex = parseInt(seedIndexString, 10) - 1; // last used index, 0 if none
 
+    // Two atomic single-document steps (Mongo rejects $max and $inc on the
+    // same field in one update) — each step alone is race-safe; see class
+    // doc comment for why this doesn't need a multi-document transaction.
+    // Step 1: seed the counter on first use of this parent (no-op if it
+    // already exists — $setOnInsert only applies on insert).
+    await counters.updateOne(
+      { _id: parentAddress },
+      { $setOnInsert: { lastIndex: seedIndex } },
+      { upsert: true }
+    );
+    // Step 2: atomically reserve the next index.
     const result = await counters.findOneAndUpdate(
       { _id: parentAddress },
-      { $max: { lastIndex: seedIndex }, $inc: { lastIndex: 1 } },
-      { upsert: true, returnDocument: "after" }
+      { $inc: { lastIndex: 1 } },
+      { returnDocument: "after" }
     );
 
     const lastIndex = result?.lastIndex ?? seedIndex + 1;
