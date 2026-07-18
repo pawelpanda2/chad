@@ -20,9 +20,9 @@
 
 import "dotenv/config";
 import { randomUUID } from "node:crypto";
-import { LegacyContentProviderAdapter, getFolderChildren, repoAndLocaToAddress, type CpItem } from "dba";
+import { NetFileCpProvider, getFolderChildren, repoAndLocaToAddress, type CpItem } from "dba";
 
-async function walkAll(repo: string, loca: string, legacy: LegacyContentProviderAdapter, out: CpItem[]): Promise<void> {
+async function walkAll(repo: string, loca: string, legacy: NetFileCpProvider, out: CpItem[]): Promise<void> {
   const address = repoAndLocaToAddress(repo, loca);
   const item = await legacy.getItem({ address });
   if (!item) return;
@@ -51,7 +51,7 @@ async function main() {
     process.exit(1);
   }
 
-  const legacy = new LegacyContentProviderAdapter();
+  const legacy = new NetFileCpProvider();
   console.log(`Scanning repo "${repo}" for duplicate ids (${apply ? "APPLY" : "dry-run"})...\n`);
 
   const items: CpItem[] = [];

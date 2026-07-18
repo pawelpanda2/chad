@@ -10,9 +10,19 @@ import { getCurrentRepoGuid } from "./repo-context.js";
 import { loadDataProvidersConfig } from "./data-providers/config.js";
 import { getMongoProvider } from "./data-router-instance.js";
 import { buildCreateChildItemCommand, buildPutItemCommand } from "./data-commands.js";
-import { addressToRepoAndLoca } from "./cp-model.js";
+import { addressToRepoAndLoca, repoAndLocaToAddress } from "./cp-model.js";
 import { systemClock } from "./data-clock.js";
 import type { CpItem } from "./cp-model.js";
+import {
+  resolveByNames,
+  getItemByAddress,
+  getChildrenOf,
+  findRecursively,
+  createOrGetChild,
+  findOrCreateFolderChain,
+  putItemBody,
+} from "./item-ops.js";
+import { chad_GetRelativeLoca, chad_GetFirstSegment } from "./path-resolver.js";
 
 /**
  * Gets all leads from the shared repository.
@@ -565,62 +575,24 @@ export interface LeadDashboardItem {
  * @returns Promise resolving to an array of lead info objects
  */
 export async function getAllLeadsWithContacts(): Promise<LeadDashboardItem[]> {
-  // Step 1: Get all leads map using PostByNames (same as getStatusesDashboardList)
-  const allLeadsResponse = await GetAllLeads();
+  const leadsFolder = await resolveByNames(["leads", "all items"]);
+  if (!leadsFolder) return [];
 
-  if (!allLeadsResponse?.Body || typeof allLeadsResponse.Body !== "object") {
-    return [];
-  }
+  const leadChildren = await getChildrenOf(leadsFolder.config.address);
+  const leadContactsChildren = await Promise.all(
+    leadChildren.map((lead) => getChildrenOf(lead.config.address))
+  );
 
-  // Step 2: Get leads base loca
-  const leadsLoca = allLeadsResponse.Settings?.address
-    ? allLeadsResponse.Settings.address.replace(`${getCurrentRepoGuid()}/`, "")
-    : "03/06";
-
-  const body = allLeadsResponse.Body;
-
-  // Step 3: Get all contacts items at once using GetManyByName
-  // This finds all "contacts" items under the leads folder
-  const contactsItems = await invokeContentProvider([
-    "IRepoService",
-    "IManyItemsWorker",
-    "GetManyByName",
-    getCurrentRepoGuid(),
-    leadsLoca,
-    "contacts",
-  ]);
-
-  // Build a set of lead names that have contacts
-  const leadsWithContacts = new Set<string>();
-  if (Array.isArray(contactsItems)) {
-    for (const item of contactsItems) {
-      const address = item?.Settings?.address || "";
-      if (address) {
-        // Extract the lead name from the address
-        // Address format: repoId/leadsLoca/leadKey/.../contacts
-        const withoutRepo = address.replace(`${getCurrentRepoGuid()}/`, "");
-        const withoutLeads = withoutRepo.replace(`${leadsLoca}/`, "");
-        const leadName = withoutLeads.split("/").slice(1).join("/").replace("/contacts", "");
-        if (leadName) {
-          leadsWithContacts.add(leadName);
-        }
-      }
-    }
-  }
-
-  // Step 4: Build lead items
-  const leads: LeadDashboardItem[] = [];
-
-  for (const [leadKey, leadName] of Object.entries(body)) {
-    if (!leadName || typeof leadName !== "string") continue;
-
-    leads.push({
+  const leads: LeadDashboardItem[] = leadChildren.map((lead, i) => {
+    const leadKey = lead.config.address.slice(leadsFolder.config.address.length + 1);
+    const hasContacts = leadContactsChildren[i].some((c) => c.config.name === "contacts");
+    return {
       leadKey,
-      leadName,
-      loca: `${leadsLoca}/${leadKey}`,
-      hasContacts: leadsWithContacts.has(leadName),
-    });
-  }
+      leadName: lead.config.name,
+      loca: addressToRepoAndLoca(lead.config.address).loca,
+      hasContacts,
+    };
+  });
 
   // Sort by leadKey descending (newest first) - same as statuses dashboard
   leads.sort((a, b) => parseInt(b.leadKey) - parseInt(a.leadKey));
@@ -765,9 +737,14 @@ function parseContactsYaml(body: string): LeadContactInfo | null {
  * @returns Promise resolving to LeadDetailsData
  */
 export async function getLeadDetails(leadName: string, leadLoca: string): Promise<LeadDetailsData> {
-  // Get contacts content using numeric loca (more reliable than name-based lookup)
-  const contactsBody = await getLeadContactsByLoca(leadLoca);
-  
+  // Get contacts content via the lead's direct children (universal Item
+  // model — no CP-specific loca lookup needed).
+  const leadAddress = repoAndLocaToAddress(getCurrentRepoGuid(), leadLoca);
+  const lead = await getItemByAddress(leadAddress);
+  const children = lead ? await getChildrenOf(lead.config.address) : [];
+  const contactsItem = children.find((c) => c.config.name === "contacts");
+  const contactsBody = contactsItem?.body ?? null;
+
   let contacts: LeadContactInfo | null = null;
   let contactsError: string | undefined;
 
@@ -880,55 +857,24 @@ export async function createMsgWorkoutForLead(
   leadName: string,
   leadLoca: string
 ): Promise<{ workoutName: string; workoutLoca: string; success: boolean }> {
-  // Step 1: Get existing workouts to generate a unique name
-  const existingWorkoutsResult = await getLeadMsgWorkoutsByLoca(leadLoca);
-  const existingNames = existingWorkoutsResult.workouts.map(w => w.logicalName);
-  
-  // Step 2: Generate unique name
-  const workoutName = generateWorkoutName(existingNames);
-  
-  // Step 3: Ensure the msg workout folder exists and create the new workout
-  // First, get or create the msg workout folder
-  const msgWorkoutFolderResult = await invokeContentProvider([
-    "IRepoService",
-    "IItemWorker",
-    "GetByNames2",
-    getCurrentRepoGuid(),
-    leadLoca,
-    "msg workout",
-  ]);
-  
-  let msgWorkoutFolderLoca: string;
-  
-  if (msgWorkoutFolderResult?.Settings?.address) {
-    // Folder exists
-    msgWorkoutFolderLoca = msgWorkoutFolderResult.Settings.address.replace(`${getCurrentRepoGuid()}/`, "");
-  } else {
-    // Folder doesn't exist, this shouldn't happen if getLeadMsgWorkoutsByLoca worked
-    // but we handle it gracefully
-    throw new Error("Could not resolve msg workout folder for lead");
+  const leadAddress = repoAndLocaToAddress(getCurrentRepoGuid(), leadLoca);
+  const lead = await getItemByAddress(leadAddress);
+  if (!lead) {
+    throw new Error(`createMsgWorkoutForLead: lead not found at loca "${leadLoca}"`);
   }
-  
-  // Step 4: Create the new workout item
-  const workoutResult = await invokeContentProvider([
-    "IRepoService",
-    "IItemWorker",
-    "PostParentItem",
-    getCurrentRepoGuid(),
-    msgWorkoutFolderLoca,
-    "Folder",
-    workoutName,
-  ]);
-  
-  if (!workoutResult?.Settings?.address) {
-    throw new Error(`Failed to create workout "${workoutName}"`);
-  }
-  
-  const workoutLoca = workoutResult.Settings.address.replace(`${getCurrentRepoGuid()}/`, "");
-  
+
+  // Step 1: Ensure the msg workout folder exists (find-or-create, same as
+  // ensureLeadSubItems) and get existing workouts to generate a unique name.
+  const msgWorkoutFolder = await createOrGetChild(lead, "msg workout", "Folder");
+  const existingWorkouts = await getChildrenOf(msgWorkoutFolder.config.address);
+  const workoutName = generateWorkoutName(existingWorkouts.map((w) => w.config.name));
+
+  // Step 2: Create the new workout item
+  const workout = await createOrGetChild(msgWorkoutFolder, workoutName, "Folder");
+
   return {
     workoutName,
-    workoutLoca,
+    workoutLoca: addressToRepoAndLoca(workout.config.address).loca,
     success: true,
   };
 }
@@ -1670,59 +1616,26 @@ export function computeDailyAutoFieldsByDate(
 
 export async function getLeadMsgWorkoutsByLoca(leadLoca: string): Promise<MsgWorkoutsResult> {
   try {
-    const result = await invokeContentProvider([
-      "IRepoService",
-      "IItemWorker",
-      "GetByNames2",
-      getCurrentRepoGuid(),
-      leadLoca,
-      "msg workout",
-    ]);
-
-    // Check if the item was found
-    if (!result || !result.Settings) {
-      return {
-        workouts: [],
-        notFound: true,
-      };
+    const leadAddress = repoAndLocaToAddress(getCurrentRepoGuid(), leadLoca);
+    const lead = await getItemByAddress(leadAddress);
+    if (!lead) {
+      return { workouts: [], notFound: true };
     }
 
-    // Get the msg workout folder's loca from the address
-    const folderAddress = result.Settings.address || "";
-    if (!folderAddress.startsWith(`${getCurrentRepoGuid()}/`)) {
-      return {
-        workouts: [],
-        notFound: false,
-        error: "Invalid folder address format",
-      };
-    }
-    const msgWorkoutFolderLoca = folderAddress.substring(`${getCurrentRepoGuid()}/`.length);
-
-    // Check if Body exists and is an object
-    if (!result.Body || typeof result.Body !== "object") {
-      return {
-        workouts: [],
-        notFound: false,
-      };
+    const leadChildren = await getChildrenOf(lead.config.address);
+    const msgWorkoutFolder = leadChildren.find((c) => c.config.name === "msg workout");
+    if (!msgWorkoutFolder) {
+      return { workouts: [], notFound: true };
     }
 
-    // Parse the Body map: physicalKey -> logicalName
-    // Also compute the workout's numeric loca: msgWorkoutFolderLoca/physicalKey
-    const workouts: MsgWorkoutItem[] = [];
-    for (const [physicalKey, logicalName] of Object.entries(result.Body)) {
-      if (typeof logicalName === "string" && logicalName.trim()) {
-        workouts.push({
-          physicalKey,
-          logicalName: logicalName.trim(),
-          loca: `${msgWorkoutFolderLoca}/${physicalKey}`,
-        });
-      }
-    }
+    const workoutItems = await getChildrenOf(msgWorkoutFolder.config.address);
+    const workouts: MsgWorkoutItem[] = workoutItems.map((w) => ({
+      physicalKey: w.config.address.slice(msgWorkoutFolder.config.address.length + 1),
+      logicalName: w.config.name,
+      loca: addressToRepoAndLoca(w.config.address).loca,
+    }));
 
-    return {
-      workouts,
-      notFound: false,
-    };
+    return { workouts, notFound: false };
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
     console.error(`[getLeadMsgWorkoutsByLoca] ERROR for lead loca "${leadLoca}": ${errorMsg}`);
@@ -1762,27 +1675,16 @@ export async function ensureLeadSubItems(leadLoca: string): Promise<void> {
     );
   }
 
+  const lead = await getItemByAddress(repoAndLocaToAddress(repo, leadLoca));
+  if (!lead) {
+    throw new Error(`ensureLeadSubItems: no item found at loca "${leadLoca}"`);
+  }
+
   // find-or-create "contacts" (Text)
-  await invokeContentProvider([
-    "IRepoService",
-    "IItemWorker",
-    "PostParentItem",
-    repo,
-    leadLoca,
-    "Text",
-    "contacts",
-  ]);
+  await createOrGetChild(lead, "contacts", "Text");
 
   // find-or-create "msg workout" (Folder)
-  await invokeContentProvider([
-    "IRepoService",
-    "IItemWorker",
-    "PostParentItem",
-    repo,
-    leadLoca,
-    "Folder",
-    "msg workout",
-  ]);
+  await createOrGetChild(lead, "msg workout", "Folder");
 }
 
 /** Result of a bulk sub-item backfill run. */
@@ -1799,24 +1701,18 @@ export interface EnsureAllLeadsResult {
  * `${leadsLoca}/${leadKey}`.
  */
 export async function ensureAllLeadsSubItems(): Promise<EnsureAllLeadsResult> {
-  const repo = getCurrentRepoGuid();
-  const allLeadsResponse = await GetAllLeads();
+  const leadsFolder = await resolveByNames(["leads", "all items"]);
+  if (!leadsFolder) {
+    return { total: 0, ensured: 0, errors: [] };
+  }
 
-  const body =
-    allLeadsResponse?.Body && typeof allLeadsResponse.Body === "object"
-      ? (allLeadsResponse.Body as Record<string, unknown>)
-      : {};
-
-  const leadsLoca = allLeadsResponse?.Settings?.address
-    ? allLeadsResponse.Settings.address.replace(`${repo}/`, "")
-    : "";
-
-  const keys = Object.keys(body);
+  const leadChildren = await getChildrenOf(leadsFolder.config.address);
   const errors: EnsureAllLeadsResult["errors"] = [];
   let ensured = 0;
 
-  for (const leadKey of keys) {
-    const leadLoca = `${leadsLoca}/${leadKey}`;
+  for (const lead of leadChildren) {
+    const leadLoca = addressToRepoAndLoca(lead.config.address).loca;
+    const leadKey = lead.config.address.slice(leadsFolder.config.address.length + 1);
     try {
       await ensureLeadSubItems(leadLoca);
       ensured++;
@@ -1829,7 +1725,7 @@ export async function ensureAllLeadsSubItems(): Promise<EnsureAllLeadsResult> {
     }
   }
 
-  return { total: keys.length, ensured, errors };
+  return { total: leadChildren.length, ensured, errors };
 }
 
 /**
@@ -1949,78 +1845,33 @@ export interface TodoMsgResult {
 }
 
 /**
- * Strips the repo GUID prefix from a full address to get the numeric loca.
- * Example: "21d11bdc-f1f4-44d1-b61a-3fa6b039c641/03/06/89/03" -> "03/06/89/03"
- */
-function stripRepoPrefix(address: string): string {
-  if (!address) return "";
-  const slashIndex = address.indexOf("/");
-  if (slashIndex === -1) return address;
-  return address.substring(slashIndex + 1);
-}
-
-/**
- * Extracts the loca (location) from an address by removing the first segment.
- * Examples:
- *   "girls/06/61/02/01" -> "06/61/02/01"
- *   "Active/06/61/02/01" -> "06/61/02/01"
- */
-function getLocaFromAddress(address: string): string {
-  if (!address) return "";
-
-  const parts = address.split("/");
-  if (parts.length === 0) return "";
-
-  // Replace first segment with "girls" if it's "Active"
-  if (parts[0] === "Active") {
-    parts[0] = "girls";
-  }
-
-  const normalizedAddress = parts.join("/");
-  const slashIndex = normalizedAddress.indexOf("/");
-  if (slashIndex === -1) return "";
-
-  return normalizedAddress.substring(slashIndex + 1);
-}
-
-/**
  * Gets leads with //todo marker in their messages.
  * Uses the same logic as chad-console's "Find Todo" feature.
  * 
  * @returns Array of TodoMsgResult with lead information
  */
 export async function getTodoMsgLeads(): Promise<TodoMsgResult[]> {
-  // Import dynamically to avoid circular dependency
-  const { chad_GetLeadsLoca, chad_GetRelativeLoca, chad_GetFirstSegment } = await import("./path-resolver.js");
+  const leadsFolder = await resolveByNames(["leads", "all items"]);
+  if (!leadsFolder) return [];
 
-  // Step 1: Fetch all leads to build the lead name map
-  const allLeadsResponse = await GetAllLeads();
-
-  // Build map of leadKey -> leadName from allLeads.Body
+  // Build map of leadKey -> leadName from the leads folder's direct children
+  const leadChildren = await getChildrenOf(leadsFolder.config.address);
   const leadsNameMap = new Map<string, string>();
-  if (allLeadsResponse && allLeadsResponse.Body && typeof allLeadsResponse.Body === "object") {
-    const body = allLeadsResponse.Body;
-    Object.keys(body).forEach((key) => {
-      leadsNameMap.set(key, body[key]);
-    });
+  for (const lead of leadChildren) {
+    const leadKey = lead.config.address.slice(leadsFolder.config.address.length + 1);
+    leadsNameMap.set(leadKey, lead.config.name);
   }
 
-  // Step 2: Get the base leads loca
-  const baseLoca = await chad_GetLeadsLoca();
+  const baseLoca = addressToRepoAndLoca(leadsFolder.config.address).loca;
 
-  // Step 3: Fetch todo leads
-  const items = await TodoLeads();
-
-  if (!Array.isArray(items) || items.length === 0) {
+  // Search the whole leads subtree for the "//todo" marker
+  const items = await findRecursively(leadsFolder.config.address, "//todo");
+  if (items.length === 0) {
     return [];
   }
 
-  // Step 4: Format results
   const results: TodoMsgResult[] = items.map((item) => {
-    const address = item?.Settings?.address || "";
-
-    // Get loca from address (remove first segment like "girls/" or repo prefix)
-    const loca = getLocaFromAddress(address);
+    const loca = addressToRepoAndLoca(item.config.address).loca;
 
     // Get relative loca and lead key
     let relativeLoca = "";
@@ -2037,7 +1888,7 @@ export async function getTodoMsgLeads(): Promise<TodoMsgResult[]> {
       };
     }
 
-    // Look up lead name from allLeads.Body using leadKey
+    // Look up lead name from the leads map using leadKey
     const leadName = leadsNameMap.get(leadKey);
 
     return {
@@ -2058,73 +1909,34 @@ export async function getTodoMsgLeads(): Promise<TodoMsgResult[]> {
  * @returns Array of TodoMsgResult with lead information
  */
 export async function getFirstMsgLeads(): Promise<TodoMsgResult[]> {
-  // Import dynamically to avoid circular dependency
-  const { chad_GetLeadsLoca, chad_GetLeadsStatuses } = await import("./path-resolver.js");
+  const leadsFolder = await resolveByNames(["leads", "all items"]);
+  if (!leadsFolder) return [];
 
-  // Step 1: Fetch all leads to build the lead name map
-  const allLeadsResponse = await GetAllLeads();
+  const leadChildren = await getChildrenOf(leadsFolder.config.address);
+  const statusChildren = await Promise.all(
+    leadChildren.map(async (lead) => {
+      const children = await getChildrenOf(lead.config.address);
+      return children.find((c) => c.config.name === "status") ?? null;
+    })
+  );
 
-  // Build map of girlId -> girlName from allLeads.Body
-  const leadsNameMap = new Map<string, string>();
-  if (allLeadsResponse && allLeadsResponse.Body && typeof allLeadsResponse.Body === "object") {
-    const body = allLeadsResponse.Body;
-    Object.keys(body).forEach((key) => {
-      leadsNameMap.set(key, body[key]);
+  // Build results for leads with your-first-message: true
+  const results: TodoMsgResult[] = [];
+  leadChildren.forEach((lead, i) => {
+    const status = statusChildren[i];
+    if (!status) return;
+    if (getYamlFieldValue(status.body, "your-first-message") !== "true") return;
+
+    const leadKey = lead.config.address.slice(leadsFolder.config.address.length + 1);
+    results.push({
+      leadKey,
+      leadName: lead.config.name,
+      loca: addressToRepoAndLoca(lead.config.address).loca,
+      valid: true,
     });
-  }
-
-  // Step 2: Fetch statuses
-  const statusItems = await chad_GetLeadsStatuses();
-
-  // Step 3: Get leads base loca to properly extract girlId from status addresses
-  const leadsBaseLoca = await chad_GetLeadsLoca();
-
-  // Build map of girlIds that have your-first-message: true
-  const girlsWithFirstMsgTrue = new Set<string>();
-
-  if (Array.isArray(statusItems)) {
-    statusItems.forEach((item) => {
-      const address = item?.Settings?.address || "";
-      if (address) {
-        // Strip repo GUID prefix to get numeric loca
-        const loca = stripRepoPrefix(address);
-
-        // Extract girlId from loca
-        let girlId: string | null = null;
-        if (loca.startsWith(leadsBaseLoca + "/")) {
-          const relativeLoca = loca.substring(leadsBaseLoca.length + 1);
-          const segments = relativeLoca.split("/");
-          if (segments.length >= 1) {
-            girlId = segments[0];
-          }
-        }
-
-        // Check if your-first-message is "true"
-        if (girlId) {
-          const body = item?.Body || "";
-          const yourFirstMessageValue = getYamlFieldValue(body, "your-first-message");
-          if (yourFirstMessageValue === "true") {
-            girlsWithFirstMsgTrue.add(girlId);
-          }
-        }
-      }
-    });
-  }
-
-  // Step 4: Build results for leads with your-first-message: true
-  const results: TodoMsgResult[] = Array.from(girlsWithFirstMsgTrue).map((girlId) => {
-    const leadName = leadsNameMap.get(girlId);
-    // Construct full loca from base loca + leadKey
-    const loca = leadsBaseLoca ? `${leadsBaseLoca}/${girlId}` : "";
-    return {
-      leadKey: girlId,
-      leadName: leadName || `[missing lead: ${girlId}]`,
-      loca,
-      valid: !!leadName,
-    };
   });
 
-  // Sort by girlId (numeric)
+  // Sort by leadKey (numeric)
   results.sort((a, b) => parseInt(a.leadKey) - parseInt(b.leadKey));
 
   return results;
@@ -2169,33 +1981,31 @@ export interface MsgWorkoutEditorData {
  * ```
  */
 export async function getMsgWorkoutForEdit(loca: string): Promise<MsgWorkoutEditorData | null> {
-  const result = await invokeContentProvider([
-    "IRepoService",
-    "IItemWorker",
-    "GetItem",
-    getCurrentRepoGuid(),
-    loca,
-  ]);
-
-  if (!result?.Body) {
+  const address = repoAndLocaToAddress(getCurrentRepoGuid(), loca);
+  const item = await getItemByAddress(address);
+  if (!item) {
     return null;
   }
 
-  // Build full address from repo GUID and loca
-  const address = `${getCurrentRepoGuid()}/${loca}`;
-
-  // Get lead name from the loca path (first segment = girlId)
-  const girlId = loca.split("/")[0] || "";
-  const allLeadsResponse = await GetAllLeads();
+  // Get lead name: the lead is the loca segment right after "leads/all
+  // items" (found and fixed here — the previous implementation took
+  // `loca.split("/")[0]`, the leads folder's OWN first segment, not the
+  // lead's key, so this lookup silently always missed in practice).
   let leadName = "";
-  if (allLeadsResponse && allLeadsResponse.Body && typeof allLeadsResponse.Body === "object") {
-    leadName = allLeadsResponse.Body[girlId] || "";
+  const leadsFolder = await resolveByNames(["leads", "all items"]);
+  if (leadsFolder) {
+    const leadsBaseLoca = addressToRepoAndLoca(leadsFolder.config.address).loca;
+    if (loca.startsWith(`${leadsBaseLoca}/`)) {
+      const leadKey = loca.slice(leadsBaseLoca.length + 1).split("/")[0];
+      const lead = await getItemByAddress(`${leadsFolder.config.address}/${leadKey}`);
+      leadName = lead?.config.name ?? "";
+    }
   }
 
   return {
     leadName,
     address,
-    body: String(result.Body),
+    body: item.body,
   };
 }
 
@@ -2212,33 +2022,13 @@ export async function getMsgWorkoutForEdit(loca: string): Promise<MsgWorkoutEdit
  * ```
  */
 export async function saveMsgWorkout(loca: string, content: string): Promise<boolean> {
-  // First, get the item to retrieve its actual name
-  // The Put operation may use the name parameter to validate or update the item name,
-  // so we need to use the actual item name, not a hardcoded value.
-  const item = await invokeContentProvider([
-    "IRepoService",
-    "IItemWorker",
-    "GetItem",
-    getCurrentRepoGuid(),
-    loca,
-  ]);
-
-  if (!item?.Settings?.name) {
+  const address = repoAndLocaToAddress(getCurrentRepoGuid(), loca);
+  const item = await getItemByAddress(address);
+  if (!item) {
     throw new Error(`Could not find item at loca "${loca}" to save msg workout content`);
   }
 
-  const itemName = item.Settings.name;
-
-  await invokeContentProvider([
-    "IRepoService",
-    "IItemWorker",
-    "Put",
-    getCurrentRepoGuid(),
-    loca,
-    "Text",
-    itemName,
-    content,
-  ]);
+  await putItemBody(address, content);
   return true;
 }
 
@@ -2265,18 +2055,8 @@ export interface CreateLeadResult {
  */
 export async function leadExists(leadName: string): Promise<boolean> {
   try {
-    const result = await invokeContentProvider([
-      "IRepoService",
-      "IItemWorker",
-      "GetByNames",
-      getCurrentRepoGuid(),
-      "leads",
-      "all items",
-      leadName,
-    ]);
-    
-    // If we get a result with Settings.address, the lead exists
-    return !!result?.Settings?.address;
+    const lead = await resolveByNames(["leads", "all items", leadName]);
+    return !!lead;
   } catch {
     return false;
   }
@@ -2308,86 +2088,16 @@ export async function createLead(
   }
 
   try {
-    // Step 1: Get leads/all-items parent loca
-    const parentResult = await invokeContentProvider([
-      "IRepoService",
-      "IItemWorker",
-      "GetByNames",
-      getCurrentRepoGuid(),
-      "leads",
-      "all items",
-    ]);
-
-    if (!parentResult?.Settings?.address) {
-      return {
-        success: false,
-        leadName,
-        duplicate: false,
-        error: "Nie udało się znaleźć folderu leads/all-items",
-      };
-    }
-
-    const parentLoca = parentResult.Settings.address.replace(`${getCurrentRepoGuid()}/`, "");
-
-    // Step 2: Create the lead item using PostParentItem
-    const leadResult = await invokeContentProvider([
-      "IRepoService",
-      "IItemWorker",
-      "PostParentItem",
-      getCurrentRepoGuid(),
-      parentLoca,
-      "Folder",
-      leadName,
-    ]);
-
-    if (!leadResult?.Settings?.address) {
-      return {
-        success: false,
-        leadName,
-        duplicate: false,
-        error: "Nie udało się utworzyć leada",
-      };
-    }
-
-    const leadLoca = leadResult.Settings.address.replace(`${getCurrentRepoGuid()}/`, "");
+    // Step 1: Ensure leads/all-items exists, Step 2: create the lead
+    const parent = await findOrCreateFolderChain(["leads", "all items"]);
+    const lead = await createOrGetChild(parent, leadName, "Folder");
+    const leadLoca = addressToRepoAndLoca(lead.config.address).loca;
 
     // Step 3: Create contacts text item under the lead (always, even if empty)
-    const contactsResult = await invokeContentProvider([
-      "IRepoService",
-      "IItemWorker",
-      "PostParentItem",
-      getCurrentRepoGuid(),
-      leadLoca,
-      "Text",
-      "contacts",
-    ]);
-
-    if (contactsResult?.Settings?.address) {
-      const contactsLoca = contactsResult.Settings.address.replace(`${getCurrentRepoGuid()}/`, "");
-
-      // Write contacts content (empty string if no contacts provided)
-      await invokeContentProvider([
-        "IRepoService",
-        "IItemWorker",
-        "Put",
-        getCurrentRepoGuid(),
-        contactsLoca,
-        "Text",
-        "contacts",
-        contactsYaml || "",
-      ]);
-    }
+    await createOrGetChild(lead, "contacts", "Text", contactsYaml || "");
 
     // Step 4: Create msg workout folder under the lead
-    await invokeContentProvider([
-      "IRepoService",
-      "IItemWorker",
-      "PostParentItem",
-      getCurrentRepoGuid(),
-      leadLoca,
-      "Folder",
-      "msg workout",
-    ]);
+    await createOrGetChild(lead, "msg workout", "Folder");
 
     return {
       success: true,
@@ -2468,75 +2178,17 @@ function stripRepoGuid(address: string, repoId: string): string {
  * @returns Promise resolving to an array of MsgPlannerDateFolder objects
  */
 export async function getMsgPlannerDateFolders(): Promise<MsgPlannerDateFolder[]> {
-  // Import path-resolver dynamically to avoid circular dependency
-  const { chad_GetLocaFromAddress } = await import("./path-resolver.js");
-
-  console.log("[chad-dba] getMsgPlannerDateFolders: Starting...");
-
-  // Step 1: Get the "msg planner" folder directly using GetByNames
-  // Path: leads -> msg planner
-  console.log("[chad-dba] Step 1: Trying to get 'leads/msg planner' using GetByNames");
-  const msgPlannerResult = await invokeContentProvider([
-    "IRepoService",
-    "IItemWorker",
-    "GetByNames",
-    getCurrentRepoGuid(),
-    "leads",
-    "msg planner",
-  ]);
-
-  console.log("[chad-dba] GetByNames result:", JSON.stringify(msgPlannerResult, null, 2));
-
-  if (!msgPlannerResult?.Settings?.address) {
-    console.log("[chad-dba] No msg planner folder found - GetByNames returned no address");
-    // No msg planner folder exists
+  const msgPlannerFolder = await resolveByNames(["leads", "msg planner"]);
+  if (!msgPlannerFolder) {
     return [];
   }
 
-  const msgPlannerLoca = chad_GetLocaFromAddress(msgPlannerResult.Settings.address, getCurrentRepoGuid());
-  console.log("[chad-dba] msg planner loca:", msgPlannerLoca);
-
-  // Step 2: Read child physical keys -> logical names from the folder body map.
-  const childrenBody = msgPlannerResult?.Body;
-
-  if (!childrenBody || typeof childrenBody !== "object") {
-    console.log("[chad-dba] No child body map found in msg planner folder");
-    return [];
-  }
-
-  const childEntries = Object.entries(childrenBody).filter(
-    ([physicalName, logicalName]) =>
-      typeof physicalName === "string" &&
-      physicalName.length > 0 &&
-      typeof logicalName === "string"
-  ) as Array<[string, string]>;
-
-  console.log("[chad-dba] Found", childEntries.length, "children in body map");
-
-  // Step 3: Filter children by date format (YY-MM-DD)
-  const dateFolders: MsgPlannerDateFolder[] = [];
-
-  for (const [physicalName, logicalName] of childEntries) {
-    console.log("[chad-dba] Checking child name:", logicalName, "isValid:", isValidDateFolderName(logicalName));
-    
-    if (isValidDateFolderName(logicalName)) {
-      const childLoca = `${msgPlannerLoca}/${physicalName}`;
-
-      console.log("[chad-dba] Valid date folder:", logicalName, "loca:", childLoca);
-
-      if (childLoca) {
-        dateFolders.push({
-          date: logicalName,
-          loca: childLoca,
-        });
-      }
-    }
-  }
-
-  console.log("[chad-dba] Found", dateFolders.length, "date folders matching YY-MM-DD format");
+  const children = await getChildrenOf(msgPlannerFolder.config.address);
+  const dateFolders: MsgPlannerDateFolder[] = children
+    .filter((c) => isValidDateFolderName(c.config.name))
+    .map((c) => ({ date: c.config.name, loca: addressToRepoAndLoca(c.config.address).loca }));
 
   // Sort by date descending (newest first)
-  // Parse date as YY-MM-DD and compare
   dateFolders.sort((a, b) => {
     const parseDate = (d: string) => {
       const parts = d.split("-");
@@ -2546,7 +2198,6 @@ export async function getMsgPlannerDateFolders(): Promise<MsgPlannerDateFolder[]
     return parseDate(b.date).getTime() - parseDate(a.date).getTime();
   });
 
-  console.log("[chad-dba] Returning date folders:", dateFolders);
   return dateFolders;
 }
 
@@ -2585,23 +2236,17 @@ export async function getMsgPlannerBody(dateFolderLoca: string): Promise<MsgPlan
  * @returns Promise resolving to MsgPlannerBodyData or null if not found
  */
 export async function getMsgPlannerBodyForDate(date: string, dateFolderLoca: string): Promise<MsgPlannerBodyData | null> {
-  // The date item itself is a Text item. Its content lives directly in Body.
-  const dateItem = await invokeContentProvider([
-    "IRepoService",
-    "IItemWorker",
-    "GetItem",
-    getCurrentRepoGuid(),
-    dateFolderLoca,
-  ]);
-
-  if (!dateItem?.Settings?.address) {
+  // The date item itself is a Text item. Its content lives directly in body.
+  const address = repoAndLocaToAddress(getCurrentRepoGuid(), dateFolderLoca);
+  const item = await getItemByAddress(address);
+  if (!item) {
     return null;
   }
 
   return {
     date,
     loca: dateFolderLoca,
-    body: typeof dateItem?.Body === "string" ? dateItem.Body : "",
+    body: item.body,
   };
 }
 
@@ -2615,38 +2260,13 @@ export async function getMsgPlannerBodyForDate(date: string, dateFolderLoca: str
  * @returns Promise resolving to true on success
  */
 export async function saveMsgPlannerBody(dateFolderLoca: string, content: string): Promise<boolean> {
-  // Get the item to retrieve its name
-  const dateItem = await invokeContentProvider([
-    "IRepoService",
-    "IItemWorker",
-    "GetItem",
-    getCurrentRepoGuid(),
-    dateFolderLoca,
-  ]);
-
-  console.log(`[chad-dba] saveMsgPlannerBody: GetItem result for loca ${dateFolderLoca}:`, JSON.stringify(dateItem?.Settings, null, 2));
-
-  const itemName = dateItem?.Settings?.name;
-
-  if (!itemName || typeof itemName !== "string") {
-    throw new Error(`Could not resolve msg planner item name for loca ${dateFolderLoca}. Got: ${JSON.stringify(dateItem?.Settings)}`);
+  const address = repoAndLocaToAddress(getCurrentRepoGuid(), dateFolderLoca);
+  const item = await getItemByAddress(address);
+  if (!item) {
+    throw new Error(`Could not resolve msg planner item at loca "${dateFolderLoca}"`);
   }
 
-  console.log(`[chad-dba] saveMsgPlannerBody: Using item name "${itemName}" for Put`);
-
-  const putResult = await invokeContentProvider([
-    "IRepoService",
-    "IItemWorker",
-    "Put",
-    getCurrentRepoGuid(),
-    dateFolderLoca,
-    "Text",
-    itemName,
-    content,
-  ]);
-
-  console.log(`[chad-dba] saveMsgPlannerBody: Put result:`, JSON.stringify(putResult, null, 2));
-
+  await putItemBody(address, content);
   return true;
 }
 
@@ -2814,66 +2434,19 @@ export async function createMsgPlannerDateFolder(
     throw new Error(`Invalid date format: ${date}. Expected YY-MM-DD format.`);
   }
 
-  console.log(`[chad-dba] createMsgPlannerDateFolder: Creating date folder "${date}"`);
-
-  // Import path-resolver dynamically to avoid circular dependency
-  const { chad_GetLocaFromAddress } = await import("./path-resolver.js");
-
-  // Step 1: Get the msg planner folder
-  const msgPlannerResult = await invokeContentProvider([
-    "IRepoService",
-    "IItemWorker",
-    "GetByNames",
-    getCurrentRepoGuid(),
-    "leads",
-    "msg planner",
-  ]);
-
-  if (!msgPlannerResult?.Settings?.address) {
-    throw new Error("Msg planner folder not found. Cannot create date folder.");
-  }
-
-  const msgPlannerLoca = chad_GetLocaFromAddress(msgPlannerResult.Settings.address, getCurrentRepoGuid());
-  console.log(`[chad-dba] Msg planner loca: ${msgPlannerLoca}`);
+  // Step 1: Ensure the msg planner folder exists
+  const msgPlannerFolder = await findOrCreateFolderChain(["leads", "msg planner"]);
 
   // Step 2: Get existing children to find unique name if needed
-  const existingLogicalNames: string[] = [];
-  const childrenBody = msgPlannerResult?.Body;
-  if (childrenBody && typeof childrenBody === "object") {
-    for (const [, logicalName] of Object.entries(childrenBody)) {
-      if (typeof logicalName === "string") {
-        existingLogicalNames.push(logicalName);
-      }
-    }
-  }
-  console.log(`[chad-dba] Existing msg planner children:`, existingLogicalNames);
+  const existingChildren = await getChildrenOf(msgPlannerFolder.config.address);
+  const existingLogicalNames = existingChildren.map((c) => c.config.name);
 
   // Step 3: Determine the actual name to use (may include suffix if duplicate)
   const actualName = findNextAvailableName(date, existingLogicalNames);
-  const isDuplicate = actualName !== date;
-  console.log(`[chad-dba] Using name: "${actualName}" (isDuplicate: ${isDuplicate})`);
 
-  // Step 4: Use PostParentItem to create the date folder
-  // PostParentItem will create the item if it doesn't exist, or return existing if it does
-  // Note: PostParentItem does NOT accept a body/content argument
-  console.log(`[chad-dba] Creating date folder with PostParentItem: parent=${msgPlannerLoca}, name=${actualName}`);
-  const dateItemResult = await invokeContentProvider([
-    "IRepoService",
-    "IItemWorker",
-    "PostParentItem",
-    getCurrentRepoGuid(),
-    msgPlannerLoca,
-    "Text",  // Same type as existing date folders
-    actualName,  // Logical name (YY-MM-DD format, possibly with suffix)
-  ]);
-
-  if (!dateItemResult?.Settings?.address) {
-    throw new Error(`Failed to create date folder "${actualName}". No address returned.`);
-  }
-
-  // Step 5: Extract the loca of the created item
-  const dateItemLoca = chad_GetLocaFromAddress(dateItemResult.Settings.address, getCurrentRepoGuid());
-  console.log(`[chad-dba] Created date folder "${actualName}" with loca: ${dateItemLoca}`);
+  // Step 4: Create the date folder (find-or-create by exact name)
+  const dateItem = await createOrGetChild(msgPlannerFolder, actualName, "Text");
+  const dateItemLoca = addressToRepoAndLoca(dateItem.config.address).loca;
 
   const result: MsgPlannerDateFolder & { generatedBody?: string; originalDate?: string } = {
     date: actualName,  // Use actual name (may include suffix)

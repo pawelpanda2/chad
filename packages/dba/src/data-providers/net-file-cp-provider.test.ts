@@ -1,5 +1,5 @@
 /**
- * LegacyContentProviderAdapter tests — run against the REAL, running local
+ * NetFileCpProvider tests — run against the REAL, running local
  * Content Provider container (`chad-content-provider-api-local-mac-docker`,
  * `CONTENT_PROVIDER_API_URL=http://localhost:12024`), since this class's
  * whole job is to be a thin, faithful wrapper over the real wire protocol
@@ -22,11 +22,11 @@
  * Cleanup failures are logged, not thrown — a leftover locked directory
  * from one run must never fail the *next* run's assertions.
  *
- * Run via: npx tsc && node dist/data-providers/legacy-cp-provider.test.js
+ * Run via: npx tsc && node dist/data-providers/net-file-cp-provider.test.js
  */
 
 import { execSync } from "node:child_process";
-import { LegacyContentProviderAdapter } from "./legacy-cp-provider.js";
+import { NetFileCpProvider } from "./net-file-cp-provider.js";
 import type { CpItem } from "../cp-model.js";
 
 const REPO = "21d11bdc-f1f4-44d1-b61a-3fa6b039c641";
@@ -45,7 +45,7 @@ function cleanup() {
 }
 
 async function runTests() {
-  console.log("Running LegacyContentProviderAdapter Tests (real running Content Provider)...\n");
+  console.log("Running NetFileCpProvider Tests (real running Content Provider)...\n");
   let passed = 0;
   let failed = 0;
 
@@ -68,7 +68,7 @@ async function runTests() {
   }
 
   cleanup(); // start from a clean slate in case a previous run failed midway
-  const adapter = new LegacyContentProviderAdapter();
+  const adapter = new NetFileCpProvider();
 
   await test("putItem writes the exact id/custom fields via the Put+PutItemConfig two-step", async () => {
     const item: CpItem = {
@@ -80,7 +80,7 @@ async function runTests() {
         name: "legacy-adapter-test",
         customField: "keep-me",
       },
-      body: "hello from legacy-cp-provider.test.ts",
+      body: "hello from net-file-cp-provider.test.ts",
     };
 
     const result = await adapter.executeWrite({
@@ -100,7 +100,7 @@ async function runTests() {
     const read = await adapter.getItem({ address: ADDRESS });
     assertEquals(read?._id, "deadbeef-0000-4000-8000-000000000099");
     assertEquals(read?.config.customField, "keep-me");
-    assertEquals(read?.body, "hello from legacy-cp-provider.test.ts");
+    assertEquals(read?.body, "hello from net-file-cp-provider.test.ts");
   });
 
   await test("a second putItem (update) still preserves the id, doesn't regress to a fresh GUID", async () => {

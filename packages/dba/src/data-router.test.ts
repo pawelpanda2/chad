@@ -39,6 +39,16 @@ class FakeProvider implements CpCompatibleDataProvider {
   async getByNames2(_input: GetByNames2Input): Promise<CpItem[]> {
     return [];
   }
+  async getChildren(parentAddress: string): Promise<CpItem[]> {
+    return [...this.items.values()]
+      .filter((i) => i.config.address.startsWith(`${parentAddress}/`) && !i.config.address.slice(parentAddress.length + 1).includes("/"))
+      .sort((a, b) => a.config.address.localeCompare(b.config.address, undefined, { numeric: true }));
+  }
+  async findRecursively(rootAddress: string, phrase: string): Promise<CpItem[]> {
+    return [...this.items.values()].filter(
+      (i) => i.config.address.startsWith(`${rootAddress}/`) && i.body.includes(phrase)
+    );
+  }
   async putItemConfig(item: CpItem): Promise<CpItem> {
     this.items.set(item._id, item);
     return item;

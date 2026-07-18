@@ -976,8 +976,8 @@ function ViewsPageContent() {
               <tbody>
                 {isLoading ? (
                   <tr>
-                    <td colSpan={columns.length + (showActionColumn ? 1 : 0) + (showItemNameColumn ? 1 : 0)} className="border h-8 text-center text-muted-foreground">
-                      <span className="inline-flex items-center gap-2">
+                    <td colSpan={columns.length + (showActionColumn ? 1 : 0) + (showItemNameColumn ? 1 : 0)} className="border h-8 p-1.5 px-2 text-left text-muted-foreground">
+                      <span className="inline-flex items-center justify-start gap-2">
                         <RefreshCw className="h-3.5 w-3.5 animate-spin" />
                         Loading...
                       </span>

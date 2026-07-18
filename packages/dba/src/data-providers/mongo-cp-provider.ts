@@ -206,6 +206,29 @@ export class MongoCpProvider implements CpCompatibleDataProvider {
       .sort((a, b) => a.config.address.localeCompare(b.config.address, undefined, { numeric: true }));
   }
 
+  /** `CpCompatibleDataProvider.getChildren` — same query as `getChildItems` above. */
+  async getChildren(parentAddress: string): Promise<CpItem[]> {
+    return this.getChildItems(parentAddress);
+  }
+
+  /**
+   * `CpCompatibleDataProvider.findRecursively` — every descendant (any
+   * depth) under `rootAddress` whose `body` contains `phrase`.
+   */
+  async findRecursively(rootAddress: string, phrase: string): Promise<CpItem[]> {
+    const db = await this.db();
+    const collection = db.collection<ItemDoc>(ITEMS_COLLECTION);
+    const docs = await collection
+      .find({
+        "config.address": { $regex: `^${escapeRegex(rootAddress)}/` },
+        body: { $regex: escapeRegex(phrase) },
+      })
+      .toArray();
+    return docs
+      .map(docToItem)
+      .sort((a, b) => a.config.address.localeCompare(b.config.address, undefined, { numeric: true }));
+  }
+
   async executeWrite(command: DataWriteCommand): Promise<DataWriteResult> {
     if (command.kind === "put-item") {
       return this.putItem(command.item);

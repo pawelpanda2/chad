@@ -1,12 +1,39 @@
 /**
  * Content Provider -> MongoDB migrator (Story 72 §18).
  *
- * Walks one CP repo's full item tree via the legacy adapter (never a
- * direct `/invoke` call from here — see `05_endpoint-rules.md` §2) and
- * imports every item as one `PutItemCommand` executed against
- * `MongoCpProvider`, built through the exact same `cp-model.ts`/
- * `data-commands.ts` machinery every other write path uses (no separate
- * ad-hoc mapping).
+ * Walks one CP repo's full item tree **directly on the filesystem**
+ * (`dba`'s `cp-fs-reader.ts`: `config.yaml`/`body.txt` read straight off
+ * disk, no `/invoke` HTTP call of any kind) and imports every item as one
+ * `PutItemCommand` executed against `MongoCpProvider`, built through the
+ * exact same `cp-model.ts`/`data-commands.ts` machinery every other write
+ * path uses (no separate ad-hoc mapping).
+ *
+ * **Architecture note (changed after the initial version):** the first
+ * version of this migrator walked the tree through
+ * `NetFileCpProvider`/`getFolderChildren` — one `/invoke` HTTP
+ * round trip per item. That is fine for normal request traffic, but far too
+ * slow for a full-repo migration on a Dropbox/SMB network mount: every
+ * single item pays HTTP + reflection-dispatch + JSON-serialization overhead
+ * on top of the same underlying disk read this module now does directly.
+ * Content Provider is intentionally **not** touched by this traversal at
+ * all anymore — it remains the legacy application serving normal
+ * request/write traffic, not a read layer the migrator depends on. This
+ * also means the migrator now works even when CP itself is down/disabled
+ * (`DBA_CONTENT_PROVIDER_ENABLED=false`).
+ *
+ * The validators (`validateCpItem`), the data model (`CpItem`/
+ * `CpItemConfig`), and the Mongo import logic (`buildPutItemCommand` +
+ * `MongoCpProvider.executeWrite`, unchanged/duplicate/conflict handling)
+ * are exactly the same as before — only the tree-traversal source changed.
+ *
+ * **Parallel-ready by construction:** `migrateRepo` takes one already-
+ * resolved repo (or resolves its own root from env) and touches nothing
+ * shared except the one Mongo connection (safe for concurrent use — the
+ * MongoDB driver multiplexes operations over one client). Filesystem reads
+ * have no per-request queueing/lock contention the way CP's HTTP endpoint
+ * does, so migrating N repos concurrently is now just running N of these
+ * walks at once — see `migrateRepos` below, the multi-repo orchestrator
+ * this enables.
  *
  * Follows this package's existing convention (`statusMigration.ts`,
  * `main.ts`): a plain module run via `tsx`, no command-registry system
@@ -22,13 +49,13 @@
  *   --validate-only  no Mongo access at all; only validates CP data itself
  *   --apply          actually writes to MongoDB
  *
- * Usage: tsx src/migrateCpToMongo.ts --repo=<repoGuid> [--dry-run|--apply|--validate-only]
+ * Usage:
+ *   tsx src/migrateCpToMongo.ts --repo=<repoGuid> [--dry-run|--apply|--validate-only]
+ *   tsx src/migrateCpToMongo.ts --repos=<guid1>,<guid2>,... [--concurrency=4] [--dry-run|--apply|--validate-only]
  */
 
 import "dotenv/config";
 import {
-  LegacyContentProviderAdapter,
-  getFolderChildren,
   MongoCpProvider,
   AddressConflictError,
   validateCpItem,
@@ -36,6 +63,10 @@ import {
   systemClock,
   repoAndLocaToAddress,
   closeMongoConnection,
+  resolveRepoRoot,
+  getCpFsSearchRootsFromEnv,
+  makeFsGetItem,
+  makeFsGetFolderChildren,
   type CpItem,
 } from "dba";
 
@@ -71,10 +102,13 @@ function emptyReport(): MigrationReport {
   };
 }
 
+type GetItemFn = (input: { address: string }) => Promise<CpItem | null>;
+type GetFolderChildrenFn = (repo: string, loca: string) => Promise<{ index: string; name: string }[]>;
+
 interface WalkContext {
-  legacy: { getItem: (input: { address: string }) => Promise<CpItem | null> };
+  getItemFn: GetItemFn;
   mongo: MongoCpProvider | null; // null in --validate-only mode
-  getFolderChildrenFn: typeof getFolderChildren;
+  getFolderChildrenFn: GetFolderChildrenFn;
   mode: MigratorMode;
   report: MigrationReport;
   seenIds: Set<string>;
@@ -83,16 +117,20 @@ interface WalkContext {
 }
 
 /**
- * Injectable dependencies, defaulting to the real legacy CP adapter /
- * `getFolderChildren` / `MongoCpProvider` — overridable so tests can
- * substitute a fake in-process tree instead of a real running Content
- * Provider (Story 72 §28, "testowalny clock i generator GUID" extended to
- * this module's own CP-access dependencies).
+ * Injectable dependencies, defaulting to the real filesystem reader
+ * (`cp-fs-reader.ts`) / `MongoCpProvider` — overridable so tests can
+ * substitute a fake in-process tree instead of real disk I/O (Story 72
+ * §28, "testowalny clock i generator GUID" extended to this module's own
+ * CP-access dependencies). `searchRoots` only matters when `getItem`/
+ * `getFolderChildren` aren't both supplied — it's where the real reader
+ * looks for the repo's physical root (defaults to
+ * `getCpFsSearchRootsFromEnv()`, i.e. `CP_REPOS_HOST_PATH`/`CP_REPOS_HOST_PATH_2`).
  */
 export interface MigrateRepoDeps {
-  getItem: (input: { address: string }) => Promise<CpItem | null>;
-  getFolderChildren: typeof getFolderChildren;
+  getItem: GetItemFn;
+  getFolderChildren: GetFolderChildrenFn;
   mongo: MongoCpProvider | null;
+  searchRoots: string[];
 }
 
 /**
@@ -107,11 +145,22 @@ export async function migrateRepo(
   log: (message: string) => void = console.log,
   deps?: Partial<MigrateRepoDeps>
 ): Promise<MigrationReport> {
-  const legacy = new LegacyContentProviderAdapter();
+  // Only touch the real filesystem when the caller didn't inject both fake
+  // functions (tests inject both, so this branch — and any real I/O — is
+  // skipped entirely for them, same as before).
+  let repoRoot: string | null = null;
+  if (!deps?.getItem || !deps?.getFolderChildren) {
+    const searchRoots = deps?.searchRoots ?? getCpFsSearchRootsFromEnv();
+    repoRoot = await resolveRepoRoot(repoGuid, searchRoots);
+  }
+  const getItemFn: GetItemFn = deps?.getItem ?? makeFsGetItem(repoGuid, repoRoot!);
+  const getFolderChildrenFn: GetFolderChildrenFn =
+    deps?.getFolderChildren ?? makeFsGetFolderChildren(repoRoot!);
+
   const ctx: WalkContext = {
-    legacy: { getItem: deps?.getItem ?? ((input) => legacy.getItem(input)) },
+    getItemFn,
     mongo: deps?.mongo ?? (mode === "validate-only" ? null : new MongoCpProvider(systemClock)),
-    getFolderChildrenFn: deps?.getFolderChildren ?? getFolderChildren,
+    getFolderChildrenFn,
     mode,
     report: emptyReport(),
     seenIds: new Set(),
@@ -124,12 +173,57 @@ export async function migrateRepo(
   return ctx.report;
 }
 
+/**
+ * Runs `migrateRepo` for several repos concurrently — filesystem reads
+ * have no per-request queueing the way CP's `/invoke` endpoint does, so
+ * this is a straightforward concurrency-limited fan-out, not a queue of
+ * HTTP calls. Each repo gets its own prefixed log stream; one repo's
+ * failure never aborts the others (mirrors `walk`'s own
+ * one-bad-item-never-aborts-the-run philosophy, one level up).
+ */
+export async function migrateRepos(
+  repoGuids: string[],
+  mode: MigratorMode,
+  log: (message: string) => void = console.log,
+  options?: { concurrency?: number; searchRoots?: string[] }
+): Promise<{ perRepo: Record<string, MigrationReport>; combined: MigrationReport }> {
+  const concurrency = Math.max(1, Math.min(options?.concurrency ?? 4, repoGuids.length || 1));
+  const perRepo: Record<string, MigrationReport> = {};
+
+  let next = 0;
+  async function worker(): Promise<void> {
+    while (next < repoGuids.length) {
+      const repoGuid = repoGuids[next++];
+      perRepo[repoGuid] = await migrateRepo(repoGuid, mode, (message) => log(`[${repoGuid}] ${message}`), {
+        searchRoots: options?.searchRoots,
+      });
+    }
+  }
+  await Promise.all(Array.from({ length: concurrency }, () => worker()));
+
+  const combined = emptyReport();
+  for (const report of Object.values(perRepo)) {
+    combined.reposScanned += report.reposScanned;
+    combined.itemsScanned += report.itemsScanned;
+    combined.itemsValid += report.itemsValid;
+    combined.itemsImported += report.itemsImported;
+    combined.itemsUnchanged += report.itemsUnchanged;
+    combined.itemsConflicting += report.itemsConflicting;
+    combined.itemsFailed += report.itemsFailed;
+    combined.duplicateIds.push(...report.duplicateIds);
+    combined.duplicateAddresses.push(...report.duplicateAddresses);
+    combined.missingConfig += report.missingConfig;
+    combined.missingBody += report.missingBody;
+  }
+  return { perRepo, combined };
+}
+
 async function walk(ctx: WalkContext, repo: string, loca: string): Promise<void> {
   const address = repoAndLocaToAddress(repo, loca);
 
   let item;
   try {
-    item = await ctx.legacy.getItem({ address });
+    item = await ctx.getItemFn({ address });
   } catch (error) {
     // One corrupted/unreadable item (bad config.yaml, filesystem lock,
     // etc.) must never abort the whole migration run — report and move
@@ -293,20 +387,44 @@ export function printReport(report: MigrationReport): void {
 async function main() {
   const args = process.argv.slice(2);
   const repoArg = args.find((a) => a.startsWith("--repo="));
+  const reposArg = args.find((a) => a.startsWith("--repos="));
+  const concurrencyArg = args.find((a) => a.startsWith("--concurrency="));
   const repoGuid = repoArg?.split("=")[1];
+  const repoGuids = reposArg
+    ?.split("=")[1]
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const concurrency = concurrencyArg ? parseInt(concurrencyArg.split("=")[1], 10) : undefined;
 
   let mode: MigratorMode = "dry-run";
   if (args.includes("--apply")) mode = "apply";
   else if (args.includes("--validate-only")) mode = "validate-only";
   else if (args.includes("--dry-run")) mode = "dry-run";
 
-  if (!repoGuid) {
-    console.error("Usage: tsx src/migrateCpToMongo.ts --repo=<repoGuid> [--dry-run|--apply|--validate-only]");
+  if (!repoGuid && !repoGuids?.length) {
+    console.error(
+      "Usage: tsx src/migrateCpToMongo.ts --repo=<repoGuid> [--dry-run|--apply|--validate-only]\n" +
+        "   or: tsx src/migrateCpToMongo.ts --repos=<guid1>,<guid2>,... [--concurrency=4] [--dry-run|--apply|--validate-only]"
+    );
     process.exit(1);
   }
 
+  if (repoGuids?.length) {
+    console.log(`Migrating ${repoGuids.length} repos in ${mode} mode (concurrency=${concurrency ?? 4})...\n`);
+    const { perRepo, combined } = await migrateRepos(repoGuids, mode, console.log, { concurrency });
+    for (const [guid, report] of Object.entries(perRepo)) {
+      console.log(`\n--- ${guid} ---`);
+      printReport(report);
+    }
+    console.log("\n=== Combined report ===");
+    printReport(combined);
+    await closeMongoConnection();
+    process.exit(combined.itemsFailed > 0 ? 1 : 0);
+  }
+
   console.log(`Migrating repo "${repoGuid}" in ${mode} mode...\n`);
-  const report = await migrateRepo(repoGuid, mode);
+  const report = await migrateRepo(repoGuid!, mode);
   printReport(report);
   await closeMongoConnection();
   process.exit(report.itemsFailed > 0 ? 1 : 0);
