@@ -8,7 +8,7 @@
  */
 
 import { getMongoDb, closeMongoConnection } from "../mongo.js";
-import { MongoCpProvider, ITEMS_COLLECTION, FOLDER_CHILD_COUNTERS_COLLECTION, AddressConflictError } from "./mongo-cp-provider.js";
+import { MongoCpProvider, ITEMS_COLLECTION, FOLDER_CHILD_COUNTERS_COLLECTION, AddressConflictError, DuplicateChildNameError } from "./mongo-cp-provider.js";
 import { createTestClock } from "../data-clock.js";
 import type { CpItem } from "../cp-model.js";
 import type { PutItemCommand, CreateChildItemCommand } from "../data-commands.js";
@@ -171,6 +171,33 @@ async function runTests() {
 
   await test("getByNames returns null when the path doesn't resolve", async () => {
     assertEquals(await provider.getByNames({ repoGuid: REPO, names: ["leads", "does not exist"] }), null);
+  });
+
+  await test("getByNames2 throws DuplicateChildNameError when two siblings share a name (Story 72, 07/05 incident)", async () => {
+    const parentAddress = `${REPO}/05`;
+    await provider.executeWrite(
+      putCommand({ _id: "views-05", config: { id: "views-05", address: parentAddress, type: "Folder", name: "views" }, body: "" })
+    );
+    await provider.executeWrite(
+      putCommand({ _id: "dates-a", config: { id: "dates-a", address: `${parentAddress}/02`, type: "Folder", name: "dates" }, body: "" })
+    );
+    await provider.executeWrite(
+      putCommand({ _id: "dates-b", config: { id: "dates-b", address: `${parentAddress}/05`, type: "Folder", name: "dates" }, body: "" })
+    );
+
+    let threw = false;
+    try {
+      await provider.getByNames2({ repoGuid: REPO, loca: "05", names: ["dates"] });
+    } catch (e) {
+      threw = e instanceof DuplicateChildNameError;
+      if (threw) {
+        const err = e as DuplicateChildNameError;
+        assertEquals(err.parentAddress, parentAddress);
+        assertEquals(err.childName, "dates");
+        assertEquals(err.matchingAddresses.sort(), [`${parentAddress}/02`, `${parentAddress}/05`].sort());
+      }
+    }
+    assert(threw, "expected a DuplicateChildNameError, not a silently-picked match");
   });
 
   await test("create-child-item allocates the next numeric address and a new id", async () => {

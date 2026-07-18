@@ -30,6 +30,7 @@ import {
   LegacyContentProviderAdapter,
   getFolderChildren,
   MongoCpProvider,
+  AddressConflictError,
   validateCpItem,
   buildPutItemCommand,
   systemClock,
@@ -220,8 +221,7 @@ async function processItem(ctx: WalkContext, item: CpItem): Promise<void> {
 
   // --apply
   try {
-    const command = buildPutItemCommand(item, systemClock);
-    await ctx.mongo!.executeWrite(command);
+    await writeWithStaleAddressRecovery(ctx, item);
     if (unchanged) {
       ctx.report.itemsUnchanged++;
       ctx.log(`  [apply] "${item.config.address}" — unchanged (re-upserted, idempotent)`);
@@ -233,6 +233,30 @@ async function processItem(ctx: WalkContext, item: CpItem): Promise<void> {
     ctx.report.itemsFailed++;
     ctx.report.itemsConflicting++;
     ctx.log(`  [FAIL] "${item.config.address}": ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+/**
+ * Writes `item`, and if it hits an `AddressConflictError` (a previously-
+ * migrated Mongo doc at this address under a now-stale, different `_id` —
+ * see `MongoCpProvider.resolveStaleAddressConflict`'s doc comment, this
+ * happens after a source id gets legitimately corrected, e.g. the
+ * duplicate-id repair), removes the stale orphan and retries ONCE.
+ */
+async function writeWithStaleAddressRecovery(ctx: WalkContext, item: CpItem): Promise<void> {
+  const command = buildPutItemCommand(item, systemClock);
+  try {
+    await ctx.mongo!.executeWrite(command);
+  } catch (error) {
+    if (error instanceof AddressConflictError) {
+      const recovered = await ctx.mongo!.resolveStaleAddressConflict(item.config.address, item._id);
+      if (recovered) {
+        ctx.log(`  [repair] removed stale Mongo doc at "${item.config.address}" (different, now-outdated _id), retrying`);
+        await ctx.mongo!.executeWrite(command);
+        return;
+      }
+    }
+    throw error;
   }
 }
 

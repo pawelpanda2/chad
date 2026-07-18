@@ -1,0 +1,317 @@
+[
+  {
+    "oldId": "febbba28-5f36-49a6-b262-e638b7b3f356",
+    "newId": "079963a5-388b-47f2-b1e1-46f3cfbe1c9b",
+    "address": "21d11bdc-f1f4-44d1-b61a-3fa6b039c641/03/06",
+    "type": "Folder",
+    "name": "dates"
+  },
+  {
+    "oldId": "febbba28-5f36-49a6-b262-e638b7b3f356",
+    "newId": "e0f5445b-cd56-40fc-b0f8-caf3226e41a0",
+    "address": "21d11bdc-f1f4-44d1-b61a-3fa6b039c641/07/02",
+    "type": "Folder",
+    "name": "dates"
+  },
+  {
+    "oldId": "48bbc374-b185-42e8-8075-58c843450c88",
+    "newId": "6ed2e0d9-e858-4efe-aba4-172ed5344043",
+    "address": "21d11bdc-f1f4-44d1-b61a-3fa6b039c641/02/02/06",
+    "type": "Text",
+    "name": "01"
+  },
+  {
+    "oldId": "48bbc374-b185-42e8-8075-58c843450c88",
+    "newId": "1f2fc951-0d7f-40c3-a35f-3776cceb7159",
+    "address": "21d11bdc-f1f4-44d1-b61a-3fa6b039c641/03/06/01",
+    "type": "Text",
+    "name": "01"
+  },
+  {
+    "oldId": "48bbc374-b185-42e8-8075-58c843450c88",
+    "newId": "27431745-b751-4839-bd85-61b5d480e897",
+    "address": "21d11bdc-f1f4-44d1-b61a-3fa6b039c641/07/02/01",
+    "type": "Text",
+    "name": "01"
+  },
+  {
+    "oldId": "81e48df0-a872-4cbe-9b78-da8073837d2a",
+    "newId": "9d5b99b7-f9b8-4227-ac72-62210f5a7852",
+    "address": "21d11bdc-f1f4-44d1-b61a-3fa6b039c641/03/06/02",
+    "type": "Text",
+    "name": "02"
+  },
+  {
+    "oldId": "81e48df0-a872-4cbe-9b78-da8073837d2a",
+    "newId": "8925ff63-42d3-44e4-9780-9ab8cd077a1b",
+    "address": "21d11bdc-f1f4-44d1-b61a-3fa6b039c641/07/02/02",
+    "type": "Text",
+    "name": "02"
+  },
+  {
+    "oldId": "5d771249-f7e2-4c49-90ee-833ec2a3f0cf",
+    "newId": "2dbd03fc-71ad-460c-9806-631271954631",
+    "address": "21d11bdc-f1f4-44d1-b61a-3fa6b039c641/01/01",
+    "type": "Folder",
+    "name": "actions"
+  },
+  {
+    "oldId": "5d771249-f7e2-4c49-90ee-833ec2a3f0cf",
+    "newId": "62644040-9478-4ecc-8583-5154c39ea863",
+    "address": "21d11bdc-f1f4-44d1-b61a-3fa6b039c641/03/07",
+    "type": "Folder",
+    "name": "actions"
+  },
+  {
+    "oldId": "5d771249-f7e2-4c49-90ee-833ec2a3f0cf",
+    "newId": "9e677b54-2c25-49d3-a38a-d2e66147a5e1",
+    "address": "21d11bdc-f1f4-44d1-b61a-3fa6b039c641/07/03",
+    "type": "Folder",
+    "name": "actions"
+  },
+  {
+    "oldId": "397bd2b7-e9ca-4ee2-8d7f-058b6bcd37ef",
+    "newId": "2319972d-a946-4d2e-a2ea-ad976d97c017",
+    "address": "21d11bdc-f1f4-44d1-b61a-3fa6b039c641/01/02",
+    "type": "Folder",
+    "name": "hidden"
+  },
+  {
+    "oldId": "397bd2b7-e9ca-4ee2-8d7f-058b6bcd37ef",
+    "newId": "1a99467d-2f8b-4198-a2b4-99013dd44114",
+    "address": "21d11bdc-f1f4-44d1-b61a-3fa6b039c641/03/00",
+    "type": "Folder",
+    "name": "hidden"
+  },
+  {
+    "oldId": "d54ecf9a-c01e-44d5-aeda-42b83ba99cfa",
+    "newId": "fa14cea1-13ab-4a81-903b-2ce8e7712fa5",
+    "address": "21d11bdc-f1f4-44d1-b61a-3fa6b039c641/01/02/01",
+    "type": "Text",
+    "name": "cache"
+  },
+  {
+    "oldId": "d54ecf9a-c01e-44d5-aeda-42b83ba99cfa",
+    "newId": "ce87514d-9567-40ac-aa31-372034ff88c0",
+    "address": "21d11bdc-f1f4-44d1-b61a-3fa6b039c641/03/00/01",
+    "type": "Text",
+    "name": "cache"
+  },
+  {
+    "oldId": "695ac662-c2ef-485c-818b-ad61c7185b33",
+    "newId": "b2c5d94d-b168-4175-830d-7176ea8ded64",
+    "address": "21d11bdc-f1f4-44d1-b61a-3fa6b039c641/07/05",
+    "type": "Folder",
+    "name": "dates"
+  },
+  {
+    "oldId": "a53add0e-e835-436a-a920-a7b8e6491a6b",
+    "newId": "b10f024f-483a-439e-b796-4f18b4f255d2",
+    "address": "21d11bdc-f1f4-44d1-b61a-3fa6b039c641/03/17",
+    "type": "Folder",
+    "name": "Warszawa"
+  },
+  {
+    "oldId": "a53add0e-e835-436a-a920-a7b8e6491a6b",
+    "newId": "6089a8d1-f811-4a61-97f4-366d18e739dc",
+    "address": "21d11bdc-f1f4-44d1-b61a-3fa6b039c641/06/12",
+    "type": "Folder",
+    "name": "Warszawa"
+  },
+  {
+    "oldId": "26aaf222-9eb7-446e-973d-1003ea2d015a",
+    "newId": "29ddfd01-cfc3-4a60-8523-83c47ff679aa",
+    "address": "21d11bdc-f1f4-44d1-b61a-3fa6b039c641/06/35",
+    "type": "Folder",
+    "name": "feedback od lasek"
+  },
+  {
+    "oldId": "a60f1b99-8c79-48de-90f5-57d7319f5c89",
+    "newId": "249e51ed-bbcd-4deb-afed-13ddf6a30f3c",
+    "address": "21d11bdc-f1f4-44d1-b61a-3fa6b039c641/02/02/31",
+    "type": "Folder",
+    "name": "25-09-30"
+  },
+  {
+    "oldId": "a60f1b99-8c79-48de-90f5-57d7319f5c89",
+    "newId": "a0b2099a-6de0-4547-930b-9d725e552d2b",
+    "address": "21d11bdc-f1f4-44d1-b61a-3fa6b039c641/06/35/02",
+    "type": "Folder",
+    "name": "25-09-30"
+  },
+  {
+    "oldId": "078c3d09-2eb2-4f76-8978-1c525c201260",
+    "newId": "6cc23e3d-956e-474b-b3e4-17fa764be8f9",
+    "address": "21d11bdc-f1f4-44d1-b61a-3fa6b039c641/02/02/31/01",
+    "type": "Text",
+    "name": "pytania"
+  },
+  {
+    "oldId": "078c3d09-2eb2-4f76-8978-1c525c201260",
+    "newId": "30fcbd05-c9c6-4895-aafa-bca67cf4d3fc",
+    "address": "21d11bdc-f1f4-44d1-b61a-3fa6b039c641/06/35/02/01",
+    "type": "Text",
+    "name": "pytania"
+  },
+  {
+    "oldId": "a432a69f-97ee-4df2-bd80-82b30f539542",
+    "newId": "fce5be5d-04e7-4ebf-987a-2e5517766e09",
+    "address": "21d11bdc-f1f4-44d1-b61a-3fa6b039c641/06/36",
+    "type": "Folder",
+    "name": "daygame; feedback chatgpt"
+  },
+  {
+    "oldId": "4617b728-4bbd-4b3d-94f3-4ac115003d98",
+    "newId": "a4bd1a38-c0ee-41e7-9bf6-66b1788e9590",
+    "address": "21d11bdc-f1f4-44d1-b61a-3fa6b039c641/06/36/01",
+    "type": "Text",
+    "name": "25-10-12; Warszawa; Złote tarasy"
+  },
+  {
+    "oldId": "802d7c28-d37b-45fe-83e8-dfe0e2496650",
+    "newId": "a23a2de7-ca55-48c2-99ba-f4b50a1664be",
+    "address": "21d11bdc-f1f4-44d1-b61a-3fa6b039c641/02/02/03/01",
+    "type": "Text",
+    "name": "21-10-31; 21-01-21_tx_Bella_27"
+  },
+  {
+    "oldId": "802d7c28-d37b-45fe-83e8-dfe0e2496650",
+    "newId": "8cb5cb1f-e9e0-46ef-8d1f-bf60f24e5537",
+    "address": "21d11bdc-f1f4-44d1-b61a-3fa6b039c641/02/09/04/01",
+    "type": "Text",
+    "name": "21-10-31; 21-01-21_tx_Bella_27"
+  },
+  {
+    "oldId": "8e1a6aa9-c22c-48a6-8a29-1bf9ef5870ee",
+    "newId": "166d9ba2-874b-4405-acaf-95f7288d9e73",
+    "address": "21d11bdc-f1f4-44d1-b61a-3fa6b039c641/02/02/03/04",
+    "type": "Text",
+    "name": "Razem"
+  },
+  {
+    "oldId": "8e1a6aa9-c22c-48a6-8a29-1bf9ef5870ee",
+    "newId": "2d20ccf0-8bcc-458b-8161-6f97b55793a4",
+    "address": "21d11bdc-f1f4-44d1-b61a-3fa6b039c641/02/09/04/04",
+    "type": "Text",
+    "name": "Razem"
+  },
+  {
+    "oldId": "5f206884-f73f-4010-a2d3-0763cfba055a",
+    "newId": "7dfcf8a0-97a6-4b6e-b7bb-8aeb28abc470",
+    "address": "21d11bdc-f1f4-44d1-b61a-3fa6b039c641/02/09/04",
+    "type": "Folder",
+    "name": "Jak przeżywałem moje randki?"
+  },
+  {
+    "oldId": "955b73b9-db09-4552-853a-742268fa2c23",
+    "newId": "8888d480-a835-4533-a7c4-b22f802f83f3",
+    "address": "21d11bdc-f1f4-44d1-b61a-3fa6b039c641/02/09/04/02",
+    "type": "Text",
+    "name": "21-01-22_tn_Marlena_29"
+  },
+  {
+    "oldId": "2963cfc3-4477-4523-91ba-6c43b6a3fbaf",
+    "newId": "928dfe36-11fc-4346-808a-a205bd8bda3b",
+    "address": "21d11bdc-f1f4-44d1-b61a-3fa6b039c641/02/09/04/03",
+    "type": "Text",
+    "name": "22-04-12_r1pn_Ada_Nowy_Sacz"
+  },
+  {
+    "oldId": "b1712064-02ae-48f5-af0f-4c675533bb7b",
+    "newId": "0351734d-5f75-4c75-a204-b0643816c626",
+    "address": "21d11bdc-f1f4-44d1-b61a-3fa6b039c641/02/05/02",
+    "type": "Text",
+    "name": "Jakie są podstawowe pytania o Randki?"
+  },
+  {
+    "oldId": "b1712064-02ae-48f5-af0f-4c675533bb7b",
+    "newId": "17677a9d-5042-4082-bb25-3f5e10c93e6e",
+    "address": "21d11bdc-f1f4-44d1-b61a-3fa6b039c641/02/06/01",
+    "type": "Text",
+    "name": "Jakie są podstawowe pytania o Randki?"
+  },
+  {
+    "oldId": "b1712064-02ae-48f5-af0f-4c675533bb7b",
+    "newId": "4da633f8-b72c-4b00-be2a-1ee09c206dc1",
+    "address": "21d11bdc-f1f4-44d1-b61a-3fa6b039c641/03/04/02",
+    "type": "Text",
+    "name": "Jakie są podstawowe pytania o Randki?"
+  },
+  {
+    "oldId": "b1712064-02ae-48f5-af0f-4c675533bb7b",
+    "newId": "07f013f4-bb4b-4fc7-bc0d-6b1b8f003153",
+    "address": "21d11bdc-f1f4-44d1-b61a-3fa6b039c641/03/05/01",
+    "type": "Text",
+    "name": "Jakie są podstawowe pytania o Randki?"
+  },
+  {
+    "oldId": "b1712064-02ae-48f5-af0f-4c675533bb7b",
+    "newId": "c8153354-1dc6-458e-b5a9-6061cab48396",
+    "address": "21d11bdc-f1f4-44d1-b61a-3fa6b039c641/06/02/01",
+    "type": "Text",
+    "name": "Jakie są podstawowe pytania o Randki?"
+  },
+  {
+    "oldId": "fdb7b487-9323-407f-95a7-633c34813184",
+    "newId": "e54e3403-ad13-480f-af0a-e3cf2a8ddf6d",
+    "address": "21d11bdc-f1f4-44d1-b61a-3fa6b039c641/02/09/01",
+    "type": "Text",
+    "name": "Warunki kwalifikacji do zwrotu"
+  },
+  {
+    "oldId": "bd3e3aca-11fd-4903-a189-ed28c2957713",
+    "newId": "934df811-8b1e-45a4-a9a6-065824a4b8c2",
+    "address": "21d11bdc-f1f4-44d1-b61a-3fa6b039c641/02/09/02",
+    "type": "Text",
+    "name": "Podliczenie ilości postów"
+  },
+  {
+    "oldId": "e7660c79-7f70-4072-b57e-7f5574b225ab",
+    "newId": "e90a448c-a5e5-476d-823c-de7caff50bf0",
+    "address": "21d11bdc-f1f4-44d1-b61a-3fa6b039c641/03/04",
+    "type": "Folder",
+    "name": "dodatkowe"
+  },
+  {
+    "oldId": "d62817bf-3976-4f75-930f-15784e81f3e2",
+    "newId": "f487228d-f724-4a8e-933a-64ca75f5ad88",
+    "address": "21d11bdc-f1f4-44d1-b61a-3fa6b039c641/03/04/01",
+    "type": "Text",
+    "name": "oznaczenia"
+  },
+  {
+    "oldId": "e8158c4a-2791-48ec-b335-8405dbe591c5",
+    "newId": "9807b12d-1d25-4654-aff5-a44d7f4c6495",
+    "address": "21d11bdc-f1f4-44d1-b61a-3fa6b039c641/03/05",
+    "type": "Folder",
+    "name": "from report notes"
+  },
+  {
+    "oldId": "e8158c4a-2791-48ec-b335-8405dbe591c5",
+    "newId": "9802b714-037e-4c41-ad41-2ec851894cab",
+    "address": "21d11bdc-f1f4-44d1-b61a-3fa6b039c641/06/02",
+    "type": "Folder",
+    "name": "from report notes"
+  },
+  {
+    "oldId": "0905a021-e3de-46a3-94db-8d180ff2fab3",
+    "newId": "ed3a8f6a-c024-4ccd-b868-2d73cb2410a9",
+    "address": "21d11bdc-f1f4-44d1-b61a-3fa6b039c641/03/16/01",
+    "type": "Text",
+    "name": "635ed4f532ffd00100f1e35b645a90a505ed8501009ff2fc"
+  },
+  {
+    "oldId": "0905a021-e3de-46a3-94db-8d180ff2fab3",
+    "newId": "92449169-0d37-451b-81b0-c61185ae8056",
+    "address": "21d11bdc-f1f4-44d1-b61a-3fa6b039c641/06/11/01",
+    "type": "Text",
+    "name": "635ed4f532ffd00100f1e35b645a90a505ed8501009ff2fc"
+  },
+  {
+    "oldId": "0457fb40-64ae-49a7-af11-54dc984f833d",
+    "newId": "dad94086-5550-4313-b2cb-6e4ccc33e3df",
+    "address": "21d11bdc-f1f4-44d1-b61a-3fa6b039c641/06/11",
+    "type": "Folder",
+    "name": "tinder"
+  }
+]
