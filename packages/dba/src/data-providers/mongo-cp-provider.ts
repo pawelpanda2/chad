@@ -34,13 +34,33 @@ import type {
   GetItemInput,
 } from "./types.js";
 
-export const ITEMS_COLLECTION = "items";
+export const ITEMS_COLLECTION = "cp_items";
 export const FOLDER_CHILD_COUNTERS_COLLECTION = "folder_child_counters";
 
 export class AddressConflictError extends Error {
   constructor(public readonly address: string, cause: unknown) {
     super(`Address conflict writing "${address}": ${String(cause)}`);
     this.name = "AddressConflictError";
+  }
+}
+
+/**
+ * Data-integrity error: more than one child under the same parent address
+ * shares the same `config.name` (Story 72, `07/05` duplicate "dates"
+ * incident). Mirrors CP's own `ReadAddressWorker.GetAdrTupleByName`, which
+ * throws on `.Single()` for the same reason — deterministic sorting would
+ * only hide the corruption by always picking the same one silently.
+ */
+export class DuplicateChildNameError extends Error {
+  constructor(
+    public readonly parentAddress: string,
+    public readonly childName: string,
+    public readonly matchingAddresses: string[]
+  ) {
+    super(
+      `Data integrity error: found ${matchingAddresses.length} children named "${childName}" under "${parentAddress}" (expected at most 1): ${matchingAddresses.join(", ")}`
+    );
+    this.name = "DuplicateChildNameError";
   }
 }
 
@@ -74,9 +94,46 @@ export class MongoCpProvider implements CpCompatibleDataProvider {
   /** Idempotent — safe to call every startup (Story 72 §10). */
   async ensureIndexes(db?: Db): Promise<void> {
     const database = db ?? (await getMongoDb());
-    await database
-      .collection<ItemDoc>(ITEMS_COLLECTION)
-      .createIndex({ "config.address": 1 }, { unique: true, name: "config_address_unique" });
+    const collection = database.collection<ItemDoc>(ITEMS_COLLECTION);
+    await collection.createIndex({ "config.address": 1 }, { unique: true, name: "config_address_unique" });
+  }
+
+  /**
+   * Repair helper for the migrator (Story 72 follow-up): when a source
+   * item's own `id` legitimately changes at Content Provider (e.g. the
+   * duplicate-id data repair, `packages/console/src/fixDuplicateIds.ts`),
+   * a PREVIOUSLY-migrated Mongo document at the same `config.address` but
+   * the OLD `_id` becomes a stale orphan — the unique address index then
+   * blocks inserting the corrected document under its new `_id`. Since
+   * `config.address` is unique-by-design and Content Provider is the
+   * source of truth, a doc at this address under a *different* id than
+   * the one CP now reports is definitionally stale; this deletes it so
+   * the corrected write can proceed. Returns whether a stale doc was
+   * actually found and removed (false = the conflict was something else).
+   */
+  async resolveStaleAddressConflict(address: string, expectedId: string): Promise<boolean> {
+    const db = await this.db();
+    const collection = db.collection<ItemDoc>(ITEMS_COLLECTION);
+    const existing = await collection.findOne({ "config.address": address });
+    if (!existing || existing._id === expectedId) return false;
+    await collection.deleteOne({ _id: existing._id });
+    return true;
+  }
+
+  /**
+   * Deletes a single item by its exact address (leaf items only — never
+   * cascades to children, callers must confirm the address has none first
+   * if that matters for their use case). Real removal, unlike the .NET
+   * Content Provider's `Delete`, which is a permanent no-op stub there
+   * (see `NetFileCpProvider` — callers on that backend must keep using the
+   * existing "blank the fields in place" workaround). Returns whether a
+   * document was actually found and removed.
+   */
+  async deleteItem(address: string): Promise<boolean> {
+    const db = await this.db();
+    const collection = db.collection<ItemDoc>(ITEMS_COLLECTION);
+    const result = await collection.deleteOne({ "config.address": address });
+    return result.deletedCount > 0;
   }
 
   async getItem(input: GetItemInput, expectedRepoGuid?: string): Promise<CpItem | null> {
@@ -91,7 +148,10 @@ export class MongoCpProvider implements CpCompatibleDataProvider {
 
     // Repo isolation: a caller-supplied bare `_id` must not leak another
     // repo's item just because the GUID happens to be guessable. See
-    // Story 72 03_knowledge.md, repo-context.ts section.
+    // Story 72 03_knowledge.md, repo-context.ts section. `config.address`'s
+    // first segment is the sole source of truth for which repo an item
+    // belongs to (no separate `repoGuid` field — exact match on the whole
+    // first segment, via `splitAddress`, not a substring check).
     if (expectedRepoGuid) {
       const { repoGuid } = splitAddress(doc.config.address);
       if (repoGuid !== expectedRepoGuid) {
@@ -125,10 +185,18 @@ export class MongoCpProvider implements CpCompatibleDataProvider {
       const children = await collection
         .find({ "config.address": { $regex: `^${escapeRegex(currentAddress)}/[0-9]{2,3}$` } })
         .toArray();
-      const match = children.find((c) => c.config.name === name);
-      if (!match) {
+      const matches = children.filter((c) => c.config.name === name);
+      if (matches.length === 0) {
         return [];
       }
+      if (matches.length > 1) {
+        throw new DuplicateChildNameError(
+          currentAddress,
+          name,
+          matches.map((m) => m.config.address)
+        );
+      }
+      const match = matches[0];
       trail.push(docToItem(match));
       currentAddress = match.config.address;
     }
@@ -136,11 +204,71 @@ export class MongoCpProvider implements CpCompatibleDataProvider {
     return trail;
   }
 
+  /**
+   * Lists a Folder item's direct children, sorted by their numeric index
+   * segment — the Mongo-side equivalent of `getFolderChildren` in
+   * `legacy-cp-provider.ts` (which parses CP's own computed `Body` map).
+   * Not part of `CpCompatibleDataProvider` (mirrors that same asymmetry —
+   * both are read-model conveniences for callers that need to enumerate
+   * an unknown folder's contents, e.g. `leads.ts`'s Daily/Date Entry
+   * listing functions).
+   */
+  async getChildItems(parentAddress: string): Promise<CpItem[]> {
+    const db = await this.db();
+    const collection = db.collection<ItemDoc>(ITEMS_COLLECTION);
+    const docs = await collection
+      .find({ "config.address": { $regex: `^${escapeRegex(parentAddress)}/[0-9]{2,3}$` } })
+      .toArray();
+    return docs
+      .map(docToItem)
+      .sort((a, b) => a.config.address.localeCompare(b.config.address, undefined, { numeric: true }));
+  }
+
+  /** `CpCompatibleDataProvider.getChildren` — same query as `getChildItems` above. */
+  async getChildren(parentAddress: string): Promise<CpItem[]> {
+    return this.getChildItems(parentAddress);
+  }
+
+  /**
+   * `CpCompatibleDataProvider.findRecursively` — every descendant (any
+   * depth) under `rootAddress` whose `body` contains `phrase`.
+   */
+  async findRecursively(rootAddress: string, phrase: string): Promise<CpItem[]> {
+    const db = await this.db();
+    const collection = db.collection<ItemDoc>(ITEMS_COLLECTION);
+    const docs = await collection
+      .find({
+        "config.address": { $regex: `^${escapeRegex(rootAddress)}/` },
+        body: { $regex: escapeRegex(phrase) },
+      })
+      .toArray();
+    return docs
+      .map(docToItem)
+      .sort((a, b) => a.config.address.localeCompare(b.config.address, undefined, { numeric: true }));
+  }
+
   async executeWrite(command: DataWriteCommand): Promise<DataWriteResult> {
     if (command.kind === "put-item") {
       return this.putItem(command.item);
     }
     return this.createChild(command);
+  }
+
+  /**
+   * Config-only write, preserving the supplied `_id`/custom fields exactly
+   * (see `CpCompatibleDataProvider.putItemConfig`'s doc comment). Mongo
+   * never had the "always mints a new id" problem `putItem` has to work
+   * around on the CP side, so this is just `putItem` with the existing
+   * document's `body` preserved unchanged (or `""` if the document is new
+   * — matching `PutItemConfig`'s "config only, no body write" contract on
+   * the CP side).
+   */
+  async putItemConfig(item: CpItem): Promise<CpItem> {
+    const db = await this.db();
+    const collection = db.collection<ItemDoc>(ITEMS_COLLECTION);
+    const existing = await collection.findOne({ _id: item._id });
+    const result = await this.putItem({ ...item, body: existing?.body ?? "" });
+    return result.item;
   }
 
   private async putItem(item: CpItem): Promise<DataWriteResult> {

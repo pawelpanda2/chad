@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Starts the QNAP PROD dashboard under docker-compose. Never builds. Never
-# starts/stops/rebuilds the shared mongo/content-provider-api stack — only
-# checks it's already healthy (require_shared_services_healthy) and refuses
-# to start otherwise. Idempotent: checks whether the dashboard is already
-# running; if so, calls 04_end.sh then starts fresh.
+# starts/stops/rebuilds the shared mongo stack — only checks it's already
+# healthy (require_shared_services_healthy) and refuses to start otherwise.
+# Idempotent: checks whether the dashboard is already running; if so, calls
+# 04_end.sh then starts fresh.
 #
-# PROD uses the SAME shared MongoDB and Content Provider (and therefore the
-# SAME live data) as TEST.
+# PROD uses the SAME shared MongoDB (and therefore the SAME live data) as
+# TEST.
 #
 # PROD deployment requires separate explicit approval — this script existing
 # does not run itself; running it IS the deployment action.
@@ -26,8 +26,8 @@ echo ""
 
 cd "$REPO_ROOT"
 
-require_shared_services_healthy "$CONTENT_PROVIDER_API_PORT" || {
-  log_error "Shared services (mongo + content-provider-api) are not healthy — refusing to start PROD dashboard."
+require_shared_services_healthy || {
+  log_error "Shared services (mongo) are not healthy — refusing to start PROD dashboard."
   exit 1
 }
 

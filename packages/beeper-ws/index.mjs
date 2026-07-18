@@ -5,22 +5,29 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: resolve(__dirname, "../../.env.mac-beeper") });
 import WebSocket from "ws";
 import { MongoClient } from "mongodb";
+import { resolveOwnerRepoGuid, ownerDatabaseName, redactMongoUri } from "./owner-db.mjs";
 
 // ── Env ──────────────────────────────────────────────────────────────────────
 const TOKEN = process.env.BEEPER_API_KEY;
-const MONGO_URI = process.env.MONGODB_URI || "mongodb://localhost:27017/beeper";
+// Server URI only — no database segment. The database name always comes
+// from ownerDatabaseName(repoGuid) below, never from this URI's own
+// default/path segment.
+const MONGO_URI = process.env.MONGODB_URI || "mongodb://localhost:27017";
 
 if (!TOKEN) {
   console.error("Brak BEEPER_API_KEY w pliku .env");
   process.exit(1);
 }
 
+const repoGuid = resolveOwnerRepoGuid();
+
 // ── MongoDB ──────────────────────────────────────────────────────────────────
 const mongoClient = new MongoClient(MONGO_URI);
 await mongoClient.connect();
-const db = mongoClient.db();
+const DB_NAME = ownerDatabaseName(repoGuid);
+const db = mongoClient.db(DB_NAME);
 const events = db.collection("beeper_events");
-console.log(`MongoDB: połączono z ${MONGO_URI}`);
+console.log(`MongoDB: połączono z ${redactMongoUri(MONGO_URI)} (owner repoGuid: ${repoGuid}, database: ${DB_NAME})`);
 
 // Indeks po typie i sekwencji – przydatny do późniejszego querowania
 await events.createIndex({ type: 1 });

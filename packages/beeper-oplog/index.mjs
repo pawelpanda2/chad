@@ -1,5 +1,6 @@
 import dotenv from "dotenv";
 import { MongoClient, ObjectId } from "mongodb";
+import { resolveOwnerRepoGuid, ownerDatabaseName, redactMongoUri } from "./owner-db.mjs";
 
 // Runs on QNAP inside docker-compose — env comes from the container's env,
 // dotenv.config() here only helps when running this script locally for
@@ -7,8 +8,12 @@ import { MongoClient, ObjectId } from "mongodb";
 dotenv.config();
 
 // ── Config ────────────────────────────────────────────────────────────────────
-const MONGO_URI = process.env.MONGODB_URI || "mongodb://localhost:27017/beeper";
+// Server URI only — no database segment. The database name always comes
+// from ownerDatabaseName(repoGuid) below, never from this URI's own
+// default/path segment.
+const MONGO_URI = process.env.MONGODB_URI || "mongodb://localhost:27017";
 const MY_SENDER_ID = process.env.MY_SENDER_ID ?? "";
+const repoGuid = resolveOwnerRepoGuid();
 // Beeper Desktop's local REST API — only reachable when this process runs on
 // the same Mac as Beeper Desktop. On QNAP (the intended runtime) there is no
 // Beeper Desktop, so fetchBeeperChat() below fails fast and falls back to
@@ -23,7 +28,9 @@ if (!MY_SENDER_ID) {
 // ── DB ────────────────────────────────────────────────────────────────────────
 const client = new MongoClient(MONGO_URI);
 await client.connect();
-const db = client.db();
+const DB_NAME = ownerDatabaseName(repoGuid);
+const db = client.db(DB_NAME);
+console.log(`[beeper-oplog] MongoDB: ${redactMongoUri(MONGO_URI)} (owner repoGuid: ${repoGuid}, database: ${DB_NAME})`);
 
 const eventsCol   = db.collection("beeper_events");
 const contactsCol = db.collection("contacts");

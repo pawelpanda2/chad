@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Builds the QNAP TEST dashboard image only. Never runs containers, never
 # touches a running environment, never builds/touches the shared mongo/
-# content-provider-api stack (see bash-scripts/dashboard/00_qnap_shared/).
+# mongo stack (see bash-scripts/dashboard/00_qnap_shared/).
 # Run this ON the QNAP host (or via
 # bash-scripts/dashboard/06_qnap_test_ssh/06_deploy.sh from your Mac).
 #

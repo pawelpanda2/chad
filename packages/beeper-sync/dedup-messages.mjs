@@ -23,13 +23,15 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: resolve(__dirname, "../../.env.mac-beeper") });
 
 import { MongoClient } from "mongodb";
+import { resolveOwnerRepoGuid, ownerDatabaseName } from "./lib/owner-db.mjs";
 
-const MONGO_URI = process.env.MONGODB_URI || "mongodb://localhost:27017/beeper";
+const repoGuid = resolveOwnerRepoGuid();
+const MONGO_URI = process.env.MONGODB_URI || "mongodb://localhost:27017";
 const DRY_RUN = process.argv.includes("--dry-run");
 
 const client = new MongoClient(MONGO_URI);
 await client.connect();
-const db = client.db();
+const db = client.db(ownerDatabaseName(repoGuid));
 const col = db.collection("messages");
 
 console.log(`

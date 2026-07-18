@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# Stops the QNAP SHARED stack (mongo + content-provider-api).
-# --remove-orphans only, never -v: never deletes the mongo data bind mount.
-# Never removes images.
+# Stops the QNAP SHARED stack (mongo). --remove-orphans only, never -v:
+# never deletes the mongo data bind mount. Never removes images.
 #
 # WARNING: this stack is shared by BOTH chad-dashboard-test and
 # chad-dashboard-prod. Stopping it takes down the backend for BOTH
@@ -16,14 +15,12 @@ source "$SCRIPT_DIR/01_config.sh"
 require_command docker "install Docker" || exit 1
 
 echo ""
-log_warn "chad QNAP SHARED — end (this stops MongoDB + Content Provider API used by BOTH TEST and PROD dashboards)"
+log_warn "chad QNAP SHARED — end (this stops MongoDB, used by BOTH TEST and PROD dashboards)"
 echo ""
 
 cd "$REPO_ROOT"
-# `down` still needs the compose file's `image:` field to interpolate, but
-# doesn't need a real tag (never pulls/runs it) — use the recorded tag if
-# present, otherwise a harmless placeholder (see image_tag_for_readonly).
-export IMAGE_TAG="$(image_tag_for_readonly "$(content_provider_image_tag_file)")"
+# No IMAGE_TAG needed — mongodb uses a plain upstream image (mongo:4.4),
+# not a templated `${IMAGE_TAG}`.
 docker compose -p "$COMPOSE_PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" down --remove-orphans
 
 log_ok "chad-shared stack stopped. Data (MongoDB bind mount) and images preserved."

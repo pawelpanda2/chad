@@ -193,6 +193,14 @@ bezpośrednio.
   folderem `reports` (`reports.ts` — `GetReports`/`GetReportByName`), który
   ma już realne, niezwiązane dane — to jest właśnie dlaczego plik dba nazywa
   się `report-entries.ts`, nie `reports.ts`.
+- `provider-migration-audit.md` (Story 72, follow-up) — pełny audyt
+  wszystkich publicznych metod `dba` względem wzorca
+  `if(mongoEnabled)`/`if(contentProviderEnabled)`: tylko 6 funkcji (Daily/
+  Date Entry) jest w pełni zmigrowanych, 55 nadal Content-Provider-only.
+  Wykrył i naprawił martwy, zduplikowany kod omijający `dba`
+  (`packages/dashboard/lib/chad-dba/*`, `lib/form-storage.ts` — usunięte,
+  0 realnych importerów). Czytaj przed planowaniem migracji kolejnej
+  funkcji na wzorzec dual-backend.
 
 **Zasada Content Providera (obowiązkowa, patrz też
 `documentation/ai-docs/feature-documentation-rules.md`):** fizyczne foldery
@@ -252,16 +260,30 @@ analizuj ani nie zmieniaj bez wyraźnej prośby.
 ## Beeper (sync/integracja, nie zakładka UI)
 
 **Opis:** Integracja Beeper Desktop ↔ MongoDB — architektura, migracja z
-poprzedniego samodzielnego repo `contacts`, schemat Mongo.
+poprzedniego samodzielnego repo `contacts`, schemat Mongo. Od Story 73
+(2026-07-19): każdy CHAD użytkownik ma osobną bazę MongoDB
+(`beeper_<repoGuid>`), nie jedną wspólną `beeper` — krytyczna poprawka
+izolacji danych (wcześniej `kamil_s` widział kontakty `pawel_f`).
 
-**Lokalizacja:** `documentation/beeper/`
+**Lokalizacja:** `ai-docs/beeper/` (przeniesione 2026-07-19, Story 73, z
+`human-docs/beeper/` — ten katalog jest częścią globalnej wiedzy AI, nie
+dokumentacji per-feature dla ludzi, stąd `ai-docs/`, nie `human-docs/`).
+
+**Zacznij od:** [`ai-docs/beeper/ai-start.md`](../beeper/ai-start.md) —
+indeks kolejności czytania dla tego katalogu (analogiczny do
+`ai-docs/deploy/ai-start.md`), opisuje wiążącą decyzję o bazie per
+użytkownik i wskazuje dokładne pliki kodu (`mongo.ts`, `beeper-crm.ts`,
+`repo-context.ts`, route'y `/api/beeper-crm/**`, `owner-db.mjs` w trzech
+pakietach backgroundowych).
 
 **Najważniejsze dokumenty:** `architecture.md`, `migration.md`,
 `mongo-schema.md`. Powiązane z kategorią "Deploy" (środowiska Mac/QNAP,
 replica set) — patrz linki wewnątrz tych dokumentów.
 
 **Czytać gdy:** zadanie dotyczy `packages/beeper-sync`, `beeper-ws`,
-`beeper-oplog`, albo integracji z Beeper Desktop.
+`beeper-oplog`, `packages/dba/src/beeper-crm.ts`,
+`packages/dashboard/app/api/beeper-crm/**`, albo integracji z Beeper
+Desktop.
 
 ---
 

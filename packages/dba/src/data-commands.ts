@@ -39,7 +39,7 @@ export interface CreateChildItemCommand extends DataCommandBase {
    * this child (either because it already existed, or because this
    * provider just allocated it). Followers MUST use this decided item
    * as-is and must never re-run their own next-index allocation
-   * (Story 72 §8/§23) — see `LegacyContentProviderAdapter.executeWrite`.
+   * (Story 72 §8/§23) — see `NetFileCpProvider.executeWrite`.
    */
   item: CpItem | null;
 }

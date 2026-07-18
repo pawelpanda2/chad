@@ -335,10 +335,12 @@ if (AUTH) {
 
 // Połącz z MongoDB
 import { MongoClient, ObjectId } from 'mongodb';
+import { resolveOwnerRepoGuid, ownerDatabaseName } from './lib/owner-db.mjs';
 
+const repoGuid = resolveOwnerRepoGuid();
 const mongoClient = new MongoClient(process.env.MONGODB_URI);
 await mongoClient.connect();
-const db = mongoClient.db();
+const db = mongoClient.db(ownerDatabaseName(repoGuid));
 const contactsCol      = db.collection('contacts');
 const suggestionsCol   = db.collection('merge_suggestions');
 

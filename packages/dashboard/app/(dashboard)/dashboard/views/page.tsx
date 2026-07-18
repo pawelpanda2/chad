@@ -178,7 +178,7 @@ function ViewsPageContent() {
   const [dailyEntriesError, setDailyEntriesError] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
   const [sortKey, setSortKey] = useState<string>("");
-  const [sortDir, setSortDir] = useState<SortDir>("asc");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
 
   // Daily Tracker inline edit (Story 62) — read-only by default; `Edit`
   // reveals the floppy in the action column and unlocks cells. Draft edits
@@ -266,9 +266,10 @@ function ViewsPageContent() {
   useEffect(() => {
     setFilter("");
     setSortKey(selectedView === "dates" ? "DATA" : selectedView === "tracker" ? "DATE" : "");
-    // Oldest-first by default on both tables (Story 62 Round 10) — was
-    // newest-first on DATES only, inconsistent with Tracker.
-    setSortDir("asc");
+    // Newest-first by default on both tables — still fully sortable by
+    // clicking the date column (toggleSort flips this per-column, not
+    // reset by this effect).
+    setSortDir("desc");
     setSelectedReportLoca(null);
     setIsTrackerEditMode(false);
     setIsRawMode(false);
@@ -976,8 +977,8 @@ function ViewsPageContent() {
               <tbody>
                 {isLoading ? (
                   <tr>
-                    <td colSpan={columns.length + (showActionColumn ? 1 : 0) + (showItemNameColumn ? 1 : 0)} className="border h-8 text-center text-muted-foreground">
-                      <span className="inline-flex items-center gap-2">
+                    <td colSpan={columns.length + (showActionColumn ? 1 : 0) + (showItemNameColumn ? 1 : 0)} className="border h-8 p-1.5 px-2 text-left text-muted-foreground">
+                      <span className="inline-flex items-center justify-start gap-2">
                         <RefreshCw className="h-3.5 w-3.5 animate-spin" />
                         Loading...
                       </span>

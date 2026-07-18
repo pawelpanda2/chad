@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Non-secret technical constants for the local-mac-docker stack. Sourced by
 # every other script in this directory (after REPO_ROOT is already set by
-# the sourcing script). Secrets/paths (API keys, Mongo credentials,
-# CP_REPOS_HOST_PATH, ...) come from root .env.local, loaded separately by
-# each script — never put those here.
+# the sourcing script). Secrets/paths (API keys, Mongo credentials, ...)
+# come from root .env.local, loaded separately by each script — never put
+# those here.
 #
 # Docker Compose interpolates the WHOLE compose file for every command,
 # including `build` — so every script in this directory must source this
@@ -11,61 +11,53 @@
 # scripts that obviously need the ports (confirmed by a real failure on
 # QNAP: 02_build.sh alone exporting ENV_NAME but not the ports produced
 # "variable is not set" warnings during `docker compose ... build`).
+#
+# Content Provider (content-provider-api) removed from this stack — see
+# docker-compose.local.yml's header comment. Its appsettings-generation
+# helper (write_content_provider_appsettings) and CONTENT_PROVIDER_API_PORT
+# were removed from here along with it; the .NET adapter code and
+# `net-content-provider` submodule are untouched.
 
 COMPOSE_PROJECT_NAME="chad-local"
 COMPOSE_FILE="$REPO_ROOT/docker-compose.local.yml"
 ENV_FILE="$REPO_ROOT/.env.local"
 
 DASHBOARD_PORT=12020
-CONTENT_PROVIDER_API_PORT=12024
 MONGODB_PORT=27017
 
-export DASHBOARD_PORT CONTENT_PROVIDER_API_PORT MONGODB_PORT
+export DASHBOARD_PORT MONGODB_PORT
 
-# Content Provider's own config module (appsettings.json) — not a secret,
-# so the full file lives here as text rather than split into individual
-# PreparerModule__* environment variable overrides. /data/repos is the
-# in-container mount point for CP_REPOS_HOST_PATH (see docker-compose.local.yml),
-# not a real host path — the real host path lives in .env.local, not here.
-#
-# NoSqlRepoSearchPaths must include the trailing "repos" segment itself
-# (net-content-provider Story 68, 2026-07-17): GuidGroupsHelper.
-# GetGuidGroupsForSearchFolders no longer appends "repos" automatically and
-# now scans every configured path directly for GUID-named folders. The real
-# GUID folders live one level under CP_REPOS_HOST_PATH (i.e. under
-# .../repos/<guid>), so the search path must say /data/repos/repos, not
-# /data/repos.
-#
-# Second path /data/repos2/repos (Story 68): the chad_admin login repo
-# (users/users-list) physically lives under CP_REPOS_HOST_PATH_2's Dropbox
-# share, not under CP_REPOS_HOST_PATH — without this second path, login
-# fails with "Content Provider API is unavailable" even though /health
-# reports repos found (confirmed 2026-07-17: chad_admin's config.yaml was
-# only found under /Volumes/Dropbox/kamilgame042/repos on this Mac).
-read -r -d '' CONTENT_PROVIDER_APPSETTINGS_JSON <<'EOF' || true
-{
-  "ApiUrls": "http://0.0.0.0:12024",
-  "IdentityModule": {
-    "DbFolderName": "IdentityDatabase",
-    "DbFileName": "IdentityDatabase.db"
-  },
-  "PreparerModule": {
-    "DbIdentityParentFolderSearchExpression": "/data/repos",
-    "SettingsSearchExpr": "0(0,1)",
-    "NoSqlRepoSearchPaths": [
-      "/data/repos/repos",
-      "/data/repos2/repos"
-    ]
-  }
-}
-EOF
+# DBA_MONGO_MODE — single switch for which Mongo the LOCAL dashboard
+# container talks to, read from .env.local (default: "local").
+#   local (default): unchanged — MONGODB_URI/BEEPER_MONGODB_URI come
+#     straight from .env.local (the local chad-mongodb-local-mac-docker
+#     container started by this same stack).
+#   qnap: this script overrides both env vars here, exported into the
+#     shell BEFORE `docker compose up` runs — Compose gives shell-exported
+#     vars priority over the same names in --env-file, so this wins
+#     without editing .env.local. Points at QNAP's chad-mongodb over
+#     Tailscale (100.117.139.83:12040, published in
+#     docker-compose.qnap.shared.yml — see that file's header comment),
+#     same credentials as local (MONGO_ROOT_USERNAME/PASSWORD, "change_me"
+#     on both sides). The local chad-mongodb-local-mac-docker container
+#     still starts (this stack always runs both services) but simply goes
+#     unused in this mode.
+DBA_MONGO_MODE="$(read_env_var "$ENV_FILE" DBA_MONGO_MODE)"
+DBA_MONGO_MODE="${DBA_MONGO_MODE:-local}"
 
-# Writes CONTENT_PROVIDER_APPSETTINGS_JSON to the runtime path that
-# docker-compose.local.yml bind-mounts read-only into the container at
-# /app/appsettings.json. Call before `docker compose up` — never docker cp
-# into an already-running container (see 03_restart.sh).
-write_content_provider_appsettings() {
-  local output_file="$REPO_ROOT/.runtime/local/content-provider/appsettings.json"
-  mkdir -p "$(dirname "$output_file")"
-  printf '%s\n' "$CONTENT_PROVIDER_APPSETTINGS_JSON" > "$output_file"
-}
+if [ "$DBA_MONGO_MODE" = "qnap" ]; then
+  QNAP_TAILSCALE_HOST="100.117.139.83"
+  QNAP_MONGO_PORT="12040"
+  MONGO_ROOT_USERNAME="$(read_env_var "$ENV_FILE" MONGO_ROOT_USERNAME)"
+  MONGO_ROOT_PASSWORD="$(read_env_var "$ENV_FILE" MONGO_ROOT_PASSWORD)"
+  MONGODB_URI="mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@${QNAP_TAILSCALE_HOST}:${QNAP_MONGO_PORT}/chad?authSource=admin"
+  # Story 73: no database segment — getBeeperMongoDb(repoGuid) in
+  # packages/dba/src/mongo.ts always calls client.db(`beeper_<repoGuid>`)
+  # explicitly, so this is a server URI only.
+  BEEPER_MONGODB_URI="mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@${QNAP_TAILSCALE_HOST}:${QNAP_MONGO_PORT}?authSource=admin"
+  export MONGODB_URI BEEPER_MONGODB_URI
+  log_info "DBA_MONGO_MODE=qnap — local dashboard will use QNAP's Mongo over Tailscale (${QNAP_TAILSCALE_HOST}:${QNAP_MONGO_PORT})."
+elif [ "$DBA_MONGO_MODE" != "local" ]; then
+  log_error "Invalid DBA_MONGO_MODE=\"$DBA_MONGO_MODE\" in $ENV_FILE — must be \"local\" or \"qnap\"."
+  exit 1
+fi

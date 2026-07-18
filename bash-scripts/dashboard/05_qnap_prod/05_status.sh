@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Shows container status + health for the QNAP PROD dashboard ONLY. For
-# shared mongo/content-provider-api status, see
+# shared mongo status, see
 # bash-scripts/dashboard/00_qnap_shared/05_status.sh. Never changes state.
 set -euo pipefail
 
@@ -28,4 +28,4 @@ else
 fi
 
 echo ""
-log_info "(Shared mongo/content-provider-api status: bash bash-scripts/dashboard/00_qnap_shared/05_status.sh)"
+log_info "(Shared mongo status: bash bash-scripts/dashboard/00_qnap_shared/05_status.sh)"

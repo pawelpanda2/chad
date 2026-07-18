@@ -3,6 +3,7 @@ import * as yaml from 'js-yaml';
 import {
   saveDailyEntry,
   updateDailyEntry,
+  deleteDailyEntry,
   getAllDailyEntries,
   getAllDateEntries,
   generateEntryName,
@@ -238,6 +239,36 @@ export async function PATCH(request: Request) {
       await updateDailyEntry(loca, bodyYaml);
     });
 
+    return NextResponse.json({ success: true, loca });
+  } catch (error) {
+    return NextResponse.json(
+      { success: false, error: error instanceof Error ? error.message : "Unknown error" },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * DELETE /api/forms/daily-entry?loca=<loca>
+ *
+ * Permanently removes a Daily Entry — real deletion, only available on the
+ * Mongo backend (see deleteDailyEntry's own doc comment in packages/dba).
+ */
+export async function DELETE(request: Request) {
+  const user = await getCurrentUserFromCookies();
+  if (!user) {
+    return NextResponse.json({ success: false, error: "Not authenticated" }, { status: 401 });
+  }
+
+  const loca = new URL(request.url).searchParams.get("loca");
+  if (!loca) {
+    return NextResponse.json({ success: false, error: "Missing loca" }, { status: 400 });
+  }
+
+  try {
+    await runWithRepoContext(user, async () => {
+      await deleteDailyEntry(loca);
+    });
     return NextResponse.json({ success: true, loca });
   } catch (error) {
     return NextResponse.json(

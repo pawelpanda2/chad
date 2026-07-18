@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Shows container status + health for the QNAP SHARED docker-compose stack
-# (mongo + content-provider-api). Never changes state.
+# (mongo). Never changes state.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -13,10 +13,8 @@ log_info "chad QNAP SHARED — status"
 echo ""
 
 cd "$REPO_ROOT"
-# `ps` still needs the compose file's `image:` field to interpolate, but
-# doesn't need a real tag (never pulls/runs it) — use the recorded tag if
-# present, otherwise a harmless placeholder (see image_tag_for_readonly).
-export IMAGE_TAG="$(image_tag_for_readonly "$(content_provider_image_tag_file)")"
+# No IMAGE_TAG needed — mongodb uses a plain upstream image (mongo:4.4),
+# not a templated `${IMAGE_TAG}`.
 docker compose -p "$COMPOSE_PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps
 
 echo ""
@@ -32,13 +30,4 @@ if [ "$mongo_state" = "healthy" ]; then
   log_ok "chad-mongodb healthy."
 else
   log_warn "chad-mongodb state: ${mongo_state:-not found}."
-fi
-
-echo ""
-if curl -fsS -m 3 "http://localhost:$CONTENT_PROVIDER_API_PORT/health" 2>/dev/null; then
-  echo ""
-  log_ok "content-provider-api healthy (port $CONTENT_PROVIDER_API_PORT)."
-else
-  echo ""
-  log_warn "content-provider-api did NOT respond on port $CONTENT_PROVIDER_API_PORT."
 fi

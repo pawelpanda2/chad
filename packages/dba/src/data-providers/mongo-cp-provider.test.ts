@@ -8,7 +8,7 @@
  */
 
 import { getMongoDb, closeMongoConnection } from "../mongo.js";
-import { MongoCpProvider, ITEMS_COLLECTION, FOLDER_CHILD_COUNTERS_COLLECTION, AddressConflictError } from "./mongo-cp-provider.js";
+import { MongoCpProvider, ITEMS_COLLECTION, FOLDER_CHILD_COUNTERS_COLLECTION, AddressConflictError, DuplicateChildNameError } from "./mongo-cp-provider.js";
 import { createTestClock } from "../data-clock.js";
 import type { CpItem } from "../cp-model.js";
 import type { PutItemCommand, CreateChildItemCommand } from "../data-commands.js";
@@ -173,6 +173,33 @@ async function runTests() {
     assertEquals(await provider.getByNames({ repoGuid: REPO, names: ["leads", "does not exist"] }), null);
   });
 
+  await test("getByNames2 throws DuplicateChildNameError when two siblings share a name (Story 72, 07/05 incident)", async () => {
+    const parentAddress = `${REPO}/05`;
+    await provider.executeWrite(
+      putCommand({ _id: "views-05", config: { id: "views-05", address: parentAddress, type: "Folder", name: "views" }, body: "" })
+    );
+    await provider.executeWrite(
+      putCommand({ _id: "dates-a", config: { id: "dates-a", address: `${parentAddress}/02`, type: "Folder", name: "dates" }, body: "" })
+    );
+    await provider.executeWrite(
+      putCommand({ _id: "dates-b", config: { id: "dates-b", address: `${parentAddress}/05`, type: "Folder", name: "dates" }, body: "" })
+    );
+
+    let threw = false;
+    try {
+      await provider.getByNames2({ repoGuid: REPO, loca: "05", names: ["dates"] });
+    } catch (e) {
+      threw = e instanceof DuplicateChildNameError;
+      if (threw) {
+        const err = e as DuplicateChildNameError;
+        assertEquals(err.parentAddress, parentAddress);
+        assertEquals(err.childName, "dates");
+        assertEquals(err.matchingAddresses.sort(), [`${parentAddress}/02`, `${parentAddress}/05`].sort());
+      }
+    }
+    assert(threw, "expected a DuplicateChildNameError, not a silently-picked match");
+  });
+
   await test("create-child-item allocates the next numeric address and a new id", async () => {
     const parentAddress = `${REPO}/10`;
     await provider.executeWrite(
@@ -268,6 +295,39 @@ async function runTests() {
     assertEquals(leaked, null);
     const allowed = await provider.getItem({ id: "other-repo-item" }, otherRepo);
     assert(allowed !== null, "should be readable with the correct repo guid");
+  });
+
+  await test("putItemConfig preserves the supplied id/custom fields and leaves body untouched", async () => {
+    const initial: CpItem = {
+      _id: "config-only-id",
+      config: { id: "config-only-id", address: `${REPO}/20`, type: "Text", name: "cfg" },
+      body: "original body",
+    };
+    await provider.executeWrite(putCommand(initial));
+
+    const updated = await provider.putItemConfig({
+      _id: "config-only-id",
+      config: { id: "config-only-id", address: `${REPO}/20`, type: "Text", name: "cfg-renamed", extra: "kept" },
+      body: "IGNORED — putItemConfig must not touch body",
+    });
+
+    assertEquals(updated.config.name, "cfg-renamed");
+    assertEquals(updated.config.extra, "kept");
+    assertEquals(updated.body, "original body");
+
+    const reread = await provider.getItem({ id: "config-only-id" });
+    assertEquals(reread?.body, "original body");
+    assertEquals(reread?.config.name, "cfg-renamed");
+  });
+
+  await test("putItemConfig on a brand-new id creates it with empty body", async () => {
+    const created = await provider.putItemConfig({
+      _id: "config-only-new",
+      config: { id: "config-only-new", address: `${REPO}/21`, type: "Text", name: "brand-new" },
+      body: "should be ignored",
+    });
+    assertEquals(created.body, "");
+    assertEquals(created.config.name, "brand-new");
   });
 
   console.log(`\n${passed} passed, ${failed} failed`);

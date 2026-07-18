@@ -13,8 +13,8 @@ files (confirmed byte-identical to `HEAD` afterward), and a documentation
 pass to remove every "disabled"/"replaced" framing that depended on the
 reverted behavior, reframing Story 70 throughout as strictly additive: old
 QNAP-build path unchanged and still fully valid, GHCR path new and
-optional, invoked only via `09_registry_test/06_deploy.sh` /
-`08_registry_prod/06_last_from_test.sh`.
+optional, invoked only via `08_registry_test/06_deploy.sh` /
+`09_registry_prod/06_last_from_test.sh`.
 
 `.env.local.example`/`.env.qnap.example` (new vars only) and
 `bash-scripts/common/lib.sh` (pure append, verified via `git diff` showing
@@ -43,7 +43,7 @@ four reverted files, just via addition rather than needing a revert.
   the single decision that made "reuse existing restart/status, don't
   duplicate" straightforward instead of requiring changes to four more
   files.
-- **`08_registry_prod/06_last_from_test.sh` pulls by digest, but writes
+- **`09_registry_prod/06_last_from_test.sh` pulls by digest, but writes
   TEST's own tag string (not a digest-derived one) into
   `.image-tag.chad-dashboard.env`** — satisfies the input's explicit "pull
   by digest" requirement (rigor) while keeping the tag-record file's
@@ -51,7 +51,7 @@ four reverted files, just via addition rather than needing a revert.
   than introducing a second, digest-derived tag naming scheme).
 - **Did not touch `07_qnap_prod_ssh/06_last_from_test.sh`** — reasoned
   through (not re-tested live) that it keeps working unmodified given the
-  shared-local-cache fact; kept both it and `08_registry_prod`'s version
+  shared-local-cache fact; kept both it and `09_registry_prod`'s version
   side by side rather than merging or deleting either, per the input's own
   "nie usuwaj od razu... najpierw sprawdź zależności."
 - **GitHub Actions workflow is `workflow_dispatch`-only** — no existing
@@ -89,11 +89,11 @@ four reverted files, just via addition rather than needing a revert.
 
 ## Proposals
 
-- Once real tokens exist: run `09_registry_test/06_deploy.sh` for real once
+- Once real tokens exist: run `08_registry_test/06_deploy.sh` for real once
   to validate the whole chain end-to-end, before relying on it for regular
   use.
 - Consider, in a future Story, whether `07_qnap_prod_ssh/06_last_from_test.sh`
-  should eventually be retired in favor of `08_registry_prod`'s version
+  should eventually be retired in favor of `09_registry_prod`'s version
   now that a GHCR-native path exists — not decided here, per "don't remove
   old paths immediately."
 - The `03_local_mac_docker` environment still builds `chad-dashboard`

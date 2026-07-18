@@ -1,41 +1,31 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUserFromCookies } from '@/lib/session';
-import { getItemByLoca } from '@/app/api/flow/cp-flow';
-import { assertOwnRepo, RepoAccessDeniedError } from 'dba';
+import { getItemByAddress, getChildrenOf } from 'dba';
 
 /**
  * GET /api/folders?loca=<slash-joined loca, omit or "" for repo root>&repoGuid=<optional>
  *
- * Generic Content Provider item fetch for the dashboard's Folders tab
+ * Generic Content Provider item explorer for the dashboard's Folders tab
  * (see documentation/stories/57, critical fix in documentation/stories/60).
+ * Reads through `dba`'s Mongo-backed item-ops (Story 72) — the .NET
+ * Content Provider is no longer deployed, so this no longer calls it.
  *
- * SECURITY: `repoGuid` is never trusted directly. The actual repo used for
- * the Content Provider call always comes from dba's `assertOwnRepo()`,
- * which independently resolves the caller's own repo via a strict, exact
- * `chad_<username>` name match against the Content Provider's real repo
- * list (documentation/dashboard/common/features/
- * chad-user-data-isolation.md). If the client also supplies a `repoGuid`
- * query param and it does not match that resolved repo, the request is
- * denied (403) — no exceptions for any username, including `pawel_f`
- * (a prior special case that made this endpoint the source of a critical
- * data-isolation bug — documentation/stories/60 — has been removed).
+ * SECURITY: `repoGuid` is never trusted directly. The repo actually used
+ * is always `user.repoGuid` from the login session (resolved once, at
+ * login time, against the Mongo-backed chad_admin users-list). If the
+ * client also supplies a `repoGuid` query param and it does not match, the
+ * request is denied (403) — no exceptions for any username.
  *
- * Uses cp-flow's invokeCp (the SAME direct-to-.NET-API mechanism every
- * other endpoint in this dashboard already uses), not the separate
- * cp-entry/cp-files/cp-mongo TypeScript rewrite packages — deliberately,
- * per explicit correction: this tab must keep working against the
- * existing, already-deployed .NET Content Provider, not a new dependency
- * that isn't part of the dashboard's Docker build.
+ * A Folder item's children (the `{index: name}` map the frontend renders)
+ * are NOT stored as the item's own `body` in Mongo — CP itself computes
+ * that view from the folder's real children on disk, and the migrator
+ * copied each item's own `body` (empty for Folders), not a derived
+ * listing. So Folder children are fetched separately via `getChildrenOf`
+ * and the map is rebuilt here from each child's own address (its last
+ * `/NN` segment is CP's own numeric index) — same shape the frontend
+ * already parses, just assembled server-side instead of read verbatim.
  */
 export async function GET(request: Request) {
-  const cpApiUrl = process.env.CONTENT_PROVIDER_API_URL;
-  if (!cpApiUrl) {
-    return NextResponse.json(
-      { error: 'CONTENT_PROVIDER_API_URL_NOT_SET' },
-      { status: 503 }
-    );
-  }
-
   const user = await getCurrentUserFromCookies();
   if (!user) {
     return NextResponse.json(
@@ -48,25 +38,36 @@ export async function GET(request: Request) {
   const loca = searchParams.get('loca') ?? '';
   const requestedRepoGuid = searchParams.get('repoGuid');
 
-  let repo;
-  try {
-    repo = await assertOwnRepo(user.username, requestedRepoGuid);
-  } catch (err) {
-    if (err instanceof RepoAccessDeniedError) {
-      return NextResponse.json({ error: 'FORBIDDEN_REPO' }, { status: 403 });
-    }
-    return NextResponse.json({ error: 'UNKNOWN_ERROR' }, { status: 502 });
+  if (requestedRepoGuid && requestedRepoGuid !== user.repoGuid) {
+    return NextResponse.json({ error: 'FORBIDDEN_REPO' }, { status: 403 });
   }
 
+  const address = loca ? `${user.repoGuid}/${loca}` : user.repoGuid;
+
   try {
-    const raw = await getItemByLoca(repo.id, loca);
+    const found = await getItemByAddress(address);
+    if (!found) {
+      return NextResponse.json({ error: `Item not found: address "${address}"` }, { status: 404 });
+    }
+
+    let body = found.body;
+    if (found.config.type === 'Folder') {
+      const children = await getChildrenOf(found.config.address);
+      const childMap: Record<string, string> = {};
+      for (const child of children) {
+        const index = child.config.address.split('/').pop() ?? child.config.address;
+        childMap[index] = child.config.name;
+      }
+      body = JSON.stringify(childMap);
+    }
+
     const item = {
-      Body: raw.Body,
-      Config: raw.Settings,
-      Settings: raw.Settings,
-      Address: raw.Settings.address,
+      Body: body,
+      Config: found.config,
+      Settings: found.config,
+      Address: found.config.address,
     };
-    return NextResponse.json({ item, repoGuid: repo.id, username: user.username });
+    return NextResponse.json({ item, repoGuid: user.repoGuid, username: user.username });
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'UNKNOWN_ERROR' },
