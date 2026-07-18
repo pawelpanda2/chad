@@ -31,7 +31,11 @@ operation — it promotes TEST's image, never builds).
 
 A `docker-compose.*.yml` file in this repo is **one component of a
 deployment process, not the process itself.** Before reasoning about one,
-read:
+start with `deploy/ai-start.md` — the reading-order index for everything in
+`ai-docs/deploy/`, including a callout on the single most common
+misdiagnosis (Content Provider is one shared *container* for TEST+PROD;
+Dashboard is one shared *image* promoted between two separate containers —
+these are not the same kind of "shared"). Then:
 1. `deploy/dashboard-deployment-scripts.md` — the actual contract: what
    each script does, in what order, and why (shared/test/prod split,
    `container_name` vs service-name DNS across separate Compose projects,

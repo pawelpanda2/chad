@@ -351,18 +351,41 @@ wymaga wpisania `PROD`.
 ### Git preflight — tylko `06_qnap_test_ssh/06_deploy.sh`
 
 Zapobiega wdrożeniu nieaktualnej wersji: sprawdza root repo, branch,
-detached HEAD, `git status --porcelain`, upstream, niewypchnięte commity —
-PRZED połączeniem SSH. Niezacommitowane zmiany → pokazuje `git status
---short`, ostrzega, pyta o commit (domyślnie N, przerywa jeśli odmowa).
-Ahead względem upstreamu → pyta o push (domyślnie Y). Brak nowych commitów
-na zdalnym (porównanie lokalnego HEAD ze zdalnym przez dodatkowe,
-read-only SSH) → ostrzega, pyta czy kontynuować (domyślnie N). Tryb
-`--non-interactive`: niezacommitowane zmiany i brak push = błąd, zero
-pytań. Logika żyje w `bash-scripts/common/lib.sh` (`git_deploy_preflight`),
-nie duplikowana. **Nie dotyczy** `03_restart.sh` (nie buduje) ani
-`06_last_from_test.sh` (PROD nigdy nie buduje z lokalnego kodu — dla PROD
-odpowiednikiem przejrzystości jest wyświetlenie promowanego obrazu przed
-potwierdzeniem, patrz niżej).
+detached HEAD, `git status --porcelain --ignore-submodules`, upstream,
+niewypchnięte commity — PRZED połączeniem SSH. Niezacommitowane zmiany →
+pokazuje `git status --short --ignore-submodules`, ostrzega, pyta o commit
+(domyślnie N, przerywa jeśli odmowa). Ahead względem upstreamu → pyta o
+push (domyślnie Y). Brak nowych commitów na zdalnym (porównanie lokalnego
+HEAD ze zdalnym przez dodatkowe, read-only SSH) → ostrzega, pyta czy
+kontynuować (domyślnie N). Tryb `--non-interactive`: niezacommitowane
+zmiany i brak push = błąd, zero pytań. Logika żyje w
+`bash-scripts/common/lib.sh` (`git_deploy_preflight`), nie duplikowana.
+**Nie dotyczy** `03_restart.sh` (nie buduje) ani `06_last_from_test.sh`
+(PROD nigdy nie buduje z lokalnego kodu — dla PROD odpowiednikiem
+przejrzystości jest wyświetlenie promowanego obrazu przed potwierdzeniem,
+patrz niżej).
+
+**`--ignore-submodules` (2026-07-18):** `packages/net-content-provider`
+jest gitowym submodułem; bez tej flagi zwykły `git status --porcelain`
+pokazywał go jako " M packages/net-content-provider" praktycznie zawsze
+(wskaźnik commita submoduła różni się od tego, co ma zapisane index repo
+nadrzędnego, nawet bez żadnych realnych, niezacommitowanych zmian w
+żadnym z obu repo) — co wywoływało pytanie o commit dla nieistniejącego
+problemu przy niemal każdym deploymencie. Preflight interesuje się tylko
+realnymi zmianami w samym repo `chad`, nie stanem submoduła.
+
+**Każde z trzech pytań preflightu ma trzy opcje, `[y/N/d]` lub
+`[Y/n/d]` (2026-07-18):**
+
+| Opcja | Znaczenie |
+|---|---|
+| `y`/`Y` | wykonaj zalecaną akcję (commit / push / kontynuuj mimo braku nowych commitów) i idź dalej |
+| `N`/puste (zależnie od domyślnej) | przerwij cały deployment |
+| `d`/`D` | **pomiń zalecaną akcję i mimo to zakończ preflight sukcesem** — deployment ruszy z tym, co aktualnie jest na `origin` (niezacommitowane/niewypchnięte lokalne zmiany NIE zostaną wdrożone), bez dalszych pytań |
+
+`d` to świadomy skrót dla sytuacji "wiem, że jest ostrzeżenie, chcę mimo to
+wdrożyć to, co już jest na zdalnym" — inny przypadek niż `y` przy pierwszych
+dwóch pytaniach, które faktycznie wykonują commit/push przed kontynuacją.
 
 ### Odporność `06_deploy.sh` na zerwane połączenie SSH podczas długiego builda (Story 66)
 
@@ -507,12 +530,29 @@ GHCR-natywnym następcą (jawna weryfikacja przez digest) — oba bezpieczne,
 
 ### Sekrety GHCR
 
-Dwa osobne tokeny GitHub (Personal Access Token, classic), nigdy ten sam:
+Dwa **osobne, oba faktycznie utworzone** tokeny GitHub (Personal Access
+Token, classic), nigdy ten sam:
 
 | Zmienna | Plik | Zakres | Użycie |
 |---|---|---|---|
 | `GHCR_PUSH_USERNAME`/`GHCR_PUSH_TOKEN` | `.env.local` (Mac) | `write:packages` **tylko** | `09_registry_test/02_build.sh` |
 | `GHCR_READ_USERNAME`/`GHCR_READ_TOKEN` | `.env.qnap` (QNAP) | `read:packages` **tylko** | `09_registry_test/03_restart.sh`, `08_registry_prod/06_last_from_test.sh` |
+
+**Posiadanie tylko `GHCR_PUSH_TOKEN` NIE wystarcza, żeby przetestować cały
+przepływ** — pozwoli zbudować i wypchnąć obraz z Maca (`02_build.sh`), ale
+`03_restart.sh` (pull na QNAP) i tak się nie uda, dopóki `GHCR_READ_TOKEN`
+nie istnieje w `.env.qnap` **na samym QNAP-ie** (nie w lokalnym `.env.qnap`
+na Macu — to dwie osobne kopie tego pliku, per-host, tak jak
+`.image-tag.*.env`). Mimo że `write:packages` technicznie implikuje też
+odczyt, token push **nigdy** nie trafia na QNAP — to świadoma granica
+minimalnych uprawnień (host, który tylko konsumuje obrazy, nie powinien
+móc ich nadpisywać), nie przeoczenie. Sprawdzenie, czy oba tokeny faktycznie
+istnieją (bez wypisywania ich wartości):
+
+```bash
+grep -E "^GHCR_PUSH_(USERNAME|TOKEN)=" .env.local              # lokalnie, Mac
+ssh <user>@<qnap-host> 'grep -E "^GHCR_READ_(USERNAME|TOKEN)=" <QNAP_REPO_DIR>/.env.qnap'
+```
 
 Utworzenie: https://github.com/settings/tokens → "Generate new token
 (classic)" → zaznacz **wyłącznie** odpowiedni scope → wygeneruj → wklej do
@@ -520,6 +560,21 @@ Utworzenie: https://github.com/settings/tokens → "Generate new token
 te zawierają tylko `change_me`). GitHub Actions nie potrzebuje żadnego z
 tych tokenów — używa automatycznego `GITHUB_TOKEN`, ograniczonego przez
 workflow'a własny blok `permissions: packages: write`.
+
+### Zasada ogólna: sekrety w `.env*`, reszta konfiguracji w `01_config.sh`
+
+**Sekrety (tokeny, hasła, klucze API) żyją WYŁĄCZNIE w plikach `.env*`**
+(`.env.local`, `.env.qnap` — gitignored, per-host). **Pozostała
+konfiguracja — zwłaszcza stałe potrzebne modułom zależnym danego
+środowiska (nazwy obrazów, rejestr, porty, nazwy projektów Compose) — żyje
+w `01_config.sh` tego katalogu środowiskowego**, nie w `.env*` i nie
+hardkodowana wprost w skryptach `02_*`-`07_*`. Przykład tego podziału:
+`GHCR_REGISTRY`/`GHCR_OWNER`/`GHCR_IMAGE` (nazwa rejestru/obrazu — niesekretne,
+w `08_registry_prod/01_config.sh` i `09_registry_test/01_config.sh`) obok
+`GHCR_PUSH_TOKEN`/`GHCR_READ_TOKEN` (sekretne, w `.env.local`/`.env.qnap`) —
+ten sam wzorzec co porty (`01_config.sh`) i hasła Mongo (`.env.qnap`). Nowy
+skrypt/moduł powinien trzymać się tego podziału zamiast wymyślać trzecie
+miejsce na konfigurację.
 
 ### GitHub Actions
 
