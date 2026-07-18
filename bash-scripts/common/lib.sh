@@ -892,7 +892,14 @@ ghcr_build_tag_push() {
   ref="$(ghcr_image_ref "$tag")"
 
   log_info "Building $ref (commit $git_sha)..." >&2
+  # --platform linux/amd64: QNAP is x86_64, but this build often runs on an
+  # Apple Silicon Mac, whose docker build defaults to arm64 — without this
+  # flag the pushed image runs fine locally but fails on QNAP with "exec
+  # format error" (confirmed 2026-07-18: dumb-init in the image is arm64,
+  # QNAP's `uname -m` is x86_64). Always target the real deploy host's
+  # architecture, not the build machine's.
   if ! ( cd "$REPO_ROOT" && docker build \
+      --platform linux/amd64 \
       -f packages/dashboard/Dockerfile \
       --target runner \
       --label "org.opencontainers.image.revision=$git_sha" \
