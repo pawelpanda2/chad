@@ -669,9 +669,15 @@ git_deploy_preflight() {
   log_info "Repo: $REPO_ROOT"
   log_info "Branch: $branch (upstream: $upstream)"
 
-  if [ -n "$(git -C "$REPO_ROOT" status --porcelain)" ]; then
+  # --ignore-submodules: a submodule pointer (packages/net-content-provider)
+  # regularly shows as " M packages/net-content-provider" under plain `git
+  # status --porcelain` purely because its checked-out commit differs from
+  # what the parent repo's index recorded — with zero real uncommitted work
+  # in either repo. Without this flag, every deploy hit the "uncommitted
+  # changes" prompt for a non-issue.
+  if [ -n "$(git -C "$REPO_ROOT" status --porcelain --ignore-submodules)" ]; then
     echo ""
-    git -C "$REPO_ROOT" status --short
+    git -C "$REPO_ROOT" status --short --ignore-submodules
     echo ""
     log_warn "Niezacommitowane zmiany istnieją lokalnie — NIE trafią na QNAP."
 
@@ -681,28 +687,36 @@ git_deploy_preflight() {
     fi
 
     local commit_confirm
-    read -r -p "Czy chcesz teraz zacommitować te zmiany? [y/N] " commit_confirm
-    if [ "$commit_confirm" != "y" ] && [ "$commit_confirm" != "Y" ]; then
-      log_error "Deployment cancelled."
-      return 1
-    fi
+    read -r -p "Czy chcesz teraz zacommitować te zmiany? [y/N/d] " commit_confirm
+    case "$commit_confirm" in
+      d|D)
+        log_warn "Pomijam commit (opcja d) — deployment wdroży wersję z $upstream, bez tych lokalnych zmian."
+        log_ok "Git preflight: wymuszony deploy mimo ostrzeżeń."
+        return 0
+        ;;
+      y|Y)
+        local commit_message
+        read -r -p "Podaj treść commit message: " commit_message
+        if [ -z "$commit_message" ]; then
+          log_error "Pusty commit message. Przerwano."
+          return 1
+        fi
 
-    local commit_message
-    read -r -p "Podaj treść commit message: " commit_message
-    if [ -z "$commit_message" ]; then
-      log_error "Pusty commit message. Przerwano."
-      return 1
-    fi
-
-    if ! git -C "$REPO_ROOT" add -A; then
-      log_error "'git add -A' nie powiodło się. Przerwano."
-      return 1
-    fi
-    if ! git -C "$REPO_ROOT" commit -m "$commit_message"; then
-      log_error "'git commit' nie powiodło się. Przerwano."
-      return 1
-    fi
-    log_ok "Zacommitowano: $commit_message"
+        if ! git -C "$REPO_ROOT" add -A; then
+          log_error "'git add -A' nie powiodło się. Przerwano."
+          return 1
+        fi
+        if ! git -C "$REPO_ROOT" commit -m "$commit_message"; then
+          log_error "'git commit' nie powiodło się. Przerwano."
+          return 1
+        fi
+        log_ok "Zacommitowano: $commit_message"
+        ;;
+      *)
+        log_error "Deployment cancelled."
+        return 1
+        ;;
+    esac
   fi
 
   ahead="$(git -C "$REPO_ROOT" rev-list --count "${upstream}..HEAD")"
@@ -715,17 +729,25 @@ git_deploy_preflight() {
     fi
 
     local push_confirm
-    read -r -p "Czy wykonać git push przed deploymentem? [Y/n] " push_confirm
-    if [ -z "$push_confirm" ] || [ "$push_confirm" = "y" ] || [ "$push_confirm" = "Y" ]; then
-      if ! git -C "$REPO_ROOT" push; then
-        log_error "'git push' nie powiodło się. Przerwano."
+    read -r -p "Czy wykonać git push przed deploymentem? [Y/n/d] " push_confirm
+    case "$push_confirm" in
+      d|D)
+        log_warn "Pomijam push (opcja d) — deployment wdroży wersję już obecną na $upstream, bez tych commitów."
+        log_ok "Git preflight: wymuszony deploy mimo ostrzeżeń."
+        return 0
+        ;;
+      ""|y|Y)
+        if ! git -C "$REPO_ROOT" push; then
+          log_error "'git push' nie powiodło się. Przerwano."
+          return 1
+        fi
+        log_ok "Wypchnięto do $upstream."
+        ;;
+      *)
+        log_error "Lokalne commity nie zostały wypchnięte — deployment przerwany (uruchomiłby starą wersję)."
         return 1
-      fi
-      log_ok "Wypchnięto do $upstream."
-    else
-      log_error "Lokalne commity nie zostały wypchnięte — deployment przerwany (uruchomiłby starą wersję)."
-      return 1
-    fi
+        ;;
+    esac
   fi
 
   # No-new-commits detection: compare local HEAD against what's actually
@@ -743,11 +765,14 @@ git_deploy_preflight() {
       log_info "Tryb --non-interactive: kontynuuję mimo braku nowych commitów (informacja, nie błąd)."
     else
       local continue_confirm
-      read -r -p "Czy mimo to kontynuować deployment? [y/N] " continue_confirm
-      if [ "$continue_confirm" != "y" ] && [ "$continue_confirm" != "Y" ]; then
-        log_error "Deployment cancelled."
-        return 1
-      fi
+      read -r -p "Czy mimo to kontynuować deployment? [y/N/d] " continue_confirm
+      case "$continue_confirm" in
+        y|Y|d|D) ;;
+        *)
+          log_error "Deployment cancelled."
+          return 1
+          ;;
+      esac
     fi
   fi
 
@@ -806,6 +831,19 @@ ghcr_docker_login() {
     log_error "GHCR username is missing (or still the placeholder 'change_me')."
     return 1
   fi
+
+  # Isolate this login from the host's default ~/.docker/config.json.
+  # Confirmed on QNAP (2026-07-18): Container Station's docker CLI wrapper
+  # (/lib/container-station/ld-wrapper.sh) unconditionally overrides $HOME
+  # to a QPKG-managed "homes/<user>" directory that may not exist/be
+  # writable for the SSH user — real failure was "mkdir .../homes/
+  # pawelfluder: permission denied", masked entirely by this function's own
+  # >/dev/null 2>&1 into a misleading "bad token" error. DOCKER_CONFIG is
+  # not touched by that wrapper, so pointing it at a writable, per-repo,
+  # gitignored directory sidesteps the problem on any host, not just QNAP.
+  export DOCKER_CONFIG="${DOCKER_CONFIG:-$REPO_ROOT/.runtime/docker-config}"
+  mkdir -p "$DOCKER_CONFIG"
+
   log_info "Logging in to $registry as $username..."
   if ! printf '%s' "$token" | docker login "$registry" --username "$username" --password-stdin >/dev/null 2>&1; then
     log_error "docker login to $registry failed (bad token, wrong scope, expired token, or network issue)."

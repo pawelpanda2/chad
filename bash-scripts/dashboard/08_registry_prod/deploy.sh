@@ -1,35 +1,24 @@
 #!/usr/bin/env bash
 # Promotes the exact image currently running on QNAP TEST to QNAP PROD via
-# GHCR (Story 70) — pulls it onto the QNAP host BY DIGEST (not just trusting
-# the shared local Docker image cache TEST's own pull already populated),
-# so the promotion is verifiable against the registry, not just "whatever
-# happens to be on disk."
+# GHCR — pulls it onto the QNAP host BY DIGEST (verifiable against the
+# registry, not just whatever happens to already be on disk). Never builds,
+# never creates a new tag. Reuses the existing, unmodified
+# bash-scripts/dashboard/05_qnap_prod/{03_restart,05_status}.sh for
+# everything after the pull — not duplicated here.
 #
-# Never builds. Never creates a new release tag. Reads TEST's currently
-# RUNNING image (not just a recorded tag file, in case of drift), shows the
-# user exactly what will be promoted — tag, digest, git SHA — plus PROD's
-# current image, before asking for confirmation. Aborts rather than
-# guessing if TEST's image can't be unambiguously determined, has no
-# recorded registry digest, or doesn't exist.
+# This is PROD's only deployment operation via GHCR (analogous to
+# bash-scripts/dashboard/07_qnap_prod_ssh/06_last_from_test.sh, which still
+# works too and relies on the shared local Docker image cache instead of an
+# explicit registry pull-by-digest).
 #
-# This is PROD's ONLY deployment operation — bash-scripts/dashboard/
-# 05_qnap_prod/{02_build,06_deploy}.sh do not exist (Story 63); PROD never
-# builds or deploys independently.
-#
-# Related, untouched by Story 70: bash-scripts/dashboard/07_qnap_prod_ssh/
-# 06_last_from_test.sh (Story 63's original) still works too — it relies on
-# TEST and PROD sharing one Docker host's local image cache rather than an
-# explicit registry pull. This script is the more rigorous, GHCR-native
-# successor; both are safe to keep.
+# Usage: ./deploy.sh   (asks for typed "PROD" confirmation, never skips it)
 set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel)"
 source "$REPO_ROOT/bash-scripts/common/lib.sh"
-source "$SCRIPT_DIR/01_config.sh"
+source "$SCRIPT_DIR/config.sh"
 load_qnap_ssh_config || exit 1
 
-# Single remote inspection call — read-only, pure `docker inspect`, no repo
-# checkout dependency at all.
 INSPECT_CMD='
 TEST_IMAGE_ID=$(docker inspect -f "{{.Image}}" chad-dashboard-test 2>/dev/null || true)
 if [ -z "$TEST_IMAGE_ID" ]; then echo "ERROR=TEST container not running or not found"; exit 1; fi
@@ -88,10 +77,9 @@ set -euo pipefail
 cd '$QNAP_REPO_DIR'
 REPO_ROOT="$QNAP_REPO_DIR"
 source bash-scripts/common/lib.sh
-source bash-scripts/dashboard/08_registry_prod/01_config.sh
-set -a
-source .env.qnap
-set +a
+source bash-scripts/dashboard/08_registry_prod/config.sh
+GHCR_READ_USERNAME="\$(read_env_var .env.qnap GHCR_READ_USERNAME)"
+GHCR_READ_TOKEN="\$(read_env_var .env.qnap GHCR_READ_TOKEN)"
 ghcr_docker_login "\$GHCR_REGISTRY" "\$GHCR_READ_USERNAME" "\$GHCR_READ_TOKEN"
 ghcr_pull_and_retag 'sha256:$TEST_DIGEST'
 docker tag "\$(ghcr_image_ref 'sha256:$TEST_DIGEST')" 'chad-dashboard:$TEST_TAG'
@@ -99,6 +87,8 @@ printf 'IMAGE_TAG=%s\n' '$TEST_TAG' > .image-tag.chad-dashboard.env.tmp.\$\$
 mv .image-tag.chad-dashboard.env.tmp.\$\$ .image-tag.chad-dashboard.env
 EOF
 )
+
+run_remote "Update repo on QNAP" "cd '$QNAP_REPO_DIR' && git pull --ff-only"
 run_remote "Pulling TEST's exact image onto QNAP by digest (for PROD)" "$PROMOTE_CMD"
 
 run_remote_script "05_qnap_prod" "03_restart.sh" "Restart QNAP PROD (promoted from TEST)"
