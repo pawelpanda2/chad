@@ -116,7 +116,7 @@ nigdy hardkodowana wprost w `02_*`-`07_*`. Pełny przykład podziału (GHCR):
   zmaterializował się na QNAP w momencie żądania), nie stały problem
   wymagający restartu.
 - **Posiadanie `GHCR_PUSH_TOKEN` (`.env.local`) NIE oznacza, że cały
-  przepływ `09_registry_test/06_deploy.sh` zadziała** — QNAP potrzebuje
+  przepływ `08_registry_test/06_deploy.sh` zadziała** — QNAP potrzebuje
   osobnego, faktycznie utworzonego `GHCR_READ_TOKEN` we WŁASNYM
   `.env.qnap` (na hoście QNAP, nie w lokalnej kopii na Macu). Sprawdź obie
   strony przed pierwszym testem tego przepływu — patrz

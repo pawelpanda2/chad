@@ -781,8 +781,8 @@ remote_repo_head() {
 # GHCR (GitHub Container Registry) helpers (Story 70). QNAP no longer builds
 # chad-dashboard — this is what replaces that: build+push happens LOCALLY
 # (Mac or GitHub Actions, never on QNAP), and QNAP only ever pulls. Used by
-# bash-scripts/dashboard/09_registry_test/{02_build,03_restart}.sh and
-# bash-scripts/dashboard/08_registry_prod/06_last_from_test.sh — one shared
+# bash-scripts/dashboard/08_registry_test/{02_build,03_restart}.sh and
+# bash-scripts/dashboard/09_registry_prod/06_last_from_test.sh — one shared
 # implementation, not duplicated per environment. GHCR_REGISTRY/GHCR_OWNER/
 # GHCR_IMAGE are non-secret (each environment's own 01_config.sh sets them);
 # GHCR_*_TOKEN values come from .env.local (push) / .env.qnap (read) and are
@@ -823,7 +823,7 @@ ghcr_docker_login() {
   fi
 
   # If the caller has already exported DOCKER_CONFIG (QNAP call sites do —
-  # see deploy.sh in 09_registry_test/08_registry_prod), make sure it
+  # see deploy.sh in 08_registry_test/09_registry_prod), make sure it
   # exists. Never set a default here: on QNAP, Container Station's docker
   # CLI wrapper (/lib/container-station/ld-wrapper.sh) unconditionally
   # overrides $HOME to a QPKG-managed "homes/<user>" directory that may not

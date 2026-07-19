@@ -77,7 +77,7 @@ set -euo pipefail
 cd '$QNAP_REPO_DIR'
 REPO_ROOT="$QNAP_REPO_DIR"
 source bash-scripts/common/lib.sh
-source bash-scripts/dashboard/08_registry_prod/config.sh
+source bash-scripts/dashboard/09_registry_prod/config.sh
 export DOCKER_CONFIG="\$REPO_ROOT/.runtime/docker-config"
 GHCR_READ_USERNAME="\$(read_env_var .env.qnap GHCR_READ_USERNAME)"
 GHCR_READ_TOKEN="\$(read_env_var .env.qnap GHCR_READ_TOKEN)"

@@ -37,7 +37,7 @@ PROD run on the **same physical QNAP host** sharing one Docker image
 cache — `07_qnap_prod_ssh/06_last_from_test.sh` (Story 63) continues to
 work completely unchanged too (it already just reads whatever
 `chad-dashboard-test` is running and re-points PROD's tag file at it).
-`08_registry_prod`'s new promotion script goes further per this Story's
+`09_registry_prod`'s new promotion script goes further per this Story's
 explicit ask (pull by digest from GHCR directly, not just trust the shared
 local cache) — see below.
 
@@ -58,7 +58,7 @@ untouched, and reused by the new flow via the existing
 
 ## New folders
 
-- `09_registry_test/` — `01_config.sh` (GHCR registry/image constants,
+- `08_registry_test/` — `01_config.sh` (GHCR registry/image constants,
   non-secret), `02_build.sh` (build locally + tag with git SHA[+timestamp]
   + push to GHCR — runs on whatever machine invokes it, never on QNAP),
   `03_restart.sh` (SSH: login if needed, pull, retag locally, record tag,
@@ -68,7 +68,7 @@ untouched, and reused by the new flow via the existing
   git preflight → `02_build.sh` → `03_restart.sh` → `05_status.sh` — the
   new primary entry point, replacing `06_qnap_test_ssh/06_deploy.sh`'s
   role). No `07_logs.sh` — `04_qnap_test` has none to wrap.
-- `08_registry_prod/` — `01_config.sh`, `03_restart.sh`/`04_end.sh`/
+- `09_registry_prod/` — `01_config.sh`, `03_restart.sh`/`04_end.sh`/
   `05_status.sh` (thin SSH passthroughs to `05_qnap_prod`, mirroring
   `07_qnap_prod_ssh`), `06_last_from_test.sh` (the promotion operation —
   reads TEST's current tag/digest/git-SHA, pulls that exact image from
@@ -81,16 +81,16 @@ untouched, and reused by the new flow via the existing
 New GHCR section: `ghcr_docker_login` (via `--password-stdin`, never
 echoing the token), `ghcr_build_tag_push` (build, tag `<timestamp>-<git-sha-short>`,
 push, capture digest), `ghcr_pull_and_retag`, `ghcr_image_ref`. Used by
-both `09_registry_test` and `08_registry_prod` — not duplicated.
+both `08_registry_test` and `09_registry_prod` — not duplicated.
 
 ## Secrets
 
 New vars, added to the *existing* env files (not a new file):
-- `.env.local.example` (Mac-side, used by `09_registry_test/02_build.sh`):
+- `.env.local.example` (Mac-side, used by `08_registry_test/02_build.sh`):
   `GHCR_REGISTRY`, `GHCR_OWNER`, `GHCR_IMAGE`, `GHCR_PUSH_USERNAME`,
   `GHCR_PUSH_TOKEN` (PAT, `write:packages` only).
-- `.env.qnap.example` (QNAP-side, used by `09_registry_test/03_restart.sh`
-  and `08_registry_prod/06_last_from_test.sh`, over SSH): `GHCR_REGISTRY`,
+- `.env.qnap.example` (QNAP-side, used by `08_registry_test/03_restart.sh`
+  and `09_registry_prod/06_last_from_test.sh`, over SSH): `GHCR_REGISTRY`,
   `GHCR_OWNER`, `GHCR_IMAGE`, `GHCR_READ_USERNAME`, `GHCR_READ_TOKEN` (PAT,
   `read:packages` only).
 
@@ -112,7 +112,7 @@ second implementation of "what the tag looks like").
 run of the tag-format function; grep the whole diff for anything that looks
 like a token/secret; static check that no `docker build`/`docker compose
 build` string remains reachable in the QNAP-facing scripts (`04_qnap_test`,
-`06_qnap_test_ssh`, `09_registry_test`, `08_registry_prod`) outside the
+`06_qnap_test_ssh`, `08_registry_test`, `09_registry_prod`) outside the
 explicitly-stubbed, refusing-to-run compatibility scripts; `docker compose
 config` against the edited `docker-compose.qnap.test.yml`. No deploy is run
 — building/pushing a real image and pulling it onto the real QNAP is a real

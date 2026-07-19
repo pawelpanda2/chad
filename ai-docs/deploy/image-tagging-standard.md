@@ -3,7 +3,7 @@
 Status: wdrożone i zweryfikowane na realnym QNAP, 2026-07-13. Story 70
 (2026-07-17/18) dodała RÓWNOLEGŁĄ, opcjonalną drogę: `chad-dashboard` może
 też być budowany i pushowany do `ghcr.io/pawelpanda2/chad-dashboard` (Mac
-lub GitHub Actions, przez `09_registry_test/`), skąd QNAP go pulluje —
+lub GitHub Actions, przez `08_registry_test/`), skąd QNAP go pulluje —
 zamiast (nie: obok, wybór) budowania bezpośrednio na QNAP przez
 `04_qnap_test/02_build.sh`, które działa bez zmian. Zasada tagowania niżej
 (jeden tag, nigdy `latest`) obowiązuje w obu wariantach; droga GHCR dodaje

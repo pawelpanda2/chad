@@ -23,8 +23,8 @@ Nie wykonuj szerokiego audytu całego repo. Po krótkiej analizie wdrażaj rozwi
 
 Utwórz dokładnie:
 
-bash-scripts/dashboard/08_registry_prod
-bash-scripts/dashboard/09_registry_test
+bash-scripts/dashboard/09_registry_prod
+bash-scripts/dashboard/08_registry_test
 
 Nie zmieniaj tych nazw ani kolejności.
 
@@ -53,7 +53,7 @@ lokalny Mac lub GitHub Actions
 
 Folder:
 
-bash-scripts/dashboard/09_registry_test
+bash-scripts/dashboard/08_registry_test
 
 ma obsługiwać pełny deployment TEST przez GHCR.
 
@@ -94,7 +94,7 @@ Wymagania:
 
 Folder:
 
-bash-scripts/dashboard/08_registry_prod
+bash-scripts/dashboard/09_registry_prod
 
 ma promować na PROD dokładnie ten sam obraz, który wcześniej został wdrożony i sprawdzony na TEST.
 
@@ -161,7 +161,7 @@ Jeżeli nie istnieje — dodaj minimalny workflow, który:
 
 Nie uruchamiaj workflow automatycznie przy każdym przypadkowym pushu, jeżeli nie wynika to z aktualnego standardu. Preferuj jawne `workflow_dispatch` albo istniejący mechanizm deploymentu.
 
-Jeżeli prostsze i zgodne z obecną architekturą jest budowanie na Macu przez `09_registry_test/02_build.sh`, możesz zachować oba warianty:
+Jeżeli prostsze i zgodne z obecną architekturą jest budowanie na Macu przez `08_registry_test/02_build.sh`, możesz zachować oba warianty:
 
 - lokalny build + push;
 - GitHub Actions build + push.
@@ -227,8 +227,8 @@ Zaktualizuj aktualną dokumentację deploymentu i tagowania obrazów.
 Opisz:
 
 - nowy przepływ build → GHCR → QNAP;
-- przeznaczenie `08_registry_prod`;
-- przeznaczenie `09_registry_test`;
+- przeznaczenie `09_registry_prod`;
+- przeznaczenie `08_registry_test`;
 - potrzebne sekrety;
 - ręczne utworzenie tokenów GitHub;
 - deployment TEST;
@@ -259,8 +259,8 @@ To zadanie miało być wyłącznie addytywne.
 
 Miałeś utworzyć nowe katalogi:
 
-- `bash-scripts/dashboard/08_registry_prod/`
-- `bash-scripts/dashboard/09_registry_test/`
+- `bash-scripts/dashboard/09_registry_prod/`
+- `bash-scripts/dashboard/08_registry_test/`
 
 Poprzednie skrypty działały dobrze i mają nadal działać dokładnie tak jak przed tą Story, bez zmiany zachowania.
 
@@ -293,8 +293,8 @@ Nie zmieniaj ich kontraktu.
 
 Nowy mechanizm GHCR ma istnieć równolegle i być uruchamiany wyłącznie przez:
 
-- `09_registry_test/06_deploy.sh`
-- `08_registry_prod/06_last_from_test.sh`
+- `08_registry_test/06_deploy.sh`
+- `09_registry_prod/06_last_from_test.sh`
 
 Najpierw pokaż:
 
@@ -308,7 +308,7 @@ Po cofnięciu wykonaj:
 
 - `git diff --name-status`
 - `bash -n` dla nowych skryptów registry
-- sprawdzenie, że stare skrypty nie odwołują się do `08_registry_prod` ani `09_registry_test`
+- sprawdzenie, że stare skrypty nie odwołują się do `09_registry_prod` ani `08_registry_test`
 - sprawdzenie, że nowe skrypty nie nadpisują starych plików konfiguracyjnych
 
 Nie commituj.
