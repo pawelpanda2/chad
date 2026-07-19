@@ -17,7 +17,7 @@
  */
 
 import { ObjectId } from "mongodb";
-import { getMongoDb } from "./mongo.js";
+import { getBeeperMongoDb } from "./mongo.js";
 
 // ── Collections ────────────────────────────────────────────────────────────
 
@@ -26,16 +26,16 @@ import { getMongoDb } from "./mongo.js";
 // and this module already does its own narrow, explicit typing on the way
 // out via the Beeper* view types below.
 async function contactsCol() {
-  return (await getMongoDb()).collection<any>("contacts");
+  return (await getBeeperMongoDb()).collection<any>("contacts");
 }
 async function channelsCol() {
-  return (await getMongoDb()).collection<any>("channels");
+  return (await getBeeperMongoDb()).collection<any>("channels");
 }
 async function messagesCol() {
-  return (await getMongoDb()).collection<any>("messages");
+  return (await getBeeperMongoDb()).collection<any>("messages");
 }
 async function timelineEventsCol() {
-  return (await getMongoDb()).collection<any>("timeline_events");
+  return (await getBeeperMongoDb()).collection<any>("timeline_events");
 }
 
 /**
@@ -1056,7 +1056,7 @@ ${historyStr}`;
  * Returns an unsubscribe function.
  */
 export async function subscribeToBeeperChanges(onChange: () => void): Promise<() => void> {
-  const db = await getMongoDb();
+  const db = await getBeeperMongoDb();
 
   let pollInterval: ReturnType<typeof setInterval> | null = null;
   let closed = false;

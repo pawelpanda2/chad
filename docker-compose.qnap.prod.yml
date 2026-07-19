@@ -41,6 +41,9 @@ services:
       # already had this) — without it, MongoCpProvider throws "MONGODB_URI
       # environment variable is not set" on every request.
       - MONGODB_URI=mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@chad-mongodb:27017/chad?authSource=admin
+      # Beeper CRM's own database — same chad-mongodb container, separate
+      # `beeper` database (contacts/channels/messages/timeline_events).
+      - BEEPER_MONGODB_URI=mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@chad-mongodb:27017/beeper?authSource=admin
       - DBA_MONGO_ENABLED=${DBA_MONGO_ENABLED:-true}
       - DBA_CONTENT_PROVIDER_ENABLED=${DBA_CONTENT_PROVIDER_ENABLED:-false}
       - DBA_PRIMARY_BACKEND=${DBA_PRIMARY_BACKEND:-mongo}
