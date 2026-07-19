@@ -13,7 +13,9 @@ import { execFile } from "child_process";
 import { promisify } from "util";
 import { homedir } from "os";
 import { join } from "path";
+import { resolveOwnerRepoGuid, ownerDatabaseName } from "./lib/owner-db.mjs";
 
+const repoGuid = resolveOwnerRepoGuid();
 const execFileAsync = promisify(execFile);
 // BEEPER_SQLITE_ACCOUNT_PATH overrides the full path; otherwise derive
 // account.db from BEEPER_SQLITE_PATH's directory (same BeeperTexts folder),
@@ -22,7 +24,7 @@ const ACCOUNT_DB = process.env.BEEPER_SQLITE_ACCOUNT_PATH
   || (process.env.BEEPER_SQLITE_PATH
         ? join(dirname(process.env.BEEPER_SQLITE_PATH), "account.db")
         : join(homedir(), "Library/Application Support/BeeperTexts/account.db"));
-const MONGO_URI  = process.env.MONGODB_URI || "mongodb://localhost:27017/beeper";
+const MONGO_URI  = process.env.MONGODB_URI || "mongodb://localhost:27017";
 
 async function sqliteQuery(db, sql) {
   const fullSQL = `PRAGMA busy_timeout=5000; ${sql}`;
@@ -36,7 +38,7 @@ async function sqliteQuery(db, sql) {
 
 const client = new MongoClient(MONGO_URI);
 await client.connect();
-const db = client.db();
+const db = client.db(ownerDatabaseName(repoGuid));
 
 console.log("[enrich-sqlite] Pobieranie profili z account.db (mx_user_profile)...");
 

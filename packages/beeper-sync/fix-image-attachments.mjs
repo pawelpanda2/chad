@@ -17,11 +17,13 @@ import { execFile } from "child_process";
 import { promisify } from "util";
 import { homedir } from "os";
 import { join } from "path";
+import { resolveOwnerRepoGuid, ownerDatabaseName } from "./lib/owner-db.mjs";
 
+const repoGuid = resolveOwnerRepoGuid();
 const execFileAsync = promisify(execFile);
 const SQLITE_DB = process.env.BEEPER_SQLITE_PATH
   || join(homedir(), "Library/Application Support/BeeperTexts/index.db");
-const MONGO_URI = process.env.MONGODB_URI || "mongodb://localhost:27017/beeper";
+const MONGO_URI = process.env.MONGODB_URI || "mongodb://localhost:27017";
 
 async function sqliteQuery(sql) {
   const fullSQL = `PRAGMA busy_timeout=5000; ${sql}`;
@@ -54,7 +56,7 @@ function parseAttachments(messageJSON) {
 
 const client = new MongoClient(MONGO_URI);
 await client.connect();
-const db = client.db();
+const db = client.db(ownerDatabaseName(repoGuid));
 const messagesCol = db.collection("messages");
 
 console.log("[fix-attachments] Szukam wiadomości bez pola attachments...");

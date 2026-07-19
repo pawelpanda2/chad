@@ -5,7 +5,7 @@
  * this route never touches MongoDB directly.
  */
 import { NextResponse } from "next/server";
-import { listBeeperContacts, type BeeperTag } from "dba";
+import { listBeeperContacts, runWithRepoContext, type BeeperTag } from "dba";
 import { getCurrentUserFromCookies } from "@/lib/session";
 
 const ALLOWED_TAGS = new Set(["business", "romantic", "friends"]);
@@ -21,13 +21,15 @@ export async function GET(request: Request) {
     return NextResponse.json({ ok: false, error: `Invalid tag: ${tagParam}` }, { status: 400 });
   }
 
-  try {
-    const contacts = await listBeeperContacts(
-      tagParam ? { tag: tagParam as BeeperTag } : undefined
-    );
-    return NextResponse.json(contacts);
-  } catch (error) {
-    console.error("Error listing beeper contacts:", error);
-    return NextResponse.json({ ok: false, error: String(error) }, { status: 500 });
-  }
+  return runWithRepoContext(user, async () => {
+    try {
+      const contacts = await listBeeperContacts(
+        tagParam ? { tag: tagParam as BeeperTag } : undefined
+      );
+      return NextResponse.json(contacts);
+    } catch (error) {
+      console.error("Error listing beeper contacts:", error);
+      return NextResponse.json({ ok: false, error: String(error) }, { status: 500 });
+    }
+  });
 }

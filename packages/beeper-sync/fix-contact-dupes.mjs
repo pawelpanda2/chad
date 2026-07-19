@@ -16,13 +16,15 @@ import dotenv from 'dotenv';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { MongoClient, ObjectId } from 'mongodb';
+import { resolveOwnerRepoGuid, ownerDatabaseName } from './lib/owner-db.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: resolve(__dirname, '../../.env.mac-beeper') });
 
+const repoGuid = resolveOwnerRepoGuid();
 const client = new MongoClient(process.env.MONGODB_URI);
 await client.connect();
-const db = client.db();
+const db = client.db(ownerDatabaseName(repoGuid));
 const contacts   = db.collection('contacts');
 const messages   = db.collection('messages');
 const channels   = db.collection('channels');

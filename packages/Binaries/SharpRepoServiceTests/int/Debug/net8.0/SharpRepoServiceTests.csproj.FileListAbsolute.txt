@@ -1,6 +1,0 @@
-/Users/pawelfluder/03_synch/01_files_programming/08_nodejs/chad/packages/Binaries/SharpRepoServiceTests/int/Debug/net8.0/SharpRepoServiceTests.csproj.AssemblyReference.cache
-/Users/pawelfluder/03_synch/01_files_programming/08_nodejs/chad/packages/Binaries/SharpRepoServiceTests/int/Debug/net8.0/SharpRepoServiceTests.GeneratedMSBuildEditorConfig.editorconfig
-/Users/pawelfluder/03_synch/01_files_programming/08_nodejs/chad/packages/Binaries/SharpRepoServiceTests/int/Debug/net8.0/SharpRepoServiceTests.AssemblyInfoInputs.cache
-/Users/pawelfluder/03_synch/01_files_programming/08_nodejs/chad/packages/Binaries/SharpRepoServiceTests/int/Debug/net8.0/SharpRepoServiceTests.AssemblyInfo.cs
-/Users/pawelfluder/03_synch/01_files_programming/08_nodejs/chad/packages/Binaries/SharpRepoServiceTests/int/Debug/net8.0/SharpRepoServiceTests.csproj.CoreCompileInputs.cache
-/Users/pawelfluder/03_synch/01_files_programming/08_nodejs/chad/packages/Binaries/SharpRepoServiceTests/int/Debug/net8.0/SharpRepoServiceTests.sourcelink.json

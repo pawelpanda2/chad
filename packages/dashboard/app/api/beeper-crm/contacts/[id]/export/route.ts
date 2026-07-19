@@ -4,7 +4,7 @@
  * (text/plain) for the "Copy for AI" dashboard button.
  */
 import { NextResponse } from "next/server";
-import { exportBeeperContactForAI } from "dba";
+import { exportBeeperContactForAI, runWithRepoContext } from "dba";
 import { getCurrentUserFromCookies } from "@/lib/session";
 
 interface RouteParams {
@@ -18,12 +18,14 @@ export async function GET(_request: Request, { params }: RouteParams) {
   }
 
   const { id } = await params;
-  try {
-    const markdown = await exportBeeperContactForAI(id);
-    return new NextResponse(markdown, {
-      headers: { "Content-Type": "text/plain; charset=utf-8" },
-    });
-  } catch (error) {
-    return NextResponse.json({ ok: false, error: String(error) }, { status: 400 });
-  }
+  return runWithRepoContext(user, async () => {
+    try {
+      const markdown = await exportBeeperContactForAI(id);
+      return new NextResponse(markdown, {
+        headers: { "Content-Type": "text/plain; charset=utf-8" },
+      });
+    } catch (error) {
+      return NextResponse.json({ ok: false, error: String(error) }, { status: 400 });
+    }
+  });
 }

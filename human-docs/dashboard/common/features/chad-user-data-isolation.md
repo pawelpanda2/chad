@@ -2,6 +2,23 @@
 
 Status: wdrożone i zweryfikowane lokalnie (Mac, non-Docker dev), 2026-07-12.
 
+**Update (2026-07-19, Story 73) — ten sam problem, druga, niezależna baza
+danych.** Wszystkie odwołania do "Beeper" w tym dokumencie (np. sekcja 9,
+"17 route'ów API") dotyczą `packages/dba/src/beeper.ts` — starszego,
+niezwiązanego feature'u (dopasowywanie statycznego eksportu WhatsApp z
+Content Providera do leadów randkowych; patrz `ai-docs/beeper/architecture.md`,
+"NOT to be confused with `./beeper.ts`"). Ten dokument **nigdy nie
+obejmował** feature'u **Beeper CRM** (`beeper-crm.ts`, `/api/beeper-crm/*`,
+zakładka "Beeper") — a ten korzysta z zupełnie innego magazynu danych
+(MongoDB, nie Content Provider), więc opisana tu naprawa (`repoGuid`,
+`runWithRepoContext`) go nie objęła. W efekcie Beeper CRM nadal czytał/pisał
+do jednej globalnej bazy MongoDB (`beeper`) dla wszystkich użytkowników —
+krytyczny bug izolacji danych, naprawiony w Story 73 przez dokładnie tę samą
+zasadę co tutaj (`repoGuid`, `runWithRepoContext`/`getCurrentRepoGuid()` z
+`packages/dba/src/repo-context.ts` — ten sam moduł), ale z **osobną bazą
+MongoDB per użytkownik** (`beeper_<repoGuid>`) zamiast pola `repoGuid` na
+Content Providerze. Pełny opis: [`ai-docs/beeper/ai-start.md`](../../../../ai-docs/beeper/ai-start.md).
+
 ## 1. Problem
 
 Przed tą zmianą **nie istniała żadna izolacja danych użytkowników**. Wszystkie

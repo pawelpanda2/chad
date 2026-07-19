@@ -3,7 +3,7 @@
  * Full contact detail: profile, channels, merged message timeline, timeline events.
  */
 import { NextResponse } from "next/server";
-import { getBeeperContact } from "dba";
+import { getBeeperContact, runWithRepoContext } from "dba";
 import { getCurrentUserFromCookies } from "@/lib/session";
 
 interface RouteParams {
@@ -17,14 +17,16 @@ export async function GET(_request: Request, { params }: RouteParams) {
   }
 
   const { id } = await params;
-  try {
-    const detail = await getBeeperContact(id);
-    if (!detail) {
-      return NextResponse.json({ ok: false, error: "Contact not found" }, { status: 404 });
+  return runWithRepoContext(user, async () => {
+    try {
+      const detail = await getBeeperContact(id);
+      if (!detail) {
+        return NextResponse.json({ ok: false, error: "Contact not found" }, { status: 404 });
+      }
+      return NextResponse.json(detail);
+    } catch (error) {
+      console.error(`Error fetching beeper contact ${id}:`, error);
+      return NextResponse.json({ ok: false, error: String(error) }, { status: 500 });
     }
-    return NextResponse.json(detail);
-  } catch (error) {
-    console.error(`Error fetching beeper contact ${id}:`, error);
-    return NextResponse.json({ ok: false, error: String(error) }, { status: 500 });
-  }
+  });
 }

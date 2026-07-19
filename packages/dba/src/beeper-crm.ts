@@ -14,10 +14,22 @@
  * messenger CRM (contacts/channels/messages/timeline_events).
  *
  * See documentation/beeper/mongo-schema.md for the collection shapes.
+ *
+ * Story 73: every function below operates on the *current* user's own
+ * `beeper_<repoGuid>` database — resolved via getCurrentRepoGuid()
+ * (packages/dba/src/repo-context.ts's AsyncLocalStorage context, the same
+ * mechanism leads.ts/reports.ts/statuses-dashboard.ts already use) and
+ * passed into getBeeperMongoDb(repoGuid). There is no global `beeper`
+ * database anymore and no fallback to any other user's database — a
+ * missing repo context throws loudly (via getCurrentRepoGuid()) rather than
+ * silently reading/writing the wrong user's data. Callers (Next.js API
+ * routes) must wrap their handler body in runWithRepoContext(user, ...)
+ * before calling into any function here.
  */
 
 import { ObjectId } from "mongodb";
 import { getBeeperMongoDb } from "./mongo.js";
+import { getCurrentRepoGuid } from "./repo-context.js";
 
 // ── Collections ────────────────────────────────────────────────────────────
 
@@ -26,32 +38,36 @@ import { getBeeperMongoDb } from "./mongo.js";
 // and this module already does its own narrow, explicit typing on the way
 // out via the Beeper* view types below.
 async function contactsCol() {
-  return (await getBeeperMongoDb()).collection<any>("contacts");
+  return (await getBeeperMongoDb(getCurrentRepoGuid())).collection<any>("contacts");
 }
 async function channelsCol() {
-  return (await getBeeperMongoDb()).collection<any>("channels");
+  return (await getBeeperMongoDb(getCurrentRepoGuid())).collection<any>("channels");
 }
 async function messagesCol() {
-  return (await getBeeperMongoDb()).collection<any>("messages");
+  return (await getBeeperMongoDb(getCurrentRepoGuid())).collection<any>("messages");
 }
 async function timelineEventsCol() {
-  return (await getBeeperMongoDb()).collection<any>("timeline_events");
+  return (await getBeeperMongoDb(getCurrentRepoGuid())).collection<any>("timeline_events");
 }
 
 /**
- * Idempotently ensures all indexes used by the Beeper CRM exist. Safe to
- * call on every process start (createIndex is a no-op if the index already
- * exists with the same spec). Mirrors the indexes created by beeper-sync,
- * beeper-ws and beeper-oplog's own db modules so the dashboard alone is
- * enough to bootstrap a fresh database.
+ * Idempotently ensures all indexes used by the Beeper CRM exist, in the
+ * given user's own `beeper_<repoGuid>` database. Safe to call on every
+ * process start (createIndex is a no-op if the index already exists with
+ * the same spec) and is also how a brand new user's database gets
+ * initialized with the right indexes before it has any data (see
+ * bash-scripts/mongo/migrate-beeper-to-per-user.mjs). Mirrors the indexes
+ * created by beeper-sync, beeper-ws and beeper-oplog's own db modules so
+ * the dashboard alone is enough to bootstrap a fresh database.
  */
-export async function ensureBeeperIndexes(): Promise<void> {
-  const [contacts, channels, messages, timelineEvents] = await Promise.all([
-    contactsCol(),
-    channelsCol(),
-    messagesCol(),
-    timelineEventsCol(),
-  ]);
+export async function ensureBeeperIndexes(repoGuid: string): Promise<void> {
+  const db = await getBeeperMongoDb(repoGuid);
+  const [contacts, channels, messages, timelineEvents] = [
+    db.collection<any>("contacts"),
+    db.collection<any>("channels"),
+    db.collection<any>("messages"),
+    db.collection<any>("timeline_events"),
+  ];
 
   await Promise.all([
     contacts.createIndex(
@@ -1054,9 +1070,14 @@ ${historyStr}`;
  * refetches on every ping) until the replica set migration lands.
  *
  * Returns an unsubscribe function.
+ *
+ * Must be called from within a runWithRepoContext(...) callback (same rule
+ * as every other function in this file) — reads getCurrentRepoGuid() once,
+ * up front, to resolve which user's database to watch. Only needs the repo
+ * context at this one setup call, not for the lifetime of the subscription.
  */
 export async function subscribeToBeeperChanges(onChange: () => void): Promise<() => void> {
-  const db = await getBeeperMongoDb();
+  const db = await getBeeperMongoDb(getCurrentRepoGuid());
 
   let pollInterval: ReturnType<typeof setInterval> | null = null;
   let closed = false;

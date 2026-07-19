@@ -2,8 +2,41 @@
 
 Status: implemented in this monorepo (2026-07-12), not yet deployed to a real
 Mac/QNAP runtime. Supersedes/implements the plan in
-`documentation/ai-docs/deploy/2026-07-10_decision-beeper-mac-qnap-architecture.md`
+`ai-docs/deploy/2026-07-10_decision-beeper-mac-qnap-architecture.md`
 and the "migracja modułów contacts" item that document explicitly deferred.
+
+**Update (2026-07-19, Story 73) — per-user database isolation.** A critical
+bug was found and fixed: every CHAD user's Beeper CRM session read/wrote
+the exact same single, global `beeper` MongoDB database — there was no
+per-user selection at all, so `kamil_s` could see (and could have edited,
+merged, or deleted) `pawel_f`'s real contacts, channels, and messages.
+Fixed by giving **each CHAD user their own database**, `beeper_<repoGuid>`
+(e.g. `beeper_21d11bdc-f1f4-44d1-b61a-3fa6b039c641` for `pawel_f`,
+`beeper_8b603669-f8e6-4224-bd78-a474998995fa` for `kamil_s`) — collection
+names inside stay exactly as documented below (`contacts`, `channels`,
+`messages`, ...), never prefixed, and no `ownerRepoGuid` field was added to
+any document. See `ai-start.md` in this folder for the full picture; the
+short version:
+
+- `packages/dba/src/mongo.ts`'s `getBeeperMongoDb(repoGuid)` is the single
+  place the `beeper_<repoGuid>` database name is computed — it requires and
+  validates a full GUID, has no fallback to any user or to the old shared
+  `beeper` database, and doesn't let a caller pass an arbitrary name.
+- The dashboard resolves `repoGuid` exclusively from the verified session
+  (`getCurrentUserFromCookies()`) and threads it through `dba`'s existing
+  `runWithRepoContext`/`getCurrentRepoGuid()` `AsyncLocalStorage` mechanism
+  (the same one `leads.ts`/`reports.ts`/etc. already used — Beeper CRM was
+  simply the one feature that had never adopted it). All 14
+  `app/api/beeper-crm/**` routes now wrap their handler body in
+  `runWithRepoContext(user, ...)`.
+- `beeper-sync`/`beeper-ws`/`beeper-oplog` have no Dashboard session, so
+  they require an explicit `BEEPER_OWNER_REPO_GUID` env var at startup —
+  missing or malformed, and the process refuses to start.
+- The old shared `beeper` database is **not deleted** — kept as a live
+  backup on both the local Mac Docker Mongo and QNAP's `chad-mongodb` until
+  the user explicitly approves its removal after full verification. See
+  `backlog/stories/73/` for the full migration record (backups taken,
+  dry-run reports, per-collection counts before/after).
 
 ## What this is
 
