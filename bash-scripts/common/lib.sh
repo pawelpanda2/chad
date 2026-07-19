@@ -111,15 +111,19 @@ ensure_docker_network() {
   log_ok "Created Docker network '$network'."
 }
 
-# Usage: require_shared_services_healthy 12024
+# Usage: require_shared_services_healthy
 # Preflight for TEST/PROD dashboard restart scripts: refuses to proceed
-# unless the shared chad-mongodb + chad-content-provider-api stack (started
-# separately by bash-scripts/dashboard/00_qnap_shared/03_restart.sh) is
-# already up and healthy. Never starts/restarts shared services itself —
-# only reads state.
+# unless the shared chad-mongodb stack (started separately by
+# bash-scripts/dashboard/00_qnap_shared/03_restart.sh) is already up and
+# healthy. Never starts/restarts shared services itself — only reads state.
+#
+# Content Provider (chad-content-provider-api) is no longer part of this
+# check — it's been removed from deployment (Mongo is the only active
+# runtime backend now; DBA_CONTENT_PROVIDER_ENABLED=false everywhere). The
+# .NET adapter code (`NetFileCpProvider`) and the `net-content-provider`
+# submodule are untouched — this is a deployment-only change, reversible by
+# re-adding the service to docker-compose.qnap.shared.yml.
 require_shared_services_healthy() {
-  local cp_port="$1"
-
   if ! docker network inspect chad-shared >/dev/null 2>&1; then
     log_error "Docker network 'chad-shared' does not exist."
     log_error "  Fix: bash bash-scripts/dashboard/00_qnap_shared/03_restart.sh (start shared services first)."
@@ -131,18 +135,6 @@ require_shared_services_healthy() {
   if [ "$mongo_state" != "healthy" ]; then
     log_error "Shared chad-mongodb container is not running/healthy (state: ${mongo_state:-not found})."
     log_error "  Fix: bash bash-scripts/dashboard/00_qnap_shared/03_restart.sh"
-    return 1
-  fi
-
-  if ! docker ps --filter "name=^chad-content-provider-api$" --filter "status=running" --format '{{.Names}}' | grep -qx "chad-content-provider-api"; then
-    log_error "Shared chad-content-provider-api container is not running."
-    log_error "  Fix: bash bash-scripts/dashboard/00_qnap_shared/03_restart.sh"
-    return 1
-  fi
-
-  if ! curl -fsS -m 3 "http://localhost:$cp_port/health" >/dev/null 2>&1; then
-    log_error "Shared content-provider-api did not respond on port $cp_port."
-    log_error "  Fix: bash bash-scripts/dashboard/00_qnap_shared/05_status.sh (diagnose shared stack)."
     return 1
   fi
 
@@ -227,18 +219,16 @@ ensure_port_available() {
 }
 
 # ============================================================================
-# Release-tag mechanism for CHAD's own images (chad-dashboard,
-# chad-content-provider-api). Own images never use `:latest` — every build
-# writes ONE canonical, gitignored tag-record file; every restart/deploy script
-# reads that same file and fails loudly if it's missing, instead of silently
-# defaulting to `:latest`. Full standard:
-# documentation/ai-docs/deploy/image-tagging-standard.md
+# Release-tag mechanism for CHAD's own images (chad-dashboard). Own images
+# never use `:latest` — every build writes ONE canonical, gitignored
+# tag-record file; every restart/deploy script reads that same file and
+# fails loudly if it's missing, instead of silently defaulting to `:latest`.
+# Full standard: documentation/ai-docs/deploy/image-tagging-standard.md
 # ============================================================================
 
-# Canonical per-image tag-record file paths. Callers must have REPO_ROOT set
+# Canonical per-image tag-record file path. Caller must have REPO_ROOT set
 # (same requirement as the rest of this file).
 dashboard_image_tag_file() { echo "$REPO_ROOT/.image-tag.chad-dashboard.env"; }
-content_provider_image_tag_file() { echo "$REPO_ROOT/.image-tag.chad-content-provider-api.env"; }
 
 # Usage: write_image_tag "$(dashboard_image_tag_file)" "$IMAGE_TAG"
 # Persists a release tag to disk. Call this as the LAST step of a build

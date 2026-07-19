@@ -37,3 +37,4 @@ export * from './data-router-instance.js';
 export * from './data-outbox-worker.js';
 export * from './data-sync-diagnostics.js';
 export * from './item-ops.js';
+export * from './admin-users.js';

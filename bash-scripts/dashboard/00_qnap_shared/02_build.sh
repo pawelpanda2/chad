@@ -1,9 +1,15 @@
 #!/usr/bin/env bash
-# Builds the shared content-provider-api image (the only buildable service
-# in docker-compose.qnap.shared.yml — mongodb uses a plain upstream image).
-# Only builds — never runs containers, never touches a running environment.
-# Run this directly on the QNAP host over SSH — there is no thin SSH wrapper
-# for the shared stack (Story 63 deliberately didn't add one).
+# Nothing to build in the QNAP SHARED stack anymore. Content Provider
+# (content-provider-api) — the only service here that was ever built from
+# source — has been removed from deployment (Mongo is the only active
+# runtime backend now; see docker-compose.qnap.shared.yml's header comment
+# for the reversible-removal note). `mongodb` uses a plain upstream image
+# (mongo:4.4), never built here.
+#
+# Kept as a no-op (rather than deleted) so the numbered-slot convention
+# (01_config/02_build/03_restart/04_end/05_status/06_deploy) stays intact
+# across every environment — see documentation/ai-docs/deploy/
+# dashboard-deployment-scripts.md.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -11,26 +17,5 @@ REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel)"
 source "$REPO_ROOT/bash-scripts/common/lib.sh"
 source "$SCRIPT_DIR/01_config.sh"
 
-require_command docker "install Docker" || exit 1
-require_file "$ENV_FILE" "cp .env.qnap.example .env.qnap and fill in real values (never commit .env.qnap)" || exit 1
-
-echo ""
 log_info "chad QNAP SHARED — build"
-echo ""
-
-cd "$REPO_ROOT"
-
-# Plain date+time tag, same convention as 04_qnap_test/05_qnap_prod. Own CHAD
-# images never get a `:latest` tag (see
-# documentation/ai-docs/deploy/image-tagging-standard.md) — this is the ONLY
-# tag this build produces.
-IMAGE_TAG="$(date +'%y%m%d_%H%M%S')"
-export IMAGE_TAG
-
-docker compose -p "$COMPOSE_PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" build --pull
-
-# Only reached if `build` succeeded (set -e) — never records a tag for a
-# failed build.
-write_image_tag "$(content_provider_image_tag_file)" "$IMAGE_TAG"
-
-log_ok "Image built: chad-content-provider-api:$IMAGE_TAG"
+log_ok "Nothing to build — mongodb uses a plain upstream image (mongo:4.4), and content-provider-api was removed from this stack."

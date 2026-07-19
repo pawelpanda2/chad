@@ -34,7 +34,7 @@ import type {
   GetItemInput,
 } from "./types.js";
 
-export const ITEMS_COLLECTION = "items";
+export const ITEMS_COLLECTION = "cp_items";
 export const FOLDER_CHILD_COUNTERS_COLLECTION = "folder_child_counters";
 
 export class AddressConflictError extends Error {
@@ -94,9 +94,8 @@ export class MongoCpProvider implements CpCompatibleDataProvider {
   /** Idempotent — safe to call every startup (Story 72 §10). */
   async ensureIndexes(db?: Db): Promise<void> {
     const database = db ?? (await getMongoDb());
-    await database
-      .collection<ItemDoc>(ITEMS_COLLECTION)
-      .createIndex({ "config.address": 1 }, { unique: true, name: "config_address_unique" });
+    const collection = database.collection<ItemDoc>(ITEMS_COLLECTION);
+    await collection.createIndex({ "config.address": 1 }, { unique: true, name: "config_address_unique" });
   }
 
   /**
@@ -133,7 +132,10 @@ export class MongoCpProvider implements CpCompatibleDataProvider {
 
     // Repo isolation: a caller-supplied bare `_id` must not leak another
     // repo's item just because the GUID happens to be guessable. See
-    // Story 72 03_knowledge.md, repo-context.ts section.
+    // Story 72 03_knowledge.md, repo-context.ts section. `config.address`'s
+    // first segment is the sole source of truth for which repo an item
+    // belongs to (no separate `repoGuid` field — exact match on the whole
+    // first segment, via `splitAddress`, not a substring check).
     if (expectedRepoGuid) {
       const { repoGuid } = splitAddress(doc.config.address);
       if (repoGuid !== expectedRepoGuid) {

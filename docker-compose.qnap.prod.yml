@@ -1,11 +1,14 @@
 # Docker Compose — QNAP PROD: dashboard ONLY.
 #
-# Uses the SAME shared MongoDB (chad-mongodb) and Content Provider
-# (chad-content-provider-api) as TEST — started by
+# Uses the SAME shared MongoDB (chad-mongodb) as TEST — started by
 # docker-compose.qnap.shared.yml (bash-scripts/dashboard/00_qnap_shared/).
 # Never starts/stops/rebuilds shared services itself — see
 # bash-scripts/dashboard/05_qnap_prod/03_restart.sh, which refuses to start
 # unless shared services are already up and healthy.
+#
+# Content Provider (content-provider-api) removed from this stack — Mongo
+# is the only active runtime backend now. See docker-compose.qnap.shared.yml's
+# header comment for the reversible-removal note.
 #
 # Used by bash-scripts/dashboard/05_qnap_prod/*.sh, plus
 # bash-scripts/dashboard/07_qnap_prod_ssh/*.sh (thin SSH wrappers over
@@ -31,17 +34,13 @@ services:
     environment:
       - NODE_ENV=production
       - NEXT_TELEMETRY_DISABLED=1
-      # Reaches the shared Content Provider by its container_name — service
-      # name resolution only works within the SAME compose project, and
-      # this dashboard is a separate project from docker-compose.qnap.shared.yml.
-      - CONTENT_PROVIDER_API_URL=http://chad-content-provider-api:12024
       - DATABASE_URL=file:/app/data/dev.db
       # Same shared chad-mongodb as TEST (see this file's own header
       # comment). Added to close a gap where this env block was never
       # updated when Mongo was wired into packages/dba (docker-compose.local.yml
       # already had this) — without it, MongoCpProvider throws "MONGODB_URI
       # environment variable is not set" on every request.
-      - MONGODB_URI=mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@chad-mongodb:27017/beeper?authSource=admin
+      - MONGODB_URI=mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@chad-mongodb:27017/chad?authSource=admin
       - DBA_MONGO_ENABLED=${DBA_MONGO_ENABLED:-true}
       - DBA_CONTENT_PROVIDER_ENABLED=${DBA_CONTENT_PROVIDER_ENABLED:-false}
       - DBA_PRIMARY_BACKEND=${DBA_PRIMARY_BACKEND:-mongo}

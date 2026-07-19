@@ -23,15 +23,6 @@ export IMAGE_TAG="$(image_tag_for_readonly "$(dashboard_image_tag_file)")"
 docker compose -p "$COMPOSE_PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps
 
 echo ""
-if curl -fsS -m 3 "http://localhost:$CONTENT_PROVIDER_API_PORT/health" 2>/dev/null; then
-  echo ""
-  log_ok "content-provider-api healthy (port $CONTENT_PROVIDER_API_PORT)."
-else
-  echo ""
-  log_warn "content-provider-api did NOT respond on port $CONTENT_PROVIDER_API_PORT."
-fi
-
-echo ""
 if curl -fsS -o /dev/null -m 3 -w '%{http_code}' "http://localhost:$DASHBOARD_PORT" 2>/dev/null | grep -qE '^[23]'; then
   log_ok "dashboard responds (port $DASHBOARD_PORT)."
 else

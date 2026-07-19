@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # SSHes into the QNAP and runs bash-scripts/dashboard/04_qnap_test/03_restart.sh
 # there (idempotent — stops+restarts if already running). Does not build.
-# Refuses to start unless shared services (mongo + content-provider-api) are
-# already up and healthy — see bash-scripts/dashboard/00_qnap_shared/.
+# Refuses to start unless shared services (mongo) are already up and
+# healthy — see bash-scripts/dashboard/00_qnap_shared/.
 set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel)"
