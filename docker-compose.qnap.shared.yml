@@ -42,10 +42,20 @@ services:
     image: mongo:4.4
     container_name: chad-mongodb
     restart: unless-stopped
-    # No host port published — dashboards/CP reach this only over the
-    # internal "chad-shared" Docker network by container_name
-    # (chad-mongodb:27017). Use `docker exec chad-mongodb mongo ...` or
-    # bash-scripts/mongo/backup.sh for host-side access.
+    # Host port 12040 published (2026-07-19) so MongoDB Compass and other
+    # host-side tools can connect over Tailscale
+    # (mongodb://<user>:<pass>@100.117.139.83:12040/chad?authSource=admin).
+    # 12040, not the container's native 27017: this project's QNAP port
+    # convention reserves 12020-12029 for TEST and 12030-12039 for PROD —
+    # 12040 is the next slot just past both ranges, not a random pick.
+    # QNAP's own Tailscale IP is only reachable over the Tailscale VPN, not
+    # the public internet, so this does not expose Mongo publicly.
+    # Dashboards/CP inside chad-shared still reach this by container_name
+    # (chad-mongodb:27017), unaffected — this only adds a second, host-level
+    # path in. `docker exec chad-mongodb mongo ...` /
+    # bash-scripts/mongo/backup.sh still work exactly as before.
+    ports:
+      - "12040:27017"
     environment:
       MONGO_INITDB_ROOT_USERNAME: "${MONGO_ROOT_USERNAME}"
       MONGO_INITDB_ROOT_PASSWORD: "${MONGO_ROOT_PASSWORD}"

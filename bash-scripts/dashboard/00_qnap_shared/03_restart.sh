@@ -80,4 +80,4 @@ log_ok "chad-mongodb healthy."
 
 echo ""
 log_ok "chad-shared stack is up."
-log_info "MongoDB: internal only (chad-mongodb:27017 on the chad-shared network)"
+log_info "MongoDB: chad-mongodb:27017 on the chad-shared network, also published on the QNAP host's port 12040 (Tailscale-reachable, e.g. MongoDB Compass)"
