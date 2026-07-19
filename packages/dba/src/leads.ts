@@ -1429,6 +1429,32 @@ export async function updateDailyEntry(loca: string, bodyYaml: string): Promise<
   }
 }
 
+/**
+ * Permanently removes a Daily Entry, identified by its real `loca`. Real
+ * deletion is only possible on the Mongo backend — the .NET Content
+ * Provider's own `Delete` is a permanent no-op stub (confirmed dead code
+ * there), so this throws rather than silently pretending to succeed when
+ * `contentProviderEnabled` and Mongo is not. Callers on that backend must
+ * keep using the existing "blank the fields in place" workaround
+ * (`updateDailyEntry` with blanked field values) instead.
+ */
+export async function deleteDailyEntry(loca: string): Promise<void> {
+  const config = loadDataProvidersConfig();
+  if (config.mongoEnabled) {
+    const repoGuid = getCurrentRepoGuid();
+    const address = loca ? `${repoGuid}/${loca}` : repoGuid;
+    const mongo = getMongoProvider();
+    const deleted = await mongo.deleteItem(address);
+    if (!deleted) {
+      throw new Error(`Could not find daily entry at loca "${loca}" to delete (Mongo)`);
+    }
+    return;
+  }
+  throw new Error(
+    "Daily entry deletion requires the Mongo backend — the Content Provider's own Delete is a non-functional stub."
+  );
+}
+
 async function updateDailyEntryContentProvider(loca: string, bodyYaml: string): Promise<void> {
   const repoGuid = getCurrentRepoGuid();
 

@@ -431,50 +431,46 @@ function FormsPageContent() {
     jakosc: "",
   });
 
-  // "Delete" (really: blank the entry's fields — see CLEAR_CONFIRM_WORDS)
-  // works the same way for both ADD DAILY ENTRY and ADD DATE's edit modes,
-  // branching on which form is currently selected.
+  // Daily Entries: real deletion (DELETE /api/forms/daily-entry), now that
+  // the Mongo backend supports it. Date Entries still use the old
+  // "blank the fields in place" workaround via PATCH — the Content Provider
+  // path (still relevant for Date Entries) has no working delete (confirmed
+  // empty stub — see backlog/stories/62's Task 9/28 write-ups), and Date
+  // Entries weren't part of this fix's scope. One of CLEAR_CONFIRM_WORDS is
+  // picked at random each time the confirmation dialog opens, so the user
+  // must actually read and retype it rather than muscle-memory a fixed word
+  // (Story 62 Round 8).
   const handleClearEntry = useCallback(async () => {
     if (!editLoca || clearConfirmInput.trim() !== clearConfirmWord) return;
     setClearing(true);
     try {
       const isDateForm = selectedForm === "date_entry";
-      const blankFields = isDateForm
-        ? {
-            "DATA": dateEntryData.data,
-            "ŹRÓDŁO": "",
-            "NAZWA": "",
-            "LINK": "",
-            "PULL": "FALSE",
-            "CLOSE": "NIE",
-            "JAKOŚĆ": "",
-          }
-        : {
-            "DATE": addActionData.date,
-            "STATE": "",
-            "TRAINING TIME": "",
-            "VERBAL EXERCISES": "NIE",
-            "INFIELD": "NIE",
-            "THEORY": "NIE",
-            "FIELD REVIEW": "NIE",
-            "ACTION TIME": "",
-            "OUTINGS": "",
-            "APPROACHES": "",
-            "LONG INTERACTIONS": "",
-            "NUMBERS": "",
-            "FIRST MESSAGES": "",
-            "RESPONSES": "",
-            "DATES SET UP": "",
-            "DATES": "",
-          };
-      const response = await fetch(isDateForm ? "/api/forms/date-entry" : "/api/forms/daily-entry", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ loca: editLoca, fields: blankFields }),
-      });
-      const result = await response.json();
-      if (!result.success) throw new Error(result.error || "Unknown error");
-      toast.success("Entry cleared");
+      if (isDateForm) {
+        const blankFields = {
+          "DATA": dateEntryData.data,
+          "ŹRÓDŁO": "",
+          "NAZWA": "",
+          "LINK": "",
+          "PULL": "FALSE",
+          "CLOSE": "NIE",
+          "JAKOŚĆ": "",
+        };
+        const response = await fetch("/api/forms/date-entry", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ loca: editLoca, fields: blankFields }),
+        });
+        const result = await response.json();
+        if (!result.success) throw new Error(result.error || "Unknown error");
+        toast.success("Entry cleared");
+      } else {
+        const response = await fetch(`/api/forms/daily-entry?loca=${encodeURIComponent(editLoca)}`, {
+          method: "DELETE",
+        });
+        const result = await response.json();
+        if (!result.success) throw new Error(result.error || "Unknown error");
+        toast.success("Entry deleted");
+      }
       setClearDialogOpen(false);
       router.push(isDateForm ? "/dashboard/views?view=dates" : "/dashboard/views?view=tracker");
     } catch (error) {
@@ -482,7 +478,7 @@ function FormsPageContent() {
     } finally {
       setClearing(false);
     }
-  }, [editLoca, clearConfirmInput, clearConfirmWord, selectedForm, addActionData.date, dateEntryData.data, router]);
+  }, [editLoca, clearConfirmInput, clearConfirmWord, selectedForm, dateEntryData.data, router]);
 
   // Contacts state
   const [contacts, setContacts] = useState<ContactLine[]>([]);
@@ -1121,10 +1117,10 @@ function FormsPageContent() {
               {/* Save lives in its own top frame — Story 62 standard: save
                   controls always live at the top, inside the main frame,
                   even when there's no generated-name field to group it with.
-                  Clear (edit mode only) lives here too — Content Provider
-                  has no working delete, so this blanks the entry's fields
-                  via the same real PATCH path rather than removing the row
-                  (Story 62 Round 8). */}
+                  Delete (edit mode only) lives here too — real deletion via
+                  the Mongo backend (Story 72 follow-up), unlike the old
+                  Content-Provider-only "blank the fields" workaround Date
+                  Entries below still use. */}
               <div className={cn("flex flex-wrap items-center gap-3 max-w-[460px] rounded-lg border bg-muted/10", SAVE_FRAME_PADDING_CLASS)}>
                 <Button type="submit" disabled={isSubmitting || entryStillLoading}>
                   {isSubmitting ? "Saving..." : "Save"}
@@ -1136,7 +1132,7 @@ function FormsPageContent() {
                       variant="destructive"
                       disabled={entryStillLoading}
                       onClick={openClearDialog}
-                      title="Content Provider has no working delete — this blanks the entry's fields instead of removing the row"
+                      title="Permanently deletes this Daily Entry"
                     >
                       Delete
                     </Button>
@@ -1207,19 +1203,15 @@ function FormsPageContent() {
             </form>
 
             {/* Delete confirmation — retype a randomly-picked word so this
-                can't be triggered by muscle memory (Story 62 Round 8). Labeled
-                "Delete" per the user's explicit choice, but Content Provider
-                still has no working delete — this really blanks the entry's
-                fields via the same PATCH path, spelled out below so nobody
-                is misled about what actually happens. */}
+                can't be triggered by muscle memory (Story 62 Round 8). Real
+                deletion via the Mongo backend — the row is actually removed,
+                not blanked. */}
             <Dialog open={clearDialogOpen} onOpenChange={(open) => !clearing && setClearDialogOpen(open)}>
               <DialogContent>
                 <DialogHeader>
                   <DialogTitle>Delete this entry?</DialogTitle>
                   <DialogDescription>
-                    Content Provider has no working delete, so this blanks every field on this
-                    Daily Entry instead — the row itself stays in the table, empty. This can&apos;t
-                    be undone from here.
+                    This permanently removes this Daily Entry. This can&apos;t be undone.
                   </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-2">
