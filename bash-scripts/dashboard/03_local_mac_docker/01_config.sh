@@ -26,3 +26,35 @@ DASHBOARD_PORT=12020
 MONGODB_PORT=27017
 
 export DASHBOARD_PORT MONGODB_PORT
+
+# DBA_MONGO_MODE — single switch for which Mongo the LOCAL dashboard
+# container talks to, read from .env.local (default: "local").
+#   local (default): unchanged — MONGODB_URI/BEEPER_MONGODB_URI come
+#     straight from .env.local (the local chad-mongodb-local-mac-docker
+#     container started by this same stack).
+#   qnap: this script overrides both env vars here, exported into the
+#     shell BEFORE `docker compose up` runs — Compose gives shell-exported
+#     vars priority over the same names in --env-file, so this wins
+#     without editing .env.local. Points at QNAP's chad-mongodb over
+#     Tailscale (100.117.139.83:12040, published in
+#     docker-compose.qnap.shared.yml — see that file's header comment),
+#     same credentials as local (MONGO_ROOT_USERNAME/PASSWORD, "change_me"
+#     on both sides). The local chad-mongodb-local-mac-docker container
+#     still starts (this stack always runs both services) but simply goes
+#     unused in this mode.
+DBA_MONGO_MODE="$(read_env_var "$ENV_FILE" DBA_MONGO_MODE)"
+DBA_MONGO_MODE="${DBA_MONGO_MODE:-local}"
+
+if [ "$DBA_MONGO_MODE" = "qnap" ]; then
+  QNAP_TAILSCALE_HOST="100.117.139.83"
+  QNAP_MONGO_PORT="12040"
+  MONGO_ROOT_USERNAME="$(read_env_var "$ENV_FILE" MONGO_ROOT_USERNAME)"
+  MONGO_ROOT_PASSWORD="$(read_env_var "$ENV_FILE" MONGO_ROOT_PASSWORD)"
+  MONGODB_URI="mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@${QNAP_TAILSCALE_HOST}:${QNAP_MONGO_PORT}/chad?authSource=admin"
+  BEEPER_MONGODB_URI="mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@${QNAP_TAILSCALE_HOST}:${QNAP_MONGO_PORT}/beeper?authSource=admin"
+  export MONGODB_URI BEEPER_MONGODB_URI
+  log_info "DBA_MONGO_MODE=qnap — local dashboard will use QNAP's Mongo over Tailscale (${QNAP_TAILSCALE_HOST}:${QNAP_MONGO_PORT})."
+elif [ "$DBA_MONGO_MODE" != "local" ]; then
+  log_error "Invalid DBA_MONGO_MODE=\"$DBA_MONGO_MODE\" in $ENV_FILE — must be \"local\" or \"qnap\"."
+  exit 1
+fi
