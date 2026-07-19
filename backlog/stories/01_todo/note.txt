@@ -1,18 +1,73 @@
-//done
-	//nagrywanie raportów
-		- funkcja głosowa
-		- żeby można było głosowo nagrać raport
+//todo; 04
+	//beeper include exclude
+		- koniecznie mozliwosc wybrania tych co chcemy zaincludowac
+		- i wybrania tych co nie chcemy nawet jak przez pomylke beda na liscie include
+		- i to zarowno w guid chad
+		- i narazie w pliku repo
+		- potem bedziemy to aktulizowac do pluginu
+		- albo inaczej zeby sie nie pobieraly zadane wiadomosci na poczatku
+		- a pojawiala sie lista kontaktow bez wiadomosci z nimi
+		- i w tabeli trzeba zaznaczyc include albo exclude
+
+	//czas trwania deploy
+		- w skryptach chce mniec timer
+		- i na koncu pokazane czasy
+		- ile trwala calosc
+		- i poszczegolne fazy
 		
-	//mobile
-		- w wersji na telefon w formularzu Reports
-		- przycisk Create powinien być w nowej linii
-		- być może w przeglądarce na laptopie też powinien
+	//local robi beeper synch
+		- niech lokalna wersja po uruchomieniu
+		- ma juz beeper synch do qnap
 		
-	//selection preview / editor
-		- w niektórych przypadkach w edytorze powinno się zaznaczać pierwsze Preview
-		- w niektórych Editor
-		- więc trzeba poprawić edytor, żeby miał taką opcję / flagę
-		- i w przypadku raportów po ich utworzeniu
+	//qnap -> server1
+		- odkrywanie w repo ze uzywam qnap jest niebezpieczne
+		- tym bardziej ze u'publiczniam repo dla chatgpt
+		- nie uzywajmy w kodzie i w dokumentacji i skryptach
+		- nazwy qnap neich bedzie server1
+		
+	//test widoczne bledy
+		- to jest tricky
+		- bo jezeli to jest ten sam obraz
+		- to nie wiem czy mozna to ustawic flaga jedna
+		- moze sie da zeby backend nei wysylal errorow na prod
+		- moze lepiej identyfikatory bledow i widocznoasc
+		
+	//identyfikatowry bledow
+		- i widoczne na local wersji
+		
+	//dev panel update
+		- w zakładce dev panel wszystkie metody cp 
+		- w zakładce dev panel wszystkie endpointy api
+		
+	//foldery package content-provider
+		- net-provider
+		- mongo-provider
+		- files-provider
+		
+	//udokumentowac dla ai porty
+		- test: 12020-12029
+		- prod: 12030-12039
+		- mongo 12040
+		- reszte tez znalezc gdzie dzialalo net-cp i inne serwisy
+
+	//kąt widzenia
+		//minimalny pakiet
+			- czyli 1) rok z min 100 dniami
+			- plus odchaczenia
+			- czyli kilka razy dziewczyna wroci z klubu
+			- kilka razy z dnia
+			
+		//daje energie
+			- ta sprawa daje mi energię / chęć do życi
+			- pracowania nad różnymi rzeczyami
+			- ale czym to jest
+			- ta misja w ktora jestem tak zaangażowany
+			
+		//poprowadzic ruch separacyjny
+			- nieraz mysli ida w mi w strone
+			- niepotrzebnych wyobrazen
+			- ze stanolbym na czele takiego ruchu separacyjnego
+			- od kobiet
 
 //-----------------
 
@@ -244,3 +299,19 @@
 		- (- Jeśli **piątek jest dzisiaj**, wyślij:)
 		- inne podstawowe informacje na górze promptu
 		- dodatkowa opcja dla raportów z randek: czy randka się odbyła
+
+//done; 01
+	//nagrywanie raportów
+		- funkcja głosowa
+		- żeby można było głosowo nagrać raport
+		
+	//mobile
+		- w wersji na telefon w formularzu Reports
+		- przycisk Create powinien być w nowej linii
+		- być może w przeglądarce na laptopie też powinien
+		
+	//selection preview / editor
+		- w niektórych przypadkach w edytorze powinno się zaznaczać pierwsze Preview
+		- w niektórych Editor
+		- więc trzeba poprawić edytor, żeby miał taką opcję / flagę
+		- i w przypadku raportów po ich utworzeniu

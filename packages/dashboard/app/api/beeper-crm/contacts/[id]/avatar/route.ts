@@ -7,7 +7,7 @@
  * multiply payload size across hundreds of contacts.
  */
 import { NextResponse } from "next/server";
-import { getBeeperContactAvatar } from "dba";
+import { getBeeperContactAvatar, runWithRepoContext } from "dba";
 import { getCurrentUserFromCookies } from "@/lib/session";
 
 interface RouteParams {
@@ -21,20 +21,22 @@ export async function GET(_request: Request, { params }: RouteParams) {
   }
 
   const { id } = await params;
-  const avatarURL = await getBeeperContactAvatar(id);
-  if (!avatarURL) {
-    return new NextResponse(null, { status: 404 });
-  }
+  return runWithRepoContext(user, async () => {
+    const avatarURL = await getBeeperContactAvatar(id);
+    if (!avatarURL) {
+      return new NextResponse(null, { status: 404 });
+    }
 
-  const dataUriMatch = avatarURL.match(/^data:([^;]+);base64,(.+)$/);
-  if (dataUriMatch) {
-    const [, contentType, base64] = dataUriMatch;
-    return new NextResponse(Buffer.from(base64, "base64"), {
-      headers: { "Content-Type": contentType, "Cache-Control": "public, max-age=3600" },
-    });
-  }
+    const dataUriMatch = avatarURL.match(/^data:([^;]+);base64,(.+)$/);
+    if (dataUriMatch) {
+      const [, contentType, base64] = dataUriMatch;
+      return new NextResponse(Buffer.from(base64, "base64"), {
+        headers: { "Content-Type": contentType, "Cache-Control": "public, max-age=3600" },
+      });
+    }
 
-  // Not a data URI — a plain external URL (e.g. from a future Google
-  // Contacts sync). Redirect rather than proxy.
-  return NextResponse.redirect(avatarURL);
+    // Not a data URI — a plain external URL (e.g. from a future Google
+    // Contacts sync). Redirect rather than proxy.
+    return NextResponse.redirect(avatarURL);
+  });
 }

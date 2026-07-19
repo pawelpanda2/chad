@@ -2,13 +2,15 @@ import dotenv from 'dotenv';
 import { MongoClient } from 'mongodb';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { resolveOwnerRepoGuid, ownerDatabaseName } from './lib/owner-db.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: resolve(__dirname, '../../.env.mac-beeper') });
 
+const repoGuid = resolveOwnerRepoGuid();
 const client = new MongoClient(process.env.MONGODB_URI);
 await client.connect();
-const db = client.db();
+const db = client.db(ownerDatabaseName(repoGuid));
 const col = db.collection('contacts');
 
 // Ile kontaktów ma senderID: null w identities

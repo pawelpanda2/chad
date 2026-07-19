@@ -5,6 +5,23 @@ Migrates the standalone `contacts` project (packages: `beeper-sync`,
 `architecture.md` for the target architecture and `mongo-schema.md` for the
 collection shapes.
 
+**Update (2026-07-19, Story 73) — second, unrelated migration layered on
+top of this one.** Everything below describes Story 59's migration of data
+*from the standalone `contacts` project* into this monorepo's single shared
+`beeper` database. That single shared database turned out to be a critical
+data-isolation bug (every CHAD user read/wrote the same database) and has
+since been superseded by a **second migration**, from that one shared
+`beeper` database into **one database per CHAD user**
+(`beeper_<repoGuid>`) — see `architecture.md`'s Story 73 update and
+`backlog/stories/73/` for the full record (this doc is not rewritten here,
+per this repo's rule against rewriting another Story's history). Concretely:
+`pawel_f`'s data now also lives in `beeper_21d11bdc-f1f4-44d1-b61a-3fa6b039c641`
+(both on the local Mac Docker Mongo and QNAP's `chad-mongodb`), and
+`kamil_s`'s new, empty database `beeper_8b603669-f8e6-4224-bd78-a474998995fa`
+was initialized with the same indexes. The old shared `beeper` database
+described throughout this document still exists as a live backup, untouched,
+pending the user's separate approval to remove it.
+
 ## What "done" means here
 
 This migration has two independent halves:

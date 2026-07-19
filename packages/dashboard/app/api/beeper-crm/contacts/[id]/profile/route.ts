@@ -3,7 +3,7 @@
  * Updates editable profile fields (displayName, bio, notes, ratings, ...).
  */
 import { NextResponse } from "next/server";
-import { updateBeeperContactProfile } from "dba";
+import { updateBeeperContactProfile, runWithRepoContext } from "dba";
 import { getCurrentUserFromCookies } from "@/lib/session";
 
 interface RouteParams {
@@ -19,11 +19,13 @@ export async function PATCH(request: Request, { params }: RouteParams) {
   const { id } = await params;
   const body = await request.json().catch(() => ({}));
 
-  try {
-    const result = await updateBeeperContactProfile(id, body);
-    return NextResponse.json({ ok: true, ...result });
-  } catch (error) {
-    console.error(`Error updating beeper contact profile ${id}:`, error);
-    return NextResponse.json({ ok: false, error: String(error) }, { status: 400 });
-  }
+  return runWithRepoContext(user, async () => {
+    try {
+      const result = await updateBeeperContactProfile(id, body);
+      return NextResponse.json({ ok: true, ...result });
+    } catch (error) {
+      console.error(`Error updating beeper contact profile ${id}:`, error);
+      return NextResponse.json({ ok: false, error: String(error) }, { status: 400 });
+    }
+  });
 }

@@ -7,7 +7,7 @@
  * identities/channels/messages/timeline_events reassignment logic.
  */
 import { NextResponse } from "next/server";
-import { mergeBeeperContacts } from "dba";
+import { mergeBeeperContacts, runWithRepoContext } from "dba";
 import { getCurrentUserFromCookies } from "@/lib/session";
 
 interface RouteParams {
@@ -26,10 +26,12 @@ export async function POST(request: Request, { params }: RouteParams) {
     return NextResponse.json({ ok: false, error: "mergeWithId is required" }, { status: 400 });
   }
 
-  try {
-    const result = await mergeBeeperContacts(id, mergeWithId);
-    return NextResponse.json({ ok: true, primaryId: id, ...result });
-  } catch (error) {
-    return NextResponse.json({ ok: false, error: String(error) }, { status: 400 });
-  }
+  return runWithRepoContext(user, async () => {
+    try {
+      const result = await mergeBeeperContacts(id, mergeWithId);
+      return NextResponse.json({ ok: true, primaryId: id, ...result });
+    } catch (error) {
+      return NextResponse.json({ ok: false, error: String(error) }, { status: 400 });
+    }
+  });
 }

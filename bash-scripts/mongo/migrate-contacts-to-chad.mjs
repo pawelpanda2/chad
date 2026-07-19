@@ -1,8 +1,19 @@
 #!/usr/bin/env node
 /**
- * One-time migration: copies the Beeper CRM collections from the standalone
- * `contacts` project's MongoDB database into the shared `chad` MongoDB
- * database, preserving _id values (so cross-collection ObjectId references —
+ * One-time migration (already run historically): copies the Beeper CRM
+ * collections from the standalone `contacts` project's MongoDB database
+ * into the shared, global `beeper` database on `chad-mongodb`.
+ *
+ * SUPERSEDED as of Story 73: the target architecture is no longer one
+ * shared `beeper` database — each CHAD user now has their own
+ * `beeper_<repoGuid>` database (see
+ * bash-scripts/mongo/migrate-beeper-to-per-user.mjs, the per-user
+ * migration that followed this one). Kept as-is for historical record —
+ * do not re-run against a live target; if you do, note that
+ * dba's `ensureBeeperIndexes()` now requires a `repoGuid` argument (the
+ * `await ensureBeeperIndexes()` call below with no argument will throw).
+ *
+ * Preserves _id values (so cross-collection ObjectId references —
  * channelID, contactID, mergedInto, mergedFrom — stay valid).
  *
  * Safe by design:

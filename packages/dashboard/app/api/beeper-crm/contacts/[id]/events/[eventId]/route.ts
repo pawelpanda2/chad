@@ -2,7 +2,7 @@
  * DELETE /api/beeper-crm/contacts/[id]/events/[eventId]
  */
 import { NextResponse } from "next/server";
-import { deleteBeeperContactEvent } from "dba";
+import { deleteBeeperContactEvent, runWithRepoContext } from "dba";
 import { getCurrentUserFromCookies } from "@/lib/session";
 
 interface RouteParams {
@@ -16,10 +16,12 @@ export async function DELETE(_request: Request, { params }: RouteParams) {
   }
 
   const { id, eventId } = await params;
-  try {
-    await deleteBeeperContactEvent(id, eventId);
-    return NextResponse.json({ ok: true });
-  } catch (error) {
-    return NextResponse.json({ ok: false, error: String(error) }, { status: 400 });
-  }
+  return runWithRepoContext(user, async () => {
+    try {
+      await deleteBeeperContactEvent(id, eventId);
+      return NextResponse.json({ ok: true });
+    } catch (error) {
+      return NextResponse.json({ ok: false, error: String(error) }, { status: 400 });
+    }
+  });
 }

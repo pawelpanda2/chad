@@ -66,10 +66,13 @@ services:
       # uses the sibling `mongodb` service by Compose service name, qnap
       # mode uses QNAP's real Tailscale IP).
       - MONGODB_URI=${MONGODB_URI:-}
-      # Beeper CRM's own database — same physical mongo server as
-      # MONGODB_URI, separate `beeper` database (contacts/channels/messages/
-      # timeline_events, predates this monorepo — ported from the standalone
-      # `contacts` repo). Never merged into `chad` alongside CP items.
+      # Beeper CRM's Mongo *server* URI — same physical mongo server as
+      # MONGODB_URI. Story 73: each CHAD user gets their own
+      # `beeper_<repoGuid>` database (contacts/channels/messages/
+      # timeline_events/..., predates this monorepo — ported from the
+      # standalone `contacts` repo), computed by dba's getBeeperMongoDb(),
+      # never a database segment on this URI. Never merged into `chad`
+      # alongside CP items.
       - BEEPER_MONGODB_URI=${BEEPER_MONGODB_URI:-}
       # Story 72 data-providers config (packages/dba/src/data-providers/
       # config.ts) — defaults here match the follow-up session's priority:

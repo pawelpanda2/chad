@@ -3,7 +3,7 @@
  * Body: { tag: "business" | "romantic" | "friends" | "spam" }
  */
 import { NextResponse } from "next/server";
-import { addBeeperContactTag, removeBeeperContactTag, type BeeperTag } from "dba";
+import { addBeeperContactTag, removeBeeperContactTag, runWithRepoContext, type BeeperTag } from "dba";
 import { getCurrentUserFromCookies } from "@/lib/session";
 
 interface RouteParams {
@@ -19,12 +19,14 @@ export async function POST(request: Request, { params }: RouteParams) {
   const { id } = await params;
   const { tag } = await request.json().catch(() => ({}));
 
-  try {
-    await addBeeperContactTag(id, tag as BeeperTag);
-    return NextResponse.json({ ok: true, action: "added", tag });
-  } catch (error) {
-    return NextResponse.json({ ok: false, error: String(error) }, { status: 400 });
-  }
+  return runWithRepoContext(user, async () => {
+    try {
+      await addBeeperContactTag(id, tag as BeeperTag);
+      return NextResponse.json({ ok: true, action: "added", tag });
+    } catch (error) {
+      return NextResponse.json({ ok: false, error: String(error) }, { status: 400 });
+    }
+  });
 }
 
 export async function DELETE(request: Request, { params }: RouteParams) {
@@ -36,10 +38,12 @@ export async function DELETE(request: Request, { params }: RouteParams) {
   const { id } = await params;
   const { tag } = await request.json().catch(() => ({}));
 
-  try {
-    await removeBeeperContactTag(id, tag as BeeperTag);
-    return NextResponse.json({ ok: true, action: "removed", tag });
-  } catch (error) {
-    return NextResponse.json({ ok: false, error: String(error) }, { status: 400 });
-  }
+  return runWithRepoContext(user, async () => {
+    try {
+      await removeBeeperContactTag(id, tag as BeeperTag);
+      return NextResponse.json({ ok: true, action: "removed", tag });
+    } catch (error) {
+      return NextResponse.json({ ok: false, error: String(error) }, { status: 400 });
+    }
+  });
 }

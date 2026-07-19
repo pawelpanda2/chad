@@ -1,10 +1,30 @@
 # Beeper CRM — MongoDB schema
 
-Database: the shared `chad` MongoDB database (same instance as Content
-Provider's future `content_provider_files` collection and any other future
-dashboard features — see
-`documentation/ai-docs/26-07-10_cline_prompt_mongodb_qnap_folders_v3.md` for
-the "one Mongo instance, many collections" decision this follows). No ORM —
+**Update (2026-07-19, Story 73 — supersedes the "shared database" model
+described below): each CHAD user now has their own, fully separate MongoDB
+database, named `beeper_<repoGuid>`** (e.g.
+`beeper_21d11bdc-f1f4-44d1-b61a-3fa6b039c641` for `pawel_f`,
+`beeper_8b603669-f8e6-4224-bd78-a474998995fa` for `kamil_s`) — not one
+shared `beeper` database with an `ownerRepoGuid` field, and not
+collection-name prefixing. This was a critical data-isolation fix: before
+Story 73, every CHAD user's dashboard session read/wrote the exact same
+global `beeper` database, so `kamil_s` could see `pawel_f`'s contacts. See
+`ai-start.md` in this folder for the full architecture and rationale, and
+`../../packages/dba/src/mongo.ts`'s `getBeeperMongoDb(repoGuid)` for the one
+place the database name is computed. The rest of this document (collection
+shapes, indexes, relations) is still accurate **within each user's own
+database** — only the "one shared `beeper` database for everyone" framing
+below is obsolete.
+
+---
+
+Old framing (pre-Story 73, kept for history): the shared `chad` MongoDB
+*instance* (same physical server as Content Provider's future
+`content_provider_files` collection and any other future dashboard
+features — see
+`ai-docs/26-07-10_cline_prompt_mongodb_qnap_folders_v3.md` for the "one
+Mongo instance, many collections" decision this follows), but a separate
+`beeper` *database* within that instance — see `architecture.md`. No ORM —
 native `mongodb` driver, same as the source project.
 
 All collection shapes below are unchanged from the standalone `contacts`

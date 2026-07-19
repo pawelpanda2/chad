@@ -51,7 +51,10 @@ if [ "$DBA_MONGO_MODE" = "qnap" ]; then
   MONGO_ROOT_USERNAME="$(read_env_var "$ENV_FILE" MONGO_ROOT_USERNAME)"
   MONGO_ROOT_PASSWORD="$(read_env_var "$ENV_FILE" MONGO_ROOT_PASSWORD)"
   MONGODB_URI="mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@${QNAP_TAILSCALE_HOST}:${QNAP_MONGO_PORT}/chad?authSource=admin"
-  BEEPER_MONGODB_URI="mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@${QNAP_TAILSCALE_HOST}:${QNAP_MONGO_PORT}/beeper?authSource=admin"
+  # Story 73: no database segment — getBeeperMongoDb(repoGuid) in
+  # packages/dba/src/mongo.ts always calls client.db(`beeper_<repoGuid>`)
+  # explicitly, so this is a server URI only.
+  BEEPER_MONGODB_URI="mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@${QNAP_TAILSCALE_HOST}:${QNAP_MONGO_PORT}?authSource=admin"
   export MONGODB_URI BEEPER_MONGODB_URI
   log_info "DBA_MONGO_MODE=qnap — local dashboard will use QNAP's Mongo over Tailscale (${QNAP_TAILSCALE_HOST}:${QNAP_MONGO_PORT})."
 elif [ "$DBA_MONGO_MODE" != "local" ]; then

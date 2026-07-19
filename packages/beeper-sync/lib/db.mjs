@@ -1,16 +1,25 @@
 /**
  * db.mjs — Połączenie MongoDB + upserty (logika identyczna jak w beeper-oplog,
  * ale wyizolowana żeby sync mógł działać niezależnie).
+ *
+ * Story 73: connects to this process's own `beeper_<repoGuid>` database,
+ * resolved from the required BEEPER_OWNER_REPO_GUID env var — never the old
+ * shared `beeper` database, never a default user.
  */
 
 import { MongoClient, ObjectId } from "mongodb";
+import { resolveOwnerRepoGuid, ownerDatabaseName, redactMongoUri } from "./owner-db.mjs";
 
-const MONGO_URI = process.env.MONGODB_URI || "mongodb://localhost:27017/beeper";
+const repoGuid = resolveOwnerRepoGuid();
+// Server URI only — no database segment (any segment present is ignored,
+// the database name always comes from ownerDatabaseName() below).
+const MONGO_URI = process.env.MONGODB_URI || "mongodb://localhost:27017";
 const MY_SENDER_ID = process.env.MY_SENDER_ID ?? "";
 
 const client = new MongoClient(MONGO_URI);
 await client.connect();
-const db = client.db();
+const DB_NAME = ownerDatabaseName(repoGuid);
+const db = client.db(DB_NAME);
 
 export const contactsCol  = db.collection("contacts");
 export const channelsCol  = db.collection("channels");
@@ -39,7 +48,9 @@ await messagesCol.createIndex({ contactID: 1, timestamp: -1 });
 await messagesCol.createIndex({ channelID: 1, timestamp: 1, isSelf: 1 });
 await syncStateCol.createIndex({ chatID: 1 }, { unique: true });
 
-console.log(`[db] Połączono z MongoDB: ${MONGO_URI}\n`);
+console.log(
+  `[db] Połączono z MongoDB: ${redactMongoUri(MONGO_URI)} (owner repoGuid: ${repoGuid}, database: ${DB_NAME})\n`
+);
 
 export { MY_SENDER_ID, ObjectId };
 
