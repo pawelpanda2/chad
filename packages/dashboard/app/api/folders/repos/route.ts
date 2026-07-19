@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUserFromCookies } from '@/lib/session';
-import { resolveOwnRepo, RepoAccessDeniedError } from 'dba';
 
 /**
  * GET /api/folders/repos
@@ -8,16 +7,15 @@ import { resolveOwnRepo, RepoAccessDeniedError } from 'dba';
  * Lists repos for the Folders tab's repo picker (documentation/stories/57,
  * critical fix in documentation/stories/60).
  *
- * SECURITY: this route used to special-case the `pawel_f` login to return
- * dba's raw `getAllRepos()` list — every repo known to the Content
- * Provider, across all users and all apps. That was a critical data
- * isolation bug (documentation/stories/60) and has been removed. Every
- * user, with no exceptions, gets at most a single-item list: the repo
- * dba's `resolveOwnRepo()` resolves via a strict, exact `chad_<username>`
- * name match (documentation/dashboard/common/features/
- * chad-user-data-isolation.md). Deny-by-default: any failure to resolve
- * (no username, no match, ambiguous match) returns a generic error with no
- * repo names in the payload — never the full list, never a fallback repo.
+ * SECURITY: every user, with no exceptions, gets at most a single-item
+ * list: the repo the login session itself already resolved (`user.repoGuid`,
+ * set by `resolveCurrentUser()` against the Mongo-backed chad_admin
+ * users-list at login time — documentation/dashboard/common/features/
+ * chad-user-data-isolation.md). This used to re-derive the repo via a
+ * separate direct call to the Content Provider (`resolveOwnRepo()`); now
+ * that CP is no longer deployed (Story 72), the session's own repoGuid is
+ * the single source of truth — there is no second system to cross-check
+ * against, and there never was more than one repo per user anyway.
  */
 export async function GET() {
   const user = await getCurrentUserFromCookies();
@@ -25,13 +23,7 @@ export async function GET() {
     return NextResponse.json({ error: 'NOT_AUTHENTICATED' }, { status: 401 });
   }
 
-  try {
-    const repo = await resolveOwnRepo(user.username);
-    return NextResponse.json({ repos: [{ id: repo.id, name: repo.name }] });
-  } catch (err) {
-    if (err instanceof RepoAccessDeniedError) {
-      return NextResponse.json({ error: 'REPO_ACCESS_DENIED' }, { status: 403 });
-    }
-    return NextResponse.json({ error: 'UNKNOWN_ERROR' }, { status: 502 });
-  }
+  return NextResponse.json({
+    repos: [{ id: user.repoGuid, name: `chad_${user.username}` }],
+  });
 }
