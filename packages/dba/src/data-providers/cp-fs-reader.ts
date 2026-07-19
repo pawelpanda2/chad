@@ -91,6 +91,22 @@ export async function readCpItemFromDisk(dirPath: string, address: string): Prom
   }
   const config = parsed as CpItemConfig;
 
+  // The physical directory position is ground truth for `address` — never
+  // trust config.yaml's own stored `address` field. Real, confirmed
+  // corruption found migrating live data: some items (leftovers from old
+  // Finder/Dropbox-level copies, same family as the "Rama"/"Active"-prefixed
+  // stale addresses documented elsewhere in this Story) have an `address`
+  // field that doesn't match where they actually live on disk — in one
+  // case, an item's stored `address` was literally its own `id`. Trusting
+  // that value verbatim silently orphans the item in Mongo (unreachable via
+  // normal parent-child address-prefix tree walks, since nothing else
+  // points at that address), which is exactly what broke `leads/all items`
+  // resolution for one real repo. `config.type`/`name`/custom fields still
+  // come from the file — only `address` is physical-path-derived, matching
+  // how CP's own `PathWorker` resolves a loca to a directory, not the
+  // reverse.
+  config.address = address;
+
   // Folders have no body file at all (their "Body" over the wire is the
   // computed children map, not a string — see `03_knowledge.md`); only Text
   // items have `body.txt`. Missing body.txt on a non-Folder is treated the

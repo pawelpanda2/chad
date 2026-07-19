@@ -1,21 +1,20 @@
 /**
- * User Service - Fetches users from Sharp Content Provider via HTTP API
+ * User Service - Fetches the login user list via `dba` (Mongo-backed).
  *
- * This service provides a unified way to fetch users from the Content Provider
- * using the Content Provider API (C# ASP.NET service) via the GetByNames method.
- *
- * The API is called with:
- *   POST /invoke { "args": ["IRepoService", "IItemWorker", "GetByNames", "chad_admin", "users", "users-list"] }
+ * Previously called Content Provider directly over HTTP
+ * (`GetByNames("chad_admin", "users", "users-list")`), independent of
+ * `DBA_CONTENT_PROVIDER_ENABLED` — a violation of `05_endpoint-rules.md`
+ * §2 (Dashboard must never call a provider directly) that also meant login
+ * couldn't survive Content Provider being removed from deployment. Now
+ * calls `getUsersListBody()` from `dba`, which routes through the same
+ * `DbaDataRouter`/`MongoCpProvider` every other business function uses.
  *
  * All user-related operations should use this service to ensure consistency
  * and to avoid duplicating the user fetching logic.
  */
 
 import * as yaml from 'js-yaml';
-
-// Content Provider API URL - must be set in environment
-// Default is port 5055 which is the local SimpleRun API port
-const CONTENT_PROVIDER_API_URL = process.env.CONTENT_PROVIDER_API_URL || 'http://localhost:5055';
+import { getUsersListBody } from 'dba';
 
 /**
  * User data structure as stored in Content Provider.
@@ -47,21 +46,6 @@ export interface AppUser {
 }
 
 /**
- * Response structure from GetByNames method (Sharp runner output)
- * The runner returns a JSON object with Body (YAML content) and Settings (metadata)
- */
-interface SharpRunnerResponse {
-  Body?: string;
-  Settings?: {
-    id?: string;
-    type?: string;
-    name?: string;
-    address?: string;
-    primaryBody?: string;
-  };
-}
-
-/**
  * Response structure after parsing the Body YAML
  */
 interface GetByNamesResponse {
@@ -75,7 +59,6 @@ export interface UserServiceDebugInfo {
   runnerCalled: boolean;
   arguments: string[];
   rawResult: string;
-  rawSharpJson?: string; // Raw JSON from C# Sharp runner
   parseError?: string;
   usersCount: number;
   usersSample?: Partial<CpUser>[];
@@ -83,88 +66,21 @@ export interface UserServiceDebugInfo {
 }
 
 /**
- * Invokes the Content Provider API with the provided arguments via HTTP.
+ * Fetches the raw YAML body of `chad_admin/users/users-list` via `dba`.
  *
- * @param args - Array of arguments to pass to the C# application
- * @returns Promise that resolves with the result from the API
- * @throws Error if the API call fails
- */
-async function invokeSharp(args: string[]): Promise<string> {
-  const apiUrl = CONTENT_PROVIDER_API_URL;
-  const invokeUrl = `${apiUrl}/invoke`;
-
-  console.log('[UserService] Calling Content Provider API:', invokeUrl, 'with args:', args.join(' '));
-
-  try {
-    const response = await fetch(invokeUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(args),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`HTTP ${response.status}: ${errorText}`);
-    }
-
-    const data = await response.json();
-
-    // The backend returns { Body, Settings } directly, not { success, result }
-    // Check if the response has the expected structure
-    if (data.Body !== undefined || data.Settings !== undefined) {
-      console.log('[UserService] Content Provider API call completed successfully');
-      return JSON.stringify(data);
-    }
-
-    // If it has success/result format, use that
-    if (data.success !== undefined) {
-      if (!data.success) {
-        const errorMsg = data.error?.message || 'Unknown error from Content Provider API';
-        throw new Error(`Content Provider API error: ${errorMsg}`);
-      }
-      console.log('[UserService] Content Provider API call completed successfully');
-      return data.result || '';
-    }
-
-    // Unknown format
-    console.log('[UserService] Unknown response format:', JSON.stringify(data).substring(0, 200));
-    throw new Error('Unknown response format from Content Provider API');
-  } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    const errorDetails = `[UserService] Failed to call Content Provider API: ${errorMessage}`;
-
-    console.error(errorDetails);
-    throw new Error(errorDetails);
-  }
-}
-
-/**
- * Calls GetByNames method through the Sharp runner to fetch users.
- *
- * Equivalent C# call:
- *   IRepoService IItemWorker GetByNames chad_admin users users-list
- *
- * @returns Promise resolving to the raw string result from the runner
+ * @returns Promise resolving to the raw YAML string, or `''` if the item
+ *   doesn't exist (matching this function's original "always a string"
+ *   contract — callers below distinguish "no users" via the YAML parse,
+ *   same as before).
  */
 export async function getUsersFromSharpRaw(): Promise<string> {
-  const args = [
-    'IRepoService',
-    'IItemWorker',
-    'GetByNames',
-    'chad_admin',
-    'users',
-    'users-list'
-  ];
+  console.log('[UserService] Fetching users-list body via dba (Mongo)');
 
-  console.log('[UserService] Calling getUsersFromSharp with args:', args.join(' '));
+  const body = await getUsersListBody();
 
-  const result = await invokeSharp(args);
+  console.log('[UserService] getUsersFromSharpRaw completed, received', body?.length ?? 0, 'characters');
 
-  console.log('[UserService] getUsersFromSharp completed, received', result.length, 'characters');
-
-  return result;
+  return body ?? '';
 }
 
 /**
@@ -178,34 +94,17 @@ export async function getUsersFromSharpRaw(): Promise<string> {
 export async function getUsersFromSharp(options?: { includeDebug?: boolean }): Promise<AppUser[] | { users: AppUser[]; debug: UserServiceDebugInfo }> {
   const debug: UserServiceDebugInfo = {
     runnerCalled: true,
-    arguments: ['IRepoService', 'IItemWorker', 'GetByNames', 'chad_admin', 'users', 'users-list'],
+    arguments: ['dba', 'getUsersListBody'],
     rawResult: '',
     usersCount: 0,
   };
 
   try {
-    const rawResult = await getUsersFromSharpRaw();
-    debug.rawResult = rawResult;
-    debug.rawSharpJson = rawResult; // Store raw C# output for debugging
+    const bodyYaml = await getUsersFromSharpRaw();
+    debug.rawResult = bodyYaml;
 
-    // The Sharp runner returns JSON with Body (YAML content) and Settings
-    // First, parse the JSON response
-    let bodyYaml: string;
-
-    try {
-      const sharpResponse: SharpRunnerResponse = JSON.parse(rawResult);
-      if (!sharpResponse.Body) {
-        debug.parseError = `No Body field in Sharp runner response. Response (first 500 chars): ${rawResult.substring(0, 500)}`;
-        console.error('[UserService]', debug.parseError);
-
-        if (options?.includeDebug) {
-          return { users: [], debug };
-        }
-        return [];
-      }
-      bodyYaml = sharpResponse.Body;
-    } catch (jsonError) {
-      debug.parseError = `Failed to parse Sharp runner response as JSON. Error: ${(jsonError as Error).message}. Raw result (first 500 chars): ${rawResult.substring(0, 500)}`;
+    if (!bodyYaml) {
+      debug.parseError = 'users-list item not found (empty body from dba)';
       console.error('[UserService]', debug.parseError);
 
       if (options?.includeDebug) {
@@ -288,21 +187,10 @@ export async function getUsersFromSharp(options?: { includeDebug?: boolean }): P
  */
 export async function getRawUsersFromSharp(): Promise<CpUser[]> {
   try {
-    const rawResult = await getUsersFromSharpRaw();
+    const bodyYaml = await getUsersFromSharpRaw();
 
-    // The Sharp runner returns JSON with Body (YAML content) and Settings
-    // First, parse the JSON response
-    let bodyYaml: string;
-
-    try {
-      const sharpResponse: SharpRunnerResponse = JSON.parse(rawResult);
-      if (!sharpResponse.Body) {
-        console.error('[UserService] No Body field in Sharp runner response for getRawUsersFromSharp');
-        return [];
-      }
-      bodyYaml = sharpResponse.Body;
-    } catch (jsonError) {
-      console.error('[UserService] Failed to parse Sharp runner response as JSON:', jsonError instanceof Error ? jsonError.message : jsonError);
+    if (!bodyYaml) {
+      console.error('[UserService] users-list item not found (empty body from dba)');
       return [];
     }
 

@@ -22,13 +22,24 @@ zmian" na końcu tego dokumentu.
 ## Czym to jest
 
 TEST i PROD na QNAP to **dwa osobne dashboardy wskazujące na dokładnie te
-same, prawdziwe dane** — jedno wspólne MongoDB (`chad-mongodb`) i jeden
-wspólny Content Provider (`chad-content-provider-api`), czytający z
-`/share/Dropbox`. TEST **nie jest** izolowanym środowiskiem danych ani
-sandboxem — to alternatywny/testowy interfejs do tych samych, prawdziwych
-danych, używany do weryfikacji wyglądu, layoutu, scrollbarów, edytorów,
-formularzy i integracji dashboardu bez ryzyka dla dostępności PROD. Zmiana
-danych wykonana przez dashboard TEST jest widoczna również w PROD.
+same, prawdziwe dane** — jedno wspólne MongoDB (`chad-mongodb`). TEST **nie
+jest** izolowanym środowiskiem danych ani sandboxem — to alternatywny/testowy
+interfejs do tych samych, prawdziwych danych, używany do weryfikacji
+wyglądu, layoutu, scrollbarów, edytorów, formularzy i integracji dashboardu
+bez ryzyka dla dostępności PROD. Zmiana danych wykonana przez dashboard
+TEST jest widoczna również w PROD.
+
+**Content Provider (Story 72, 2026-07-19):** `chad-content-provider-api`
+(.NET) został usunięty z deploymentu — Mongo (`MongoCpProvider`) jest
+jedynym aktywnym backendem w czasie działania
+(`DBA_CONTENT_PROVIDER_ENABLED=false`, `DBA_PRIMARY_BACKEND=mongo`). Kod
+adaptera (`NetFileCpProvider`) i submoduł `packages/net-content-provider`
+pozostają nietknięte — to zmiana wyłącznie w deploymencie, odwracalna przez
+ponowne dodanie serwisu do `docker-compose.qnap.shared.yml` (patrz tego
+pliku nagłówek) i przywrócenie flag. Sekcje poniżej, które opisują
+`content-provider-api` jako część `00_qnap_shared`, opisują stan
+historyczny (przed Story 72) — zachowane dla kontekstu architektonicznego i
+jako dokumentacja ścieżki powrotu, patrz "Historia zmian" na końcu.
 
 ## Kontrakt numeracji operacji (globalny, obowiązujący we wszystkich katalogach)
 
@@ -60,9 +71,9 @@ numerację z pamięci** — nie każdy katalog ma wszystkie siedem plików.
 
 ```
 bash-scripts/dashboard/
-├── 00_qnap_shared/        # docker-compose.qnap.shared.yml (mongo + content-provider-api, wspólne dla TEST i PROD) — działa NA QNAP, bez SSH-wrapperów (patrz niżej)
-├── 02_local_mac_tmux/     # tmux/pnpm, BEZ Dockera (lokalny dev flow)
-├── 03_local_mac_docker/   # docker-compose.local.yml (mongo+CP+dashboard razem, tylko lokalnie)
+├── 00_qnap_shared/        # docker-compose.qnap.shared.yml (mongo, wspólne dla TEST i PROD — content-provider-api usunięty, Story 72) — działa NA QNAP, bez SSH-wrapperów (patrz niżej)
+├── 02_local_mac_tmux/     # tmux/pnpm, BEZ Dockera (lokalny dev flow, osobny od tej pracy — patrz jego własna dokumentacja)
+├── 03_local_mac_docker/   # docker-compose.local.yml (mongo+dashboard razem, tylko lokalnie — content-provider-api usunięty, Story 72)
 ├── 04_qnap_test/          # docker-compose.qnap.test.yml (TYLKO dashboard TEST) — build na QNAP (02_build.sh/06_deploy.sh), BEZ ZMIAN od Story 63, nadal w pełni działający wariant
 ├── 05_qnap_prod/          # docker-compose.qnap.prod.yml (TYLKO dashboard PROD) — bez build/deploy od Story 63, nadal tak
 ├── 06_qnap_test_ssh/      # cienkie wrappery SSH nad 04_qnap_test (build na QNAP), BEZ ZMIAN od Story 63
@@ -608,6 +619,30 @@ To DWA NIEZALEŻNE systemy, celowo:
   + wspólne mongo/CP, sterowany docker-compose.
 
 ## Historia zmian
+
+**2026-07-19 — Story 72: `content-provider-api` usunięty z deploymentu.**
+Skoro Mongo (`MongoCpProvider`) w pełni odczytuje/zapisuje dane CP
+(`chad.cp_items`), .NET Content Provider przestał być uruchamiany:
+`DBA_CONTENT_PROVIDER_ENABLED=false`/`DBA_PRIMARY_BACKEND=mongo` wszędzie,
+serwis `content-provider-api` usunięty z `docker-compose.local.yml`,
+`docker-compose.qnap.shared.yml`; `CONTENT_PROVIDER_API_URL` i port `12024`
+usunięte z `docker-compose.qnap.test.yml`/`.prod.yml`;
+`require_shared_services_healthy()` (w `bash-scripts/common/lib.sh`) sprawdza
+teraz tylko `chad-mongodb`; `00_qnap_shared/02_build.sh` jest no-opem (nic
+już nie buduje); appsettings-generation (`write_content_provider_appsettings`)
+i `content_provider_image_tag_file()` usunięte z `lib.sh`/`01_config.sh` (bez
+callerów). **Kod adaptera (`NetFileCpProvider`, `packages/dba`) i submoduł
+`packages/net-content-provider` pozostają nietknięte** — to zmiana
+wyłącznie w warstwie deploymentu, w pełni odwracalna (przywróć serwis w
+compose + flagi). Sekcje tego dokumentu opisujące `content-provider-api`
+jako aktywną część `00_qnap_shared`/`03_local_mac_docker` (DNS przez
+`container_name`, appsettings.json, port `12024`, kroki `require_shared_
+services_healthy`, co buduje `02_build.sh`) opisują stan **sprzed** tej
+zmiany — zachowane jako dokumentacja architektury i ścieżki powrotu, nie
+jako aktualny stan. `02_local_mac_tmux` (osobny, nie-Dockerowy dev-flow) nie
+był częścią zakresu Story 72 i nadal może uruchamiać CP lokalnie przez
+`bash-scripts/content-provider/run-content-provider-if-needed.sh` — patrz
+`dashboard-start-scripts.md`.
 
 **2026-07-17/18 — Story 70: dodana RÓWNOLEGŁA droga budowania
 `chad-dashboard` przez GHCR, opcjonalna.** Nowe katalogi `09_registry_test/`

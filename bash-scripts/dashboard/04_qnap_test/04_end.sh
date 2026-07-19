@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Stops the QNAP TEST dashboard ONLY. Never touches the shared mongo/
-# content-provider-api stack, prod, or local-mac. --remove-orphans only,
+# mongo stack, prod, or local-mac. --remove-orphans only,
 # never -v: never deletes the dashboard's own data volume. Never removes
 # images.
 set -euo pipefail
@@ -23,4 +23,4 @@ cd "$REPO_ROOT"
 export IMAGE_TAG="$(image_tag_for_readonly "$(dashboard_image_tag_file)")"
 docker compose -p "$COMPOSE_PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" down --remove-orphans
 
-log_ok "chad-test dashboard stopped. Data volume and images preserved. Shared services (mongo/content-provider-api) untouched."
+log_ok "chad-test dashboard stopped. Data volume and images preserved. Shared services (mongo) untouched."

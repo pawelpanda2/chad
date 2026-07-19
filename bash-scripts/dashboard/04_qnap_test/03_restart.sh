@@ -1,15 +1,14 @@
 #!/usr/bin/env bash
 # Starts the QNAP TEST dashboard under docker-compose. Never builds. Never
-# starts/stops/rebuilds the shared mongo/content-provider-api stack — only
-# checks it's already healthy (require_shared_services_healthy) and refuses
-# to start otherwise. Idempotent: checks whether the dashboard is already
-# running; if so, calls 04_end.sh then starts fresh. Use 06_deploy.sh for
-# build+restart. Run this ON the QNAP host (or via
+# starts/stops/rebuilds the shared mongo stack — only checks it's already
+# healthy (require_shared_services_healthy) and refuses to start otherwise.
+# Idempotent: checks whether the dashboard is already running; if so, calls
+# 04_end.sh then starts fresh. Use 06_deploy.sh for build+restart. Run this
+# ON the QNAP host (or via
 # bash-scripts/dashboard/06_qnap_test_ssh/03_restart.sh from your Mac).
 #
-# TEST uses the SAME shared MongoDB and Content Provider (and therefore the
-# SAME live data) as PROD — it is an alternative UI, not an isolated data
-# environment.
+# TEST uses the SAME shared MongoDB (and therefore the SAME live data) as
+# PROD — it is an alternative UI, not an isolated data environment.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -26,8 +25,8 @@ echo ""
 
 cd "$REPO_ROOT"
 
-require_shared_services_healthy "$CONTENT_PROVIDER_API_PORT" || {
-  log_error "Shared services (mongo + content-provider-api) are not healthy — refusing to start TEST dashboard."
+require_shared_services_healthy || {
+  log_error "Shared services (mongo) are not healthy — refusing to start TEST dashboard."
   exit 1
 }
 

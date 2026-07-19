@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# Builds the full local Mac stack (mongo + content-provider-api + dashboard)
-# under docker-compose. Only builds — never runs containers, never touches
-# a running environment, never `docker compose up`, never removes volumes.
-# See 03_restart.sh (start, idempotent) / 04_end.sh (stop) / 05_status.sh /
-# 06_deploy.sh (build + restart, one shot).
+# Builds the local Mac stack (mongo image is pulled, not built; only the
+# dashboard image is actually built here) under docker-compose. Only
+# builds — never runs containers, never touches a running environment,
+# never `docker compose up`, never removes volumes. See 03_restart.sh
+# (start, idempotent) / 04_end.sh (stop) / 05_status.sh / 06_deploy.sh
+# (build + restart, one shot).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -24,8 +25,7 @@ cd "$REPO_ROOT"
 # distinguished by compose project name, ports, and container names, not by
 # the image tag. Own CHAD images never get a `:latest` tag (see
 # documentation/ai-docs/deploy/image-tagging-standard.md) — this is the ONLY
-# tag this build produces, for BOTH images (they share one timestamp since
-# they're built in the same invocation here).
+# tag this build produces.
 IMAGE_TAG="$(date +'%y%m%d_%H%M%S')"
 export IMAGE_TAG
 
@@ -34,6 +34,5 @@ docker compose -p "$COMPOSE_PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FI
 # Only reached if `build` succeeded (set -e) — never records a tag for a
 # failed build.
 write_image_tag "$(dashboard_image_tag_file)" "$IMAGE_TAG"
-write_image_tag "$(content_provider_image_tag_file)" "$IMAGE_TAG"
 
-log_ok "Images built: chad-dashboard:$IMAGE_TAG, chad-content-provider-api:$IMAGE_TAG"
+log_ok "Image built: chad-dashboard:$IMAGE_TAG"

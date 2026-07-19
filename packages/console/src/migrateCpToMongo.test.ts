@@ -17,7 +17,7 @@
  * Run via: npx tsc && node dist/migrateCpToMongo.test.js
  */
 
-import { getMongoDb, closeMongoConnection, MongoCpProvider, systemClock } from "dba";
+import { getMongoDb, closeMongoConnection, MongoCpProvider, systemClock, ITEMS_COLLECTION } from "dba";
 import type { CpItem } from "dba";
 import { migrateRepo, type MigratorMode } from "./migrateCpToMongo.js";
 
@@ -75,7 +75,7 @@ async function runTests() {
   const fakeGetFolderChildren = async (_repo: string, loca: string) => CHILDREN[loca] ?? [];
 
   const db = await getMongoDb();
-  await db.collection("items").deleteMany({ "config.address": { $regex: `^${REPO}` } });
+  await db.collection(ITEMS_COLLECTION).deleteMany({ "config.address": { $regex: `^${REPO}` } });
 
   const mongoProvider = new MongoCpProvider(systemClock);
 
@@ -94,7 +94,7 @@ async function runTests() {
     assertEquals(report.itemsFailed, 0);
     assertEquals(report.duplicateIds.length, 0);
     assertEquals(report.duplicateAddresses.length, 0);
-    const count = await db.collection("items").countDocuments({ "config.address": { $regex: `^${REPO}` } });
+    const count = await db.collection(ITEMS_COLLECTION).countDocuments({ "config.address": { $regex: `^${REPO}` } });
     assertEquals(count, 0, "validate-only must never write to Mongo");
   });
 
@@ -102,7 +102,7 @@ async function runTests() {
     const report = await migrateRepo(REPO, "dry-run", () => {}, deps("dry-run"));
     assertEquals(report.itemsImported, 4);
     assertEquals(report.itemsUnchanged, 0);
-    const count = await db.collection("items").countDocuments({ "config.address": { $regex: `^${REPO}` } });
+    const count = await db.collection(ITEMS_COLLECTION).countDocuments({ "config.address": { $regex: `^${REPO}` } });
     assertEquals(count, 0, "dry-run must never write to Mongo");
   });
 
@@ -121,7 +121,7 @@ async function runTests() {
     const report = await migrateRepo(REPO, "apply", () => {}, deps("apply"));
     assertEquals(report.itemsImported, 0);
     assertEquals(report.itemsUnchanged, 4);
-    const count = await db.collection("items").countDocuments({ "config.address": { $regex: `^${REPO}` } });
+    const count = await db.collection(ITEMS_COLLECTION).countDocuments({ "config.address": { $regex: `^${REPO}` } });
     assertEquals(count, 4, "re-running must not create duplicates");
   });
 

@@ -97,7 +97,7 @@ run_remote_script "05_qnap_prod" "05_status.sh" "Status QNAP PROD"
 
 echo ""
 log_info "Verifying shared services and TEST are still healthy..."
-run_remote_script "00_qnap_shared" "05_status.sh" "Status QNAP SHARED (mongo + content-provider-api)"
+run_remote_script "00_qnap_shared" "05_status.sh" "Status QNAP SHARED (mongo)"
 run_remote_script "04_qnap_test" "05_status.sh" "Status QNAP TEST (confirming it's still up)"
 
 echo ""

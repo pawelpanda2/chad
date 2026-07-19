@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Stops the local Mac stack (mongo + content-provider-api + dashboard).
-# Only ever touches the chad-local compose project — never QNAP.
+# Stops the local Mac stack (mongo + dashboard). Only ever touches the
+# chad-local compose project — never QNAP.
 # --remove-orphans only, never -v: never deletes the mongo/dashboard data
 # volumes. Never removes images.
 set -euo pipefail
