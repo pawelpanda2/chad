@@ -120,6 +120,22 @@ export class MongoCpProvider implements CpCompatibleDataProvider {
     return true;
   }
 
+  /**
+   * Deletes a single item by its exact address (leaf items only — never
+   * cascades to children, callers must confirm the address has none first
+   * if that matters for their use case). Real removal, unlike the .NET
+   * Content Provider's `Delete`, which is a permanent no-op stub there
+   * (see `NetFileCpProvider` — callers on that backend must keep using the
+   * existing "blank the fields in place" workaround). Returns whether a
+   * document was actually found and removed.
+   */
+  async deleteItem(address: string): Promise<boolean> {
+    const db = await this.db();
+    const collection = db.collection<ItemDoc>(ITEMS_COLLECTION);
+    const result = await collection.deleteOne({ "config.address": address });
+    return result.deletedCount > 0;
+  }
+
   async getItem(input: GetItemInput, expectedRepoGuid?: string): Promise<CpItem | null> {
     const db = await this.db();
     const collection = db.collection<ItemDoc>(ITEMS_COLLECTION);
