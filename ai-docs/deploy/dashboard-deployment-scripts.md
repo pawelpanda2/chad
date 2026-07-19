@@ -235,7 +235,7 @@ własnego Content Providera.
 | Środowisko | Katalog | Port |
 |---|---|---|
 | SHARED | `00_qnap_shared/01_config.sh` | Content Provider API: `12024` (publikowany na host) |
-| SHARED | `00_qnap_shared/01_config.sh` | MongoDB: brak publikowanego portu hosta — tylko `chad-mongodb:27017` na sieci `chad-shared` |
+| SHARED | `docker-compose.qnap.shared.yml` | MongoDB: `chad-mongodb:27017` na sieci `chad-shared` ORAZ (od 2026-07-19) opublikowany na porcie hosta `12040` — dostępny przez Tailscale (`100.117.139.83:12040`), np. z MongoDB Compass. 12040 = pierwszy wolny slot za zakresami TEST (`12020-12029`)/PROD (`12030-12039`), nie natywny port kontenera (`27017`) |
 | TEST | `04_qnap_test/01_config.sh` | Dashboard: `12020` |
 | PROD | `05_qnap_prod/01_config.sh` | Dashboard: `12030` |
 
