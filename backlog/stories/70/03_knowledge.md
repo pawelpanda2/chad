@@ -20,7 +20,7 @@
   local build: since TEST and PROD run on the same QNAP host sharing one
   Docker image cache, and the re-tag produces the exact same bare
   `chad-dashboard:<tag>` name PROD's restart already expects, this holds.
-  Not modified — `08_registry_prod/06_last_from_test.sh` is a separate,
+  Not modified — `09_registry_prod/06_last_from_test.sh` is a separate,
   more rigorous (digest-based) successor, not a replacement.
 - `.env.local.example`/`.env.qnap.example` — existing per-context env-file
   split (Mac vs QNAP) reused directly for GHCR push vs read tokens, rather
