@@ -249,7 +249,6 @@ export default function FoldersPage() {
             <Input
               value={locaInput}
               onChange={(e) => setLocaInput(e.target.value)}
-              placeholder="03/06"
               className="w-[220px] font-mono"
               onKeyDown={(e) => {
                 if (e.key === "Enter") handleGo();
