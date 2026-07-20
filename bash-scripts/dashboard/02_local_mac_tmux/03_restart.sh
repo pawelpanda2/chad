@@ -8,8 +8,8 @@
 # it for several views.
 #
 # Usage:
-#   ./bash-scripts/dashboard/02_local_mac_tmux/03_restart.sh            # normal start
-#   ./bash-scripts/dashboard/02_local_mac_tmux/03_restart.sh --install  # also run pnpm install first
+#   ./bash-scripts/dashboard/02_local_mac_tmux/03_re-start.sh            # normal start
+#   ./bash-scripts/dashboard/02_local_mac_tmux/03_re-start.sh --install  # also run pnpm install first
 #
 # Works from any cwd — resolves the repo root from this script's own
 # location via git, not from $PWD.
@@ -80,7 +80,7 @@ if [ ! -d "$REPO_ROOT/node_modules" ]; then
     pnpm install
   else
     log_error "node_modules is missing at repo root."
-    log_error "  Fix: ./bash-scripts/dashboard/02_local_mac_tmux/03_restart.sh --install"
+    log_error "  Fix: ./bash-scripts/dashboard/02_local_mac_tmux/03_re-start.sh --install"
     log_error "  or:  pnpm install   (from $REPO_ROOT)"
     exit 1
   fi
@@ -91,7 +91,7 @@ export PORT="$FRONTEND_PORT"
 # Idempotent: if the session is already running (or its port is still held
 # by a not-yet-cleaned-up process), stop it first via 04_end.sh, then
 # continue to a fresh start — this restart/end pairing is the same shape
-# every other environment's own 03_restart.sh/04_end.sh uses.
+# every other environment's own 03_re-start.sh/04_end.sh uses.
 if tmux has-session -t chad-dashboard 2>/dev/null || port_in_use "$FRONTEND_PORT"; then
   log_warn "chad-dashboard is already running — stopping it first, then starting fresh."
   bash "$SCRIPT_DIR/04_end.sh"

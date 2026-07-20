@@ -72,7 +72,7 @@ zamiast nazwy serwisu) w
 
 | Kontener | Bind mount |
 |---|---|
-| `chad-mongodb` | `$QNAP_CONTAINER_DATA_PATH/chad-shared/mongodb/db:/data/db`, `.../configdb:/data/configdb`, `.../backups:/backups` — `$QNAP_CONTAINER_DATA_PATH` MUST resolve onto the real data volume, not `/share` itself (a 16MB tmpfs on this QNAP); see [qnap-data-path.md](qnap-data-path.md) for the incident and the validation `03_restart.sh` now runs before every start |
+| `chad-mongodb` | `$QNAP_CONTAINER_DATA_PATH/chad-shared/mongodb/db:/data/db`, `.../configdb:/data/configdb`, `.../backups:/backups` — `$QNAP_CONTAINER_DATA_PATH` MUST resolve onto the real data volume, not `/share` itself (a 16MB tmpfs on this QNAP); see [qnap-data-path.md](qnap-data-path.md) for the incident and the validation `03_re-start.sh` now runs before every start |
 | `chad-content-provider-api` | `/share/Dropbox:/data/repos:rw` (potwierdzone: `repoCount:36`), `.runtime/shared/content-provider/appsettings.json:/app/appsettings.json:ro` |
 | `chad-dashboard-test` | named volume `chad-dashboard-qnap-test-data:/app/data` (SQLite Prisma, per-dashboard, nie Mongo) |
 | `chad-dashboard-prod` | named volume `chad-dashboard-qnap-prod-data:/app/data` (osobny od test — świadomie, to lokalna baza sesji dashboardu, nie "prawdziwe dane" biznesowe) |
@@ -120,7 +120,7 @@ bash bash-scripts/dashboard/06_qnap_test_ssh/06_deploy.sh
 bash bash-scripts/dashboard/07_qnap_prod_ssh/06_last_from_test.sh
 ```
 
-Każdy `03_restart.sh` dla TEST/PROD wywołuje `require_shared_services_healthy`
+Każdy `03_re-start.sh` dla TEST/PROD wywołuje `require_shared_services_healthy`
 przed startem i **odmawia uruchomienia**, jeśli shared nie działa/nie jest
 zdrowy — zamiast próbować go naprawić samodzielnie.
 
@@ -129,7 +129,7 @@ zdrowy — zamiast próbować go naprawić samodzielnie.
 **Status (Story 63, 2026-07-16/17): jawna operacja
 `07_qnap_prod_ssh/06_last_from_test.sh`, zastępuje wcześniejszą "domyślną"
 promocję przez współdzielony plik tagu.** Pełny standard:
-[image-tagging-standard.md](image-tagging-standard.md). Skrót:
+[image-tagging-standard.md](../bash-scripts/image-tagging-standard.md). Skrót:
 
 - `04_qnap_test/02_build.sh` jest teraz **jedynym** miejscem, gdzie
   `chad-dashboard` jest budowany (`05_qnap_prod/02_build.sh` zostało
@@ -137,7 +137,7 @@ promocję przez współdzielony plik tagu.** Pełny standard:
   ręcznie: `docker-compose.qnap.prod.yml` nie ma sekcji `build:`). Po
   udanym buildzie zapisuje znacznik czasowy do `.image-tag.chad-dashboard.env`
   (gitignored, na hoście QNAP) oraz git SHA jako OCI label na obrazie.
-- `03_restart.sh` w obu katalogach **odmawia startu**, jeśli ten plik nie
+- `03_re-start.sh` w obu katalogach **odmawia startu**, jeśli ten plik nie
   istnieje albo jest pusty — nigdy nie ma fallbacku do `chad-dashboard:latest`.
 - Promocja "sprawdzonego" obrazu TEST na PROD = **bez rebuildu**, przez
   jawną operację, nie przez poleganie na tym, że oba środowiska czytają ten
@@ -161,7 +161,7 @@ potwierdza to jawnie na końcu, nie zakłada sukcesu.
 - Dashboard TEST/PROD: `06_qnap_test_ssh/04_end.sh`/`07_qnap_prod_ssh/04_end.sh`
   (`docker compose down --remove-orphans`, nigdy `-v`) — dane dashboardu
   (SQLite) i obrazy zostają. Retag poprzedniego znacznika czasowego jako
-  bieżący i ponowny `03_restart.sh`.
+  bieżący i ponowny `03_re-start.sh`.
 - Shared: `00_qnap_shared/04_end.sh` (bezpośrednio na QNAP, patrz sekcja 5) —
   **zatrzymuje backend dla OBU dashboardów naraz**. Dane Mongo (bind mount)
   i repo pliki (`/share/Dropbox`, poza kontenerem) przetrwają.
@@ -260,9 +260,9 @@ sygnał do głębszej diagnozy (a nie zgadywania z pamięci dokumentacji).
 ## 10. Znane ograniczenia / co zostało do decyzji
 
 - ~~Promocja obrazu TEST→PROD jest ręczna (retag), bez dedykowanego skryptu~~
-  — **zrobione 2026-07-13**: `02_build.sh`/`03_restart.sh` zapisują i czytają
+  — **zrobione 2026-07-13**: `02_build.sh`/`03_re-start.sh` zapisują i czytają
   wspólny plik ze znacznikiem release'u, bez `:latest`, bez ponownego builda
-  przy promocji. Patrz sekcja 6 i [image-tagging-standard.md](image-tagging-standard.md).
+  przy promocji. Patrz sekcja 6 i [image-tagging-standard.md](../bash-scripts/image-tagging-standard.md).
 - MongoDB nie jest jeszcze konsumowane przez kod dashboardu/`dba` — "wspólna
   baza danych" jest dziś prawdą infrastrukturalną (jeden kontener), nie
   jeszcze zweryfikowaną w działającym feature'rze aplikacyjnym.

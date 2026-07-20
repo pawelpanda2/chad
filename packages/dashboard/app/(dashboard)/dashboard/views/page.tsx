@@ -22,6 +22,7 @@ import {
   Plus,
   Save,
   Loader2,
+  History,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -837,6 +838,18 @@ function ViewsPageContent() {
           <RefreshCw className={`h-3 w-3 ${isLoading ? "animate-spin" : ""}`} />
           Refresh
         </Button>
+        {isTracker && (
+          <Link href="/dashboard/daily-tracker-history">
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2 h-7 text-xs"
+            >
+              <History className="h-3 w-3" />
+              History
+            </Button>
+          </Link>
+        )}
         <span className="text-xs text-muted-foreground">
           {currentEntries.length} of {isTracker ? dailyEntries.length : dateEntries.length}
         </span>

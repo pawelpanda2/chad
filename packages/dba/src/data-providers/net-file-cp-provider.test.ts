@@ -86,6 +86,7 @@ async function runTests() {
     const result = await adapter.executeWrite({
       kind: "put-item",
       operationId: "op-legacy-test-1",
+      actor: null,
       createdAt: new Date().toISOString(),
       item,
     });
@@ -118,6 +119,7 @@ async function runTests() {
     const result = await adapter.executeWrite({
       kind: "put-item",
       operationId: "op-legacy-test-2",
+      actor: null,
       createdAt: new Date().toISOString(),
       item: updated,
     });

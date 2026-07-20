@@ -55,10 +55,12 @@ usługa wdrożeniowa, `.env.qnap`/`.env.local`, standard skryptów
 build/restart/end/status/deploy (jeden stały zestaw numerowanych slotów,
 Story 63).
 
-**Lokalizacja:** `documentation/ai-docs/deploy/`
+**Lokalizacja:** `ai-docs/deploy/` (kontrakty/architektura konkretnej aplikacji)
+i `ai-docs/bash-scripts/` (ogólny, wielokrotnego użytku standard pisania
+skryptów — patrz osobna sekcja niżej).
 
 **Najważniejsze dokumenty:**
-- [image-tagging-standard.md](../deploy/image-tagging-standard.md) — **przeczytaj
+- [image-tagging-standard.md](../bash-scripts/image-tagging-standard.md) — **przeczytaj
   zawsze przed jakimkolwiek buildem/deployem.** Własne obrazy CHAD nigdy nie
   używają `:latest`; jeden zapisany tag na release, wspólny dla TEST i PROD;
   od Story 63 obraz TEST niesie też git SHA jako OCI label.
@@ -68,7 +70,7 @@ Story 63).
   autorytatywny kontrakt skryptów Docker Compose (`00_qnap_shared`,
   `03_local_mac_docker`, `04_qnap_test`, `05_qnap_prod`) oraz SSH-remote
   layer (`06_qnap_test_ssh`, `07_qnap_prod_ssh`): co robi
-  `02_build.sh`/`03_restart.sh`/`04_end.sh`/`05_status.sh`/`06_deploy.sh`,
+  `02_build.sh`/`03_re-start.sh`/`04_end.sh`/`05_status.sh`/`06_deploy.sh`,
   architektura shared/test/prod, tabela stałych numerów operacji, dlaczego
   PROD nie buduje (`07_qnap_prod_ssh/06_last_from_test.sh` promuje obraz z
   TEST zamiast deployować niezależnie) (przeczytaj przed zmianą nazw
@@ -86,9 +88,18 @@ Story 63).
 - [2026-07-10_mongodb-replica-set-migration-plan.md](../deploy/2026-07-10_mongodb-replica-set-migration-plan.md) —
   Mongo pozostaje standalone (bez replica set) na dziś; plan migracji gdyby
   zaszła taka potrzeba (change streams dla `beeper-oplog`).
-- [bash-scripts-structure.md](../deploy/bash-scripts-structure.md) — **częściowo
+- [bash-scripts-structure.md](../bash-scripts/bash-scripts-structure.md) — **częściowo
   przestarzałe**, zachowane jako zapis historyczny uzasadnienia nazewnictwa;
   NIE ufaj jego drzewu katalogów jako aktualnemu (użyj `ls bash-scripts/dashboard/`).
+
+**Ogólny standard pisania skryptów (niezależny od konkretnej aplikacji):**
+`ai-docs/bash-scripts/` — zacznij od `ai-docs/bash-scripts/ai-start.md`.
+Zawiera kontrakt numeracji operacji, kiedy pełna rodzina plików a kiedy prosty
+`config.sh`+`deploy.sh`, standard tagowania obrazów, git preflight, wzorce SSH
+— to, co jest wspólne dla KAŻDEGO środowiska w `bash-scripts/dashboard/`, nie
+tylko dla jednego z nich. `ai-docs/deploy/` opisuje, jak te wzorce są
+zastosowane konkretnie w tym repo (architektura shared/test/prod, GHCR,
+QNAP, MongoDB) — czytaj oba, ogólny standard najpierw.
 
 **Czytać gdy:** każde zadanie dotyczące builda, Dockera, `docker compose`,
 QNAP, release'u, tagowania obrazów, `.env.qnap`/`.env.local`, MongoDB jako

@@ -61,3 +61,16 @@ export function getCurrentUsername(): string {
   }
   return ctx.username;
 }
+
+/**
+ * Non-throwing variant for callers that must never fail just because they
+ * ran outside a request-scoped context (e.g. a migration script, a test, a
+ * background job) — used by data-commands.ts's builders to best-effort
+ * stamp the acting user onto a write command for the history feature
+ * (Story 74). Absence of an actor must never block the write itself or the
+ * history it produces (recorded as "unknown" downstream), so this returns
+ * `null` instead of throwing.
+ */
+export function tryGetCurrentActor(): RepoContext | null {
+  return storage.getStore() ?? null;
+}

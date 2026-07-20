@@ -1,4 +1,30 @@
 //todo; 04
+	//dev panel wybor mongo
+		- zebym mogl w dev panelu wybrac
+		- czy chce tailscale mongo produkcyjne
+		- czy chce przez share qnap volume mongo produkcyjne
+		- czy chce mongo lokalne uruchomic
+
+	//mniejsze dyskietki
+		- jak ta mala dyskietka wszystkie
+		- a tej glownej dac inny kolor zloty najlepiej
+
+	//obrazy produkcyjne
+		- skrypt sam powinine sprawdzac
+		- ktory jest obraz teraz na test
+		- ktore obrazy byly na prod
+		- zostawiac 5 ostatnich prod
+
+	//remove .net from image
+		- dalej nie usunol .net z obrazu
+		- to strasznie spowalnia buduwania
+		- i zwieksza rozmiar obrazu
+
+	//uswanie obrazow
+		- szczegolnie przy 08_registry
+		- usuwac obraz od razu z mac
+		- usuwac tez wiecej niz 5 ostatnich obrazow z git registry
+
 	//beeper include exclude
 		- koniecznie mozliwosc wybrania tych co chcemy zaincludowac
 		- i wybrania tych co nie chcemy nawet jak przez pomylke beda na liscie include
