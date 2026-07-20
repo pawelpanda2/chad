@@ -4,15 +4,21 @@
 // no-op. Only actually calls rs.initiate() the first time it ever runs
 // against a fresh /data/db.
 //
-// IMPORTANT: "mongodb" as the member host below is the Docker Compose
-// service name — resolvable by other containers on the same compose network
-// (dashboard, beeper-oplog), but NOT resolvable from the Mac (beeper-ws /
-// beeper-sync, connecting over Tailscale). That is expected and handled on
-// the client side: every external client must connect with
-// `directConnection=true` in its MONGODB_URI, which tells the driver to
-// talk only to the one node given and skip full replica-set topology
-// discovery (which would otherwise try, and fail, to resolve "mongodb").
-// See documentation/ai-docs/2026-07-10_mongodb-replica-set-migration-plan.md.
+// IMPORTANT: "chad-mongodb" as the member host below is the container_name,
+// not the Docker Compose service name ("mongodb") — resolvable by any
+// container on the external "chad-shared" network, including
+// chad-dashboard-test/chad-dashboard-prod, which live in SEPARATE compose
+// projects and only ever reach Mongo by container_name (see
+// shared-qnap-services.md, "DNS between separate Compose projects"). Story
+// 74 (2026-07-20) changed this from the original "mongodb" literal, which
+// predated the shared/test/prod split (2026-07-11) and assumed one single
+// compose project for everything. Still NOT resolvable from the Mac
+// (beeper-ws/beeper-sync, connecting over Tailscale) — every external
+// client must connect with `directConnection=true` in its MONGODB_URI,
+// which tells the driver to talk only to the one node given and skip full
+// replica-set topology discovery (which would otherwise try, and fail, to
+// resolve "chad-mongodb"). See
+// ai-docs/deploy/2026-07-10_mongodb-replica-set-migration-plan.md.
 
 try {
   const status = rs.status();
@@ -30,7 +36,7 @@ try {
   print("Replica set not yet initialized. Running rs.initiate()...");
   const result = rs.initiate({
     _id: "rs0",
-    members: [{ _id: 0, host: "mongodb:27017" }],
+    members: [{ _id: 0, host: "chad-mongodb:27017" }],
   });
   printjson(result);
 

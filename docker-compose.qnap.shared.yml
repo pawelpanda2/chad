@@ -21,10 +21,38 @@
 # Backup logiczny: bash-scripts/mongo/backup.sh
 #   MONGO_CONTAINER_NAME=chad-mongodb bash bash-scripts/mongo/backup.sh
 #
-# mongodb: standalone (NOT a replica set) — see
-# documentation/ai-docs/2026-07-10_mongodb-replica-set-migration-plan.md.
-# Replica set stays unimplemented (gated behind beeper-oplog landing here +
-# a separate explicit approval).
+# mongodb: single-node replica set `rs0` (Story 74, 2026-07-20) — enabled
+# for MongoDB Change Streams (cp_history). Converts the EXISTING,
+# already-authenticated standalone chad-mongodb (real data, real users) in
+# place; this does not touch /data/db contents, indexes, or existing
+# SCRAM-SHA-256 user records — MongoDB's own standalone->replica-set
+# conversion is data-preserving by design, and MONGO_INITDB_ROOT_USERNAME/
+# PASSWORD are only ever consulted by docker-entrypoint.sh when /data/db is
+# EMPTY (never the case here), so no re-bootstrap of auth is attempted.
+#
+# History (why this was gated, and why it's safe to enable now): see
+# ai-docs/deploy/2026-07-10_mongodb-replica-set-migration-plan.md and
+# `git show b084f55` (2026-07-11 revert to standalone). That real QNAP TEST
+# attempt's healthcheck never passed and mongo-rs-init never ran — but the
+# ACTUAL root cause (confirmed by re-reading the reverted diff) was that
+# both the healthcheck and mongo-rs-init used `mongosh`, which mongo:4.4
+# does not bundle (only the legacy `mongo` shell) — a plain missing-binary
+# failure, not an auth/replSet bootstrap ordering problem as first
+# suspected. This was already fixed for the standalone healthcheck below
+# (commit 9978175, same day) but never re-verified against the replica-set
+# path since replica set was reverted first. This re-attempt uses `mongo`
+# (legacy shell) everywhere, never `mongosh`. Gating preconditions from the
+# migration plan doc are now met: `packages/beeper-oplog` exists in this
+# monorepo, and this Story is the separate explicit approval.
+#
+# Member host identity is `chad-mongodb:27017` (container_name), NOT
+# `mongodb:27017` (compose service name) — the original rs-init.js/plan
+# predates the shared/test/prod split (2026-07-11) and assumed one compose
+# project for everything, where service-name DNS was enough. Since
+# 2026-07-11, dashboard-test/prod live in SEPARATE compose projects and only
+# ever reach Mongo by container_name (see shared-qnap-services.md, "DNS
+# between separate Compose projects") — the replica set's own member
+# identity must match that same, already-proven-reachable name.
 #
 # mongo:4.4 (not mongo:7) — this QNAP's CPU lacks AVX, required by MongoDB
 # 5.0+. Confirmed real crash loop with mongo:7 on this host.
@@ -38,13 +66,52 @@
 # context packages/net-content-provider, CP_REPOS_HOST_PATH/_2 volume
 # mounts, appsettings.json bind mount).
 services:
+  # Idempotent — if the keyfile already exists on the persistent volume,
+  # leaves it untouched (never rotates a key under a running replica set,
+  # which would break member auth). Generated INSIDE a Linux container
+  # rather than bind-mounted with host-set permissions, so `chmod
+  # 400`/`chown 999:999` (the mongodb user's UID/GID in the official image)
+  # behave identically on QNAP as they were tested locally — see
+  # 2026-07-10_mongodb-replica-set-migration-plan.md §2.
+  mongo-keyfile-init:
+    image: mongo:4.4
+    container_name: chad-mongo-keyfile-init
+    restart: "no"
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        set -e
+        if [ -f /keyfile-data/mongo-keyfile ]; then
+          echo "Keyfile already exists, leaving it as-is."
+        else
+          echo "Generating new mongo keyfile..."
+          openssl rand -base64 756 > /keyfile-data/mongo-keyfile
+        fi
+        chmod 400 /keyfile-data/mongo-keyfile
+        chown 999:999 /keyfile-data/mongo-keyfile
+    volumes:
+      - "${QNAP_CONTAINER_DATA_PATH:-/share/ContainerData}/chad-shared/mongodb/keyfile:/keyfile-data"
+
   mongodb:
     image: mongo:4.4
     container_name: chad-mongodb
     restart: unless-stopped
+    # --oplogSize 1024 (MB): explicit, deliberate value rather than trusting
+    # the auto-computed default (~5% of free disk space — this QNAP has
+    # 2.8TB free, which could auto-size the oplog far larger than this
+    # workload needs). Revisit if `rs.printReplicationInfo()`'s oplog window
+    # (Story 74 preflight) turns out too short in practice.
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all", "--keyFile", "/data/mongo-keyfile", "--oplogSize", "1024"]
+    depends_on:
+      mongo-keyfile-init:
+        condition: service_completed_successfully
     # Host port 12040 published (2026-07-19) so MongoDB Compass and other
     # host-side tools can connect over Tailscale
-    # (mongodb://<user>:<pass>@100.117.139.83:12040/chad?authSource=admin).
+    # (mongodb://<user>:<pass>@100.117.139.83:12040/chad?authSource=admin&directConnection=true).
+    # `directConnection=true` is now required for this external path once
+    # rs0 is enabled — a host-level client can't resolve `chad-mongodb` to
+    # discover full replica-set topology, so it must talk to this one node
+    # directly instead (see rs-init.js's own doc comment).
     # 12040, not the container's native 27017: this project's QNAP port
     # convention reserves 12020-12029 for TEST and 12030-12039 for PROD —
     # 12040 is the next slot just past both ranges, not a random pick.
@@ -63,6 +130,7 @@ services:
       - "${QNAP_CONTAINER_DATA_PATH:-/share/ContainerData}/chad-shared/mongodb/db:/data/db"
       - "${QNAP_CONTAINER_DATA_PATH:-/share/ContainerData}/chad-shared/mongodb/configdb:/data/configdb"
       - "${QNAP_CONTAINER_DATA_PATH:-/share/ContainerData}/chad-shared/mongodb/backups:/backups"
+      - "${QNAP_CONTAINER_DATA_PATH:-/share/ContainerData}/chad-shared/mongodb/keyfile/mongo-keyfile:/data/mongo-keyfile:ro"
     logging:
       driver: "json-file"
       options:
@@ -70,7 +138,8 @@ services:
         max-file: "3"
     healthcheck:
       # "mongo" (legacy shell), not "mongosh" — mongo:4.4 doesn't bundle
-      # mongosh.
+      # mongosh. This ping succeeds pre- AND post-rs.initiate() (auth works
+      # the same either way) — no replica-set-dependent behavior here.
       test:
         [
           "CMD",
@@ -89,6 +158,29 @@ services:
       timeout: 5s
       retries: 10
       start_period: 20s
+
+  # Idempotent (see bash-scripts/mongo/rs-init.js — safe to run on every
+  # restart, only calls rs.initiate() the first time). Uses the legacy
+  # `mongo` shell, NOT `mongosh` — same reason as the healthcheck above.
+  mongo-rs-init:
+    image: mongo:4.4
+    container_name: chad-mongo-rs-init
+    restart: "no"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    volumes:
+      - ./bash-scripts/mongo/rs-init.js:/mongo-rs-init.js:ro
+    entrypoint:
+      - mongo
+      - "mongodb://chad-mongodb:27017/admin"
+      - "-u"
+      - "${MONGO_ROOT_USERNAME}"
+      - "-p"
+      - "${MONGO_ROOT_PASSWORD}"
+      - "--authenticationDatabase"
+      - "admin"
+      - "/mongo-rs-init.js"
 
 networks:
   default:
