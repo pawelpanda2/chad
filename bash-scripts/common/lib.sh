@@ -114,7 +114,7 @@ ensure_docker_network() {
 # Usage: require_shared_services_healthy
 # Preflight for TEST/PROD dashboard restart scripts: refuses to proceed
 # unless the shared chad-mongodb stack (started separately by
-# bash-scripts/dashboard/00_qnap_shared/03_restart.sh) is already up and
+# bash-scripts/dashboard/00_qnap_shared/03_re-start.sh) is already up and
 # healthy. Never starts/restarts shared services itself — only reads state.
 #
 # Content Provider (chad-content-provider-api) is no longer part of this
@@ -126,7 +126,7 @@ ensure_docker_network() {
 require_shared_services_healthy() {
   if ! docker network inspect chad-shared >/dev/null 2>&1; then
     log_error "Docker network 'chad-shared' does not exist."
-    log_error "  Fix: bash bash-scripts/dashboard/00_qnap_shared/03_restart.sh (start shared services first)."
+    log_error "  Fix: bash bash-scripts/dashboard/00_qnap_shared/03_re-start.sh (start shared services first)."
     return 1
   fi
 
@@ -134,7 +134,7 @@ require_shared_services_healthy() {
   mongo_state="$(docker inspect -f '{{.State.Health.Status}}' chad-mongodb 2>/dev/null || true)"
   if [ "$mongo_state" != "healthy" ]; then
     log_error "Shared chad-mongodb container is not running/healthy (state: ${mongo_state:-not found})."
-    log_error "  Fix: bash bash-scripts/dashboard/00_qnap_shared/03_restart.sh"
+    log_error "  Fix: bash bash-scripts/dashboard/00_qnap_shared/03_re-start.sh"
     return 1
   fi
 
@@ -223,7 +223,7 @@ ensure_port_available() {
 # never use `:latest` — every build writes ONE canonical, gitignored
 # tag-record file; every restart/deploy script reads that same file and
 # fails loudly if it's missing, instead of silently defaulting to `:latest`.
-# Full standard: documentation/ai-docs/deploy/image-tagging-standard.md
+# Full standard: ai-docs/bash-scripts/image-tagging-standard.md
 # ============================================================================
 
 # Canonical per-image tag-record file path. Caller must have REPO_ROOT set
@@ -257,7 +257,7 @@ require_image_tag() {
   if [ ! -f "$tag_file" ]; then
     log_error "No release tag recorded for $image_label."
     log_error "  Missing: $tag_file"
-    log_error "  Fix: run the build script for $image_label first (see documentation/ai-docs/deploy/image-tagging-standard.md)."
+    log_error "  Fix: run the build script for $image_label first (see ai-docs/bash-scripts/image-tagging-standard.md)."
     return 1
   fi
   # shellcheck disable=SC1090
@@ -781,7 +781,7 @@ remote_repo_head() {
 # GHCR (GitHub Container Registry) helpers (Story 70). QNAP no longer builds
 # chad-dashboard — this is what replaces that: build+push happens LOCALLY
 # (Mac or GitHub Actions, never on QNAP), and QNAP only ever pulls. Used by
-# bash-scripts/dashboard/08_registry_test/{02_build,03_restart}.sh and
+# bash-scripts/dashboard/08_registry_test/{02_build,03_re-start}.sh and
 # bash-scripts/dashboard/09_registry_prod/06_last_from_test.sh — one shared
 # implementation, not duplicated per environment. GHCR_REGISTRY/GHCR_OWNER/
 # GHCR_IMAGE are non-secret (each environment's own 01_config.sh sets them);
@@ -919,8 +919,8 @@ ghcr_build_tag_push() {
 # Pulls the given tag (or "sha256:..." digest) from GHCR and re-tags it
 # locally as chad-dashboard:<tag> — the SAME bare local name every existing
 # compose file's `image:` field already expects
-# (docker-compose.qnap.{test,prod}.yml) — so 04_qnap_test/03_restart.sh and
-# 05_qnap_prod/03_restart.sh need ZERO changes to run it. Prints the pulled
+# (docker-compose.qnap.{test,prod}.yml) — so 04_qnap_test/03_re-start.sh and
+# 05_qnap_prod/03_re-start.sh need ZERO changes to run it. Prints the pulled
 # image ID on stdout (the only thing a caller should capture); digest and
 # progress go to log_info/log_ok/log_error.
 ghcr_pull_and_retag() {

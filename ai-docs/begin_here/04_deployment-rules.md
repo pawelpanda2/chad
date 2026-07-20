@@ -12,7 +12,7 @@ below for exactly what a raw command silently skips.
 Concretely, for the dashboard stack (`bash-scripts/dashboard/`), every
 environment (`00_qnap_shared`, `02_local_mac_tmux`, `03_local_mac_docker`,
 `04_qnap_test`, `05_qnap_prod`) uses one fixed, repo-wide set of numbered
-operation slots — `01_config`, `02_build`, `03_restart`, `04_end`,
+operation slots — `01_config`, `02_build`, `03_re-start`, `04_end`,
 `05_status`, `06_deploy`, `07_logs` — with gaps left empty wherever an
 environment has no real use for a slot (e.g. `05_qnap_prod` has no
 `02_build`/`06_deploy` at all — see below). `06_deploy.sh` = build +
@@ -40,13 +40,13 @@ these are not the same kind of "shared"). Then:
    each script does, in what order, and why (shared/test/prod split,
    `container_name` vs service-name DNS across separate Compose projects,
    `require_shared_services_healthy` preflight, port ownership).
-2. `deploy/image-tagging-standard.md` — how `IMAGE_TAG` really gets to a
+2. `bash-scripts/image-tagging-standard.md` — how `IMAGE_TAG` really gets to a
    compose file (see below).
 3. The actual `NN_*.sh` scripts for the environment in question — they are
    short and are the real source of truth, not a summary of them.
 
 Never run `docker compose ... up/build/down` directly against one of these
-files without going through its `03_restart.sh`/`02_build.sh`/`04_end.sh` —
+files without going through its `03_re-start.sh`/`02_build.sh`/`04_end.sh` —
 even when you think you know the equivalent flags, because the scripts do
 things a bare compose invocation cannot:
 
@@ -54,7 +54,7 @@ things a bare compose invocation cannot:
   `chad-content-provider-api`) never use `:latest`. The tag is a
   timestamp written to a gitignored `.image-tag.<image>.env` file **only
   after a successful build** (`write_image_tag`, last line of
-  `02_build.sh`), and read back by `require_image_tag` in `03_restart.sh` —
+  `02_build.sh`), and read back by `require_image_tag` in `03_re-start.sh` —
   no in-shell env var survives between separate script invocations, so a
   bare `docker compose up` without sourcing the same config will hit the
   compose file's `${IMAGE_TAG:?...}` required-var guard and fail (or, on
@@ -62,7 +62,7 @@ things a bare compose invocation cannot:
   `:latest`, which is the exact incident that motivated this whole
   mechanism — see `image-tagging-standard.md`'s incident section). If you
   ever need to run compose commands directly (e.g. because only one
-  service needs restarting and the full `03_restart.sh` would also try to
+  service needs restarting and the full `03_re-start.sh` would also try to
   reclaim a port something else legitimately owns), still `source` the
   environment's own `01_config.sh` first and reuse its `IMAGE_TAG`/`ENV_FILE`/
   `COMPOSE_PROJECT_NAME`, don't invent your own.
@@ -73,7 +73,7 @@ things a bare compose invocation cannot:
   immediately before `up`, then bind-mounted read-only. Skipping this step
   means the container starts with whatever stale file happens to be on
   disk (or none).
-- **Health/readiness waits.** `03_restart.sh` polls `/health` (Content
+- **Health/readiness waits.** `03_re-start.sh` polls `/health` (Content
   Provider) and dashboard HTTP before declaring success, and — for
   `04_qnap_test`/`05_qnap_prod` — refuses to even attempt `up` unless
   `require_shared_services_healthy` passes first. A raw `docker compose up

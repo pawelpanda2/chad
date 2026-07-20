@@ -1,17 +1,18 @@
 # Dashboard — skrypty startowe (`bash-scripts/dashboard/` + root wrappery)
 
-Status: aktualne (Story 63, 2026-07-16/17, przenumerowało
-`02_local_mac_tmux/` na stały, globalny kontrakt slotów i przemianowało
-`re-start` → `restart`); pierwotnie przetestowane end-to-end z realnym
-Content Providerem (2026-07-10, patrz "Testy wykonane" niżej — nazwy
-skryptów w tamtym zapisie są historyczne, z dnia testu).
+Status: aktualne (Story 74, 2026-07-20, przywróciło nazwę `03_re-start.sh`
+z myślnikiem — patrz akapit na końcu tej sekcji); wcześniej Story 63
+(2026-07-16/17) przenumerowało `02_local_mac_tmux/` na stały, globalny
+kontrakt slotów; pierwotnie przetestowane end-to-end z realnym Content
+Providerem (2026-07-10, patrz "Testy wykonane" niżej — nazwy skryptów w
+tamtym zapisie są historyczne, z dnia testu).
 
 ## Cel
 
 Jedna komenda z roota repo, bez pamiętania `pnpm`/`docker compose`/`tmuxinator`:
 
 ```bash
-bash restart.sh
+bash re-start.sh
 ```
 
 ## Nazewnictwo
@@ -20,11 +21,13 @@ bash restart.sh
 
 **2026-07-14 (poprawka Story 54):** `begin.sh` → `re-start.sh` w całym repo (wszystkie skrypty `begin.sh`/`NN_begin.sh`, patrz `documentation/ai-docs/deploy/dashboard-deployment-scripts.md`, sekcja "Niespójność nazewnictwa"). `end.sh`/`status.sh` w tym katalogu pozostały wtedy bez zmian.
 
-**2026-07-16/17 (Story 63):** cały `bash-scripts/dashboard/02_local_mac_tmux/` przenumerowany na globalny kontrakt slotów operacji (patrz `dashboard-deployment-scripts.md`): `01_config.sh` (bez zmian), `01_build.sh`→`02_build.sh`, `02_start.sh`→`03_restart.sh`, `03_end.sh`→`04_end.sh`, `04_status.sh`→`05_status.sh`, `05_logs.sh`→`07_logs.sh` (slot `06`/deploy celowo pusty — ten wariant nie ma osobnej operacji deploy). Root wrapper `re-start.sh` → `restart.sh`, wskazuje teraz na `03_restart.sh`. Naming `re-start` zniknął całkowicie z repo — `restart` (bez myślnika) obowiązuje wszędzie.
+**2026-07-16/17 (Story 63):** cały `bash-scripts/dashboard/02_local_mac_tmux/` przenumerowany na globalny kontrakt slotów operacji (patrz `dashboard-deployment-scripts.md`): `01_config.sh` (bez zmian), `01_build.sh`→`02_build.sh`, `02_start.sh`→`03_restart.sh`, `03_end.sh`→`04_end.sh`, `04_status.sh`→`05_status.sh`, `05_logs.sh`→`07_logs.sh` (slot `06`/deploy celowo pusty — ten wariant nie ma osobnej operacji deploy). Root wrapper `re-start.sh` → `restart.sh`, wskazywał wtedy na `03_restart.sh`. Naming `re-start` zniknął wtedy całkowicie z repo — `restart` (bez myślnika) obowiązywało wszędzie, aż do poprawki niżej.
+
+**2026-07-20 (Story 74):** `restart` → `re-start` (**z powrotem** myślnik) we wszystkich katalogach `bash-scripts/dashboard/*/03_restart.sh` → `03_re-start.sh`, oraz root wrapper `restart.sh` → `re-start.sh`. Powód: ten skrypt służy zarówno do **pierwszego startu**, jak i do **restartu** środowiska, które już działa — wewnętrznie zawsze woła `04_end.sh` przed startem, jeśli środowisko już działa (patrz `dashboard-deployment-scripts.md`, sekcja "`03_re-start.sh`"). Myślnik między `re` i `start` ma to odzwierciedlać: nie jest to operacja, która zakłada, że coś już działa (czyste "restart"), tylko "(re-)start" — uruchom, ewentualnie po uprzednim zatrzymaniu. Zero zmiany zachowania, wyłącznie nazwa pliku i wszystkie odwołania do niej.
 
 ## Trzy procesy
 
-1. **`dba`** (`tsc --watch`) — dashboard importuje `dba` jako pakiet workspace; `03_restart.sh` robi jednorazowy build przed startem, jeśli `dist/` nie istnieje.
+1. **`dba`** (`tsc --watch`) — dashboard importuje `dba` jako pakiet workspace; `03_re-start.sh` robi jednorazowy build przed startem, jeśli `dist/` nie istnieje.
 2. **`dashboard`** (`next dev --turbopack`).
 3. **Content Provider API** — **realnie sprawdzane I uruchamiane, jeśli nie działa** (zmiana z poprzedniej wersji, która tylko ostrzegała). Używa **prawdziwego, istniejącego skryptu** z `packages/net-content-provider/03_scripts/03_local-mac_docker/02_run_api_charp.sh` (Docker) — nie wymyślonej alternatywy.
 
@@ -58,7 +61,7 @@ Równolegle powstał **`packages/content-provider`** — minimalny szkielet Type
 
 ## Ownership tracking (kluczowe dla `end.sh`)
 
-`end.sh` **nie może** zatrzymać Content Providera, który działał już przed `03_restart.sh` — to śledzone jawnie, nie zgadywane po porcie:
+`end.sh` **nie może** zatrzymać Content Providera, który działał już przed `03_re-start.sh` — to śledzone jawnie, nie zgadywane po porcie:
 
 - `run-content-provider-if-needed.sh` sprawdza health **przed** startem czegokolwiek.
 - Jeśli API już działa → **nic nie uruchamia**, nie zapisuje ownership. `end.sh` go nie tknie.
@@ -66,7 +69,7 @@ Równolegle powstał **`packages/content-provider`** — minimalny szkielet Type
 - `end.sh` czyta ten plik: jeśli istnieje → `docker stop` + `docker rm` **tego konkretnego** kontenera, potem usuwa marker. Jeśli nie istnieje → zostawia Content Provider w spokoju, niezależnie od tego czy działa.
 - Nigdy `killall`, szerokiego `pkill` ani zabijania po nazwie procesu — tylko `docker stop`/`docker rm` na jawnie zapisanej nazwie kontenera.
 
-## Flow `03_restart.sh`
+## Flow `03_re-start.sh`
 
 ```txt
 preflight checks (pnpm, tmux, tmuxinator, .env, packages, port wolny, sesja nie istnieje)
@@ -78,7 +81,7 @@ run-content-provider-if-needed.sh --wait-only   (blokujące: check → condition
 tmuxinator start (3 panele: dba, dashboard, content-provider)
 ```
 
-Krok CP jest **blokujący i synchroniczny, uruchamiany przed** interaktywną sesją tmuxinator — bo gdy tmuxinator raz „attachuje” terminal, kontrola nie wraca do `03_restart.sh` aż do detach, więc "poczekaj na health, potem uznaj start za zakończony" musi się zdarzyć wcześniej. Ten sam skrypt uruchamia się też wewnątrz panelu `content-provider` (bez `--wait-only`) — bezpiecznie, bo sprawdza health najpierw i nie duplikuje startu; drugi raz po prostu przechodzi do `docker logs -f`.
+Krok CP jest **blokujący i synchroniczny, uruchamiany przed** interaktywną sesją tmuxinator — bo gdy tmuxinator raz „attachuje” terminal, kontrola nie wraca do `03_re-start.sh` aż do detach, więc "poczekaj na health, potem uznaj start za zakończony" musi się zdarzyć wcześniej. Ten sam skrypt uruchamia się też wewnątrz panelu `content-provider` (bez `--wait-only`) — bezpiecznie, bo sprawdza health najpierw i nie duplikuje startu; drugi raz po prostu przechodzi do `docker logs -f`.
 
 ## Skrypty (nazwy aktualne po Story 63 — patrz `ls bash-scripts/dashboard/02_local_mac_tmux/`)
 
@@ -86,7 +89,7 @@ Krok CP jest **blokujący i synchroniczny, uruchamiany przed** interaktywną ses
 |---|---|---|---|
 | `01_config.sh` | config | Stałe/appsettings, sourced przez resztę | — |
 | `02_build.sh` | build | Production build: `dba` → `dashboard` | ✅ |
-| `03_restart.sh` | restart | Preflight → build dba → ensure CP (start jeśli trzeba, czekaj na health) → tmuxinator (3 panele) | ✅ z roota, z `/tmp`, z CP działającym i niedziałającym (jako `begin.sh`, potem `re-start.sh` — patrz "Testy wykonane") |
+| `03_re-start.sh` | restart | Preflight → build dba → ensure CP (start jeśli trzeba, czekaj na health) → tmuxinator (3 panele) | ✅ z roota, z `/tmp`, z CP działającym i niedziałającym (jako `begin.sh`, potem `re-start.sh` — patrz "Testy wykonane") |
 | `04_end.sh` | end | Zatrzymuje sesję tmux; CP tylko jeśli `.tmp/dashboard/content-provider.owned` istnieje | ✅ oba przypadki (owned / nie-owned) |
 | `05_status.sh` | status | Stan sesji, port, czy dashboard odpowiada, CP health + ownership | ✅ |
 | *(slot `06`/deploy: celowo pusty — ten wariant nie ma osobnej operacji deploy)* | | | |

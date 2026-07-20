@@ -76,7 +76,7 @@ function baseConfig(overrides: Partial<DbaDataProvidersConfig> = {}): DbaDataPro
 }
 
 function putCommand(id: string): DataWriteCommand {
-  return { kind: "put-item", operationId: `op-router-${id}-${Date.now()}-${Math.random()}`, createdAt: new Date().toISOString(), item: fakeItem(id) };
+  return { kind: "put-item", operationId: `op-router-${id}-${Date.now()}-${Math.random()}`, createdAt: new Date().toISOString(), actor: null, item: fakeItem(id) };
 }
 
 async function runTests() {
@@ -221,6 +221,7 @@ async function runTests() {
       kind: "put-item",
       operationId: "op-enqueue-fails",
       createdAt: new Date().toISOString(),
+      actor: null,
       item: { ...item, config: circular as unknown as CpItem["config"] },
     };
 

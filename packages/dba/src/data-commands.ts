@@ -7,10 +7,18 @@
 
 import type { Clock } from "./data-clock.js";
 import { formatCpTimestamp, type CpItem } from "./cp-model.js";
+import { tryGetCurrentActor } from "./repo-context.js";
 
 export interface DataCommandBase {
   operationId: string;
   createdAt: string;
+  /**
+   * Best-effort acting user, auto-stamped from the request-scoped repo
+   * context at command-build time (Story 74, history feature) — `null` when
+   * built outside any context (migration scripts, tests). Never required:
+   * a missing actor must never block the write itself.
+   */
+  actor: { username: string; repoGuid: string } | null;
 }
 
 /** Write (create-or-update) an item at an already-known address. */
@@ -57,6 +65,7 @@ export function buildPutItemCommand(item: CpItem, clock: Clock): PutItemCommand 
     kind: "put-item",
     operationId: clock.newId(),
     createdAt: clock.now().toISOString(),
+    actor: tryGetCurrentActor(),
     item,
   };
 }
@@ -75,6 +84,7 @@ export function buildCreateChildItemCommand(
     kind: "create-child-item",
     operationId: clock.newId(),
     createdAt: clock.now().toISOString(),
+    actor: tryGetCurrentActor(),
     parentItemId: input.parentItemId,
     parentAddress: input.parentAddress,
     name: input.name,

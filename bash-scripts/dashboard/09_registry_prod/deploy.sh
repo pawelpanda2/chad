@@ -3,7 +3,7 @@
 # GHCR — pulls it onto the QNAP host BY DIGEST (verifiable against the
 # registry, not just whatever happens to already be on disk). Never builds,
 # never creates a new tag. Reuses the existing, unmodified
-# bash-scripts/dashboard/05_qnap_prod/{03_restart,05_status}.sh for
+# bash-scripts/dashboard/05_qnap_prod/{03_re-start,05_status}.sh for
 # everything after the pull — not duplicated here.
 #
 # This is PROD's only deployment operation via GHCR (analogous to
@@ -92,7 +92,7 @@ EOF
 run_remote "Update repo on QNAP" "cd '$QNAP_REPO_DIR' && git pull --ff-only"
 run_remote "Pulling TEST's exact image onto QNAP by digest (for PROD)" "$PROMOTE_CMD"
 
-run_remote_script "05_qnap_prod" "03_restart.sh" "Restart QNAP PROD (promoted from TEST)"
+run_remote_script "05_qnap_prod" "03_re-start.sh" "Restart QNAP PROD (promoted from TEST)"
 run_remote_script "05_qnap_prod" "05_status.sh" "Status QNAP PROD"
 
 echo ""

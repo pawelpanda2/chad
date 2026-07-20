@@ -2,7 +2,7 @@
 # Builds the local Mac stack (mongo image is pulled, not built; only the
 # dashboard image is actually built here) under docker-compose. Only
 # builds — never runs containers, never touches a running environment,
-# never `docker compose up`, never removes volumes. See 03_restart.sh
+# never `docker compose up`, never removes volumes. See 03_re-start.sh
 # (start, idempotent) / 04_end.sh (stop) / 05_status.sh / 06_deploy.sh
 # (build + restart, one shot).
 set -euo pipefail
@@ -24,7 +24,7 @@ cd "$REPO_ROOT"
 # Plain date+time tag (no environment/arch suffix) — environment is already
 # distinguished by compose project name, ports, and container names, not by
 # the image tag. Own CHAD images never get a `:latest` tag (see
-# documentation/ai-docs/deploy/image-tagging-standard.md) — this is the ONLY
+# ai-docs/bash-scripts/image-tagging-standard.md) — this is the ONLY
 # tag this build produces.
 IMAGE_TAG="$(date +'%y%m%d_%H%M%S')"
 export IMAGE_TAG

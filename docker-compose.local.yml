@@ -30,10 +30,10 @@ services:
 
   dashboard:
     # No ":latest" fallback - own CHAD images must be deployed by an explicit
-    # release tag (see documentation/ai-docs/deploy/image-tagging-standard.md).
-    # 03_local_mac_docker/03_restart.sh sets IMAGE_TAG before calling this; the
+    # release tag (see ai-docs/bash-scripts/image-tagging-standard.md).
+    # 03_local_mac_docker/03_re-start.sh sets IMAGE_TAG before calling this; the
     # required-var syntax below is a defense-in-depth backstop.
-    image: "chad-dashboard:${IMAGE_TAG:?IMAGE_TAG is required, see documentation/ai-docs/deploy/image-tagging-standard.md}"
+    image: "chad-dashboard:${IMAGE_TAG:?IMAGE_TAG is required, see ai-docs/bash-scripts/image-tagging-standard.md}"
     build:
       context: .
       dockerfile: packages/dashboard/Dockerfile

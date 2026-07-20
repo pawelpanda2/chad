@@ -68,6 +68,17 @@ interface ItemDoc {
   _id: string;
   config: CpItem["config"];
   body: string;
+  /**
+   * Best-effort acting user for the most recent write, top-level and
+   * SIBLING to config/body (never inside config) — never round-trips to
+   * Content Provider's config.yaml (docToItem() below deliberately never
+   * reads it), purely a Mongo-side bookkeeping field for the cp_history
+   * feature (Story 74) to attribute change-stream events without a
+   * separate side-table. Absent/null is expected and handled (history
+   * records the change as actor "unknown") — never required for a write to
+   * succeed.
+   */
+  _lastActor?: { username: string; repoGuid: string } | null;
 }
 
 interface FolderChildCounterDoc {
@@ -249,7 +260,7 @@ export class MongoCpProvider implements CpCompatibleDataProvider {
 
   async executeWrite(command: DataWriteCommand): Promise<DataWriteResult> {
     if (command.kind === "put-item") {
-      return this.putItem(command.item);
+      return this.putItem(command.item, command.actor);
     }
     return this.createChild(command);
   }
@@ -271,7 +282,10 @@ export class MongoCpProvider implements CpCompatibleDataProvider {
     return result.item;
   }
 
-  private async putItem(item: CpItem): Promise<DataWriteResult> {
+  private async putItem(
+    item: CpItem,
+    actor: { username: string; repoGuid: string } | null = null
+  ): Promise<DataWriteResult> {
     assertValidCpItem(item);
     const db = await this.db();
     const collection = db.collection<ItemDoc>(ITEMS_COLLECTION);
@@ -289,7 +303,7 @@ export class MongoCpProvider implements CpCompatibleDataProvider {
     try {
       await collection.updateOne(
         { _id: item._id },
-        { $set: { config, body: item.body } },
+        { $set: { config, body: item.body, _lastActor: actor } },
         { upsert: true }
       );
     } catch (error) {
@@ -339,7 +353,12 @@ export class MongoCpProvider implements CpCompatibleDataProvider {
     newItem.config.id = newItem._id;
 
     try {
-      await collection.insertOne({ _id: newItem._id, config: newItem.config, body: newItem.body });
+      await collection.insertOne({
+        _id: newItem._id,
+        config: newItem.config,
+        body: newItem.body,
+        _lastActor: command.actor,
+      });
     } catch (error) {
       if (isDuplicateKeyError(error)) {
         throw new AddressConflictError(address, error);

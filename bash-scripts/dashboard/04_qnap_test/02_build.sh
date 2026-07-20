@@ -27,7 +27,7 @@ cd "$REPO_ROOT"
 # Plain date+time tag (no environment/arch suffix) — environment is already
 # distinguished by compose project name, ports, and container names, not by
 # the image tag. Own CHAD images never get a `:latest` tag (see
-# documentation/ai-docs/deploy/image-tagging-standard.md) — this is the ONLY
+# ai-docs/bash-scripts/image-tagging-standard.md) — this is the ONLY
 # tag this build produces. TEST and PROD share ONE canonical tag-record file
 # for chad-dashboard: TEST builds it here, PROD only ever promotes this exact
 # image via 07_qnap_prod_ssh/06_last_from_test.sh — never a second build.

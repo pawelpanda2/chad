@@ -2,7 +2,7 @@ name: Build & push chad-dashboard to GHCR
 
 # Manual only (Story 70) — this repo's own deployment standard prefers
 # explicit, deliberate build/deploy actions over auto-triggering on every
-# push (see documentation/ai-docs/deploy/image-tagging-standard.md and
+# push (see ai-docs/bash-scripts/image-tagging-standard.md and
 # documentation/ai-docs/deploy/dashboard-deployment-scripts.md). Use this
 # when you want CI (not your Mac) to build+push — functionally identical
 # to running bash-scripts/dashboard/08_registry_test/02_build.sh locally;
@@ -66,5 +66,5 @@ jobs:
       # Deliberately no further steps: this workflow builds and pushes only.
       # It never SSHes into QNAP, never deploys TEST, never touches PROD —
       # deployment stays a deliberate, separate action
-      # (bash-scripts/dashboard/08_registry_test/03_restart.sh, run from a
+      # (bash-scripts/dashboard/08_registry_test/03_re-start.sh, run from a
       # Mac that has the QNAP SSH credentials — this workflow doesn't).

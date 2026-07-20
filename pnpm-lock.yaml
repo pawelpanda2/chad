@@ -382,6 +382,18 @@ importers:
         specifier: ^5.3.3
         version: 5.8.3
 
+  packages/history-worker:
+    dependencies:
+      diff:
+        specifier: ^7.0.0
+        version: 7.0.0
+      dotenv:
+        specifier: ^17.4.0
+        version: 17.4.2
+      mongodb:
+        specifier: ^7.1.1
+        version: 7.5.0
+
 packages:
 
   '@alloc/quick-lru@5.2.0':

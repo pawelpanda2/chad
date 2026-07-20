@@ -59,7 +59,7 @@ poprawny domyślny wzorzec ścieżki, z komentarzem ostrzegającym o tmpfs.
 
 `bash-scripts/common/lib.sh`: `require_data_path_writable <path> [min_free_kb]`.
 
-Wywoływane przez `00_qnap_shared/03_restart.sh` na
+Wywoływane przez `00_qnap_shared/03_re-start.sh` na
 `$QNAP_CONTAINER_DATA_PATH/chad-shared/mongodb` PRZED `docker compose up`:
 
 1. `mkdir -p` — tworzy katalog (i w dalszym kroku podkatalogi

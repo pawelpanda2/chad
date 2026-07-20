@@ -47,10 +47,10 @@ jako dokumentacja ścieżki powrotu, patrz "Historia zmian" na końcu.
 |---|---|---|
 | `01_config` | sourced, nigdy uruchamiany bezpośrednio | przygotowanie/wygenerowanie konfiguracji danego środowiska |
 | `02_build` | | budowanie obrazu Docker lub artefaktu (np. `pnpm build`) |
-| `03_restart` | | uruchomienie środowiska jeśli nie działa, albo restart z już zbudowanego obrazu/artefaktu; **nigdy nie buduje** |
+| `03_re-start` | | uruchomienie środowiska jeśli nie działa, albo restart z już zbudowanego obrazu/artefaktu; **nigdy nie buduje** |
 | `04_end` | | zatrzymanie środowiska |
 | `05_status` | | stan + podstawowe healthchecki, nigdy nie zmienia stanu |
-| `06_deploy` | | pełny deployment nowej wersji wg kontraktu danego środowiska (typowo `02_build`→`03_restart`→`05_status`) |
+| `06_deploy` | | pełny deployment nowej wersji wg kontraktu danego środowiska (typowo `02_build`→`03_re-start`→`05_status`) |
 | `07_logs` | | podgląd logów |
 
 **Luki są celowe.** Numer identyfikuje rodzaj operacji w całym repozytorium,
@@ -78,7 +78,7 @@ bash-scripts/dashboard/
 ├── 05_qnap_prod/          # docker-compose.qnap.prod.yml (TYLKO dashboard PROD) — bez build/deploy od Story 63, nadal tak
 ├── 06_qnap_test_ssh/      # cienkie wrappery SSH nad 04_qnap_test (build na QNAP), BEZ ZMIAN od Story 63
 ├── 07_qnap_prod_ssh/      # cienkie wrappery SSH nad 05_qnap_prod — plus 06_last_from_test.sh (Story 63, promuje przez współdzielony lokalny cache Dockera), BEZ ZMIAN
-├── 08_registry_test/      # (NOWY, Story 70, RÓWNOLEGŁY wariant) pełny deployment TEST przez GHCR — 02_build.sh buduje+pushuje LOKALNIE (Mac), 03_restart.sh pulluje na QNAP i restartuje
+├── 08_registry_test/      # (NOWY, Story 70, RÓWNOLEGŁY wariant) pełny deployment TEST przez GHCR — 02_build.sh buduje+pushuje LOKALNIE (Mac), 03_re-start.sh pulluje na QNAP i restartuje
 └── 09_registry_prod/      # (NOWY, Story 70, RÓWNOLEGŁY wariant) promocja PROD przez GHCR — 06_last_from_test.sh pobiera dokładnie obraz TEST z rejestru PO DIGEŚCIE
 ```
 
@@ -90,11 +90,11 @@ sposób — build na QNAP (`04_qnap_test/02_build.sh`/`06_deploy.sh`,
 między nimi a starą drogą należy do użytkownika za każdym razem, kiedy
 deployuje.
 
-### `00_qnap_shared/` — 6 plików: `01_config`, `02_build`, `03_restart`, `04_end`, `05_status`, `06_deploy`
+### `00_qnap_shared/` — 6 plików: `01_config`, `02_build`, `03_re-start`, `04_end`, `05_status`, `06_deploy`
 
-### `02_local_mac_tmux/` — 6 plików (slot `06`/deploy celowo pusty): `01_config`, `02_build`, `03_restart`, `04_end`, `05_status`, `07_logs` — patrz `dashboard-start-scripts.md` dla pełnego opisu tego dev-flow.
+### `02_local_mac_tmux/` — 6 plików (slot `06`/deploy celowo pusty): `01_config`, `02_build`, `03_re-start`, `04_end`, `05_status`, `07_logs` — patrz `dashboard-start-scripts.md` dla pełnego opisu tego dev-flow.
 
-### `03_local_mac_docker/` — 7 plików: `01_config`, `02_build`, `03_restart`, `04_end`, `05_status`, `06_deploy`, plus `90_port-kill.sh` (poza zakresem slotów — patrz niżej).
+### `03_local_mac_docker/` — 7 plików: `01_config`, `02_build`, `03_re-start`, `04_end`, `05_status`, `06_deploy`, plus `90_port-kill.sh` (poza zakresem slotów — patrz niżej).
 
 #### `90_port-kill.sh` — ręczne/automatyczne zwalnianie zajętego portu
 
@@ -106,13 +106,13 @@ ponowna weryfikacja, SIGKILL dopiero gdy nadal żyje). Zero interaktywnych
 pytań — wywoływany automatycznie. Nigdy nie dotyka niczego niezwiązanego z
 podanym portem (brak `docker system prune`, brak `pkill`/`killall`).
 
-`03_restart.sh` wywołuje go automatycznie dla każdego portu z
+`03_re-start.sh` wywołuje go automatycznie dla każdego portu z
 `REQUIRED_PORTS` (zbudowanego z `DASHBOARD_PORT`/`CONTENT_PROVIDER_API_PORT`/
 `MONGODB_PORT` w `01_config.sh` — nigdy nie hardkoduje numerów portów samo)
-PRZED próbą startu. Po zwolnieniu portów `03_restart.sh` wywołuje
+PRZED próbą startu. Po zwolnieniu portów `03_re-start.sh` wywołuje
 `ensure_port_available` ponownie jako końcową weryfikację, dopiero potem
 `docker compose up -d`. `06_deploy.sh` (build → restart → status) tej
-logiki nie duplikuje — dziedziczy ją przez wywołanie `03_restart.sh`.
+logiki nie duplikuje — dziedziczy ją przez wywołanie `03_re-start.sh`.
 
 **Numeracja `9x` (Story 63):** wcześniej ten skrypt zajmował slot `01`,
 przesuwając całą resztę katalogu o jeden numer. Skoro to narzędzie
@@ -124,18 +124,18 @@ Lokalny `docker-compose.local.yml` (`03_local_mac_docker`) łączy mongo + CP +
 dashboard w jednym pliku, bo lokalnie nie ma potrzeby rozdzielać TEST/PROD —
 ten podział dotyczy wyłącznie QNAP.
 
-### `04_qnap_test/` — 6 plików: `01_config`, `02_build`, `03_restart`, `04_end`, `05_status`, `06_deploy`.
+### `04_qnap_test/` — 6 plików: `01_config`, `02_build`, `03_re-start`, `04_end`, `05_status`, `06_deploy`.
 
 **Bez zmian od Story 63.** `02_build.sh` nadal buduje `chad-dashboard` NA
 QNAP (jak zawsze) i zapisuje git SHA jako OCI label; `06_deploy.sh` nadal
-robi `02_build.sh` → `03_restart.sh` → `05_status.sh`. To pozostaje w pełni
+robi `02_build.sh` → `03_re-start.sh` → `05_status.sh`. To pozostaje w pełni
 poprawna droga deploymentu TEST. Od Story 70 istnieje też równoległa,
-opcjonalna droga bez buildu na QNAP — `08_registry_test/03_restart.sh`
-woła zdalnie *ten sam, niezmieniony* `03_restart.sh` z tego katalogu, tyle
+opcjonalna droga bez buildu na QNAP — `08_registry_test/03_re-start.sh`
+woła zdalnie *ten sam, niezmieniony* `03_re-start.sh` z tego katalogu, tyle
 że po `docker pull` zamiast po `docker compose build` — patrz sekcja
 "Registry flow (GHCR)" niżej.
 
-### `05_qnap_prod/` — 4 pliki: `01_config`, `03_restart`, `04_end`, `05_status`. **Bez `02_build`, bez `06_deploy`.**
+### `05_qnap_prod/` — 4 pliki: `01_config`, `03_re-start`, `04_end`, `05_status`. **Bez `02_build`, bez `06_deploy`.**
 
 **Decyzja architektoniczna (Story 63):** PROD nigdy nie buduje własnego
 obrazu i nigdy nie deployuje niezależnie. Przed Story 63 `05_qnap_prod`
@@ -172,12 +172,12 @@ Przebudowano na trzy pliki:
 Wszystkie trzy są osobnymi projektami Compose (`-p chad-shared` /
 `chad-test` / `chad-prod`), połączonymi przez jedną **zewnętrzną** sieć
 Docker `chad-shared` (tworzoną idempotentnie przez `ensure_docker_network`
-w `bash-scripts/common/lib.sh`, wywoływaną z `00_qnap_shared/03_restart.sh`).
+w `bash-scripts/common/lib.sh`, wywoływaną z `00_qnap_shared/03_re-start.sh`).
 
 ## `00_qnap_shared` — ocena konieczności (Story 63 audyt)
 
 **Wniosek: potrzebny, zostaje.** Dowody z audytu:
-- **Kto go wywołuje:** `04_qnap_test/03_restart.sh` i `05_qnap_prod/03_restart.sh`
+- **Kto go wywołuje:** `04_qnap_test/03_re-start.sh` i `05_qnap_prod/03_re-start.sh`
   wywołują `require_shared_services_healthy()` przed startem i **odmawiają
   uruchomienia**, jeśli shared nie jest zdrowy — obie zależą od niego
   strukturalnie.
@@ -218,9 +218,9 @@ Jego appsettings.json jest zapisany tekstowo (heredoc) jako
 `CONTENT_PROVIDER_APPSETTINGS_JSON` w `00_qnap_shared/01_config.sh`. Funkcja
 `write_content_provider_appsettings()` zapisuje ten tekst do
 `.runtime/shared/content-provider/appsettings.json` (gitignored) tuż przed
-`docker compose up` — `00_qnap_shared/03_restart.sh` woła ją zawsze na
+`docker compose up` — `00_qnap_shared/03_re-start.sh` woła ją zawsze na
 początku. Zmiana konfiguracji Content Providera = ponowne
-`00_qnap_shared/03_restart.sh` (odtworzenie kontenera), nie rebuild obrazu.
+`00_qnap_shared/03_re-start.sh` (odtworzenie kontenera), nie rebuild obrazu.
 
 `04_qnap_test`/`05_qnap_prod` nie generują appsettings.json — nie mają
 własnego Content Providera.
@@ -246,7 +246,7 @@ zdrowia shared (`require_shared_services_healthy`).
 ## `require_shared_services_healthy` — preflight test/prod → shared
 
 `bash-scripts/common/lib.sh`'s `require_shared_services_healthy <cp_port>`,
-wywoływana z `04_qnap_test/03_restart.sh` i `05_qnap_prod/03_restart.sh`
+wywoływana z `04_qnap_test/03_re-start.sh` i `05_qnap_prod/03_re-start.sh`
 PRZED `docker compose up`:
 
 1. sprawdza, czy sieć `chad-shared` istnieje,
@@ -255,7 +255,7 @@ PRZED `docker compose up`:
 4. sprawdza `curl http://localhost:12024/health`.
 
 Jeśli którykolwiek krok zawiedzie, dashboard **odmawia startu** z czytelnym
-błędem wskazującym `bash bash-scripts/dashboard/00_qnap_shared/03_restart.sh`.
+błędem wskazującym `bash bash-scripts/dashboard/00_qnap_shared/03_re-start.sh`.
 Dashboard TEST/PROD nigdy sam nie uruchamia/nie naprawia shared.
 
 ## Zasady działania skryptów deploymentowych
@@ -274,16 +274,16 @@ Każdy build tworzy obraz z **jednym** tagiem — znacznikiem czasowym
 `YYMMDD_HHMMSS`. Własne obrazy CHAD nigdy nie dostają tagu `latest`. Po
 udanym buildzie skrypt zapisuje ten tag do gitignored pliku
 `.image-tag.<image>.env` w rootcie repo — pełny standard:
-[image-tagging-standard.md](image-tagging-standard.md). Od Story 63,
+[image-tagging-standard.md](../bash-scripts/image-tagging-standard.md). Od Story 63,
 `04_qnap_test/02_build.sh` zapisuje też SHA aktualnego commita jako OCI
 label na obrazie (`org.opencontainers.image.revision`) — czytane przez
 `07_qnap_prod_ssh/06_last_from_test.sh` przed promocją na PROD.
 
-### `03_restart.sh`
+### `03_re-start.sh`
 
 Służy **wyłącznie** do uruchamiania już zbudowanych obrazów. Nie buduje.
 
-`00_qnap_shared/03_restart.sh`:
+`00_qnap_shared/03_re-start.sh`:
 1. `require_image_tag` dla `chad-content-provider-api` — odmawia startu
    bez zapisanego tagu.
 2. `require_data_path_writable` na
@@ -297,7 +297,7 @@ Służy **wyłącznie** do uruchamiania już zbudowanych obrazów. Nie buduje.
 8. Czeka na `chad-mongodb` `healthy` i `content-provider-api` `/health`
    (`anyRepoFound:true`).
 
-`04_qnap_test/03_restart.sh` / `05_qnap_prod/03_restart.sh`:
+`04_qnap_test/03_re-start.sh` / `05_qnap_prod/03_re-start.sh`:
 1. `require_shared_services_healthy` — odmawia startu, jeśli shared nie
    działa.
 2. `require_image_tag` dla `chad-dashboard` — odmawia startu bez zapisanego
@@ -324,7 +324,7 @@ przez OBA dashboardy** — ostrzega o tym w logach. `04_qnap_test/04_end.sh` /
 
 ### `06_deploy.sh` (istnieje tylko w `00_qnap_shared/` i `04_qnap_test/`)
 
-Pełny deployment nowej wersji: `02_build.sh` → `03_restart.sh` →
+Pełny deployment nowej wersji: `02_build.sh` → `03_re-start.sh` →
 `05_status.sh`. **Nie istnieje w `05_qnap_prod/`** — PROD deployuje
 wyłącznie przez `07_qnap_prod_ssh/06_last_from_test.sh` (promocja, nie
 build).
@@ -344,17 +344,17 @@ SSH, `cd $QNAP_REPO_DIR && git pull --ff-only`, i wołają realny skrypt z
 `04_qnap_test/`/`05_qnap_prod/` — bez duplikowania logiki deploymentu.
 Host/user/port/repo-dir/hasło pochodzą z `.env.qnap` (root, gitignored).
 
-### `06_qnap_test_ssh/` — `03_restart.sh`, `04_end.sh`, `05_status.sh`, `06_deploy.sh`
+### `06_qnap_test_ssh/` — `03_re-start.sh`, `04_end.sh`, `05_status.sh`, `06_deploy.sh`
 
 Wszystkie bez potwierdzenia (TEST, choć współdzieli dane z PROD, jest
 bezpieczny do restartu/zatrzymania — nie dotyka danych). `06_deploy.sh` jest
 jedyną operacją w całym repo objętą Git preflight (patrz niżej) — jedyna,
 która buduje nowy obraz z aktualnego lokalnego kodu.
 
-### `07_qnap_prod_ssh/` — `03_restart.sh`, `04_end.sh`, `05_status.sh`, `06_last_from_test.sh`
+### `07_qnap_prod_ssh/` — `03_re-start.sh`, `04_end.sh`, `05_status.sh`, `06_last_from_test.sh`
 
 **Bez `02_build`/`06_deploy`** — nie mogą istnieć, bo PROD nie buduje.
-`03_restart.sh` wymaga wpisania `PROD`. `04_end.sh`/`05_status.sh` — bez
+`03_re-start.sh` wymaga wpisania `PROD`. `04_end.sh`/`05_status.sh` — bez
 potwierdzenia (zatrzymanie/odczyt zawsze bezpieczne, odwracalne).
 `06_last_from_test.sh` (jedyna operacja wdrożeniowa PROD, patrz niżej)
 wymaga wpisania `PROD`.
@@ -371,7 +371,7 @@ HEAD ze zdalnym przez dodatkowe, read-only SSH) → ostrzega, pyta czy
 kontynuować (domyślnie N). Tryb `--non-interactive`: niezacommitowane
 zmiany i brak push = błąd, zero pytań. Logika żyje w
 `bash-scripts/common/lib.sh` (`git_deploy_preflight`), nie duplikowana.
-**Nie dotyczy** `03_restart.sh` (nie buduje) ani `06_last_from_test.sh`
+**Nie dotyczy** `03_re-start.sh` (nie buduje) ani `06_last_from_test.sh`
 (PROD nigdy nie buduje z lokalnego kodu — dla PROD odpowiednikiem
 przejrzystości jest wyświetlenie promowanego obrazu przed potwierdzeniem,
 patrz niżej).
@@ -425,7 +425,7 @@ Dodatkowo: bazowy `SSH_OPTS`'s `ServerAliveInterval`/`ServerAliveCountMax`
 podniesiony z 5s×3 (15s tolerancji) na 10s×12 (120s) dla wszystkich
 operacji — obrona w głębi, na wypadek gdyby host był chwilowo wolny
 (np. podczas normalnego 60-sekundowego oczekiwania na healthcheck w
-`03_restart.sh`), nie tylko podczas samego builda.
+`03_re-start.sh`), nie tylko podczas samego builda.
 
 ### Promocja obrazu TEST → PROD: `06_last_from_test.sh`
 
@@ -445,7 +445,7 @@ został zweryfikowany na TEST. Kontrakt:
    plik, który TEST już zapisał — to zapis, nie nowy mechanizm, ale
    jawny, potwierdzony krok zamiast domyślnego współdzielenia pliku).
 7. Nigdy nie wykonuje `docker build`/`docker compose build`.
-8. `05_qnap_prod/03_restart.sh`, potem `05_qnap_prod/05_status.sh`.
+8. `05_qnap_prod/03_re-start.sh`, potem `05_qnap_prod/05_status.sh`.
 9. Na końcu potwierdza (`docker inspect`), że TEST i PROD wskazują na ten
    sam image ID — jawnie drukuje sukces/porażkę.
 
@@ -466,10 +466,10 @@ przez `08_registry_test/06_deploy.sh`/`09_registry_prod/06_last_from_test.sh`
 Mac (08_registry_test/02_build.sh) LUB GitHub Actions (workflow_dispatch)
     → docker build + tag <timestamp>-<short-git-sha> + OCI label revision
     → docker push do ghcr.io/pawelpanda2/chad-dashboard
-    → 08_registry_test/03_restart.sh: SSH → docker login (read-only token)
+    → 08_registry_test/03_re-start.sh: SSH → docker login (read-only token)
       → docker pull → docker tag (na lokalną nazwę chad-dashboard:<tag>,
-      dokładnie tę, której 04_qnap_test/03_restart.sh już oczekuje)
-      → zapis .image-tag.chad-dashboard.env → 04_qnap_test/03_restart.sh
+      dokładnie tę, której 04_qnap_test/03_re-start.sh już oczekuje)
+      → zapis .image-tag.chad-dashboard.env → 04_qnap_test/03_re-start.sh
       (BEZ ZMIAN, dokładnie ten sam plik co dla starej drogi budowania na
       QNAP) → 04_qnap_test/05_status.sh (BEZ ZMIAN)
 ```
@@ -496,7 +496,7 @@ usuwając możliwości budowania na QNAP dla kogoś, kto woli starą drogę.
   jawnie po tym digeście, nie tylko po tagu.
 - **`.image-tag.chad-dashboard.env`** — ten sam kanoniczny plik z Story 63,
   bez zmian; zapisywany przez `04_qnap_test/02_build.sh` (po buildzie na
-  QNAP, stara droga, bez zmian) ALBO przez `08_registry_test/03_restart.sh`
+  QNAP, stara droga, bez zmian) ALBO przez `08_registry_test/03_re-start.sh`
   (po pullu z GHCR, nowa droga) — który ostatnio zapisał, ten wygrywa,
   dokładnie tak jak dwa źródła zapisu tego samego pliku już działały wcześniej.
 
@@ -515,9 +515,9 @@ compose-kompatybilną nazwę).
 |---|---|---|
 | `01_config.sh` | — | stałe: `GHCR_REGISTRY`/`GHCR_OWNER`/`GHCR_IMAGE` (niesekretne) |
 | `02_build.sh` | **lokalnie (Mac)** | build + tag + push do GHCR; wymaga `.env.local`'s `GHCR_PUSH_USERNAME`/`GHCR_PUSH_TOKEN` |
-| `03_restart.sh` | SSH → QNAP | login (read token) + pull + retag lokalny + zapis tagu + woła `04_qnap_test/03_restart.sh` |
+| `03_re-start.sh` | SSH → QNAP | login (read token) + pull + retag lokalny + zapis tagu + woła `04_qnap_test/03_re-start.sh` |
 | `04_end.sh` / `05_status.sh` | SSH → QNAP | cienki passthrough do `04_qnap_test/{04_end,05_status}.sh` (identyczne jak `06_qnap_test_ssh`'s) |
-| `06_deploy.sh` | lokalnie + SSH | git preflight → `02_build.sh` → `03_restart.sh` → `05_status.sh` — nowy główny punkt wejścia, zastępuje rolę `06_qnap_test_ssh/06_deploy.sh` |
+| `06_deploy.sh` | lokalnie + SSH | git preflight → `02_build.sh` → `03_re-start.sh` → `05_status.sh` — nowy główny punkt wejścia, zastępuje rolę `06_qnap_test_ssh/06_deploy.sh` |
 
 Brak `07_logs.sh` — `04_qnap_test` go nie ma, nie ma czego owijać.
 
@@ -526,7 +526,7 @@ Brak `07_logs.sh` — `04_qnap_test` go nie ma, nie ma czego owijać.
 | Plik | Gdzie działa | Co robi |
 |---|---|---|
 | `01_config.sh` | — | te same stałe co `08_registry_test/01_config.sh` (jeden obraz, dwie kopie stałych — ten sam wzorzec co `04_qnap_test`/`05_qnap_prod`) |
-| `03_restart.sh` / `04_end.sh` / `05_status.sh` | SSH → QNAP | identyczne jak `07_qnap_prod_ssh`'s (wymagają `PROD` tam gdzie tamte też wymagały) |
+| `03_re-start.sh` / `04_end.sh` / `05_status.sh` | SSH → QNAP | identyczne jak `07_qnap_prod_ssh`'s (wymagają `PROD` tam gdzie tamte też wymagały) |
 | `06_last_from_test.sh` | SSH → QNAP | **jedyna operacja wdrożeniowa PROD** — pobiera tag/digest/SHA z TEST, pokazuje, pyta `PROD`, pulluje z GHCR PO DIGEŚCIE, retaguje lokalnie na tag TEST, restart, status, weryfikacja shared+TEST+zgodności image ID |
 
 **Bez `02_build.sh`/`06_deploy.sh`** — PROD nigdy nie buduje, tak jak od
@@ -547,11 +547,11 @@ Token, classic), nigdy ten sam:
 | Zmienna | Plik | Zakres | Użycie |
 |---|---|---|---|
 | `GHCR_PUSH_USERNAME`/`GHCR_PUSH_TOKEN` | `.env.local` (Mac) | `write:packages` **tylko** | `08_registry_test/02_build.sh` |
-| `GHCR_READ_USERNAME`/`GHCR_READ_TOKEN` | `.env.qnap` (QNAP) | `read:packages` **tylko** | `08_registry_test/03_restart.sh`, `09_registry_prod/06_last_from_test.sh` |
+| `GHCR_READ_USERNAME`/`GHCR_READ_TOKEN` | `.env.qnap` (QNAP) | `read:packages` **tylko** | `08_registry_test/03_re-start.sh`, `09_registry_prod/06_last_from_test.sh` |
 
 **Posiadanie tylko `GHCR_PUSH_TOKEN` NIE wystarcza, żeby przetestować cały
 przepływ** — pozwoli zbudować i wypchnąć obraz z Maca (`02_build.sh`), ale
-`03_restart.sh` (pull na QNAP) i tak się nie uda, dopóki `GHCR_READ_TOKEN`
+`03_re-start.sh` (pull na QNAP) i tak się nie uda, dopóki `GHCR_READ_TOKEN`
 nie istnieje w `.env.qnap` **na samym QNAP-ie** (nie w lokalnym `.env.qnap`
 na Macu — to dwie osobne kopie tego pliku, per-host, tak jak
 `.image-tag.*.env`). Mimo że `write:packages` technicznie implikuje też
@@ -601,7 +601,7 @@ deployuje — to zawsze osobny, świadomy krok z Maca.
 Do poprzedniego, wcześniej wypchniętego tagu:
 
 ```bash
-bash bash-scripts/dashboard/08_registry_test/03_restart.sh <poprzedni-tag>
+bash bash-scripts/dashboard/08_registry_test/03_re-start.sh <poprzedni-tag>
 ```
 
 (pull tego konkretnego tagu z GHCR, retag, restart — bez żadnego builda).

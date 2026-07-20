@@ -10,7 +10,7 @@ zamiast (nie: obok, wybór) budowania bezpośrednio na QNAP przez
 przyrostek `-<short-git-sha>` (`ghcr_generate_tag()` w
 `bash-scripts/common/lib.sh`) — droga QNAP-owa nadal używa samego
 `YYMMDD_HHMMSS`, bez zmian. Pełny opis obu przepływów:
-`documentation/ai-docs/deploy/dashboard-deployment-scripts.md`, sekcja
+`ai-docs/deploy/dashboard-deployment-scripts.md`, sekcja
 "Registry flow (GHCR)".
 
 ## Zasada
@@ -34,7 +34,7 @@ Podczas deployu wielu zmian dashboardu, TEST i PROD zostały uruchomione przez
    `export`owaną tylko w obrębie własnego procesu skryptu.
 2. Tag **nigdy nie był zapisywany na dysk** — nie istniał żaden plik typu
    `.image-tag.env`.
-3. `03_restart.sh` to **osobne uruchomienie skryptu** (osobny proces bash,
+3. `03_re-start.sh` to **osobne uruchomienie skryptu** (osobny proces bash,
    często osobne połączenie SSH) — `IMAGE_TAG` z builda już nie istniał w
    jego środowisku.
 4. Pliki compose miały `image: chad-dashboard:${IMAGE_TAG:-latest}` — skoro
@@ -86,7 +86,7 @@ nie nadpisuje zapisanego tagu. Zapis jest atomowy (plik tymczasowy + `mv`).
 require_image_tag "$(dashboard_image_tag_file)" "chad-dashboard" || exit 1
 ```
 
-Wywoływane przez każdy `03_restart.sh` PRZED `docker compose up`. Jeśli plik nie
+Wywoływane przez każdy `03_re-start.sh` PRZED `docker compose up`. Jeśli plik nie
 istnieje albo `IMAGE_TAG` jest pusty — **czytelny błąd, exit 1**, żadnego
 fallbacku do `:latest`.
 
@@ -103,7 +103,7 @@ image: chad-dashboard:${IMAGE_TAG:-latest}
 na:
 
 ```yaml
-image: "chad-dashboard:${IMAGE_TAG:?IMAGE_TAG is required, see documentation/ai-docs/deploy/image-tagging-standard.md}"
+image: "chad-dashboard:${IMAGE_TAG:?IMAGE_TAG is required, see ai-docs/bash-scripts/image-tagging-standard.md}"
 ```
 
 Nawet gdyby `require_image_tag` w jakimś skrypcie zostało pominięte, sam
@@ -139,7 +139,7 @@ bash bash-scripts/dashboard/07_qnap_prod_ssh/06_last_from_test.sh
 `chad-dashboard-test` (nie tylko plik tagu), zapisuje
 `.image-tag.chad-dashboard.env` na tę samą wartość (jawne potwierdzenie
 zamiast domyślnego współdzielenia pliku), po czym woła
-`05_qnap_prod/03_restart.sh` — nie ma tam żadnego buildu.
+`05_qnap_prod/03_re-start.sh` — nie ma tam żadnego buildu.
 
 ### Weryfikacja, że TEST i PROD mają ten sam obraz
 
@@ -154,7 +154,7 @@ a `docker images` — jeden wiersz z tym tagiem, bez `latest`.
 
 ## Content Provider (shared)
 
-`00_qnap_shared/02_build.sh` / `03_restart.sh` używają dokładnie tego samego
+`00_qnap_shared/02_build.sh` / `03_re-start.sh` używają dokładnie tego samego
 mechanizmu, plik `.image-tag.chad-content-provider-api.env`. CP jest
 zbudowany rzadziej niż dashboard (osobny cykl release'u) — ten sam wzorzec
 mimo to.
@@ -163,7 +163,7 @@ mimo to.
 
 `03_local_mac_docker/02_build.sh` buduje OBA obrazy w jednym wywołaniu i
 zapisuje OBA pliki tagów (ten sam znacznik czasowy dla obu, bo budowane razem).
-`03_restart.sh` wymaga obu przed `docker compose up`. (To jest lokalny,
+`03_re-start.sh` wymaga obu przed `docker compose up`. (To jest lokalny,
 jednoplikowy stack — TEST/PROD-owa reguła "PROD nie buduje" go nie dotyczy.)
 
 ## Jak wymusić rebuild zamiast promocji

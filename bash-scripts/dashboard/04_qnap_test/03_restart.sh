@@ -5,7 +5,7 @@
 # Idempotent: checks whether the dashboard is already running; if so, calls
 # 04_end.sh then starts fresh. Use 06_deploy.sh for build+restart. Run this
 # ON the QNAP host (or via
-# bash-scripts/dashboard/06_qnap_test_ssh/03_restart.sh from your Mac).
+# bash-scripts/dashboard/06_qnap_test_ssh/03_re-start.sh from your Mac).
 #
 # TEST uses the SAME shared MongoDB (and therefore the SAME live data) as
 # PROD — it is an alternative UI, not an isolated data environment.

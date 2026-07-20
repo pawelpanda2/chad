@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Non-secret technical constants for the local-mac (non-Docker, tmux/pnpm)
-# dev stack. Sourced by 03_restart.sh and by
+# dev stack. Sourced by 03_re-start.sh and by
 # bash-scripts/content-provider/run-content-provider-if-needed.sh (which is
 # only ever invoked from this directory today).
 

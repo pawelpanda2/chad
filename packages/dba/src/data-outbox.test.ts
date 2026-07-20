@@ -31,7 +31,7 @@ function makeCommand(operationId: string): PutItemCommand {
     config: { id: operationId, address: `test-repo/${operationId}`, type: "Text", name: operationId },
     body: "hello",
   };
-  return { kind: "put-item", operationId, createdAt: new Date().toISOString(), item };
+  return { kind: "put-item", operationId, createdAt: new Date().toISOString(), actor: null, item };
 }
 
 async function runTests() {

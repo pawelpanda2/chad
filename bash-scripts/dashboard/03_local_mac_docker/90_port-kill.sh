@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Frees a single port on this Mac, no questions asked — for automatic use by
-# 03_restart.sh (and transitively 06_deploy.sh), and for direct manual use.
+# 03_re-start.sh (and transitively 06_deploy.sh), and for direct manual use.
 # Numbered 90 (outside the 01-07 standard operation slots) because it's a
 # manual technical tool, not one of the seven standard operations — see
 # documentation/ai-docs/deploy/dashboard-deployment-scripts.md.

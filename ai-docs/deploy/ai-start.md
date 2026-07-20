@@ -24,12 +24,21 @@ różne rzeczy w tym repo, dla dwóch różnych usług:**
 
 | | Co jest jedno/wspólne | Co jest osobne |
 |---|---|---|
-| **Content Provider** (`chad-content-provider-api`) | Jeden, dosłownie ten sam **kontener**, używany przez TEST i PROD naraz (`docker ps` pokaże dokładnie jeden wiersz) | — nic, to jedna usługa dla obu środowisk. Restart tego kontenera (`00_qnap_shared/03_restart.sh`) dotyka OBU środowisk naraz. |
+| **Content Provider** (`chad-content-provider-api`) | Jeden, dosłownie ten sam **kontener**, używany przez TEST i PROD naraz (`docker ps` pokaże dokładnie jeden wiersz) | — nic, to jedna usługa dla obu środowisk. Restart tego kontenera (`00_qnap_shared/03_re-start.sh`) dotyka OBU środowisk naraz. |
 | **Dashboard** (`chad-dashboard`) | Jeden **obraz** (ten sam tag/image ID) — TEST buduje/pobiera go, PROD tylko go promuje, nigdy nie buduje własnego | Dwa **osobne kontenery**: `chad-dashboard-test` i `chad-dashboard-prod`, osobne restarty, osobne porty (`12020`/`12030`) |
 
 Szczegóły: [shared-qnap-services.md](shared-qnap-services.md) (Content
-Provider — jeden kontener) i [image-tagging-standard.md](image-tagging-standard.md)
+Provider — jeden kontener) i
+[image-tagging-standard.md](../bash-scripts/image-tagging-standard.md)
 (Dashboard — jeden obraz, dwa kontenery, promocja bez rebuildu).
+
+**Ogólny standard skryptów, niezależny od tej aplikacji** (kontrakt
+numeracji, kiedy pełna rodzina plików a kiedy `config.sh`+`deploy.sh`, git
+preflight, wzorce SSH) żyje osobno w `ai-docs/bash-scripts/` — zacznij od
+[../bash-scripts/ai-start.md](../bash-scripts/ai-start.md), **przed** tym
+dokumentem, jeśli jeszcze go nie znasz. Ten dokument (`ai-docs/deploy/`)
+opisuje, jak ten standard jest zastosowany konkretnie w CHAD (architektura
+shared/test/prod, GHCR, QNAP, MongoDB) — nie powtarza samego standardu.
 
 ## 1. Kolejność czytania
 
@@ -38,7 +47,7 @@ Provider — jeden kontener) i [image-tagging-standard.md](image-tagging-standar
    wszystkich katalogów `bash-scripts/dashboard/*`, git preflight, Story 66
    (odporność SSH na długi build), Story 70 (równoległa droga GHCR). Zacznij
    tutaj zawsze — reszta to szczegóły/uzupełnienia do tego dokumentu.
-2. **[image-tagging-standard.md](image-tagging-standard.md)** — jak
+2. **[image-tagging-standard.md](../bash-scripts/image-tagging-standard.md)** — jak
    faktycznie działa `IMAGE_TAG` (dlaczego nigdy `:latest`, plik
    `.image-tag.<image>.env`, jak PROD promuje obraz TEST bez rebuildu).
    Czytaj przed zmianą czegokolwiek związanego z buildem/restartem/promocją.
@@ -58,12 +67,12 @@ Provider — jeden kontener) i [image-tagging-standard.md](image-tagging-standar
 
 ## 2. Dokumenty historyczne / jednorazowe decyzje (czytaj tylko jeśli potrzebujesz kontekstu)
 
-- **[bash-scripts-structure.md](bash-scripts-structure.md)** — jawnie
-  oznaczone jako **PRZESTARZAŁE** (własny nagłówek pliku). Opisuje strukturę
-  sprzed podziału na numerowane pod-katalogi. Zachowane wyłącznie jako zapis
-  historyczny uzasadnienia nazewnictwa (`begin`/`end` zamiast `start`/`stop`).
-  **Nie używaj go jako źródła prawdy o aktualnej strukturze** — do tego służy
-  dokument 1 powyżej.
+- **`bash-scripts-structure.md` przeniesiony do
+  [../bash-scripts/bash-scripts-structure.md](../bash-scripts/bash-scripts-structure.md)**
+  (2026-07-19) — jawnie oznaczone tam jako **PRZESTARZAŁE**, zachowane
+  wyłącznie jako zapis historyczny uzasadnienia nazewnictwa (`begin`/`end`
+  zamiast `start`/`stop`). **Nie używaj go jako źródła prawdy o aktualnej
+  strukturze** — do tego służy dokument 1 powyżej.
 - **[2026-07-10_decision-beeper-mac-qnap-architecture.md](2026-07-10_decision-beeper-mac-qnap-architecture.md)**
   — decyzja architektoniczna Beeper (Mac) ↔ MongoDB (QNAP), środowiska
   test/prod. Kontekst dla Beepera, nie dla samego Dashboard/Content Provider
