@@ -182,6 +182,30 @@ services:
       - "admin"
       - "/mongo-rs-init.js"
 
+  # cp_items change-stream consumer -> cp_history (Story 74).
+  # Independent process: crash/restart never stops monitoring history or
+  # takes the Dashboard down. Requires MongoDB replica set rs0 (enabled
+  # above for Change Streams). Resume token + status persisted in
+  # cp_history_state collection — survives process restart.
+  history-worker:
+    build:
+      context: .
+      dockerfile: packages/history-worker/Dockerfile
+      target: runner
+    container_name: chad-history-worker
+    restart: unless-stopped
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    environment:
+      - NODE_ENV=production
+      - MONGODB_URI=mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@chad-mongodb:27017/chad?authSource=admin
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
 networks:
   default:
     name: chad-shared

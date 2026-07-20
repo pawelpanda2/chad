@@ -3,12 +3,12 @@
 # pulls and restarts — never builds. Analogous to
 # bash-scripts/dashboard/06_qnap_test_ssh/06_deploy.sh, except the image is
 # produced here instead of on QNAP. Reuses the existing, unmodified
-# bash-scripts/dashboard/04_qnap_test/{03_restart,05_status}.sh for
+# bash-scripts/dashboard/04_qnap_test/{03_re-start,05_status}.sh for
 # everything after the pull (shared-services health check, port handling,
 # docker compose up, HTTP wait, status/healthcheck) — not duplicated here.
 #
 # Flow: git preflight -> build+tag+push to GHCR -> SSH: git pull, docker
-# login, docker pull + retag, write tag file, 04_qnap_test/03_restart.sh,
+# login, docker pull + retag, write tag file, 04_qnap_test/03_re-start.sh,
 # 04_qnap_test/05_status.sh.
 #
 # Usage:
@@ -60,7 +60,7 @@ ghcr_docker_login "\$GHCR_REGISTRY" "\$GHCR_READ_USERNAME" "\$GHCR_READ_TOKEN"
 ghcr_pull_and_retag '$TAG'
 printf 'IMAGE_TAG=%s\n' '$TAG' > .image-tag.chad-dashboard.env.tmp.\$\$
 mv .image-tag.chad-dashboard.env.tmp.\$\$ .image-tag.chad-dashboard.env
-bash bash-scripts/dashboard/04_qnap_test/03_restart.sh
+bash bash-scripts/dashboard/04_qnap_test/03_re-start.sh
 EOF
 )
 

@@ -20,20 +20,23 @@ services:
     restart: unless-stopped
     ports:
       - "${MONGODB_PORT:-27017}:27017"
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: "${MONGO_ROOT_USERNAME:-change_me}"
-      MONGO_INITDB_ROOT_PASSWORD: "${MONGO_ROOT_PASSWORD:-change_me}"
+    command: mongod --replSet rs0 --oplogSize 1024
     volumes:
       - chad-mongodb-local-mac-docker-db:/data/db
       - chad-mongodb-local-mac-docker-configdb:/data/configdb
       - ./bash-scripts/mongo/backups:/backups
+    healthcheck:
+      test: mongosh --eval "db.adminCommand('ping')" || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   dashboard:
     # No ":latest" fallback - own CHAD images must be deployed by an explicit
-    # release tag (see documentation/ai-docs/deploy/image-tagging-standard.md).
-    # 03_local_mac_docker/03_restart.sh sets IMAGE_TAG before calling this; the
+    # release tag (see ai-docs/bash-scripts/image-tagging-standard.md).
+    # 03_local_mac_docker/03_re-start.sh sets IMAGE_TAG before calling this; the
     # required-var syntax below is a defense-in-depth backstop.
-    image: "chad-dashboard:${IMAGE_TAG:?IMAGE_TAG is required, see documentation/ai-docs/deploy/image-tagging-standard.md}"
+    image: "chad-dashboard:${IMAGE_TAG:?IMAGE_TAG is required, see ai-docs/bash-scripts/image-tagging-standard.md}"
     build:
       context: .
       dockerfile: packages/dashboard/Dockerfile
@@ -65,7 +68,7 @@ services:
       # namespace — not needed for either DBA_MONGO_MODE today (local mode
       # uses the sibling `mongodb` service by Compose service name, qnap
       # mode uses QNAP's real Tailscale IP).
-      - MONGODB_URI=${MONGODB_URI:-}
+      - MONGODB_URI=${MONGODB_URI:-mongodb://mongodb:27017/chad}
       # Beeper CRM's Mongo *server* URI — same physical mongo server as
       # MONGODB_URI. Story 73: each CHAD user gets their own
       # `beeper_<repoGuid>` database (contacts/channels/messages/
@@ -73,7 +76,7 @@ services:
       # standalone `contacts` repo), computed by dba's getBeeperMongoDb(),
       # never a database segment on this URI. Never merged into `chad`
       # alongside CP items.
-      - BEEPER_MONGODB_URI=${BEEPER_MONGODB_URI:-}
+      - BEEPER_MONGODB_URI=${BEEPER_MONGODB_URI:-mongodb://mongodb:27017}
       # Story 72 data-providers config (packages/dba/src/data-providers/
       # config.ts) — defaults here match the follow-up session's priority:
       # MongoDB as the only active/primary backend, CP follower disabled
@@ -84,8 +87,38 @@ services:
       - DBA_PRIMARY_BACKEND=${DBA_PRIMARY_BACKEND:-mongo}
       - DBA_FOLLOWER_WRITES_ENABLED=${DBA_FOLLOWER_WRITES_ENABLED:-false}
       - DBA_SHADOW_READS_ENABLED=${DBA_SHADOW_READS_ENABLED:-false}
+      # Story 75 — Google Sheets sync (packages/dba/src/google-sheets/).
+      # Previously never passed through to this container at all (the
+      # integration's real-sheet verification was done via a one-off
+      # scratchpad script, not the running Dashboard) — the sync worker now
+      # runs inside this same process via instrumentation.ts, so these must
+      # actually reach it. See ai-docs/google-sheets/architecture.md.
+      - GOOGLE_SHEETS_ENABLED=${GOOGLE_SHEETS_ENABLED:-false}
+      - GOOGLE_SHEETS_SPREADSHEET_MAP=${GOOGLE_SHEETS_SPREADSHEET_MAP:-}
+      - GOOGLE_SHEETS_DAILY_TRACKER_SHEET_NAME=${GOOGLE_SHEETS_DAILY_TRACKER_SHEET_NAME:-}
+      - GOOGLE_SHEETS_DATE_ENTRIES_SHEET_NAME=${GOOGLE_SHEETS_DATE_ENTRIES_SHEET_NAME:-}
+      - GOOGLE_SERVICE_ACCOUNT_EMAIL=${GOOGLE_SERVICE_ACCOUNT_EMAIL:-}
+      - GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY=${GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY:-}
     volumes:
       - chad-dashboard-local-mac-docker-data:/app/data
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  history-worker:
+    build:
+      context: .
+      dockerfile: packages/history-worker/Dockerfile
+    container_name: chad-history-worker-local-mac-docker
+    restart: unless-stopped
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    environment:
+      - NODE_ENV=production
+      - MONGODB_URI=mongodb://mongodb:27017/chad
     logging:
       driver: "json-file"
       options:

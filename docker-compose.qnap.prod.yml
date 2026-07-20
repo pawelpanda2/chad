@@ -3,7 +3,7 @@
 # Uses the SAME shared MongoDB (chad-mongodb) as TEST — started by
 # docker-compose.qnap.shared.yml (bash-scripts/dashboard/00_qnap_shared/).
 # Never starts/stops/rebuilds shared services itself — see
-# bash-scripts/dashboard/05_qnap_prod/03_restart.sh, which refuses to start
+# bash-scripts/dashboard/05_qnap_prod/03_re-start.sh, which refuses to start
 # unless shared services are already up and healthy.
 #
 # Content Provider (content-provider-api) removed from this stack — Mongo
@@ -23,10 +23,10 @@
 services:
   dashboard:
     # No ":latest" fallback - own CHAD images must be deployed by an explicit
-    # release tag (see documentation/ai-docs/deploy/image-tagging-standard.md).
-    # 05_qnap_prod/03_restart.sh sets IMAGE_TAG before calling this; the
+    # release tag (see ai-docs/bash-scripts/image-tagging-standard.md).
+    # 05_qnap_prod/03_re-start.sh sets IMAGE_TAG before calling this; the
     # required-var syntax below is a defense-in-depth backstop.
-    image: "chad-dashboard:${IMAGE_TAG:?IMAGE_TAG is required, see documentation/ai-docs/deploy/image-tagging-standard.md}"
+    image: "chad-dashboard:${IMAGE_TAG:?IMAGE_TAG is required, see ai-docs/bash-scripts/image-tagging-standard.md}"
     container_name: chad-dashboard-prod
     restart: unless-stopped
     ports:

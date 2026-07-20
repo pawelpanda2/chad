@@ -20,6 +20,7 @@ import {
 	FileText,
 	Table,
 	Contact,
+	History,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -45,6 +46,7 @@ const sidebarGroups = [
 	{
 		title: "Others",
 		items: [
+			{ title: "History", href: "/dashboard/history", icon: History, badge: null },
 			{ title: "Settings", href: "/dashboard/settings", icon: Settings, badge: null },
 		],
 	},

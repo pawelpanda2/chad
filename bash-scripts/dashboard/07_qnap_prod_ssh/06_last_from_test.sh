@@ -75,7 +75,7 @@ fi
 WRITE_TAG_CMD="printf 'IMAGE_TAG=%s\n' '$TEST_TAG' > '$QNAP_REPO_DIR/.image-tag.chad-dashboard.env.tmp.\$\$' && mv '$QNAP_REPO_DIR/.image-tag.chad-dashboard.env.tmp.\$\$' '$QNAP_REPO_DIR/.image-tag.chad-dashboard.env'"
 run_remote "Recording promoted tag for PROD" "$WRITE_TAG_CMD"
 
-run_remote_script "05_qnap_prod" "03_restart.sh" "Restart QNAP PROD (promoted from TEST)"
+run_remote_script "05_qnap_prod" "03_re-start.sh" "Restart QNAP PROD (promoted from TEST)"
 run_remote_script "05_qnap_prod" "05_status.sh" "Status QNAP PROD"
 
 echo ""

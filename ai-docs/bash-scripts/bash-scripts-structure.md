@@ -9,8 +9,8 @@ każdy z `01_config/02_build/03_begin/04_end/05_status/06_deploy.sh`) i sprzed
 `02_local_mac` → `02_local_mac_tmux` (w trakcie, jeszcze nie scommitowane).
 Nie ufaj poniższemu drzewu jako aktualnemu stanowi repo — użyj
 `ls bash-scripts/dashboard/` do sprawdzenia rzeczywistej struktury. Aktualny,
-autorytatywny opis konwencji skryptów: [dashboard-deployment-scripts.md](dashboard-deployment-scripts.md)
-(Docker/QNAP) i [dashboard-start-scripts.md](dashboard-start-scripts.md)
+autorytatywny opis konwencji skryptów: [dashboard-deployment-scripts.md](../deploy/dashboard-deployment-scripts.md)
+(Docker/QNAP) i [dashboard-start-scripts.md](../deploy/dashboard-start-scripts.md)
 (lokalny tmux, bez Dockera). Zachowane poniżej jako zapis historyczny
 uzasadnienia nazewnictwa (`begin`/`end` zamiast `start`/`stop` — patrz akapit
 niżej), nie jako źródło prawdy o strukturze.
@@ -22,9 +22,9 @@ odziedziczony z samodzielnego repo `chad-dashbord` katalog SSH/Docker-QNAP
 deployu, opisany w poprzednim akapicie jako "celowo pozostawiony") **został
 usunięty** — w pełni zastąpiony przez `bash-scripts/dashboard/{02_local_mac,
 03_local_mac_docker,04_qnap_test,05_qnap_prod,06_qnap_ssh}/`. Zobacz
-[dashboard-deployment-scripts.md](dashboard-deployment-scripts.md)
+[dashboard-deployment-scripts.md](../deploy/dashboard-deployment-scripts.md)
 dla pełnego kontraktu tych skryptów (build/start/end/deploy/status) i
-[dashboard-start-scripts.md](dashboard-start-scripts.md)
+[dashboard-start-scripts.md](../deploy/dashboard-start-scripts.md)
 dla `02_local_mac` (tmux/pnpm, bez Dockera).
 
 Status: aktualne (2026-07-10). Katalog był wcześniej nazwany `03_scripts` — zmieniono nazwę i zaktualizowano wszystkie aktywne odwołania (root `package.json`, `.tmuxinator.yml`, `docker-compose*.yml`, własna dokumentacja). Pre-istniejące, historyczne odwołania do starego `03_scripts/nodejs/...` w `documentation/nodejs-style.md`, `packages/console/README.md` dotyczą innej, starej struktury i pozostają bez zmian jako dokumentacja historyczna.

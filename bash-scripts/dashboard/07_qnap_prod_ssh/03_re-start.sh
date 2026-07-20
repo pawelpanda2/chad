@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SSHes into the QNAP and runs bash-scripts/dashboard/05_qnap_prod/03_restart.sh
+# SSHes into the QNAP and runs bash-scripts/dashboard/05_qnap_prod/03_re-start.sh
 # there (idempotent — stops+restarts if already running, from whatever image
 # tag is currently recorded). Does not build — PROD never builds; see
 # 06_last_from_test.sh for how PROD gets a new version at all. Requires
@@ -18,4 +18,4 @@ if [ "$confirmation" != "PROD" ]; then
   exit 1
 fi
 
-run_remote_script "05_qnap_prod" "03_restart.sh" "Restart QNAP PROD"
+run_remote_script "05_qnap_prod" "03_re-start.sh" "Restart QNAP PROD"

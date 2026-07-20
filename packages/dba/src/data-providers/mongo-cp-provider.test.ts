@@ -16,7 +16,7 @@ import type { PutItemCommand, CreateChildItemCommand } from "../data-commands.js
 const REPO = "21d11bdc-f1f4-44d1-b61a-3fa6b039c641";
 
 function putCommand(item: CpItem): PutItemCommand {
-  return { kind: "put-item", operationId: `op-${item._id}`, createdAt: new Date().toISOString(), item };
+  return { kind: "put-item", operationId: `op-${item._id}`, createdAt: new Date().toISOString(), actor: null, item };
 }
 
 async function runTests() {
@@ -209,6 +209,7 @@ async function runTests() {
     const command: CreateChildItemCommand = {
       kind: "create-child-item",
       operationId: "op-create-1",
+      actor: null,
       createdAt: clock.now().toISOString(),
       parentItemId: "parent-10",
       parentAddress,
@@ -229,6 +230,7 @@ async function runTests() {
     const command: CreateChildItemCommand = {
       kind: "create-child-item",
       operationId: "op-create-2",
+      actor: null,
       createdAt: clock.now().toISOString(),
       parentItemId: "parent-10",
       parentAddress,
@@ -252,6 +254,7 @@ async function runTests() {
     const command: CreateChildItemCommand = {
       kind: "create-child-item",
       operationId: "op-create-3",
+      actor: null,
       createdAt: clock.now().toISOString(),
       parentItemId: "parent-10",
       parentAddress,
@@ -273,6 +276,7 @@ async function runTests() {
     const command: CreateChildItemCommand = {
       kind: "create-child-item",
       operationId: "op-create-4",
+      actor: null,
       createdAt: clock.now().toISOString(),
       parentItemId: "parent-10",
       parentAddress: `${REPO}/10`,

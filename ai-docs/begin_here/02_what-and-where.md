@@ -55,10 +55,12 @@ usługa wdrożeniowa, `.env.qnap`/`.env.local`, standard skryptów
 build/restart/end/status/deploy (jeden stały zestaw numerowanych slotów,
 Story 63).
 
-**Lokalizacja:** `documentation/ai-docs/deploy/`
+**Lokalizacja:** `ai-docs/deploy/` (kontrakty/architektura konkretnej aplikacji)
+i `ai-docs/bash-scripts/` (ogólny, wielokrotnego użytku standard pisania
+skryptów — patrz osobna sekcja niżej).
 
 **Najważniejsze dokumenty:**
-- [image-tagging-standard.md](../deploy/image-tagging-standard.md) — **przeczytaj
+- [image-tagging-standard.md](../bash-scripts/image-tagging-standard.md) — **przeczytaj
   zawsze przed jakimkolwiek buildem/deployem.** Własne obrazy CHAD nigdy nie
   używają `:latest`; jeden zapisany tag na release, wspólny dla TEST i PROD;
   od Story 63 obraz TEST niesie też git SHA jako OCI label.
@@ -68,7 +70,7 @@ Story 63).
   autorytatywny kontrakt skryptów Docker Compose (`00_qnap_shared`,
   `03_local_mac_docker`, `04_qnap_test`, `05_qnap_prod`) oraz SSH-remote
   layer (`06_qnap_test_ssh`, `07_qnap_prod_ssh`): co robi
-  `02_build.sh`/`03_restart.sh`/`04_end.sh`/`05_status.sh`/`06_deploy.sh`,
+  `02_build.sh`/`03_re-start.sh`/`04_end.sh`/`05_status.sh`/`06_deploy.sh`,
   architektura shared/test/prod, tabela stałych numerów operacji, dlaczego
   PROD nie buduje (`07_qnap_prod_ssh/06_last_from_test.sh` promuje obraz z
   TEST zamiast deployować niezależnie) (przeczytaj przed zmianą nazw
@@ -86,9 +88,18 @@ Story 63).
 - [2026-07-10_mongodb-replica-set-migration-plan.md](../deploy/2026-07-10_mongodb-replica-set-migration-plan.md) —
   Mongo pozostaje standalone (bez replica set) na dziś; plan migracji gdyby
   zaszła taka potrzeba (change streams dla `beeper-oplog`).
-- [bash-scripts-structure.md](../deploy/bash-scripts-structure.md) — **częściowo
+- [bash-scripts-structure.md](../bash-scripts/bash-scripts-structure.md) — **częściowo
   przestarzałe**, zachowane jako zapis historyczny uzasadnienia nazewnictwa;
   NIE ufaj jego drzewu katalogów jako aktualnemu (użyj `ls bash-scripts/dashboard/`).
+
+**Ogólny standard pisania skryptów (niezależny od konkretnej aplikacji):**
+`ai-docs/bash-scripts/` — zacznij od `ai-docs/bash-scripts/ai-start.md`.
+Zawiera kontrakt numeracji operacji, kiedy pełna rodzina plików a kiedy prosty
+`config.sh`+`deploy.sh`, standard tagowania obrazów, git preflight, wzorce SSH
+— to, co jest wspólne dla KAŻDEGO środowiska w `bash-scripts/dashboard/`, nie
+tylko dla jednego z nich. `ai-docs/deploy/` opisuje, jak te wzorce są
+zastosowane konkretnie w tym repo (architektura shared/test/prod, GHCR,
+QNAP, MongoDB) — czytaj oba, ogólny standard najpierw.
 
 **Czytać gdy:** każde zadanie dotyczące builda, Dockera, `docker compose`,
 QNAP, release'u, tagowania obrazów, `.env.qnap`/`.env.local`, MongoDB jako
@@ -244,6 +255,26 @@ analizuj ani nie zmieniaj bez wyraźnej prośby.
 
 ---
 
+## History (Change Streams, `packages/history-worker`)
+
+**Opis:** Historia zmian `chad.cp_items` oparta na MongoDB Change Streams
+(replica set `rs0`) — niezależny worker (`packages/history-worker`)
+zapisujący do `chad.cp_history`/`cp_history_state`, warstwa odczytu w
+`dba` (`cp-history.ts`), API i UI zakładki `History` w Dashboardzie
+(Story 74).
+
+**Lokalizacja:** [`ai-docs/history/how-it-works.md`](../history/how-it-works.md)
+— pipeline, `rs0`/oplog, jak worker liczy diff bez pre-images (Mongo 4.4),
+resume token, mapowanie Daily Trackera, jak dodać nowy typ widoku, jak
+testować lokalnie, jak wykonać rollback.
+
+**Czytać gdy:** dowolna zmiana w `packages/history-worker`,
+`packages/dba/src/cp-history.ts`, `packages/dashboard/app/api/content-provider/{history,daily-history}`,
+`packages/dashboard/app/(dashboard)/dashboard/history/`, albo zakładki
+`History` w ogóle.
+
+---
+
 ## dba-console (`packages/console`)
 
 **Opis:** CLI (`packages/console`) do zarządzania danymi CHAD z terminala.
@@ -284,6 +315,44 @@ replica set) — patrz linki wewnątrz tych dokumentów.
 `beeper-oplog`, `packages/dba/src/beeper-crm.ts`,
 `packages/dashboard/app/api/beeper-crm/**`, albo integracji z Beeper
 Desktop.
+
+---
+
+## Google Sheets sync (Daily Tracker export, nie zakładka UI)
+
+**Opis:** Jednokierunkowa synchronizacja Daily Entry ("Tracker", tab
+`daily`) i Date Entry ("Dates", tab `dates`) — `saveDailyEntry`/
+`updateDailyEntry`/`deleteDailyEntry`/`saveDateEntry`/`updateDateEntry` w
+`packages/dba/src/leads.ts` — do Google Sheets przez wspólne konto
+serwisowe, jako **wierna kopia** obu tabel Dashboardu (dokładna
+kolejność/etykiety kolumn skopiowane z `DAILY_COLUMNS`/`DATE_COLUMNS` w
+Dashboardzie, włącznie z policzonymi kolumnami "— AUTO"). **Osobny arkusz
+per użytkownik** (`GOOGLE_SHEETS_SPREADSHEET_MAP`, nigdy jeden wspólny —
+poprawione 2026-07-21 tego samego dnia co pierwszy build, patrz
+architecture.md §0b). Trwały outbox (`google_sheets_sync_outbox`, wspólny
+dla obu typów rekordów) + worker, który **działa** wewnątrz już
+uruchomionego procesu Dashboardu (Next.js `instrumentation.ts` →
+`dba`'s `bootstrap.ts`, bez osobnego kontenera — architecture.md §7).
+Dashboardowe route'y/strony same w sobie nadal nie mają żadnej wiedzy o tej
+integracji — `instrumentation.ts` to jedyny wyjątek, jednorazowe wywołanie
+przy starcie serwera. Domyślnie wyłączone (`GOOGLE_SHEETS_ENABLED=false`);
+u właściciela realnie skonfigurowane (dwóch użytkowników, każdy z własnym
+arkuszem) i zweryfikowane na żywo względem obu prawdziwych arkuszy
+2026-07-21.
+
+**Lokalizacja:** `ai-docs/google-sheets/` (nowy folder specjalizacji, Story
+75, 2026-07-21 — analogiczny do `ai-docs/beeper/`: globalna wiedza AI o
+integracji cross-cutting, nie dokumentacja per-zakładka Dashboardu).
+
+**Zacznij od:** [`ai-docs/google-sheets/ai-start.md`](../google-sheets/ai-start.md)
+→ [`architecture.md`](../google-sheets/architecture.md) (pełny design:
+mapowanie kolumn, schemat outboxa, auth kontem serwisowym, zmienne env,
+ograniczenia).
+
+**Czytać gdy:** zadanie dotyczy `packages/dba/src/google-sheets/**`,
+synchronizacji Daily Trackera do zewnętrznych systemów, albo zmiany
+`saveDailyEntry`/`updateDailyEntry`/`deleteDailyEntry` w `leads.ts` (te
+funkcje teraz wywołują też tę integrację, patrz architecture.md §1).
 
 ---
 
