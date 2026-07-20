@@ -20,19 +20,38 @@
 // resolve "chad-mongodb"). See
 // ai-docs/deploy/2026-07-10_mongodb-replica-set-migration-plan.md.
 
-try {
-  const status = rs.status();
-  print(`Replica set already initialized (set: ${status.set}), skipping.`);
-} catch (e) {
-  const notYetInitialized =
-    e.codeName === "NotYetInitialized" ||
-    /no replset config|NotYetInitialized/i.test(e.message || "");
-
-  if (!notYetInitialized) {
-    print(`Unexpected error checking replica set status: ${e.message}`);
-    throw e;
+// NOTE (Story 74, found during the real QNAP run): the LEGACY `mongo`
+// shell's rs.status() does NOT throw on an {ok:0} response the way
+// `mongosh`/modern drivers do — it just returns the error document as a
+// normal value (db._adminCommand isn't assert-wrapped here). An earlier
+// version of this script assumed exception-based control flow (correct for
+// mongosh, wrong for the legacy shell mongo:4.4 actually ships) and so
+// silently treated the pre-initiation `NotYetInitialized` response as
+// "already initialized" (status.set was just `undefined`), skipping
+// rs.initiate() entirely without error. Fixed to check `status.ok` and
+// `status.codeName` explicitly on the returned value first, and only fall
+// back to try/catch for genuinely unexpected exceptions.
+function checkStatus() {
+  try {
+    return { threw: false, value: rs.status() };
+  } catch (e) {
+    return { threw: true, value: e };
   }
+}
 
+const { threw, value } = checkStatus();
+
+const notYetInitialized = threw
+  ? value.codeName === "NotYetInitialized" || /no replset config|NotYetInitialized/i.test(value.message || "")
+  : value.ok !== 1 && (value.codeName === "NotYetInitialized" || /no replset config/i.test(value.errmsg || ""));
+
+if (!notYetInitialized && !threw && value.ok === 1) {
+  print(`Replica set already initialized (set: ${value.set}), skipping.`);
+} else if (!notYetInitialized) {
+  const message = threw ? value.message : JSON.stringify(value);
+  print(`Unexpected error checking replica set status: ${message}`);
+  throw new Error(message);
+} else {
   print("Replica set not yet initialized. Running rs.initiate()...");
   const result = rs.initiate({
     _id: "rs0",
