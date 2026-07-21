@@ -30,7 +30,6 @@ const sidebarGroups = [
 		items: [
 			{ title: "Forms", href: "/dashboard/forms", icon: ClipboardList, badge: null },
 			{ title: "Views", href: "/dashboard/views", icon: Table, badge: null },
-			{ title: "History", href: "/dashboard/history", icon: History, badge: null },
 		],
 	},
 	{
@@ -47,6 +46,7 @@ const sidebarGroups = [
 	{
 		title: "Others",
 		items: [
+			{ title: "History", href: "/dashboard/history", icon: History, badge: null },
 			{ title: "Settings", href: "/dashboard/settings", icon: Settings, badge: null },
 		],
 	},

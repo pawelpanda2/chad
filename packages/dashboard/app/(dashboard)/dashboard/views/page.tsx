@@ -839,7 +839,7 @@ function ViewsPageContent() {
           Refresh
         </Button>
         {isTracker && (
-          <Link href="/dashboard/daily-tracker-history">
+          <Link href="/dashboard/history?view=daily-tracker">
             <Button
               variant="outline"
               size="sm"
