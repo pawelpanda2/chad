@@ -29,7 +29,7 @@ and keyfile-based auth.
 **Files changed:** none (verification only).
 **Tested:** `mongosh --eval "rs.status()"` / `db.hello()` directly against
 the running `chad-mongodb-local-mac-docker` container, before and after
-`bash-scripts/dashboard/03_local_mac_docker/03_restart.sh`.
+`bash-scripts/dashboard/03_local_mac_docker/03_re-start.sh`.
 **Status: DONE**
 
 # Task 2 — History → Daily Tracker menu

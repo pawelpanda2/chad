@@ -199,11 +199,28 @@ tag całym logiem pusha.
 
 ## 10. Nazewnictwo
 
-- Operacja startowa/restartowa nazywa się **`restart`** (nie `begin`,
-  `start`, `re-start`). Operacja zatrzymująca nazywa się **`end`** (nie
-  `stop`). Historia zmian nazewnictwa w tym repo:
-  [bash-scripts-structure.md](bash-scripts-structure.md).
-- Jedna nazwa w całym repo dla tej samej operacji.
+- Operacja startowa/restartowa nazywa się **`03_re-start.sh`** (z
+  łącznikiem, nie `03_restart.sh`, nie `begin`, nie `start`). Nazwa celowo
+  z łącznikiem — ma sygnalizować, że skrypt obsługuje **jednocześnie**
+  pierwszy start środowiska I idempotentny restart już działającego
+  (sekcja 2: "start jeśli nie działa, albo restart z już zbudowanego
+  obrazu"), nie tylko "restart" w wąskim sensie "zatrzymaj i uruchom
+  ponownie coś, co już działało". Operacja zatrzymująca nazywa się
+  **`end`** (nie `stop`).
+- **Realny incydent (2026-07-21):** ten dokument przez pewien czas
+  zawierał sprzeczność — tabela w sekcji 2 już poprawnie mówiła
+  `03_re-start.sh`, ale ta sekcja (10) mówiła explicite "nie `re-start`".
+  Kolejne sesje AI naprawiały nazewnictwo w jedną albo w drugą stronę w
+  zależności od tego, którą część dokumentu akurat czytały, co
+  doprowadziło do realnego, powtarzającego się rozjazdu między nazwami
+  plików na dysku a wywołaniami w innych skryptach (`bash:
+  .../03_re-start.sh: No such file or directory` przy prawdziwym
+  deploymencie na QNAP TEST). Rozwiązanie właściciela repo: **`03_re-start.sh`
+  jest jedyną poprawną nazwą**, ta sekcja została poprawiona żeby się
+  zgadzać z tabelą w sekcji 2 — nie odwracaj tego ponownie.
+- Jedna nazwa w całym repo dla tej samej operacji — sprawdź `grep -rln
+  "03_restart\.sh" bash-scripts/` przed jakąkolwiek zmianą w tym obszarze;
+  zero wyników to jedyny poprawny stan.
 
 ## 11. Zasady bezpieczeństwa (zawsze)
 

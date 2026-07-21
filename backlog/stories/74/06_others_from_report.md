@@ -75,12 +75,31 @@ actual Dashboard UI/API (see `05_tasks_and_checklist.md` Tasks 3–6).
 
 ## Fixed along the way (not originally scoped, found during verification)
 
-- `bash-scripts/dashboard/03_local_mac_docker/06_deploy.sh` referenced a
-  nonexistent `03_re-start.sh` (the actual file is `03_restart.sh` — a
-  prior commit, `5cd6017 fix: revert accidental restart.sh -> re-start.sh
-  rename`, renamed the script back but missed this one caller). One-line
-  fix; the one-shot build+restart+status deploy script was silently broken
-  before this.
+- **`03_re-start.sh` vs `03_restart.sh` naming regression (repo-wide).**
+  `ai-docs/deploy/dashboard-start-scripts.md` already documented, dated
+  2026-07-20 (Story 74), that every `03_restart.sh` was deliberately
+  renamed to `03_re-start.sh` — the hyphen signals the script handles both
+  a first start AND an idempotent restart of an already-running
+  environment, not "restart" in the narrow sense of "stop then start
+  something already running." A later commit
+  (`5cd6017 fix: revert accidental restart.sh -> re-start.sh rename`)
+  mistakenly undid this repo-wide, reintroducing `03_restart.sh` as the
+  actual filename everywhere while every OTHER doc
+  (`dashboard-deployment-scripts.md`, `dashboard-start-scripts.md`) kept
+  citing `03_re-start.sh` — and `ai-docs/bash-scripts/conventions.md`
+  self-contradicted (its own operation table already said `03_re-start.sh`,
+  but its "Nazewnictwo" section explicitly said the opposite: "nie
+  `re-start`"). First found this as one broken caller
+  (`bash-scripts/dashboard/03_local_mac_docker/06_deploy.sh` calling a
+  nonexistent `03_re-start.sh`) and initially "fixed" it by pointing every
+  caller at the wrong, regressed name (`03_restart.sh`) instead of
+  recognizing the rename itself was the bug — this surfaced for real when
+  the user hit `bash: .../03_re-start.sh: No such file or directory`
+  running the actual QNAP TEST deploy. Corrected properly: renamed every
+  `bash-scripts/dashboard/*/03_restart.sh` back to `03_re-start.sh` (`git
+  mv`, preserving history), fixed every caller/comment back to match, and
+  fixed `conventions.md`'s self-contradicting section so it can't flip
+  again. `grep -rln "03_restart\.sh" bash-scripts/` must stay empty.
 - A stray, non-Compose-managed `chad-history-worker-local-mac-docker`
   container (no `com.docker.compose.*` labels — started via a raw `docker
   run`, matching the "Local Development" instructions in the stale
