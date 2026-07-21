@@ -20,13 +20,16 @@ services:
     restart: unless-stopped
     ports:
       - "${MONGODB_PORT:-27017}:27017"
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: "${MONGO_ROOT_USERNAME:-change_me}"
-      MONGO_INITDB_ROOT_PASSWORD: "${MONGO_ROOT_PASSWORD:-change_me}"
+    command: mongod --replSet rs0 --oplogSize 1024
     volumes:
       - chad-mongodb-local-mac-docker-db:/data/db
       - chad-mongodb-local-mac-docker-configdb:/data/configdb
       - ./bash-scripts/mongo/backups:/backups
+    healthcheck:
+      test: mongosh --eval "db.adminCommand('ping')" || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   dashboard:
     # No ":latest" fallback - own CHAD images must be deployed by an explicit
@@ -65,7 +68,7 @@ services:
       # namespace — not needed for either DBA_MONGO_MODE today (local mode
       # uses the sibling `mongodb` service by Compose service name, qnap
       # mode uses QNAP's real Tailscale IP).
-      - MONGODB_URI=${MONGODB_URI:-}
+      - MONGODB_URI=${MONGODB_URI:-mongodb://mongodb:27017/chad}
       # Beeper CRM's Mongo *server* URI — same physical mongo server as
       # MONGODB_URI. Story 73: each CHAD user gets their own
       # `beeper_<repoGuid>` database (contacts/channels/messages/
@@ -73,7 +76,7 @@ services:
       # standalone `contacts` repo), computed by dba's getBeeperMongoDb(),
       # never a database segment on this URI. Never merged into `chad`
       # alongside CP items.
-      - BEEPER_MONGODB_URI=${BEEPER_MONGODB_URI:-}
+      - BEEPER_MONGODB_URI=${BEEPER_MONGODB_URI:-mongodb://mongodb:27017}
       # Story 72 data-providers config (packages/dba/src/data-providers/
       # config.ts) — defaults here match the follow-up session's priority:
       # MongoDB as the only active/primary backend, CP follower disabled
@@ -86,6 +89,24 @@ services:
       - DBA_SHADOW_READS_ENABLED=${DBA_SHADOW_READS_ENABLED:-false}
     volumes:
       - chad-dashboard-local-mac-docker-data:/app/data
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  history-worker:
+    build:
+      context: .
+      dockerfile: packages/history-worker/Dockerfile
+    container_name: chad-history-worker-local-mac-docker
+    restart: unless-stopped
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    environment:
+      - NODE_ENV=production
+      - MONGODB_URI=mongodb://mongodb:27017/chad
     logging:
       driver: "json-file"
       options:

@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
 import { ErrorBox } from "@/components/shared/error-box";
 import {
@@ -13,15 +13,14 @@ import {
 import { cn } from "@/lib/utils";
 import {
   RefreshCw,
-  Search,
-  History as HistoryIcon,
-  Calendar,
   User,
   ArrowRight,
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
 import { toast } from "sonner";
+
+type HistoryView = "items" | "daily-tracker" | null;
 
 interface HistoryItem {
   id: string;
@@ -44,20 +43,163 @@ interface HistoryResult {
   pageSize: number;
 }
 
+interface HistoryConfigOp {
+  op: "add" | "remove" | "replace";
+  path: string;
+  oldValue: unknown;
+  newValue: unknown;
+}
+
+interface HistoryBodyHunk {
+  added: boolean;
+  removed: boolean;
+  value: string;
+}
+
+interface HistoryDetail extends HistoryItem {
+  changes: {
+    config: HistoryConfigOp[];
+    body: HistoryBodyHunk[] | null;
+  };
+}
+
+function formatDiffValue(value: unknown): string {
+  if (value === null || value === undefined) return "(none)";
+  if (typeof value === "string") return value;
+  return JSON.stringify(value);
+}
+
 export default function HistoryPage() {
+  const searchParams = useSearchParams();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) {
+    return null;
+  }
+
+  const viewParam = searchParams.get("view");
+  const selectedView: HistoryView =
+    viewParam === "daily-tracker" ? "daily-tracker" : viewParam === "items" ? "items" : null;
+
+  if (!selectedView) {
+    return <HistoryMenuPage />;
+  }
+
+  if (selectedView === "items") {
+    return (
+      <HistoryListContent
+        apiUrl="/api/content-provider/history"
+        title="Items History"
+        emptyLabel="items-history"
+      />
+    );
+  }
+
+  if (selectedView === "daily-tracker") {
+    return (
+      <HistoryListContent
+        apiUrl="/api/content-provider/daily-history"
+        title="Daily Tracker History"
+        emptyLabel="daily-tracker-history"
+      />
+    );
+  }
+
+  return null;
+}
+
+function HistoryMenuPage() {
+  const router = useRouter();
+
+  const handleSelectView = (view: HistoryView) => {
+    router.push(`/dashboard/history?view=${view}`);
+  };
+
+  return (
+    <DashboardPageShell title="History">
+      {/*
+        Same 4-column grid pattern as Views' own top-level menu — buttons
+        keep their column width top-left instead of stretching/centering.
+      */}
+      <div className="grid grid-cols-4 gap-2">
+        <button
+          type="button"
+          onClick={() => handleSelectView("items")}
+          className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
+        >
+          <span className="font-semibold text-sm">ITEMS</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => handleSelectView("daily-tracker")}
+          className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
+        >
+          <span className="font-semibold text-sm">DAILY TRACKER</span>
+        </button>
+      </div>
+    </DashboardPageShell>
+  );
+}
+
+/**
+ * Shared history list/detail view, parameterized by which API endpoint to
+ * list from — `content-provider/history` (all `cp_items`, no address
+ * filter) for "Items", `content-provider/daily-history` (Daily Tracker's
+ * resolved address prefix only) for "Daily Tracker". Both call the same
+ * `dba` `cp-history.ts` functions server-side; only the address filter
+ * differs, so the list/detail UI itself is not duplicated per view.
+ */
+function HistoryListContent({
+  apiUrl,
+  title,
+  emptyLabel,
+}: {
+  apiUrl: string;
+  title: string;
+  emptyLabel: string;
+}) {
+  const router = useRouter();
+
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [items, setItems] = useState<HistoryItem[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [pageSize] = useState(50);
-  const [filter, setFilter] = useState("");
   const [operationTypeFilter, setOperationTypeFilter] = useState<
     "insert" | "update" | "delete" | ""
   >("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [details, setDetails] = useState<
+    Record<string, HistoryDetail | "loading" | "error">
+  >({});
 
-  // Fetch history items
+  const toggleExpanded = useCallback(
+    (id: string) => {
+      if (expandedId === id) {
+        setExpandedId(null);
+        return;
+      }
+      setExpandedId(id);
+      if (details[id]) return;
+      setDetails((prev) => ({ ...prev, [id]: "loading" }));
+      fetch(`/api/content-provider/history/${id}`)
+        .then((res) => res.json())
+        .then((data: { success: boolean; data: HistoryDetail }) => {
+          if (!data.success) throw new Error("failed");
+          setDetails((prev) => ({ ...prev, [id]: data.data }));
+        })
+        .catch(() => {
+          setDetails((prev) => ({ ...prev, [id]: "error" }));
+        });
+    },
+    [expandedId, details]
+  );
+
   const fetchHistory = useCallback(async () => {
     try {
       setIsLoading(true);
@@ -72,9 +214,7 @@ export default function HistoryPage() {
         params.append("operationType", operationTypeFilter);
       }
 
-      const response = await fetch(
-        `/api/content-provider/history?${params.toString()}`
-      );
+      const response = await fetch(`${apiUrl}?${params.toString()}`);
 
       if (!response.ok) {
         throw new Error(
@@ -97,31 +237,19 @@ export default function HistoryPage() {
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";
       setError(message);
-      toast.error("Failed to fetch history");
-      console.error("[history] fetch failed:", err);
+      toast.error(`Failed to fetch ${title.toLowerCase()}`);
+      console.error(`[${emptyLabel}] fetch failed:`, err);
     } finally {
       setIsLoading(false);
     }
-  }, [page, pageSize, operationTypeFilter]);
+  }, [apiUrl, page, pageSize, operationTypeFilter, title, emptyLabel]);
 
-  // Fetch on mount and when filters change
   useEffect(() => {
     fetchHistory();
   }, [fetchHistory]);
 
-  // Filter items by address
-  const filteredItems = useMemo(
-    () =>
-      items.filter(
-        (item) =>
-          !filter ||
-          (item.address?.toLowerCase().includes(filter.toLowerCase()) ?? false)
-      ),
-    [items, filter]
-  );
-
   const handleBack = () => {
-    window.history.back();
+    router.push("/dashboard/history");
   };
 
   const handleRefresh = () => {
@@ -159,27 +287,17 @@ export default function HistoryPage() {
     }
   };
 
+  const totalPages = Math.ceil(total / pageSize);
+  const startIndex = (page - 1) * pageSize;
+
   return (
     <DashboardPageShell
       contentClassName={cn(FRAME_SECTION_GAP_CLASS, "overscroll-contain")}
       upLevel={{ onClick: handleBack }}
-      title="Change History"
+      title={title}
     >
       {/* Controls */}
       <div className="flex flex-wrap items-center gap-3">
-        <div className="relative">
-          <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-          <Input
-            value={filter}
-            onChange={(e) => {
-              setFilter(e.target.value);
-              setPage(1);
-            }}
-            placeholder="Filter by address..."
-            className="pl-7 h-7 text-xs w-[220px]"
-          />
-        </div>
-
         <select
           value={operationTypeFilter}
           onChange={(e) => {
@@ -201,155 +319,191 @@ export default function HistoryPage() {
           size="sm"
           onClick={handleRefresh}
           disabled={isLoading}
-          className="gap-2 h-7 text-xs"
+          className="h-7"
         >
-          <RefreshCw className={`h-3 w-3 ${isLoading ? "animate-spin" : ""}`} />
-          Refresh
+          <RefreshCw className={cn("h-3.5 w-3.5", isLoading && "animate-spin")} />
         </Button>
 
-        <span className="text-xs text-muted-foreground ml-auto">
-          {filteredItems.length} of {total} entries
-        </span>
+        <div className="ml-auto text-xs text-muted-foreground">
+          {total} entries • Page {page} of {totalPages}
+        </div>
       </div>
 
-      {/* Error display */}
-      <ErrorBox message={error} className="mb-2 shrink-0" />
+      {/* Error */}
+      {error && <ErrorBox message={error} />}
 
-      {/* History list */}
-      <div className={LIST_ROW_WRAPPER_CLASS}>
-        {isLoading ? (
-          <div className="flex items-center gap-2 py-4 text-muted-foreground">
-            <RefreshCw className="h-4 w-4 animate-spin" />
-            <span>Loading history...</span>
-          </div>
-        ) : filteredItems.length === 0 ? (
-          <div className="flex items-center gap-3 py-4 text-muted-foreground">
-            <HistoryIcon className="h-8 w-8 opacity-20" />
-            <span className="text-sm">No changes recorded yet.</span>
-          </div>
-        ) : (
-          <div className="divide-y border bg-muted/10">
-            {filteredItems.map((item) => (
-              <div key={item.id} className="border-b last:border-b-0">
-                {/* Row header */}
-                <button
-                  onClick={() =>
-                    setExpandedId(expandedId === item.id ? null : item.id)
-                  }
-                  className={`w-full text-left flex items-center gap-3 p-3 hover:bg-muted/20 transition-colors ${LIST_ROW_CLASS}`}
-                >
-                  {/* Operation icon */}
-                  <div className="flex items-center justify-center flex-shrink-0">
-                    {operationIcon(item.operationType)}
-                  </div>
+      {/* Loading */}
+      {isLoading && (
+        <div className="flex items-center justify-center py-8">
+          <RefreshCw className="h-5 w-5 animate-spin text-muted-foreground" />
+        </div>
+      )}
 
-                  {/* Main content */}
-                  <div className="flex-1 min-w-0">
+      {/* Empty State */}
+      {!isLoading && items.length === 0 && !error && (
+        <div className="flex items-center justify-center py-8 text-muted-foreground">
+          <span className="text-sm">No change history available</span>
+        </div>
+      )}
+
+      {/* List */}
+      {!isLoading && items.length > 0 && (
+        <>
+          <div className={LIST_ROW_WRAPPER_CLASS}>
+            {items.map((item, _idx) => {
+              const isExpanded = expandedId === item.id;
+
+              return (
+                <div key={item.id} className={cn(LIST_ROW_CLASS, "flex-col gap-2")}>
+                  {/* Header Row */}
+                  <div
+                    onClick={() => toggleExpanded(item.id)}
+                    className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
+                  >
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 -ml-2"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleExpanded(item.id);
+                      }}
+                    >
+                      {isExpanded ? (
+                        <ChevronUp className="h-4 w-4" />
+                      ) : (
+                        <ChevronDown className="h-4 w-4" />
+                      )}
+                    </Button>
+
                     <div className="flex items-center gap-2">
-                      <span className="font-medium text-sm">
+                      {operationIcon(item.operationType)}
+                      <span className="text-xs font-medium w-16">
                         {operationLabel(item.operationType)}
                       </span>
-                      <span className="text-xs text-muted-foreground">
-                        {item.address || "(no address)"}
-                      </span>
                     </div>
-                    <div className="flex items-center gap-4 mt-1">
-                      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                        <Calendar className="h-3 w-3" />
-                        {new Date(item.changedAt).toLocaleString()}
-                      </span>
+
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium truncate">
+                        {item.address || "(no address)"}
+                      </div>
                       {item.actor && (
-                        <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                        <div className="text-xs text-muted-foreground flex items-center gap-1">
                           <User className="h-3 w-3" />
                           {item.actor.username}
-                        </span>
+                        </div>
                       )}
                     </div>
-                  </div>
 
-                  {/* Expand chevron */}
-                  <div className="flex-shrink-0">
-                    {expandedId === item.id ? (
-                      <ChevronUp className="h-4 w-4 text-muted-foreground" />
-                    ) : (
-                      <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                    )}
-                  </div>
-                </button>
+                    <div className="text-xs text-muted-foreground whitespace-nowrap">
+                      {new Date(item.changedAt).toLocaleString()}
+                    </div>
 
-                {/* Expanded details */}
-                {expandedId === item.id && (
-                  <div className="px-3 pb-3 bg-muted/5 border-t text-xs space-y-2">
                     {item.beforeUnknown && (
-                      <div className="text-yellow-700 bg-yellow-50 p-2 rounded">
-                        ⚠️ &quot;Before&quot; state unknown (first change after worker
-                        startup)
+                      <div className="text-xs bg-amber-100 text-amber-900 px-2 py-1 rounded">
+                        first event
                       </div>
                     )}
+                  </div>
 
-                    {item.changedConfigPaths.length > 0 && (
-                      <div>
-                        <div className="font-medium mb-1">Config changes:</div>
-                        <div className="ml-3 space-y-1">
-                          {item.changedConfigPaths.map((path, idx) => (
-                            <div
-                              key={idx}
-                              className="text-muted-foreground font-mono"
-                            >
-                              {path}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {item.bodyChanged && (
-                      <div className="text-blue-700 bg-blue-50 p-2 rounded">
-                        ✓ Body content changed
-                      </div>
-                    )}
-
-                    {item.changedConfigPaths.length === 0 &&
-                      !item.bodyChanged && (
-                        <div className="text-muted-foreground italic">
-                          No details recorded
+                  {/* Expanded Details */}
+                  {isExpanded && (
+                    <div className="text-xs text-muted-foreground pl-8 border-t pt-2 space-y-2">
+                      {details[item.id] === "loading" && (
+                        <div className="flex items-center gap-2">
+                          <RefreshCw className="h-3 w-3 animate-spin" />
+                          Loading details…
                         </div>
                       )}
-                  </div>
-                )}
-              </div>
-            ))}
+                      {details[item.id] === "error" && (
+                        <div className="text-red-600">Failed to load details.</div>
+                      )}
+                      {details[item.id] &&
+                        details[item.id] !== "loading" &&
+                        details[item.id] !== "error" &&
+                        (() => {
+                          const detail = details[item.id] as HistoryDetail;
+                          const configOps = detail.changes.config;
+                          const bodyHunks = detail.changes.body;
+                          return (
+                            <>
+                              {configOps.length > 0 && (
+                                <div>
+                                  <div className="font-medium mb-1">Config changes:</div>
+                                  <div className="space-y-1">
+                                    {configOps.map((op, i) => (
+                                      <div key={i} className="font-mono">
+                                        <span className="text-foreground">{op.path}</span>
+                                        {": "}
+                                        <span className="text-red-600 line-through">
+                                          {formatDiffValue(op.oldValue)}
+                                        </span>
+                                        {" → "}
+                                        <span className="text-green-700">
+                                          {formatDiffValue(op.newValue)}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                              {bodyHunks && bodyHunks.length > 0 && (
+                                <div>
+                                  <div className="font-medium mb-1">Body:</div>
+                                  <div className="font-mono whitespace-pre-wrap rounded border bg-muted/20 p-2">
+                                    {bodyHunks.map((hunk, i) => (
+                                      <div
+                                        key={i}
+                                        className={cn(
+                                          hunk.added && "text-green-700 bg-green-50",
+                                          hunk.removed && "text-red-600 bg-red-50 line-through"
+                                        )}
+                                      >
+                                        {hunk.added ? "+ " : hunk.removed ? "- " : "  "}
+                                        {hunk.value}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                              {configOps.length === 0 && !bodyHunks?.length && (
+                                <div className="italic">No changes recorded</div>
+                              )}
+                            </>
+                          );
+                        })()}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
-        )}
-      </div>
 
-      {/* Pagination */}
-      {!isLoading && total > pageSize && (
-        <div className="flex items-center justify-between gap-4 text-sm">
-          <span className="text-muted-foreground">
-            Page {page} of {Math.ceil(total / pageSize)}
-          </span>
-          <div className="flex gap-2">
+          {/* Pagination */}
+          <div className="flex items-center justify-between gap-2 border-t pt-4">
             <Button
               variant="outline"
               size="sm"
               onClick={() => handlePageChange(page - 1)}
               disabled={page <= 1}
-              className="h-7 text-xs"
+              className="h-7"
             >
               Previous
             </Button>
+            <span className="text-xs text-muted-foreground">
+              {startIndex + 1}–{Math.min(startIndex + pageSize, total)} of {total}
+            </span>
             <Button
               variant="outline"
               size="sm"
               onClick={() => handlePageChange(page + 1)}
-              disabled={page >= Math.ceil(total / pageSize)}
-              className="h-7 text-xs"
+              disabled={page >= totalPages}
+              className="h-7"
             >
               Next
             </Button>
           </div>
-        </div>
+        </>
       )}
     </DashboardPageShell>
   );

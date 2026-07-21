@@ -1,3 +1,6 @@
+import { webcrypto as crypto } from "node:crypto";
+globalThis.crypto = crypto;
+
 // cp_items change-stream consumer -> cp_history (Story 74).
 //
 // Independent process (same pattern as packages/beeper-oplog): restarting
@@ -13,7 +16,7 @@
 //     where it left off, never re-scanning or dropping events.
 //   - MongoDB 4.4 has no pre/post-images (that's a 6.0+ feature), so
 //     "before" state for update/delete diffing comes from an in-memory
-//     cache of last-observed {config, body} per item, populated
+//     cache of last-observed {config, body, actor} per item, populated
 //     progressively from the events THIS worker has actually seen since it
 //     started tracking (bootstrapped fresh — no read-all-cp_items-at-
 //     startup step, deliberately: see 03_knowledge.md for why that would
@@ -25,12 +28,9 @@
 //     own resume-token data string, which is unique and stable — a retried
 //     insert of the same event is a duplicate-key error, caught and
 //     ignored, rather than needing a separate dedup check.
-import dotenv from "dotenv";
 import { MongoClient } from "mongodb";
 import { diffConfig } from "./lib/config-diff.mjs";
 import { diffBody } from "./lib/body-diff.mjs";
-
-dotenv.config();
 
 const MONGO_URI = process.env.MONGODB_URI || "mongodb://localhost:27017";
 const HISTORY_STATE_ID = "cp_history_worker";
@@ -114,7 +114,12 @@ async function recordHistoryEvent(change) {
   const afterBody = after?.body ?? "";
 
   const address = afterConfig?.address ?? beforeConfig?.address ?? null;
-  const actor = after?._lastActor ?? null;
+  // A delete event's change-stream document carries no fullDocument (no
+  // `after`), so its own write never had a chance to record an actor —
+  // fall back to the last actor this worker cached for the item from its
+  // most recent insert/update, same principle as the address/body fallback
+  // above.
+  const actor = after?._lastActor ?? cached?.actor ?? null;
 
   const historyDoc = {
     _id: change._id?._data ?? `${sourceId}-${Date.now()}`,
@@ -150,7 +155,7 @@ async function recordHistoryEvent(change) {
   if (operationType === "delete") {
     lastKnownState.delete(sourceId);
   } else if (after) {
-    lastKnownState.set(sourceId, { config: after.config, body: after.body });
+    lastKnownState.set(sourceId, { config: after.config, body: after.body, actor: after._lastActor ?? null });
   }
 
   await saveState({ resumeToken: change._id, lastEventAt: new Date(), status: "running", lastError: null });

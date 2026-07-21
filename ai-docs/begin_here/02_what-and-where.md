@@ -255,6 +255,26 @@ analizuj ani nie zmieniaj bez wyraźnej prośby.
 
 ---
 
+## History (Change Streams, `packages/history-worker`)
+
+**Opis:** Historia zmian `chad.cp_items` oparta na MongoDB Change Streams
+(replica set `rs0`) — niezależny worker (`packages/history-worker`)
+zapisujący do `chad.cp_history`/`cp_history_state`, warstwa odczytu w
+`dba` (`cp-history.ts`), API i UI zakładki `History` w Dashboardzie
+(Story 74).
+
+**Lokalizacja:** [`ai-docs/history/how-it-works.md`](../history/how-it-works.md)
+— pipeline, `rs0`/oplog, jak worker liczy diff bez pre-images (Mongo 4.4),
+resume token, mapowanie Daily Trackera, jak dodać nowy typ widoku, jak
+testować lokalnie, jak wykonać rollback.
+
+**Czytać gdy:** dowolna zmiana w `packages/history-worker`,
+`packages/dba/src/cp-history.ts`, `packages/dashboard/app/api/content-provider/{history,daily-history}`,
+`packages/dashboard/app/(dashboard)/dashboard/history/`, albo zakładki
+`History` w ogóle.
+
+---
+
 ## dba-console (`packages/console`)
 
 **Opis:** CLI (`packages/console`) do zarządzania danymi CHAD z terminala.
