@@ -106,9 +106,16 @@ Użytkownik chce prosty model konfiguracyjny:
 ```csharp
 dba_function()
 {
+	CpItem = (dzialamy na objektach CpItem)
+	
 	if (config.mongoEnabled)
 	{
 		do_mongo_work();
+	}
+	
+	if (config.sheetEnabled)
+	{
+		do_google_sheet_work();
 	}
 
 	if (config.contentProviderEnabled)
