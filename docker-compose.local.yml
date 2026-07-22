@@ -87,6 +87,18 @@ services:
       - DBA_PRIMARY_BACKEND=${DBA_PRIMARY_BACKEND:-mongo}
       - DBA_FOLLOWER_WRITES_ENABLED=${DBA_FOLLOWER_WRITES_ENABLED:-false}
       - DBA_SHADOW_READS_ENABLED=${DBA_SHADOW_READS_ENABLED:-false}
+      # Story 75 — Google Sheets sync (packages/dba/src/google-sheets/).
+      # Previously never passed through to this container at all (the
+      # integration's real-sheet verification was done via a one-off
+      # scratchpad script, not the running Dashboard) — the sync worker now
+      # runs inside this same process via instrumentation.ts, so these must
+      # actually reach it. See ai-docs/google-sheets/architecture.md.
+      - GOOGLE_SHEETS_ENABLED=${GOOGLE_SHEETS_ENABLED:-false}
+      - GOOGLE_SHEETS_SPREADSHEET_MAP=${GOOGLE_SHEETS_SPREADSHEET_MAP:-}
+      - GOOGLE_SHEETS_DAILY_TRACKER_SHEET_NAME=${GOOGLE_SHEETS_DAILY_TRACKER_SHEET_NAME:-}
+      - GOOGLE_SHEETS_DATE_ENTRIES_SHEET_NAME=${GOOGLE_SHEETS_DATE_ENTRIES_SHEET_NAME:-}
+      - GOOGLE_SERVICE_ACCOUNT_EMAIL=${GOOGLE_SERVICE_ACCOUNT_EMAIL:-}
+      - GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY=${GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY:-}
     volumes:
       - chad-dashboard-local-mac-docker-data:/app/data
     logging:

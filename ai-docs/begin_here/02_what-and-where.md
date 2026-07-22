@@ -318,6 +318,44 @@ Desktop.
 
 ---
 
+## Google Sheets sync (Daily Tracker export, nie zakładka UI)
+
+**Opis:** Jednokierunkowa synchronizacja Daily Entry ("Tracker", tab
+`daily`) i Date Entry ("Dates", tab `dates`) — `saveDailyEntry`/
+`updateDailyEntry`/`deleteDailyEntry`/`saveDateEntry`/`updateDateEntry` w
+`packages/dba/src/leads.ts` — do Google Sheets przez wspólne konto
+serwisowe, jako **wierna kopia** obu tabel Dashboardu (dokładna
+kolejność/etykiety kolumn skopiowane z `DAILY_COLUMNS`/`DATE_COLUMNS` w
+Dashboardzie, włącznie z policzonymi kolumnami "— AUTO"). **Osobny arkusz
+per użytkownik** (`GOOGLE_SHEETS_SPREADSHEET_MAP`, nigdy jeden wspólny —
+poprawione 2026-07-21 tego samego dnia co pierwszy build, patrz
+architecture.md §0b). Trwały outbox (`google_sheets_sync_outbox`, wspólny
+dla obu typów rekordów) + worker, który **działa** wewnątrz już
+uruchomionego procesu Dashboardu (Next.js `instrumentation.ts` →
+`dba`'s `bootstrap.ts`, bez osobnego kontenera — architecture.md §7).
+Dashboardowe route'y/strony same w sobie nadal nie mają żadnej wiedzy o tej
+integracji — `instrumentation.ts` to jedyny wyjątek, jednorazowe wywołanie
+przy starcie serwera. Domyślnie wyłączone (`GOOGLE_SHEETS_ENABLED=false`);
+u właściciela realnie skonfigurowane (dwóch użytkowników, każdy z własnym
+arkuszem) i zweryfikowane na żywo względem obu prawdziwych arkuszy
+2026-07-21.
+
+**Lokalizacja:** `ai-docs/google-sheets/` (nowy folder specjalizacji, Story
+75, 2026-07-21 — analogiczny do `ai-docs/beeper/`: globalna wiedza AI o
+integracji cross-cutting, nie dokumentacja per-zakładka Dashboardu).
+
+**Zacznij od:** [`ai-docs/google-sheets/ai-start.md`](../google-sheets/ai-start.md)
+→ [`architecture.md`](../google-sheets/architecture.md) (pełny design:
+mapowanie kolumn, schemat outboxa, auth kontem serwisowym, zmienne env,
+ograniczenia).
+
+**Czytać gdy:** zadanie dotyczy `packages/dba/src/google-sheets/**`,
+synchronizacji Daily Trackera do zewnętrznych systemów, albo zmiany
+`saveDailyEntry`/`updateDailyEntry`/`deleteDailyEntry` w `leads.ts` (te
+funkcje teraz wywołują też tę integrację, patrz architecture.md §1).
+
+---
+
 ## Headers format
 
 **Opis:** Format nagłówków treści (`headers-format`) używany w treściach
