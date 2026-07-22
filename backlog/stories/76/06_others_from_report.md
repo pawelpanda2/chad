@@ -2,24 +2,34 @@
 
 ## Open questions, flagged rather than guessed
 
-1. **Is `beeper-crm.ts`'s `db.watch()` currently actually succeeding
-   against `chad-mongodb` (which has been a replica set since Story 74),
-   or still silently polling?** Not confirmed in this planning pass — would
-   need a real QNAP log check (`docker logs chad-dashboard-{test,prod} |
-   grep beeper-crm`) during a live session. Directly changes how much the
-   "no replica set for beeper-mongodb" recommendation (`02_plan.md` §3)
-   actually costs in practice: if it's currently still polling anyway (the
-   comment in the code predates rs0 and may just never have been
-   revisited), splitting off a standalone `beeper-mongodb` costs nothing
-   behaviorally; if it's currently getting real push updates, it's a real,
-   user-noticeable regression to slower polling.
-2. **`history-worker`'s real resource footprint on QNAP** — not measured
-   in this pass. Only reason found in the code/docs that might argue for
-   keeping it a separate container (crash/restart isolation from the
-   Dashboard) rather than embedding it — the Story's own text asks for
-   "concrete technical arguments and risks" if a separate container turns
-   out necessary; this is the one live candidate, not yet substantiated
-   either way.
+1. **RESOLVED (real QNAP check, this session).** Is `beeper-crm.ts`'s
+   `db.watch()` currently actually succeeding against `chad-mongodb`
+   (which has been a replica set since Story 74), or still silently
+   polling? `docker logs chad-dashboard-{test,prod} | grep beeper-crm`
+   returned nothing on either container — nobody has opened the Beeper CRM
+   live view since either container's last restart (test:
+   2026-07-21T19:26 UTC, prod: 2026-07-19T15:57 UTC), so this could not be
+   observed directly via a log line. Confirmed architecturally instead: a
+   concurrent `mongodump` run's query logs on `chad-mongodb` show
+   `readPreference: "primaryPreferred"` and `ReplicationStateTransition`
+   lock acquisitions — both exclusive to an active replica set, never seen
+   on a standalone `mongod` — confirming `rs0` is live and healthy right
+   now. MongoDB Change Streams are a server/replica-set-level capability,
+   not per-database, so `beeper_<repoGuid>` databases hosted on that same
+   physical instance mean `db.watch()` structurally succeeds today
+   whenever the live view is actually open — i.e. it is genuinely using
+   live change streams, not the polling fallback. This makes the "no
+   replica set for beeper-mongodb" tradeoff (`02_plan.md` §3) a confirmed,
+   real, user-noticeable regression if adopted (instant updates degrade to
+   up-to-5s-stale polling), not a hypothetical one.
+2. **RESOLVED (real QNAP check, this session).** `history-worker`'s real
+   resource footprint on QNAP: `docker stats --no-stream` showed 45.3MiB
+   RAM (0.59% of host limit), 0.23% CPU, 12 PIDs, 0 restarts since a ~9h
+   uptime at check time — negligible, smaller than either Dashboard
+   container. No resource-footprint argument survives for keeping
+   `history-worker` a separate container; the only remaining argument is
+   crash/restart isolation from the Dashboard process, a qualitative
+   tradeoff worth naming to the user, not a technical blocker.
 3. **Separate vs. shared Mongo admin credentials** for the new
    `beeper-mongodb` container — `02_plan.md` §6 recommends separate
    (least-privilege), but this is a real operational decision (one more

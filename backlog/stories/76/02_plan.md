@@ -96,20 +96,35 @@ directly, not assumed:
 **The honest tradeoff, not hidden:** today, `beeper-crm.ts`'s `db.watch()`
 runs against `chad-mongodb`, which — since Story 74 — happens to already be
 a replica set (even though the comment predates that and reads as if it
-expects standalone). It's not confirmed here whether `beeper-crm.ts` is
-currently actually succeeding with real change streams or still silently
-polling (would need a live log check on QNAP to confirm, out of scope for
-a planning-only pass — flagged as a concrete open question for whoever
-executes this Story). If it currently IS using live change streams,
-splitting `beeper-mongodb` off as a standalone (no replica set) instance
-is a **real, user-visible regression**: Beeper CRM live updates degrade
-from instant (change-stream push) to up-to-5-seconds-stale (polling) —
-not broken, not data-losing, but slower. Recommendation is still **no
+expects standalone).
+
+**Update (resolved during this session, real QNAP check):** no live log
+line for `[beeper-crm]` exists on either `chad-dashboard-test` (up since
+2026-07-21T19:26 UTC) or `chad-dashboard-prod` (up since
+2026-07-19T15:57 UTC) — meaning nobody has opened the Beeper CRM live view
+since either container's last restart, so this could not be confirmed by
+directly observing a success/fallback log line. It WAS confirmed
+architecturally instead: `docker exec chad-mongodb` query logs from a
+concurrent `mongodump` run during this check show `readPreference:
+"primaryPreferred"` and `ReplicationStateTransition` lock acquisitions —
+both replica-set-only behaviors a standalone `mongod` does not produce —
+confirming `rs0` is live and healthy on `chad-mongodb` right now.
+MongoDB's Change Streams capability is a **server/replica-set-level**
+property, not a per-database one — `beeper_<repoGuid>` databases living on
+that same physical replica-set instance mean `db.watch()` in
+`beeper-crm.ts` structurally succeeds today (no synchronous throw, no
+async error event), i.e. **the code path is real change streams, not the
+polling fallback, whenever the Beeper CRM live view is actually open**.
+This changes the tradeoff from hypothetical to confirmed: splitting
+`beeper-mongodb` off as a standalone (no replica set) instance **is** a
+real, user-visible regression — Beeper CRM live updates would degrade
+from instant (change-stream push) to up-to-5-seconds-stale (polling), not
+broken, not data-losing, but slower. Recommendation is still **no
 replica set** for `beeper-mongodb` (simpler ops, no keyfile/rs-init
 machinery to maintain for a feature that already has a working degraded
-mode), but this tradeoff should be said out loud to the user before
-committing to it, not assumed away — they may consider instant Beeper
-updates worth the extra replica-set complexity.
+mode), but this should be presented to the user as a confirmed, not
+hypothetical, tradeoff — they may consider instant Beeper updates worth
+the extra replica-set complexity.
 
 ## 4. `history-worker` → embedded in the Dashboard process
 
@@ -150,13 +165,18 @@ with Story 75's own precedent, but this is exactly the kind of judgment
 call worth a quick confirmation before doing the actual rewrite.
 
 **Argument the Story asked for, in case a separate container turns out
-preferable after all:** none found. If anything changes this
-recommendation, it would be discovering `history-worker`'s memory/CPU
-footprint under real QNAP load is high enough to want independent
-container-level resource limits/restart isolation from the Dashboard
-itself — not investigated in this planning pass (would need real QNAP
-`docker stats` history), flagged as an open question, not assumed
-negligible.
+preferable after all:** none found. **Update (resolved during this
+session, real QNAP `docker stats --no-stream` check):**
+`chad-history-worker` is using 45.3MiB RAM (0.59% of the host's 7.55GiB
+limit), 0.23% CPU, 12 PIDs, 0 restarts since it started
+(2026-07-21T18:26 UTC — roughly 9h uptime at check time). This is
+negligible next to the Dashboard containers themselves (`chad-dashboard-test`
+116.5MiB, `chad-dashboard-prod` 109.2MiB) — confirms there is no
+resource-footprint argument for keeping it a separate container. The only
+remaining argument in its favor is crash/restart isolation from the
+Dashboard process, which is a real but qualitative tradeoff, not a
+measured one — worth naming to the user, not a blocker to the
+recommendation.
 
 ## 5. Data migration — the part that touches real user data
 
