@@ -1,11 +1,11 @@
 /**
  * GET /api/beeper-crm/events
  *
- * Server-Sent Events stream: emits `data: update` whenever the Beeper CRM
- * database changes, so the dashboard can refetch instead of polling on a
- * fixed timer. Backed by dba's subscribeToBeeperChanges(), which uses a
- * MongoDB change stream when available and falls back to a 5s poll on a
- * standalone (non-replica-set) MongoDB — see documentation/beeper/architecture.md.
+ * Server-Sent Events stream: emits `data: update` every 5s so the dashboard
+ * can refetch. Backed by dba's `subscribeToBeeperChanges()`, which polls
+ * only — deliberately never a MongoDB change stream, since Story 76
+ * (2026-07-22) committed `beeper-mongodb` to standalone (no replica set),
+ * so a change-stream path would never actually be reachable in production.
  */
 import { subscribeToBeeperChanges, runWithRepoContext } from "dba";
 import { getCurrentUserFromCookies } from "@/lib/session";

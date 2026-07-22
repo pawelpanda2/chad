@@ -257,6 +257,70 @@ functions above — a Sheets/config problem, including an unmapped username,
 is logged and swallowed, never turns a successful CHAD write into a failed
 response.
 
+## 0f. Revision note (2026-07-22, follow-up session — always-visible "N" column, newest-first row order)
+
+Two real gaps found and fixed, both against the two already-live
+spreadsheets, both with real read-verify-write-verify migrations (never
+"the API call returned 200" alone):
+
+**1. Missing "N" (item number) column.** The Dashboard's own Tracker/Dates
+tables have an "n" toggle button (`views/page.tsx`) that reveals
+`entry.itemName` — the Content Provider item's own zero-padded sequence
+number (`generateEntryName` in `leads.ts`), used to correlate a table row
+with the underlying `cp_item`. It was already synced to Sheets, but only
+as a hidden technical column (`CHAD_ITEM_NAME`, last of the 8 `TECHNICAL_COLUMNS`)
+— never visible by default, unlike the Dashboard's own (clickable) column.
+Fixed by adding `ITEM_NUMBER_COLUMN` (`mapper.ts`, key `"N"`, label `"N"`,
+`group: "none"`) as the literal first entry of both
+`DAILY_ENTRY_DOMAIN_COLUMNS` and `DATE_ENTRY_DOMAIN_COLUMNS` — always
+visible, always first, sourced from `payload.itemName` (a special case in
+`mapToSheetRow`, not a real `payload.fields` key). `CHAD_ITEM_NAME` itself
+was deliberately left untouched (still hidden, still written, same value
+duplicated) rather than removed — removing it would have required
+coordinating a column-count change with whatever old worker code might
+still be running mid-deploy; leaving it is harmless, low-risk redundancy.
+`SHEET_SCHEMA_VERSION` bumped 1 → 2, `LAYOUT_VERSION` bumped 5 → 6 (picks
+up the widened "none" group-run formatting). The physical column insert
+on the two already-live spreadsheets was done via a dedicated one-off
+script (`insertDimension` column A, then copying each row's own existing
+`CHAD_ITEM_NAME` value into the new column A — no Mongo access needed,
+the sheet's own already-correct hidden column was the source of truth),
+verified row-count-exact on all 4 tabs (8/3/84/26, matching every prior
+real count in this Story) before and after.
+
+**2. New rows appended at the bottom, oldest-first — wrong direction.**
+User feedback: new entries must appear at the TOP, newest-first, inserted
+by physically pushing existing rows down — "to ma być idealna
+synchronizacja w jedną stronę od danych z oplog z bazy mongo cp_items do
+google sheet" (this must be a perfect one-way sync from the cp_items
+oplog data to Google Sheets). `sheets-api-client.ts`'s `appendRow`
+rewritten: instead of computing the next empty row at the bottom
+(`findNextEmptyDataRow`, now removed) and `values.update`-ing there, it
+now always issues `insertDimension` at the fixed first-data-row position
+(`inheritFromBefore: false`, so the new row inherits body-row formatting
+from the row after it, not header formatting from above) before writing
+the new row's values there — every existing row shifts down by one,
+unconditionally, on every single append. Added a `sheetIdCache` (no TTL —
+a sheetId never changes for a tab's lifetime, unlike the header cache) so
+this doesn't reintroduce the Sheets API quota problem §0d already fixed
+once (`appendRow` now needs `getSheetId` on every call, not just headers).
+`FakeGoogleSheetsClient.appendRow` changed from `rows.push` to
+`rows.unshift` to match. The two already-live spreadsheets' existing data
+(oldest-first, from the original backfill) was reversed in place via a
+second one-off script: full read of the data range (`UNFORMATTED_VALUE`,
+avoids any display-format round-trip surprise), reverse the in-memory
+array, write back to the same range with `RAW` input (same shape, no
+insert/delete needed since it's a pure reorder) — verified row count,
+identical `CHAD_RECORD_KEY` multiset, and that the order was actually
+flipped, on all 4 tabs, before declaring it done.
+
+Both fixes covered by new/updated automated tests
+(`mapper.test.ts`: `ITEM_NUMBER_COLUMN` value-sourcing + column-position
+assertions; `layout.test.ts`: `groupRuns`/`applyHeaderFormatting` indices
+shifted for the new leading column; `worker.test.ts`: a dedicated
+insert-at-top ordering test) — full suite re-run and green (12+24+16+11+11+7
+= 81 tests) before this note was written.
+
 ## 2. Why a parallel outbox, not `data-outbox.ts`
 
 `data-outbox.ts`/`data-outbox-worker.ts` (Story 72) already implement a

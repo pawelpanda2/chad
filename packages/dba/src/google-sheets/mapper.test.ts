@@ -9,6 +9,7 @@ import {
   DATE_ENTRIES_SHEET_HEADERS,
   DATE_ENTRY_DOMAIN_COLUMNS,
   IMMUTABLE_ON_UPDATE_COLUMNS,
+  ITEM_NUMBER_COLUMN,
   SHEET_SCHEMA_VERSION,
   TECHNICAL_COLUMNS,
   mapDailyEntryToSheetRow,
@@ -88,6 +89,13 @@ function runTests() {
     }
   });
 
+  test("ITEM_NUMBER_COLUMN ('N') reads from payload.itemName, not payload.fields, and is always the first domain column on both tabs", () => {
+    const dailyRow = mapDailyEntryToSheetRow(dailyPayload, "2026-07-20T10:00:00.000Z");
+    assertEquals(dailyRow.N, "01", "N must equal payload.itemName");
+    assertEquals(DAILY_ENTRY_DOMAIN_COLUMNS[0], ITEM_NUMBER_COLUMN, "N must be the first daily domain column");
+    assertEquals(DATE_ENTRY_DOMAIN_COLUMNS[0], ITEM_NUMBER_COLUMN, "N must be the first date-entry domain column");
+  });
+
   test("maps the AUTO columns to their em-dash display labels (faithful copy of the Dashboard table)", () => {
     const row = mapDailyEntryToSheetRow(dailyPayload, "2026-07-20T10:00:00.000Z");
     assertEquals(row["PULLS — AUTO"], "2");
@@ -116,9 +124,10 @@ function runTests() {
     assertEquals(DAILY_TRACKER_SHEET_HEADERS, [...DAILY_ENTRY_DOMAIN_COLUMNS.map((c) => c.label), ...TECHNICAL_COLUMNS]);
   });
 
-  test("DAILY_ENTRY_DOMAIN_COLUMNS matches the Dashboard's own DAILY_COLUMNS order exactly (incl. OUTINGS last, under results)", () => {
+  test("DAILY_ENTRY_DOMAIN_COLUMNS is 'N' (not part of the Dashboard's own DAILY_COLUMNS array — see ITEM_NUMBER_COLUMN doc) followed by the Dashboard's DAILY_COLUMNS order exactly (incl. OUTINGS last, under results)", () => {
     const keys = DAILY_ENTRY_DOMAIN_COLUMNS.map((c) => c.key);
     assertEquals(keys, [
+      "N",
       "DATE",
       "STATE",
       "TRAINING TIME",
@@ -142,9 +151,12 @@ function runTests() {
     ]);
   });
 
-  test("IMMUTABLE_ON_UPDATE_COLUMNS are all real technical columns", () => {
+  test("IMMUTABLE_ON_UPDATE_COLUMNS are all real technical columns or the 'N' domain column", () => {
     for (const column of IMMUTABLE_ON_UPDATE_COLUMNS) {
-      assert((TECHNICAL_COLUMNS as readonly string[]).includes(column), `${column} should be a technical column`);
+      assert(
+        (TECHNICAL_COLUMNS as readonly string[]).includes(column) || column === "N",
+        `${column} should be a technical column or "N"`
+      );
     }
     assert(!(IMMUTABLE_ON_UPDATE_COLUMNS as readonly string[]).includes("CHAD_UPDATED_AT"), "CHAD_UPDATED_AT must stay mutable");
     assert(!(IMMUTABLE_ON_UPDATE_COLUMNS as readonly string[]).includes("CHAD_SYNC_STATUS"), "CHAD_SYNC_STATUS must stay mutable");
@@ -180,10 +192,10 @@ function runTests() {
     assertEquals(DATE_ENTRIES_SHEET_HEADERS, [...DATE_ENTRY_DOMAIN_COLUMNS.map((c) => c.label), ...TECHNICAL_COLUMNS]);
   });
 
-  test("DATE_ENTRY_DOMAIN_COLUMNS matches the Dashboard's own DATE_COLUMNS order exactly", () => {
+  test("DATE_ENTRY_DOMAIN_COLUMNS is 'N' followed by the Dashboard's own DATE_COLUMNS order exactly", () => {
     assertEquals(
       DATE_ENTRY_DOMAIN_COLUMNS.map((c) => c.key),
-      ["DATA", "ŹRÓDŁO", "NAZWA", "LINK", "PULL", "CLOSE", "JAKOŚĆ"]
+      ["N", "DATA", "ŹRÓDŁO", "NAZWA", "LINK", "PULL", "CLOSE", "JAKOŚĆ"]
     );
   });
 

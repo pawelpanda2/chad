@@ -70,7 +70,41 @@ future restore currently can't target just one concern without a
 by-database `mongodump` filter — splitting makes "restore just beeper
 data" or "restore just chad data" a container-level operation instead.
 
-## 3. Does `beeper-mongodb` need a replica set? — recommendation: **no, with one named tradeoff**
+## 3. Does `beeper-mongodb` need a replica set? — **DECIDED: no, replica set explicitly ruled out (2026-07-22)**
+
+**Final decision, superseding the "no, with one named tradeoff"
+recommendation below** (kept for its reasoning, no longer the open
+question): the user explicitly decided `beeper-mongodb` will be a plain
+standalone MongoDB — no replica set, no Change Streams, ever — with
+periodic `mongodump` (or equivalent) backups as the durability mechanism
+instead. The confirmed instant-vs-polling tradeoff below was accepted
+knowingly, not overridden by new information. Implemented the same
+session:
+
+- **`packages/dba/src/beeper-crm.ts`**'s `subscribeToBeeperChanges()`
+  rewritten to poll only — the `db.watch()` attempt/fallback logic is
+  gone entirely, not merely dead code behind an always-false branch. A
+  fixed 5s `setInterval` is now the only mechanism, matching what the
+  fallback path already did, so there is no live-update regression beyond
+  the one already confirmed and accepted above (this was already the
+  actual behavior whenever the CRM view wasn't open, and is now the
+  behavior unconditionally).
+- **`packages/beeper-oplog/index.mjs`** — its `eventsCol.watch(...)` change
+  stream (the only Change-Streams dependency in the whole Beeper feature
+  that had NO existing fallback) replaced with a durable-cursor polling
+  loop: a new `beeper_oplog_state` collection (`_id:
+  "beeper_oplog_worker"`, mirrors `history-worker`'s `cp_history_state`
+  resume-token pattern) tracks `lastProcessedId`, polling
+  `eventsCol.find({_id: {$gt: cursor}}).sort({_id: 1})` every 5s and
+  saving the cursor after each processed event — resumes correctly after
+  a restart, same requirement the Story's own input applied to
+  `history-worker`. All handler logic (`handleMessageUpserted` etc.)
+  unchanged — only the event-delivery mechanism changed. Package.json
+  description updated (no longer claims to require a replica set).
+
+Below is the original reasoning that led to the (now superseded)
+"no, with one named tradeoff" recommendation — kept for context on how
+the tradeoff was actually confirmed, not assumed:
 
 The Story's own input already anticipates this might not be a clean yes/no
 ("bez replica setu, o ile kod faktycznie go nie wymaga" — without a

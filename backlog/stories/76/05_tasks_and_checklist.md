@@ -1,12 +1,16 @@
 # Story 76 — Tasks Checklist
 
-Planning-only pass so far — every task below is **NOT STARTED**. Listed now
-(per the Story standard) so the eventual implementation session has a
-concrete checklist to work against, derived from `02_plan.md`.
+Planning-only pass for the container split/migration (tasks 2-10 below) —
+still **NOT STARTED**. Task 1's replica-set question is now **DONE**: the
+user decided no replica set for `beeper-mongodb`, and the code-level
+Change-Streams removal this required (`beeper-crm.ts`, `beeper-oplog`) is
+implemented — see `02_plan.md` §3. The infra-level tasks (new container,
+data migration, cutover) are unaffected by that and still need the same
+plan-first, real-QNAP-review-before-execution treatment.
 
 | # | Ai Status | Real Status | Task |
 |---|-----------|-------------|------|
-| 1 | NOT STARTED | | Confirm the two open judgment calls with the user (§3 replica-set tradeoff, §4 TypeScript-port decision, §6 credentials decision) before writing any infra code |
+| 1 | DONE | | §3 replica-set tradeoff: user decided no replica set, code-level Change-Streams removal implemented (`beeper-crm.ts` now polls only; `beeper-oplog/index.mjs`'s `eventsCol.watch()` replaced with a durable-cursor poll loop, `beeper_oplog_state` collection). §4 TypeScript-port and §6 credentials decisions still open. |
 | 2 | NOT STARTED | | Add `beeper-mongodb` service to `docker-compose.qnap.shared.yml` (own volume, own healthcheck, joins `chad-shared` network) — container not yet receiving traffic |
 | 3 | NOT STARTED | | Write and dry-run the dump/restore/verify migration script (`02_plan.md` §5) against a **copy** of real data first, not the live QNAP instance directly |
 | 4 | NOT STARTED | | Run the real migration on QNAP: dump every `beeper_<repoGuid>` db from `chad-mongodb`, restore into `beeper-mongodb`, verify exact collection counts match before proceeding — leave the source data in `chad-mongodb` untouched |

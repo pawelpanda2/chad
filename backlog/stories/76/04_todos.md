@@ -3,19 +3,19 @@
 Planning phase complete (`02_plan.md`, `03_knowledge.md`). Nothing
 implemented yet — waiting on the user to read the plan, in particular:
 
-- §3: confirm the "no replica set for beeper-mongodb" recommendation
-  given the named tradeoff. **Resolved (real QNAP check, this session):**
-  no live `[beeper-crm]` log line exists on either dashboard container
-  since their last restart (nobody opened the Beeper CRM live view since
-  then), but confirmed architecturally instead — `chad-mongodb`'s `rs0` is
-  live and healthy (confirmed via real replica-set-only query behavior in
-  its logs), and Change Streams are a server-level capability, so
-  `db.watch()` in `beeper-crm.ts` structurally succeeds today whenever the
-  live view is open. The tradeoff is now confirmed, not hypothetical:
-  splitting `beeper-mongodb` off without a replica set **would** degrade
-  Beeper CRM live updates from instant to up-to-5s-stale polling. Still
-  recommend no replica set (ops simplicity), but this needs the user's
-  explicit sign-off knowing it's a real, not theoretical, regression.
+- §3: **DECIDED by the user (2026-07-22), implemented same session.** No
+  replica set for `beeper-mongodb`, ever — Change Streams ruled out
+  entirely, periodic `mongodump` backups instead. The confirmed
+  instant-vs-polling tradeoff (real QNAP check: `chad-mongodb`'s `rs0` is
+  live/healthy, so `db.watch()` in `beeper-crm.ts` was structurally
+  succeeding whenever the CRM live view was open) was accepted knowingly.
+  `beeper-crm.ts`'s `subscribeToBeeperChanges()` now polls only (the
+  `db.watch()` code path is gone, not just unreachable);
+  `beeper-oplog/index.mjs`'s `eventsCol.watch(...)` (the one Beeper
+  Change-Streams consumer with no prior fallback) replaced with a
+  durable-cursor poll loop (`beeper_oplog_state` collection, mirrors
+  `history-worker`'s resume-token pattern). See `02_plan.md` §3 for the
+  full before/after.
 - §4: confirm TypeScript-port (into `packages/dba/src/history/`) vs.
   keep-as-plain-`.mjs` for relocating `history-worker` into the Dashboard
   process. (Resource footprint is no longer a factor either way — see next

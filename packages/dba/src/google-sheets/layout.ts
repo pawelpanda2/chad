@@ -51,8 +51,22 @@ import {
  * column — a layout version is a per-TAB property, not a per-ROW one (see
  * `types.ts`'s `GoogleSheetsTarget.headerRowCount` doc and this file's own
  * header comment).
+ *
+ * v6 (2026-07-22): `mapper.ts` gained `ITEM_NUMBER_COLUMN` ("N") as the
+ * first domain column on both tabs — bumping re-applies header/group/width
+ * formatting so it picks up the widened domain-column range. The physical
+ * column itself is NOT inserted by this file for the two already-live
+ * spreadsheets — that's a one-time structural change (shifts every
+ * existing column right by one) done once via a dedicated migration script
+ * BEFORE this version's code is deployed, same reasoning as the
+ * `insertDimension`-on-first-application case below: this file only ever
+ * formats an already-correct column range, it never itself inserts/deletes
+ * columns for a version bump (only for the one documented first-ever-row
+ * case). A brand new tab (`currentVersion === null`) needs no such script —
+ * `ensureHeaders` already writes "N" first because `mapper.ts`'s column
+ * arrays do, from its very first header write.
  */
-export const LAYOUT_VERSION = "5";
+export const LAYOUT_VERSION = "6";
 export const LAYOUT_VERSION_METADATA_KEY = "CHAD_SHEET_LAYOUT_VERSION";
 
 /**

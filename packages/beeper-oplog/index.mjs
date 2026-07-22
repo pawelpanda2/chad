@@ -340,17 +340,43 @@ async function handleChatUpserted(event) {
   console.log(`[channel] Upsert (${chatID}): typ=${update.type || channel.type}, title="${update.title || channel.title}"`);
 }
 
-// ── Change Stream ─────────────────────────────────────────────────────────────
+// ── Polling loop (Story 76, 2026-07-22) ─────────────────────────────────────────
+//
+// Deliberately NOT a MongoDB change stream (`eventsCol.watch(...)`, removed
+// here — was the only Change-Streams dependency in this package). Story 76
+// committed the target `beeper-mongodb` container to standalone, no replica
+// set, periodic `mongodump` backups instead — so a change-stream consumer
+// could never actually work in production, only in this repo's local dev
+// Mongo (which happens to run as a replica set today for `chad-mongodb`'s
+// sake, not for Beeper's). Polling by `_id` (a MongoDB ObjectId is
+// monotonically non-decreasing per process, and ordering by `_id` ascending
+// processes inserts in creation order) needs no replica set at all.
+//
+// Cursor is durable (own `beeper_oplog_state` collection, mirrors
+// `packages/history-worker`'s `cp_history_state` resumeToken pattern) so a
+// restart resumes from the last processed event, not from "now" — the same
+// "must resume correctly after a restart" requirement Story 76's input
+// applied to `history-worker` applies here too, even though this package
+// isn't deployed yet.
 
-const stream = eventsCol.watch(
-  [{ $match: { operationType: "insert" } }],
-  { fullDocument: "updateLookup" }
-);
+const POLL_INTERVAL_MS = 5000;
+const stateCol = db.collection("beeper_oplog_state");
+const STATE_DOC_ID = "beeper_oplog_worker";
 
-stream.on("change", async (change) => {
-  const event = change.fullDocument;
-  if (!event) return;
+async function loadCursor() {
+  const state = await stateCol.findOne({ _id: STATE_DOC_ID });
+  return state?.lastProcessedId ?? null;
+}
 
+async function saveCursor(id) {
+  await stateCol.updateOne(
+    { _id: STATE_DOC_ID },
+    { $set: { lastProcessedId: id, updatedAt: new Date() } },
+    { upsert: true }
+  );
+}
+
+async function processEvent(event) {
   try {
     switch (event.type) {
       case "message.upserted":
@@ -369,15 +395,39 @@ stream.on("change", async (change) => {
   } catch (err) {
     console.error(`[error] ${event.type}:`, err.message);
   }
-});
+}
 
-stream.on("error", (err) => {
-  console.error("[stream error]", err.message);
-});
+let stopped = false;
+let pollTimer = null;
+
+async function pollOnce() {
+  const cursor = await loadCursor();
+  const query = cursor ? { _id: { $gt: cursor } } : {};
+  const newEvents = await eventsCol.find(query).sort({ _id: 1 }).toArray();
+
+  for (const event of newEvents) {
+    await processEvent(event);
+    await saveCursor(event._id);
+  }
+}
+
+async function pollLoop() {
+  if (stopped) return;
+  try {
+    await pollOnce();
+  } catch (err) {
+    console.error("[poll] tick failed:", err.message);
+  }
+  if (!stopped) pollTimer = setTimeout(pollLoop, POLL_INTERVAL_MS);
+}
+
+console.log(`[oplog] Polling beeper_events every ${POLL_INTERVAL_MS}ms (no replica set required)...\n`);
+void pollLoop();
 
 process.on("SIGINT", async () => {
   console.log("\n[oplog] Zamykam...");
-  await stream.close();
+  stopped = true;
+  if (pollTimer) clearTimeout(pollTimer);
   await client.close();
   process.exit(0);
 });
