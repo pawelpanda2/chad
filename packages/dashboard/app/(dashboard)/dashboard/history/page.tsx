@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
 import { ErrorBox } from "@/components/shared/error-box";
 import {
@@ -191,13 +192,15 @@ function HistoryMenuPage() {
 }
 
 /**
- * History -> Google Sheets. Shows the current user's own spreadsheet link
- * (never another user's — resolved server-side from the session, see
- * /api/google-sheets/info), the service account it's shared with (safe to
- * show — an email address, not a credential), and, only if configured, the
- * shared viewing account's login (GOOGLE_SHEETS_VIEWER_ACCOUNT_EMAIL/
- * PASSWORD env vars — intentionally never set by default, see
- * .env.local.example).
+ * History -> Google Sheets. Header card (User avatar) shows the current
+ * user's own CHAD username and their spreadsheet link (never another
+ * user's — resolved server-side from the session, see
+ * /api/google-sheets/info) in the same rounded-card layout as
+ * dashboard/leads/details. Below it: a card for the shared viewing
+ * account's login (GOOGLE_SHEETS_VIEWER_ACCOUNT_EMAIL/PASSWORD env vars —
+ * intentionally never set by default, see .env.local.example), and a card
+ * for the service account it's shared with (safe to show — an email
+ * address, not a credential).
  */
 function GoogleSheetsViewContent() {
   const router = useRouter();
@@ -227,7 +230,7 @@ function GoogleSheetsViewContent() {
   const handleBack = () => router.push("/dashboard/history");
 
   return (
-    <DashboardPageShell upLevel={{ onClick: handleBack }} title="Google Sheets">
+    <DashboardPageShell upLevel={{ onClick: handleBack }} title="Google Sheets" contentClassName="gap-1">
       {isLoading && (
         <div className="flex items-center justify-center py-8">
           <RefreshCw className="h-5 w-5 animate-spin text-muted-foreground" />
@@ -243,50 +246,74 @@ function GoogleSheetsViewContent() {
       )}
 
       {!isLoading && data && data.enabled && (
-        <div className="space-y-4">
-          <div className={cn(LIST_ROW_CLASS, "flex-col items-start gap-2")}>
-            <span className="text-xs font-medium text-muted-foreground">Your spreadsheet</span>
-            {data.spreadsheetUrl ? (
-              <a
-                href={data.spreadsheetUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
-              >
-                {data.spreadsheetUrl}
-                <ExternalLink className="h-3.5 w-3.5" />
-              </a>
-            ) : (
-              <span className="text-sm text-amber-700">{data.spreadsheetError || "No spreadsheet configured for your account."}</span>
-            )}
-          </div>
+        <>
+          {/* Header card: CHAD username + link to their spreadsheet, same layout as leads/details' Lead Header Card */}
+          <Card className="gap-0 py-0">
+            <CardContent className="px-[14px] py-[12px]">
+              <div className="flex items-start gap-3">
+                <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                  <User className="h-5 w-5 text-primary" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h1 className="text-base font-semibold leading-tight truncate">
+                    {data.chadUsername || "Unknown user"}
+                  </h1>
+                  {data.spreadsheetUrl ? (
+                    <a
+                      href={data.spreadsheetUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline mt-0.5"
+                    >
+                      {data.spreadsheetUrl}
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </a>
+                  ) : (
+                    <div className="text-sm text-amber-700 mt-0.5">
+                      {data.spreadsheetError || "No spreadsheet configured for your account."}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
 
-          {data.chadUsername && (
-            <div className={cn(LIST_ROW_CLASS, "flex-col items-start gap-2")}>
-              <span className="text-xs font-medium text-muted-foreground">CHAD login</span>
-              <span className="text-sm font-mono">{data.chadUsername}</span>
-            </div>
-          )}
+          {/* Google account card: viewer login (email + password) to open the sheet interactively */}
+          <Card className="gap-0 py-0">
+            <CardContent className="px-[14px] py-[10px]">
+              <h2 className="text-sm font-semibold mb-2">Google account</h2>
+              {data.viewerAccount ? (
+                <div className="space-y-1 text-sm">
+                  <div>
+                    <span className="text-muted-foreground">Email:</span>{" "}
+                    <span className="font-mono">{data.viewerAccount.email}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Password:</span>{" "}
+                    <span className="font-mono">{data.viewerAccount.password}</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-xs text-muted-foreground">
+                  No test account configured (GOOGLE_SHEETS_VIEWER_ACCOUNT_EMAIL/PASSWORD unset).
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
-          {data.viewerAccount ? (
-            <div className={cn(LIST_ROW_CLASS, "flex-col items-start gap-2")}>
-              <span className="text-xs font-medium text-muted-foreground">Test account (log in with this to open the sheet in Google Sheets)</span>
-              <span className="text-sm font-mono">Email: {data.viewerAccount.email}</span>
-              <span className="text-sm font-mono">Password: {data.viewerAccount.password}</span>
-            </div>
-          ) : (
-            <div className="text-xs text-muted-foreground">
-              No test account configured (GOOGLE_SHEETS_VIEWER_ACCOUNT_EMAIL/PASSWORD unset).
-            </div>
-          )}
-
+          {/* Service account card: edit-access identity the spreadsheet is shared with, no interactive login */}
           {data.serviceAccountEmail && (
-            <div className={cn(LIST_ROW_CLASS, "flex-col items-start gap-2")}>
-              <span className="text-xs font-medium text-muted-foreground">Service account (edit access, no interactive login)</span>
-              <span className="text-sm font-mono">{data.serviceAccountEmail}</span>
-            </div>
+            <Card className="gap-0 py-0">
+              <CardContent className="px-[14px] py-[10px]">
+                <h2 className="text-sm font-semibold mb-2">Service account</h2>
+                <div className="text-sm font-mono">{data.serviceAccountEmail}</div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  Edit access, no interactive login.
+                </div>
+              </CardContent>
+            </Card>
           )}
-        </div>
+        </>
       )}
     </DashboardPageShell>
   );
