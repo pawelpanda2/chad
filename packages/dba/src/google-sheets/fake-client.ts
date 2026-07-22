@@ -102,7 +102,10 @@ export class FakeGoogleSheetsClient implements GoogleSheetsClient {
     this.calls.push({ method: "appendRow", target, args: { values } });
     this.maybeFail();
     const sheet = this.sheet(target);
-    sheet.rows.push({ ...values });
+    // Insert at the TOP of the data range (2026-07-22 follow-up — new
+    // entries should appear newest-first, mirroring the real client's
+    // insert-at-top `appendRow`), never appended at the bottom.
+    sheet.rows.unshift({ ...values });
   }
 
   async getSheetId(target: GoogleSheetsTarget): Promise<number> {

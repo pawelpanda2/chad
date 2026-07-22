@@ -2,7 +2,7 @@
 
 ## Open questions, flagged rather than guessed
 
-1. **RESOLVED (real QNAP check, this session).** Is `beeper-crm.ts`'s
+1. **RESOLVED, then DECIDED (this session).** Was `beeper-crm.ts`'s
    `db.watch()` currently actually succeeding against `chad-mongodb`
    (which has been a replica set since Story 74), or still silently
    polling? `docker logs chad-dashboard-{test,prod} | grep beeper-crm`
@@ -14,14 +14,11 @@
    `readPreference: "primaryPreferred"` and `ReplicationStateTransition`
    lock acquisitions — both exclusive to an active replica set, never seen
    on a standalone `mongod` — confirming `rs0` is live and healthy right
-   now. MongoDB Change Streams are a server/replica-set-level capability,
-   not per-database, so `beeper_<repoGuid>` databases hosted on that same
-   physical instance mean `db.watch()` structurally succeeds today
-   whenever the live view is actually open — i.e. it is genuinely using
-   live change streams, not the polling fallback. This makes the "no
-   replica set for beeper-mongodb" tradeoff (`02_plan.md` §3) a confirmed,
-   real, user-noticeable regression if adopted (instant updates degrade to
-   up-to-5s-stale polling), not a hypothetical one.
+   now, so `db.watch()` was structurally succeeding whenever the live view
+   was actually open. **The user then explicitly decided (2026-07-22): no
+   replica set for `beeper-mongodb`, ever, accepting the confirmed
+   instant-to-polling regression knowingly** — implemented same session,
+   see `02_plan.md` §3. No longer an open question.
 2. **RESOLVED (real QNAP check, this session).** `history-worker`'s real
    resource footprint on QNAP: `docker stats --no-stream` showed 45.3MiB
    RAM (0.59% of host limit), 0.23% CPU, 12 PIDs, 0 restarts since a ~9h
@@ -36,9 +33,11 @@
    credential pair to manage in `.env.qnap`) worth the user's explicit
    sign-off rather than a silent default.
 
-## Why implementation didn't proceed further in this session
+## Why the container-split implementation didn't proceed further this session
 
-Three reasons, all pointing the same direction:
+(Narrower Change-Streams-removal work below §3 DID proceed and is done —
+this section is about the container split / data migration only.) Three
+reasons, all pointing the same direction:
 
 - The Story's own input text explicitly asks for a plan + affected-file
   list FIRST, and explicitly says not to implement before checking the

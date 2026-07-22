@@ -47,6 +47,8 @@ function columnIndexToLetter(indexZeroBased: number): string {
 
 export class GoogleSheetsApiClient implements GoogleSheetsClient {
   private readonly headerCache = new Map<string, { headers: string[]; expiresAt: number }>();
+  /** sheetId never changes for the life of a tab (only if the tab itself is deleted/recreated) — cached indefinitely, no TTL, unlike headerCache. Added 2026-07-22 when appendRow started needing it on every call (insert-at-top rewrite), to avoid adding a fresh quota-consuming read per append. */
+  private readonly sheetIdCache = new Map<string, number>();
 
   constructor(
     private readonly credentials: ServiceAccountCredentials,
@@ -153,43 +155,43 @@ export class GoogleSheetsApiClient implements GoogleSheetsClient {
   }
 
   /**
-   * Number of the next genuinely empty data row, computed explicitly from
-   * how many rows already have a `CHAD_RECORD_KEY` value (always populated,
-   * immutable, and — since rows are only ever added at the end — gap-free).
-   * `appendRow` used to rely on the Sheets API's own `values.append` +
-   * `insertDataOption=INSERT_ROWS` "detect the table, insert after it"
-   * heuristic — real-world testing (Story 75 follow-up, 2026-07-22, a real
-   * 121-record backfill across both live spreadsheets) showed that
-   * heuristic gets confused by this tab's 2-header-row layout (the group
-   * -label row's "none"-group cell is blank, which the table-detection
-   * algorithm apparently reads as "no table here") and inserted new rows
-   * at essentially a fixed row near the top instead of after the last real
-   * row — silently overwriting every previous row rather than adding new
-   * ones. Computing the target row explicitly and writing with a plain
-   * `values.update` removes the ambiguity entirely.
+   * Inserts a brand-new physical row at the very top of the data range
+   * (immediately after the last header row), pushing every existing data
+   * row down by one — new entries appear newest-first, top to bottom,
+   * mirroring the order CHAD's own `cp_history` oplog captures them in
+   * (2026-07-22 follow-up: previously appended at the bottom, oldest-first,
+   * which the user flagged as wrong — Sheets should read like the oplog: a
+   * one-way mirror where each new event lands at the top).
+   *
+   * `insertDimension` with `inheritFromBefore: false` means the new row
+   * inherits formatting from the row AFTER it (the previously-first data
+   * row) rather than from the header row above — the correct body-row
+   * formatting, not header formatting.
+   *
+   * Previously used `findNextEmptyDataRow` + a `values.update` PUT to the
+   * computed bottom row (itself a fix for `values.append`'s
+   * `insertDataOption=INSERT_ROWS` table-detection heuristic getting
+   * confused by this tab's blank-A1 2-header-row layout — see git history
+   * for that incident). `insertDimension` sidesteps both problems at once:
+   * it's an explicit structural insert, not a heuristic, and always targets
+   * a known fixed row (`firstDataRow`), never a computed "next empty" one.
    */
-  private async findNextEmptyDataRow(target: GoogleSheetsTarget): Promise<number> {
-    const headers = await this.readHeaderRow(target);
-    const columnIndex = headers.indexOf("CHAD_RECORD_KEY");
-    if (columnIndex === -1) {
-      throw new Error(`findNextEmptyDataRow: header "CHAD_RECORD_KEY" not found in sheet "${target.sheetName}"`);
-    }
-    const columnLetter = columnIndexToLetter(columnIndex);
-    const firstDataRow = (target.headerRowCount ?? 1) + 1;
-    const range = `${quoteSheetName(target.sheetName)}!${columnLetter}${firstDataRow}:${columnLetter}`;
-    const url = `${API_BASE}/${target.spreadsheetId}/values/${encodeURIComponent(range)}`;
-    const response = await this.authorizedFetch(url);
-    const body = (await response.json()) as { values?: string[][] };
-    const column = body.values ?? [];
-    return firstDataRow + column.length;
-  }
-
   async appendRow(target: GoogleSheetsTarget, values: SheetRowValues): Promise<void> {
     const headers = await this.readHeaderRow(target);
     const row = headers.map((header) => values[header] ?? "");
-    const rowNumber = await this.findNextEmptyDataRow(target);
+    const sheetId = await this.getSheetId(target);
+    const firstDataRow = (target.headerRowCount ?? 1) + 1;
 
-    const range = `${quoteSheetName(target.sheetName)}!A${rowNumber}`;
+    await this.batchUpdate(target.spreadsheetId, [
+      {
+        insertDimension: {
+          range: { sheetId, dimension: "ROWS", startIndex: firstDataRow - 1, endIndex: firstDataRow },
+          inheritFromBefore: false,
+        },
+      },
+    ]);
+
+    const range = `${quoteSheetName(target.sheetName)}!A${firstDataRow}`;
     const url = `${API_BASE}/${target.spreadsheetId}/values/${encodeURIComponent(range)}?valueInputOption=RAW`;
     await this.authorizedFetch(url, {
       method: "PUT",
@@ -198,6 +200,10 @@ export class GoogleSheetsApiClient implements GoogleSheetsClient {
   }
 
   async getSheetId(target: GoogleSheetsTarget): Promise<number> {
+    const cacheKey = `${target.spreadsheetId}::${target.sheetName}`;
+    const cached = this.sheetIdCache.get(cacheKey);
+    if (cached !== undefined) return cached;
+
     const url = `${API_BASE}/${target.spreadsheetId}?fields=${encodeURIComponent("sheets.properties(sheetId,title)")}`;
     const response = await this.authorizedFetch(url);
     const body = (await response.json()) as { sheets?: Array<{ properties?: { sheetId?: number; title?: string } }> };
@@ -205,6 +211,7 @@ export class GoogleSheetsApiClient implements GoogleSheetsClient {
     if (!match?.properties?.sheetId && match?.properties?.sheetId !== 0) {
       throw new Error(`getSheetId: tab "${target.sheetName}" not found in spreadsheet`);
     }
+    this.sheetIdCache.set(cacheKey, match.properties.sheetId);
     return match.properties.sheetId;
   }
 

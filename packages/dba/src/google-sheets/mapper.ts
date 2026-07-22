@@ -15,8 +15,16 @@
 
 import type { SheetRowValues, SheetSyncPayload } from "./types.js";
 
-/** Current export schema version — bump if the technical/domain column set changes shape. */
-export const SHEET_SCHEMA_VERSION = "1";
+/**
+ * Current export schema version — bump if the technical/domain column set
+ * changes shape. Bumped to "2" (2026-07-22) when the "N" item-number
+ * column was added as an always-visible first column (see
+ * `ITEM_NUMBER_COLUMN` below) — mirrors the Dashboard's own "n" toggle
+ * button (`packages/dashboard/app/(dashboard)/dashboard/views/page.tsx`),
+ * which shows `entry.itemName` so the user can correlate a spreadsheet row
+ * with the underlying Content Provider item.
+ */
+export const SHEET_SCHEMA_VERSION = "2";
 
 /**
  * Technical columns — placed *after* every domain column (plan revision,
@@ -45,6 +53,7 @@ export const IMMUTABLE_ON_UPDATE_COLUMNS = [
   "CHAD_ITEM_NAME",
   "CHAD_REPO_GUID",
   "CHAD_LOCA",
+  "N",
 ] as const;
 
 /**
@@ -59,13 +68,28 @@ export const IMMUTABLE_ON_UPDATE_COLUMNS = [
 export type SheetColumnGroup = "none" | "training" | "action" | "texting" | "results";
 
 export interface SheetColumnSpec {
-  /** The domain field key as stored in `SheetSyncPayload.fields` (matches the Dashboard's `DAILY_COLUMNS`/`DATE_COLUMNS` `key`). */
+  /** The domain field key as stored in `SheetSyncPayload.fields` (matches the Dashboard's `DAILY_COLUMNS`/`DATE_COLUMNS` `key`). For `ITEM_NUMBER_COLUMN` this is a sentinel, not a real `fields` key — see `mapToSheetRow`'s special case. */
   key: string;
   /** The literal sheet column header text (matches the Dashboard's own `label` — e.g. the em-dash in "PULLS — AUTO"). */
   label: string;
   /** Verbatim copy of the Dashboard's own per-column `group` (visual layout only, see `SheetColumnGroup`). */
   group: SheetColumnGroup;
 }
+
+/**
+ * The "N" item-number column — always the first column on both tabs, never
+ * hidden (unlike every other CHAD_* technical column). Mirrors the
+ * Dashboard's own "n" toggle button (`views/page.tsx`), which shows
+ * `entry.itemName` (the Content Provider item's own zero-padded sequence
+ * number, e.g. "01", "02", set once at creation by `generateEntryName` in
+ * `leads.ts`) so the user can correlate a spreadsheet row with the
+ * underlying `cp_item` (2026-07-22 follow-up — the Dashboard only shows
+ * this behind a click, so it was missing from the sheet's default view;
+ * here it's always visible instead, matching the "n" button's own value).
+ * `key: "N"` is a sentinel handled specially in `mapToSheetRow` (its value
+ * comes from `payload.itemName`, not `payload.fields`).
+ */
+export const ITEM_NUMBER_COLUMN: SheetColumnSpec = { key: "N", label: "N", group: "none" };
 
 /**
  * How many leading rows are headers on each tab (Story 75 visual-layout
@@ -87,6 +111,7 @@ export const DATE_ENTRIES_HEADER_ROW_COUNT = 1;
  * `/api/forms/daily-entry` GET does).
  */
 export const DAILY_ENTRY_DOMAIN_COLUMNS: SheetColumnSpec[] = [
+  ITEM_NUMBER_COLUMN,
   { key: "DATE", label: "DATE", group: "none" },
   { key: "STATE", label: "STATE", group: "training" },
   { key: "TRAINING TIME", label: "TRAINING TIME", group: "training" },
@@ -116,6 +141,7 @@ export const DAILY_ENTRY_DOMAIN_COLUMNS: SheetColumnSpec[] = [
  * guard) — every column is `group: "none"`.
  */
 export const DATE_ENTRY_DOMAIN_COLUMNS: SheetColumnSpec[] = [
+  ITEM_NUMBER_COLUMN,
   { key: "DATA", label: "DATA", group: "none" },
   { key: "ŹRÓDŁO", label: "ŹRÓDŁO", group: "none" },
   { key: "NAZWA", label: "NAZWA", group: "none" },
@@ -147,7 +173,10 @@ function mapToSheetRow(
 ): SheetRowValues {
   const row: SheetRowValues = {};
   for (const column of domainColumns) {
-    const value = payload.fields[column.key];
+    // ITEM_NUMBER_COLUMN's value comes from payload.itemName, not
+    // payload.fields — it's not a domain field at all, just prepended here
+    // so it shares the domain columns' ordering/grouping machinery.
+    const value = column === ITEM_NUMBER_COLUMN ? payload.itemName : payload.fields[column.key];
     row[column.label] = value === undefined || value === null ? "" : String(value);
   }
 
