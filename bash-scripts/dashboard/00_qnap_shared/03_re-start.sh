@@ -50,6 +50,15 @@ mkdir -p \
   "$QNAP_CONTAINER_DATA_PATH/chad-shared/mongodb/configdb" \
   "$QNAP_CONTAINER_DATA_PATH/chad-shared/mongodb/backups"
 
+# beeper-mongodb (Story 76, 2026-07-22 physical split) — its own volume,
+# same tmpfs-vs-real-volume check, own subdirectories. Deliberately no
+# keyfile subdirectory (standalone, no replica set).
+require_data_path_writable "$QNAP_CONTAINER_DATA_PATH/chad-shared/beeper-mongodb" || exit 1
+mkdir -p \
+  "$QNAP_CONTAINER_DATA_PATH/chad-shared/beeper-mongodb/db" \
+  "$QNAP_CONTAINER_DATA_PATH/chad-shared/beeper-mongodb/configdb" \
+  "$QNAP_CONTAINER_DATA_PATH/chad-shared/beeper-mongodb/backups"
+
 ensure_docker_network chad-shared
 
 if docker compose -p "$COMPOSE_PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps --format json 2>/dev/null | grep -q '"State":"running"'; then
@@ -78,6 +87,25 @@ if [ "$MONGO_HEALTHY" != true ]; then
 fi
 log_ok "chad-mongodb healthy."
 
+log_info "Waiting for beeper-mongodb health..."
+BEEPER_MONGO_HEALTHY=false
+for _ in $(seq 1 30); do
+  state="$(docker inspect -f '{{.State.Health.Status}}' beeper-mongodb 2>/dev/null || true)"
+  if [ "$state" = "healthy" ]; then
+    BEEPER_MONGO_HEALTHY=true
+    break
+  fi
+  sleep 2
+done
+
+if [ "$BEEPER_MONGO_HEALTHY" != true ]; then
+  log_error "beeper-mongodb did not become healthy in time."
+  log_error "  Check: docker compose -p $COMPOSE_PROJECT_NAME -f $COMPOSE_FILE logs beeper-mongodb"
+  exit 1
+fi
+log_ok "beeper-mongodb healthy."
+
 echo ""
 log_ok "chad-shared stack is up."
 log_info "MongoDB: chad-mongodb:27017 on the chad-shared network, also published on the QNAP host's port 12040 (Tailscale-reachable, e.g. MongoDB Compass)"
+log_info "Beeper MongoDB: beeper-mongodb:27017 on the chad-shared network, also published on the QNAP host's port 12041 (Tailscale-reachable, standalone, no replica set)"

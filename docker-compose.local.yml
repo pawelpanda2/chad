@@ -87,6 +87,13 @@ services:
       - DBA_PRIMARY_BACKEND=${DBA_PRIMARY_BACKEND:-mongo}
       - DBA_FOLLOWER_WRITES_ENABLED=${DBA_FOLLOWER_WRITES_ENABLED:-false}
       - DBA_SHADOW_READS_ENABLED=${DBA_SHADOW_READS_ENABLED:-false}
+      # Always "local" here, never "prod" — regardless of DBA_MONGO_MODE
+      # (even a DBA_MONGO_MODE=qnap session pointed at QNAP's real Mongo,
+      # see 01_config.sh). The Google Sheets sync worker
+      # (packages/dba/src/google-sheets/production-guard.ts) only ever
+      # starts when CHAD_ENVIRONMENT=prod — it must run in exactly one
+      # place, the real deployed PROD container, never a developer machine.
+      - CHAD_ENVIRONMENT=local
       # Story 75 — Google Sheets sync (packages/dba/src/google-sheets/).
       # Previously never passed through to this container at all (the
       # integration's real-sheet verification was done via a one-off

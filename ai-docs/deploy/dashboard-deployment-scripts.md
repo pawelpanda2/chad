@@ -162,10 +162,13 @@ prawdziwych danych, nie osobnym zestawem danych.
 
 Przebudowano na trzy pliki:
 
-- `docker-compose.qnap.shared.yml` — MongoDB (`chad-mongodb`) +
-  Content Provider API (`chad-content-provider-api`). Uruchamiane/zatrzymywane
-  **tylko** przez `00_qnap_shared/*.sh` — bezpośrednio na QNAP, bez SSH
-  wrapperów (patrz "00_qnap_shared — ocena" niżej).
+- `docker-compose.qnap.shared.yml` — MongoDB CHAD (`chad-mongodb`, replica
+  set `rs0`) + MongoDB Beeper (`beeper-mongodb`, standalone, **osobny
+  kontener od 2026-07-22, Story 76** — patrz
+  `2026-07-22_mongodb-chad-beeper-split.md`) + Content Provider API
+  (`chad-content-provider-api`). Uruchamiane/zatrzymywane **tylko** przez
+  `00_qnap_shared/*.sh` — bezpośrednio na QNAP, bez SSH wrapperów (patrz
+  "00_qnap_shared — ocena" niżej).
 - `docker-compose.qnap.test.yml` — tylko `dashboard` (`chad-dashboard-test`).
 - `docker-compose.qnap.prod.yml` — tylko `dashboard` (`chad-dashboard-prod`), bez `build:`.
 
@@ -235,7 +238,8 @@ własnego Content Providera.
 | Środowisko | Katalog | Port |
 |---|---|---|
 | SHARED | `00_qnap_shared/01_config.sh` | Content Provider API: `12024` (publikowany na host) |
-| SHARED | `docker-compose.qnap.shared.yml` | MongoDB: `chad-mongodb:27017` na sieci `chad-shared` ORAZ (od 2026-07-19) opublikowany na porcie hosta `12040` — dostępny przez Tailscale (`100.117.139.83:12040`), np. z MongoDB Compass. 12040 = pierwszy wolny slot za zakresami TEST (`12020-12029`)/PROD (`12030-12039`), nie natywny port kontenera (`27017`) |
+| SHARED | `docker-compose.qnap.shared.yml` | MongoDB CHAD: `chad-mongodb:27017` na sieci `chad-shared` ORAZ (od 2026-07-19) opublikowany na porcie hosta `12040` — dostępny przez Tailscale (`100.117.139.83:12040`), np. z MongoDB Compass. 12040 = pierwszy wolny slot za zakresami TEST (`12020-12029`)/PROD (`12030-12039`), nie natywny port kontenera (`27017`) |
+| SHARED | `docker-compose.qnap.shared.yml` | MongoDB Beeper (od 2026-07-22, Story 76, osobny kontener `beeper-mongodb`): `beeper-mongodb:27017` na sieci `chad-shared` ORAZ opublikowany na porcie hosta `12041` (kolejny wolny slot po `12040`) — standalone, bez replica setu, bez `directConnection=true` wymaganego |
 | TEST | `04_qnap_test/01_config.sh` | Dashboard: `12020` |
 | PROD | `05_qnap_prod/01_config.sh` | Dashboard: `12030` |
 

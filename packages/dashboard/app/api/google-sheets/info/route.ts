@@ -45,6 +45,7 @@ export async function GET() {
     success: true,
     data: {
       enabled: true,
+      chadUsername: user.username,
       spreadsheetId,
       spreadsheetUrl: spreadsheetId ? `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit` : null,
       spreadsheetError,

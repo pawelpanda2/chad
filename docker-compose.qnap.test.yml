@@ -47,15 +47,27 @@ services:
       # this) — without it, MongoCpProvider throws "MONGODB_URI environment
       # variable is not set" on every request.
       - MONGODB_URI=mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@chad-mongodb:27017/chad?authSource=admin
-      # Beeper CRM's Mongo *server* URI — same chad-mongodb container, no
-      # database segment (Story 73: each CHAD user gets their own
-      # `beeper_<repoGuid>` database, computed by
-      # packages/dba/src/mongo.ts's getBeeperMongoDb(), never taken from
-      # this URI — see documentation/beeper/architecture.md).
-      - BEEPER_MONGODB_URI=mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@chad-mongodb:27017?authSource=admin
+      # Beeper CRM's Mongo *server* URI — the SEPARATE beeper-mongodb
+      # container (Story 76, 2026-07-22 physical split; previously pointed
+      # at chad-mongodb, same as MONGODB_URI above). No database segment
+      # (Story 73: each CHAD user gets their own `beeper_<repoGuid>`
+      # database, computed by packages/dba/src/mongo.ts's
+      # getBeeperMongoDb(), never taken from this URI — see
+      # documentation/beeper/architecture.md). Own credentials, not
+      # MONGO_ROOT_USERNAME/PASSWORD — least privilege.
+      - BEEPER_MONGODB_URI=mongodb://${BEEPER_MONGO_ROOT_USERNAME}:${BEEPER_MONGO_ROOT_PASSWORD}@beeper-mongodb:27017?authSource=admin
       - DBA_MONGO_ENABLED=${DBA_MONGO_ENABLED:-true}
       - DBA_CONTENT_PROVIDER_ENABLED=${DBA_CONTENT_PROVIDER_ENABLED:-false}
       - DBA_PRIMARY_BACKEND=${DBA_PRIMARY_BACKEND:-mongo}
+      # Deliberately "test", never "prod" — even though TEST shares the
+      # exact same chad-mongodb data as PROD (this file's own header
+      # comment), the Google Sheets sync worker
+      # (packages/dba/src/google-sheets/production-guard.ts) refuses to
+      # start unless CHAD_ENVIRONMENT is exactly "prod". No GOOGLE_SHEETS_*
+      # vars are wired into this file at all, on purpose — TEST must never
+      # be able to sync to the real production spreadsheets, full stop,
+      # not just "guarded at runtime".
+      - CHAD_ENVIRONMENT=test
     volumes:
       - chad-dashboard-test-data:/app/data
     logging:

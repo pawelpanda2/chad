@@ -205,6 +205,7 @@ function GoogleSheetsViewContent() {
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<{
     enabled: boolean;
+    chadUsername?: string;
     spreadsheetId?: string | null;
     spreadsheetUrl?: string | null;
     spreadsheetError?: string | null;
@@ -260,22 +261,29 @@ function GoogleSheetsViewContent() {
             )}
           </div>
 
-          {data.serviceAccountEmail && (
+          {data.chadUsername && (
             <div className={cn(LIST_ROW_CLASS, "flex-col items-start gap-2")}>
-              <span className="text-xs font-medium text-muted-foreground">Shared with (service account — edit access, no interactive login)</span>
-              <span className="text-sm font-mono">{data.serviceAccountEmail}</span>
+              <span className="text-xs font-medium text-muted-foreground">CHAD login</span>
+              <span className="text-sm font-mono">{data.chadUsername}</span>
             </div>
           )}
 
           {data.viewerAccount ? (
             <div className={cn(LIST_ROW_CLASS, "flex-col items-start gap-2")}>
-              <span className="text-xs font-medium text-muted-foreground">Shared viewing account (log in with this to open the sheet in Google Sheets)</span>
+              <span className="text-xs font-medium text-muted-foreground">Test account (log in with this to open the sheet in Google Sheets)</span>
               <span className="text-sm font-mono">Email: {data.viewerAccount.email}</span>
               <span className="text-sm font-mono">Password: {data.viewerAccount.password}</span>
             </div>
           ) : (
             <div className="text-xs text-muted-foreground">
-              No shared viewing account configured (GOOGLE_SHEETS_VIEWER_ACCOUNT_EMAIL/PASSWORD unset).
+              No test account configured (GOOGLE_SHEETS_VIEWER_ACCOUNT_EMAIL/PASSWORD unset).
+            </div>
+          )}
+
+          {data.serviceAccountEmail && (
+            <div className={cn(LIST_ROW_CLASS, "flex-col items-start gap-2")}>
+              <span className="text-xs font-medium text-muted-foreground">Service account (edit access, no interactive login)</span>
+              <span className="text-sm font-mono">{data.serviceAccountEmail}</span>
             </div>
           )}
         </div>

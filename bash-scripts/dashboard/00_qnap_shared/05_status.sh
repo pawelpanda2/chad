@@ -31,3 +31,10 @@ if [ "$mongo_state" = "healthy" ]; then
 else
   log_warn "chad-mongodb state: ${mongo_state:-not found}."
 fi
+
+beeper_mongo_state="$(docker inspect -f '{{.State.Health.Status}}' beeper-mongodb 2>/dev/null || true)"
+if [ "$beeper_mongo_state" = "healthy" ]; then
+  log_ok "beeper-mongodb healthy."
+else
+  log_warn "beeper-mongodb state: ${beeper_mongo_state:-not found}."
+fi
