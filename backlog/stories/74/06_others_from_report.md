@@ -109,6 +109,73 @@ actual Dashboard UI/API (see `05_tasks_and_checklist.md` Tasks 3–6).
   history-worker going forward, managed the same way as every other local
   service.
 
+## QNAP verification session (2026-07-21) — additional notes
+
+### Root cause of the Change Streams "no events" dead end
+
+Full account in `05_tasks_and_checklist.md` Task 12. One-line version:
+`collection.watch()` opens the server-side change stream lazily, on first
+consumption — not at call time. A probe script that inserts before ever
+consuming the returned cursor will legitimately see nothing, on any
+MongoDB version, with any driver, over any network. Not a QNAP-specific
+or 4.4-specific issue. `history-worker`'s own code was never affected
+(long-lived single consume loop, opened once at startup).
+
+### `03_re-start.sh` naming regression — full resolution
+
+`ai-docs/deploy/dashboard-start-scripts.md` already documented (dated
+2026-07-20, Story 74) that every `03_restart.sh` was deliberately renamed
+to `03_re-start.sh` — the hyphen signals "handles both first start and
+idempotent restart," not narrow "restart something already running."
+Commit `5cd6017 fix: revert accidental restart.sh -> re-start.sh rename`
+mistakenly undid this repo-wide. Compounding the problem,
+`ai-docs/bash-scripts/conventions.md` self-contradicted: its own operation
+table (section 2) already said `03_re-start.sh`, but its "Nazewnictwo"
+section (10) explicitly said the opposite ("nie `re-start`"). This surfaced
+for real when the user ran `08_registry_test/deploy.sh` by hand and hit
+`bash: .../03_re-start.sh: No such file or directory`.
+
+Fixed properly, per the user's explicit direction: renamed every
+`bash-scripts/dashboard/*/03_restart.sh` back to `03_re-start.sh` (`git
+mv`, history preserved), fixed every caller/comment, fixed
+`conventions.md`'s self-contradiction (now points at the operation table
+and records this incident so it can't flip again), committed
+(`90c9483`), and **pushed** — required so `git pull --ff-only` on QNAP
+would pick up the fix before the redeploy could succeed. Verified: `grep
+-rln "03_restart\.sh" bash-scripts/` returns nothing.
+
+**Two `git stash` operations were used to keep this deploy's git
+preflight clean without touching unrelated work:** once for this
+session's own bash-scripts fixes (before they were committed), and once
+for a completely unrelated, in-progress edit already sitting in
+`backlog/stories/72/01_input.md` (the user's own draft notes on a Google
+Sheets integration idea, untouched — stashed only long enough for
+`git_deploy_preflight`'s uncommitted-changes check to pass, popped back
+immediately after the Docker build context was captured).
+
+### Architectural note: targeted `docker compose up -d <service>` vs. the "official" restart script
+
+`00_qnap_shared/03_re-start.sh`'s own idempotency logic (stop everything
+via `04_end.sh` if the stack is already running, then start fresh) is
+correct for a full redeploy, but would have caused an unnecessary brief
+interruption of both `chad-dashboard-test` and `chad-dashboard-prod`
+just to add the new `history-worker` service. Used `docker compose ... up
+-d history-worker` directly instead — Compose only recreates containers
+whose config actually changed, so the already-healthy `chad-mongodb` was
+provably never touched (`RestartCount: 0`, unbroken `Up` time throughout).
+Recorded as a reusable pattern in [[qnap_ssh_access_works]] (memory).
+
+### Known limitation (QNAP-specific)
+
+The very first `cp_history` entry for the QNAP session's own first test
+insert shows `actor: null` — not a bug, but a direct consequence of that
+insert happening through the *stale* (2026-07-19) dashboard image, before
+Task 14's redeploy brought the actor-attribution code onto QNAP. Once the
+current dashboard was deployed, every subsequent write correctly recorded
+its actor, including deletes (the cache-based fallback from the local
+session's fix). This entry was cleaned up along with the rest of this
+session's test data, not left in `cp_history`.
+
 ## Follow-up proposals (not implemented — future work)
 
 - Wire a real delete action into the Daily Tracker Views UI (the backend

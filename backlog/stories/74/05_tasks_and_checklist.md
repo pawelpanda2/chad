@@ -12,6 +12,11 @@
 | 8 | DONE      |             | History detail (expand row) shows actual before/after values, not just field names |
 | 9 | DONE      |             | Daily Tracker and History are back to their exact pre-Story content (no leftover test rows) |
 | 10 | DONE     |             | History menu redesigned: no "Change History" heading text, top-left Views-style button grid, new "Items" (all `cp_items`) as the first button before "Daily Tracker" |
+| 11 | DONE     |             | QNAP's real, shared MongoDB 4.4.30 runs `rs0` stably as a single-node replica set, verified with real backups/measurements, not just `rs.initiate()` returning `ok:1` |
+| 12 | DONE     |             | Change Streams + `resumeAfter` work against the real QNAP MongoDB 4.4, with the exact production driver version |
+| 13 | DONE     |             | `history-worker` runs on QNAP, watches `chad.cp_items`, records real Daily Tracker INSERT/UPDATE/DELETE with correct actor, survives a light write burst with zero duplicates/errors |
+| 14 | DONE     |             | Dashboard TEST on QNAP is rebuilt from current code (History feature + actor attribution), reachable over Tailscale, isolation between `pawel_f`/`kamil_s` confirmed |
+| 15 | DONE     |             | QNAP host stays stable (no crash loop, no OOM, load/RAM/swap near baseline) through rs0 + Change Streams + light write load |
 
 # Task 1 — `rs0` replica set stability
 
@@ -216,4 +221,169 @@ correctly lists a real change (made a real edit, confirmed it appeared
 via `GET /api/content-provider/history`, then cleaned up/reverted the
 test data and the resulting history record — see Task 9's cleanup, which
 was re-applied once more after this task's own test edit).
+**Status: DONE**
+
+---
+
+# QNAP verification session (continuation, 2026-07-21)
+
+Everything above was verified locally. This session's job was the
+question the user asked directly: **does the real QNAP host (Celeron
+N5095, no AVX, MongoDB 4.4.30, shared by TEST and PROD) actually hold up
+running `rs0` + Change Streams + `history-worker` + Dashboard TEST** —
+local success is not proof QNAP can do the same. Full method, every
+metric, and the root-cause investigations below; see
+`06_others_from_report.md` for architectural notes and known limitations.
+
+# Task 11 — QNAP `rs0` stability (not just `rs.initiate()` succeeding)
+
+**Requested:** don't accept `ok:1` from initiation as proof — verify with
+real backups, real counts, real measurements.
+**Found:** `rs0` was already live on QNAP (enabled in an earlier session,
+`docker-compose.qnap.shared.yml`'s `mongodb`/`mongo-keyfile-init`/
+`mongo-rs-init` services), running since 2026-07-20T09:06, `RestartCount:
+0`. Confirmed via SSH: `rs.status()` → `ok:1, setName:"rs0",
+stateStr:"PRIMARY"`; `db.version()` → `4.4.30`; all 7 expected databases
+present (`chad`, `beeper`, 2× `beeper_<repoGuid>`, `admin`/`config`/
+`local`); `chad.cp_items` count 763.
+**Done:** ran `bash-scripts/mongo/backup.sh` for real on QNAP
+(`MONGO_CONTAINER_NAME=chad-mongodb`) — `mongodump` succeeded, 5.3MB,
+timestamped `2026-07-21_18-35-34`, on the real persistent volume
+(`/share/CACHEDEV1_DATA/ContainerData/chad-shared/mongodb/backups/`, a
+sibling of `.../db/`, never the 16MB `/share` tmpfs — see
+[[qnap_container_data_on_tmpfs_bug]]), containing all 5 expected
+databases. Oplog: 1024MB configured, ~31–34hr window (grew during the
+session), only 1.2MB actually used — comfortable headroom.
+**Files changed:** none (verification only).
+**Tested:** direct SSH + `mongosh`/`mongo` shell inspection against the
+real QNAP `chad-mongodb` container, before and after every subsequent
+step in this session.
+**Status: DONE**
+
+# Task 12 — Change Streams + `resumeAfter` on real MongoDB 4.4
+
+**Requested:** test on `chad.__replica_set_probe`, not real `cp_items`;
+measure latency; confirm `resumeAfter` actually resumes.
+**Found a real, reproducible dead end first:** a Node.js probe script
+using the exact production `mongodb` driver version (`7.1.1`) against
+QNAP's real `chad-mongodb` consistently got zero change-stream events,
+even though the insert was visibly written to the oplog
+(`db.oplog.rs.find(...)` showed it) and the replica set's majority commit
+point was advancing normally (`rs.status().optimes.lastCommittedOpTime`
+tracked `appliedOpTime` with no lag). Wire-level command monitoring
+(`monitorCommands: true`) showed the actual cause: `collection.watch()`
+is lazy — it doesn't send the `aggregate` command that opens the
+server-side change stream until the cursor is first consumed
+(`hasNext()`/`next()`/iteration). The probe's first version inserted
+*before* ever consuming the stream, so the change stream only started
+watching "now" — after the insert already happened — and correctly never
+saw it. Not a MongoDB 4.4 bug, not a driver bug, not a `chad-shared`
+Docker network problem (confirmed separately: the legacy `mongo` shell,
+run in a *separate* container on the same network, received change events
+fine even during the investigation). Fixed the probe by priming the
+stream with a fire-and-forget `hasNext()` call before inserting, then
+awaiting that *same* promise afterward (a second concurrent `next()` call
+on the same cursor raises `MongoServerError: CursorInUse` — also
+confirmed the hard way). **The real `history-worker` was never at risk
+from this** — it opens its stream once at startup and consumes it
+continuously in one loop, so by the time any real write happens the
+stream has long since actually been open.
+**Done, once fixed:** full probe passed — insert 86ms, update 165ms,
+delete 116ms, `resumeAfter` correctly resumed from a token captured
+before the stream closed. Probe collection cleaned up (0 leftover
+`__replica_set_probe*` collections).
+**Files changed:** none in the repo (scratch probe scripts only, not
+committed).
+**Tested:** live, repeated runs against QNAP's real `chad-mongodb`,
+container-to-container over the real `chad-shared` Docker network — the
+same network path `history-worker` itself uses.
+**Status: DONE**
+
+# Task 13 — `history-worker` on QNAP
+
+**Requested:** deploy, verify health/resume/no-dup with a real controlled
+change, without disrupting the already-stable shared Mongo.
+**Done:** built `packages/history-worker/Dockerfile`'s `runner` stage
+directly on QNAP (`docker compose -p chad-shared ... build history-worker`)
+and started *only* that one new service
+(`... up -d history-worker`) — confirmed `chad-mongodb` was never
+recreated (`RestartCount: 0` throughout, `Up 33 hours` unchanged) despite
+`00_qnap_shared/03_re-start.sh`'s own idempotency logic being written for
+a full-stack redeploy, not "add one new service" (see
+`06_others_from_report.md`/[[qnap_ssh_access_works]] for why the targeted
+`up -d <service>` was used instead of that script). Worker started clean
+(`no persisted resume token — starting from now`, `watch opened`).
+Verified with a real Daily Tracker INSERT → UPDATE → DELETE through the
+actual Dashboard API (not raw Mongo writes), then an 8× insert+delete
+burst (16 operations, ~5s apart) — every event landed in `cp_history`
+exactly once (`cp_history` count matched operation count exactly both
+times), correct address, correct actor once the Task 14 dashboard
+redeploy was in place (see Task 14 — the *first* INSERT in this session
+predated that redeploy and correctly shows `actor: null`, an honest
+historical record, not a bug). All test `cp_history`/`cp_items` entries
+cleaned up afterward.
+**Files changed:** none new (used the already-committed
+`docker-compose.qnap.shared.yml` `history-worker` service definition).
+**Tested:** live SSH + Dashboard API + Mongo inspection, twice (before and
+after the Task 14 dashboard redeploy).
+**Status: DONE**
+
+# Task 14 — Dashboard TEST on current code
+
+**Requested:** confirm `History → Daily Tracker` actually works on QNAP
+TEST.
+**Found:** the running `chad-dashboard-test` was on an image built
+2026-07-19 — a week before the entire History feature existed.
+`/dashboard/history` 404'd, and a real INSERT through it produced
+`actor: null` (the actor-attribution wiring didn't exist yet in that
+build). Redeployed via `bash-scripts/dashboard/08_registry_test/deploy.sh`
+(build+push to GHCR from this Mac, SSH pull+restart on QNAP) — hit and
+fixed a real, user-reported deploy-blocking bug along the way (see
+"Fixed along the way" in `06_others_from_report.md`: a `03_restart.sh` /
+`03_re-start.sh` naming regression). Confirmed via `docker inspect`:
+`chad-mongodb`'s `RestartCount`/`Up` time were unaffected by the dashboard
+restart (shared-services isolation working as designed).
+**Done:** redeployed dashboard now serves `/dashboard/history` correctly;
+repeated the Task 13 INSERT/UPDATE/DELETE cycle — all three now show the
+correct actor (`pawel_f`); `History → Daily Tracker` in the real browser
+UI shows all three events with correct operation type, address, actor,
+timestamp.
+**Files changed:** none (redeploy of already-committed code).
+**Tested:** live browser session over Tailscale
+(`http://100.117.139.83:12020`), before and after redeploy.
+**Status: DONE**
+
+# Task 15 — QNAP stability + isolation + performance
+
+**Requested:** baseline vs. idle-after vs. light-load metrics; confirm
+`pawel_f`/`kamil_s` isolation; no PROD disruption.
+**Done:**
+- **Isolation:** logged in as both `pawel_f` and `kamil_s` in the real
+  browser. `kamil_s`'s `History → Daily Tracker` correctly showed **0**
+  entries (no leakage of `pawel_f`'s history), and `kamil_s`'s own Daily
+  Tracker showed their own 85 real entries — completely separate from
+  `pawel_f`'s 7.
+- **Performance (host, `uptime`/`free -m`/`docker stats`, all via SSH):**
+
+  | Metric | Baseline (before this session) | Idle, after rs0+worker+redeploy | After 16-op light-load burst |
+  |---|---|---|---|
+  | Load avg (1m/5m/15m) | 2.24 / 2.69 / 2.83 | 1.79 / 2.88 / 2.95 | 3.38 / 2.99 / 2.97 |
+  | RAM used / free | 7322 / 412 MB | 7159 / 575 MB | — |
+  | Swap used | 2252 MB | 2237 MB | — |
+  | `chad-mongodb` CPU / RAM | 0.65% / 169.9MB | 0.77% / 204.2MB | 0.67% / 208.9MB |
+  | `chad-history-worker` CPU / RAM | (not yet running) | 0.17% / 31.7MB | 0.17% / 32.1MB |
+  | `chad-dashboard-test` CPU / RAM | 0.11% / 125.9MB | 0.16% / 106.7MB | 1.08% / 120.5MB |
+  | RestartCount (all 3 containers) | 0 | 0 | 0 |
+  | WiredTiger cache | — | — | 10MB |
+  | Oplog window | 31.25hr | — | 34.17hr (growing) |
+
+  No swap growth, no load spike beyond normal noise for this host, zero
+  restarts across the entire session. `docker ps` never showed a
+  crash-looping or unhealthy container at any point.
+- **No PROD disruption:** `chad-dashboard-prod` was never touched;
+  `chad-mongodb` (shared by TEST and PROD) was never recreated by any
+  action in this session, confirmed by its unbroken `Up` time and
+  `RestartCount: 0` throughout.
+**Files changed:** none (measurement only).
+**Tested:** as above, all against the real QNAP host over SSH/Tailscale.
 **Status: DONE**
