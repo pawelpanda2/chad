@@ -6,7 +6,7 @@
  */
 
 import { invokeContentProvider } from "./client.js";
-import { getCurrentRepoGuid } from "./repo-context.js";
+import { getCurrentRepoGuid, getCurrentUsername } from "./repo-context.js";
 import { loadDataProvidersConfig } from "./data-providers/config.js";
 import { getMongoProvider } from "./data-router-instance.js";
 import { buildCreateChildItemCommand, buildPutItemCommand } from "./data-commands.js";
@@ -23,6 +23,8 @@ import {
   putItemBody,
 } from "./item-ops.js";
 import { chad_GetRelativeLoca, chad_GetFirstSegment } from "./path-resolver.js";
+import { queueDailyEntrySheetSyncIfEnabled, queueDateEntrySheetSyncIfEnabled } from "./google-sheets/sync.js";
+import yaml from "js-yaml";
 
 /**
  * Gets all leads from the shared repository.
@@ -1206,6 +1208,18 @@ export async function saveDateEntry(
   if (config.contentProviderEnabled) {
     result = await saveDateEntryContentProvider(itemName, bodyYaml);
   }
+  // Google Sheets follower (Story 75) — same non-throwing enqueue pattern as
+  // saveDailyEntry; no AUTO fields here, Date Entry's own "Dates" tab has none.
+  if (result.success) {
+    await queueDateEntrySheetSyncIfEnabled({
+      repoGuid: getCurrentRepoGuid(),
+      username: getCurrentUsername(),
+      loca: result.loca,
+      itemName: result.itemName,
+      fields: parseYamlFieldsForSheetSync(bodyYaml),
+      kind: "upsert",
+    });
+  }
   return result;
 }
 
@@ -1290,6 +1304,109 @@ async function saveDateEntryContentProvider(
   };
 }
 
+/** Parses a Daily/Date Entry's YAML body into string-coerced fields, for the Google Sheets sync only (Story 75). */
+function parseYamlFieldsForSheetSync(bodyYaml: string): Record<string, string> {
+  let parsed: unknown;
+  try {
+    parsed = yaml.load(bodyYaml);
+  } catch {
+    return {};
+  }
+  if (!parsed || typeof parsed !== "object") return {};
+
+  const fields: Record<string, string> = {};
+  for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+    fields[key] = value === undefined || value === null ? "" : String(value);
+  }
+  return fields;
+}
+
+/**
+ * Computes the four "— AUTO" columns for `dateStr` fresh from current Date
+ * Entry data, for the Google Sheets mirror only — never persisted to
+ * CHAD's own storage (see `updateDailyEntry`'s doc comment on why callers
+ * must never pass these to it). Mirrors exactly what
+ * `computeDailyAutoFieldsByDate` computes for the Dashboard's own
+ * `/api/forms/daily-entry` GET handler, so the sheet stays a faithful copy
+ * of what the user actually sees in the Tracker view (Story 75, revised
+ * 2026-07-21 after the user asked for AUTO columns to be included).
+ */
+async function computeDailyAutoFieldsForSheetSync(dateStr: string): Promise<Record<string, string>> {
+  if (!dateStr) return {};
+  const dateEntries = await getAllDateEntries();
+  const parsedDateFields = dateEntries.map((entry) => {
+    try {
+      return (yaml.load(entry.body ?? "") as Record<string, unknown>) || {};
+    } catch {
+      return {};
+    }
+  });
+  const auto = computeDailyAutoFieldsByDate(parsedDateFields).get(dateStr);
+  if (!auto) return {};
+  return {
+    "PULLS AUTO": String(auto.pullsAuto),
+    "CLOSES AUTO": String(auto.closesAuto),
+    "QUALITY DP AUTO": auto.qualityDpAuto === null ? "" : String(auto.qualityDpAuto),
+    "QUALITY C AUTO": auto.qualityCAuto === null ? "" : String(auto.qualityCAuto),
+  };
+}
+
+/**
+ * Backfills the Google Sheets sync for every EXISTING Daily/Date Entry the
+ * current user already has — not just entries created after the worker
+ * started (Story 75 follow-up, 2026-07-22: the live sync hooks in
+ * `saveDailyEntry`/`updateDailyEntry`/`saveDateEntry`/`updateDateEntry`
+ * only ever fire for a write made *after* they existed; nothing backfilled
+ * whatever a user already had in Mongo before this integration went live —
+ * confirmed empty sheets were the result). Must be called inside
+ * `runWithRepoContext({ repoGuid, username })` for the target user, same as
+ * every other function in this file.
+ *
+ * Uses the exact same field-parsing/AUTO-computation/enqueue path as a real
+ * write (`parseYamlFieldsForSheetSync`, `computeDailyAutoFieldsForSheetSync`,
+ * `queueDailyEntrySheetSyncIfEnabled`/`queueDateEntrySheetSyncIfEnabled`) —
+ * not a separate, divergent code path — so a backfilled row is byte-for-byte
+ * what a real save would have produced. Safe to re-run: each call enqueues
+ * a fresh `operationId`, and the worker's upsert-by-`CHAD_RECORD_KEY`
+ * behavior means replaying the same record's current state twice just
+ * converges the same row to the same values again, never a duplicate row.
+ */
+export async function backfillGoogleSheetsSyncForCurrentUser(): Promise<{ dailyCount: number; dateCount: number }> {
+  const repoGuid = getCurrentRepoGuid();
+  const username = getCurrentUsername();
+
+  const dailyEntries = await getAllDailyEntries();
+  for (const entry of dailyEntries) {
+    if (!entry.loca) continue;
+    const fields = parseYamlFieldsForSheetSync(entry.body ?? "");
+    const autoFields = await computeDailyAutoFieldsForSheetSync(fields.DATE ?? "");
+    await queueDailyEntrySheetSyncIfEnabled({
+      repoGuid,
+      username,
+      loca: entry.loca,
+      itemName: entry.itemName,
+      fields: { ...fields, ...autoFields },
+      kind: "upsert",
+    });
+  }
+
+  const dateEntries = await getAllDateEntries();
+  for (const entry of dateEntries) {
+    if (!entry.loca) continue;
+    const fields = parseYamlFieldsForSheetSync(entry.body ?? "");
+    await queueDateEntrySheetSyncIfEnabled({
+      repoGuid,
+      username,
+      loca: entry.loca,
+      itemName: entry.itemName,
+      fields,
+      kind: "upsert",
+    });
+  }
+
+  return { dailyCount: dailyEntries.length, dateCount: dateEntries.length };
+}
+
 /**
  * Saves a daily entry to the views/daily folder.
  *
@@ -1314,6 +1431,22 @@ export async function saveDailyEntry(
   }
   if (config.contentProviderEnabled) {
     result = await saveDailyEntryContentProvider(itemName, bodyYaml);
+  }
+  // Google Sheets follower (Story 75) — enqueued only after the primary
+  // write(s) above already succeeded, using the primary's own decided
+  // `loca`; never throws into this call (see
+  // queueDailyEntrySheetSyncIfEnabled's own doc comment).
+  if (result.success) {
+    const fields = parseYamlFieldsForSheetSync(bodyYaml);
+    const autoFields = await computeDailyAutoFieldsForSheetSync(fields.DATE ?? "");
+    await queueDailyEntrySheetSyncIfEnabled({
+      repoGuid: getCurrentRepoGuid(),
+      username: getCurrentUsername(),
+      loca: result.loca,
+      itemName: result.itemName,
+      fields: { ...fields, ...autoFields },
+      kind: "upsert",
+    });
   }
   return result;
 }
@@ -1427,6 +1560,22 @@ export async function updateDailyEntry(loca: string, bodyYaml: string): Promise<
   if (config.contentProviderEnabled) {
     await updateDailyEntryContentProvider(loca, bodyYaml);
   }
+  // Google Sheets follower (Story 75) — same non-throwing enqueue as
+  // saveDailyEntry above. `itemName` is left blank: this record's row
+  // already exists in the sheet from its original saveDailyEntry sync, and
+  // the worker never overwrites CHAD_ITEM_NAME on an update (see
+  // mapper.ts's IMMUTABLE_ON_UPDATE_COLUMNS) — it's only used if the row
+  // has to be self-healed via append, a rare edge case.
+  const fields = parseYamlFieldsForSheetSync(bodyYaml);
+  const autoFields = await computeDailyAutoFieldsForSheetSync(fields.DATE ?? "");
+  await queueDailyEntrySheetSyncIfEnabled({
+    repoGuid: getCurrentRepoGuid(),
+    username: getCurrentUsername(),
+    loca,
+    itemName: "",
+    fields: { ...fields, ...autoFields },
+    kind: "upsert",
+  });
 }
 
 /**
@@ -1448,6 +1597,19 @@ export async function deleteDailyEntry(loca: string): Promise<void> {
     if (!deleted) {
       throw new Error(`Could not find daily entry at loca "${loca}" to delete (Mongo)`);
     }
+    // Google Sheets follower (Story 75) — marks the row CHAD_SYNC_STATUS =
+    // DELETED in place rather than physically removing it (matches the
+    // existing CP convention of never truly deleting rows/items, avoids
+    // row-index shift hazards). Only after the real Mongo delete above
+    // succeeded.
+    await queueDailyEntrySheetSyncIfEnabled({
+      repoGuid,
+      username: getCurrentUsername(),
+      loca,
+      itemName: "",
+      fields: {},
+      kind: "delete",
+    });
     return;
   }
   throw new Error(
@@ -1502,6 +1664,16 @@ export async function updateDateEntry(loca: string, bodyYaml: string): Promise<v
   if (config.contentProviderEnabled) {
     await updateDateEntryContentProvider(loca, bodyYaml);
   }
+  // Google Sheets follower (Story 75) — same non-throwing enqueue pattern as
+  // updateDailyEntry above.
+  await queueDateEntrySheetSyncIfEnabled({
+    repoGuid: getCurrentRepoGuid(),
+    username: getCurrentUsername(),
+    loca,
+    itemName: "",
+    fields: parseYamlFieldsForSheetSync(bodyYaml),
+    kind: "upsert",
+  });
 }
 
 async function updateDateEntryContentProvider(loca: string, bodyYaml: string): Promise<void> {
