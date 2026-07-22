@@ -7,6 +7,37 @@ To jest **pierwszy dokument**, który AI ma przeczytać przed jakimkolwiek
 większym zadaniem w tym repo. Jest celowo krótki — to tylko wskazanie
 kolejności czytania, nie opis standardów samych w sobie.
 
+## Najczęstszy błąd AI w tym repo — przeczytaj to PIERWSZE
+
+**(dodane 2026-07-22, po realnym incydencie: AI zapytało o zgodę na deploy
+PROD tak, jakby to była ryzykowna, osobna operacja budowania — mimo że
+odpowiedź jest już opisana w `04_deployment-rules.md` i
+`deploy/ai-start.md`, tylko AI ich nie zastosowało w praktyce.)**
+
+- **Obraz Dockera buduje się WYŁĄCZNIE podczas deployu na TEST**
+  (`bash-scripts/dashboard/08_registry_test/deploy.sh` albo
+  `06_qnap_test_ssh/06_deploy.sh`). **Deploy na PROD nigdy nie buduje
+  niczego od nowa** — to wyłącznie promocja/przełączenie na TEN SAM,
+  już zbudowany i zweryfikowany na TEST obraz
+  (`07_qnap_prod_ssh/06_last_from_test.sh`). Nie ma czegoś takiego jak
+  "osobny build dla PROD".
+- TEST i PROD to **osobne kontenery** (celowo — żeby oddzielić GUI/proces
+  dashboardu i najpierw zweryfikować na TEST, zanim ten sam obraz trafi na
+  PROD), ale **współdzielą te same, prawdziwe dane** przez
+  `docker-compose.qnap.shared.yml` — TEST **nie jest środowiskiem z
+  fejkowymi/testowymi danymi**. Od Story 76 (2026-07-22) shared zawiera
+  DWIE bazy Mongo: `chad-mongodb` (cp_items/cp_history, replica set) oraz
+  `beeper-mongodb` (dane Beepera, standalone) — obie współdzielone przez
+  TEST i PROD.
+- **Wniosek praktyczny:** deploy na PROD (promocja już przetestowanego na
+  TEST obrazu) to rutynowa, niskiego ryzyka operacja przez oficjalny
+  skrypt — nie wymaga tego samego poziomu ostrożności co np. migracja
+  danych czy zmiana schematu. Nie pytaj o zgodę na "zbudowanie i wdrożenie
+  na PROD" jakby to był nowy build — to zawsze tylko przełączenie na obraz,
+  który już działa na TEST.
+- Pełny kontrakt: `04_deployment-rules.md` (niżej w tej kolejności) i
+  `deploy/ai-start.md` → `deploy/dashboard-deployment-scripts.md`.
+
 ## Kolejność
 
 1. **Ten dokument** — jesteś tu.
