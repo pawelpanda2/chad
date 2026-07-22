@@ -410,24 +410,31 @@ Docelowo router zostanie zastąpiony lub rozszerzony przez Outbox Pattern.
 
 Dla Google Sheets oznacza to:
 
-```text
+```Nadrzędna decyzja architektoniczna
+
+Użytkownik chce prosty model konfiguracyjny:
+
+```csharp
 dba_function()
 {
+	CpItem = (dzialamy na objektach CpItem)
+	
 	if (config.mongoEnabled)
 	{
-		await do_mongo_work();
+		do_mongo_work();
+	}
+	
+	if (config.sheetEnabled)
+	{
+		do_google_sheet_work();
 	}
 
 	if (config.contentProviderEnabled)
 	{
 		do_cp_work_async();
 	}
-
-	if (config.googleSheetsEnabled)
-	{
-		do_google_sheets_work_async();
-	}
 }
+```
 ```
 
 Google Sheets nie powinno być wywoływane bezpośrednio z Dashboardu. Powinno być kolejnym targetem/followerem pod interfejsem DBA, przygotowanym pod późniejsze przeniesienie do outboxa.
