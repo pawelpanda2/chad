@@ -22,10 +22,22 @@ const ENV_KEYS = [
   "GOOGLE_SHEETS_DATE_ENTRIES_SHEET_NAME",
   "GOOGLE_SERVICE_ACCOUNT_EMAIL",
   "GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY",
+  "CHAD_ENVIRONMENT",
 ] as const;
+
+// production-guard.ts's own test file (production-guard.test.ts) covers its
+// behavior directly — here it just needs to be satisfied so these tests can
+// exercise the enqueue logic itself. Safe to mutate freely: getMongoDb()'s
+// client is already connected (cached at module load, above) using the
+// REAL MONGODB_URI the test runner was invoked with — the guard only ever
+// re-reads process.env.MONGODB_URI as a string for pattern matching, it
+// never opens a new connection from it.
+const ORIGINAL_MONGODB_URI = process.env.MONGODB_URI;
 
 function clearEnv() {
   for (const key of ENV_KEYS) delete process.env[key];
+  if (ORIGINAL_MONGODB_URI === undefined) delete process.env.MONGODB_URI;
+  else process.env.MONGODB_URI = ORIGINAL_MONGODB_URI;
 }
 
 function setFullValidEnv() {
@@ -35,6 +47,9 @@ function setFullValidEnv() {
   process.env.GOOGLE_SHEETS_DATE_ENTRIES_SHEET_NAME = "dates-local";
   process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL = "svc@example.iam.gserviceaccount.com";
   process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY = "-----BEGIN PRIVATE KEY-----\\nfake\\n-----END PRIVATE KEY-----\\n";
+  // Satisfies production-guard.ts's checks — see comment above.
+  process.env.CHAD_ENVIRONMENT = "prod";
+  process.env.MONGODB_URI = "mongodb://u:p@chad-mongodb:27017/chad?authSource=admin";
 }
 
 async function runTests() {
@@ -180,6 +195,38 @@ async function runTests() {
     assertEquals(jobs.length, 1);
     assertEquals(jobs[0].kind, "delete");
     assertEquals(jobs[0].payload.fields, {});
+  });
+
+  await test("fully valid config still never enqueues when CHAD_ENVIRONMENT isn't 'prod' (production guard, 2026-07-22 — independent of GOOGLE_SHEETS_ENABLED)", async () => {
+    setFullValidEnv();
+    process.env.CHAD_ENVIRONMENT = "local"; // override back to non-prod
+    const before = await db.collection(GOOGLE_SHEETS_OUTBOX_COLLECTION).countDocuments({});
+    await queueDailyEntrySheetSyncIfEnabled({
+      repoGuid: "repo-guard-test",
+      username: "pawel_f",
+      loca: "77",
+      itemName: "01",
+      fields: { DATE: "2026-07-20" },
+      kind: "upsert",
+    });
+    const after = await db.collection(GOOGLE_SHEETS_OUTBOX_COLLECTION).countDocuments({});
+    assertEquals(after, before, "no job should be enqueued when CHAD_ENVIRONMENT is not 'prod', even with everything else fully configured");
+  });
+
+  await test("fully valid config still never enqueues when MONGODB_URI isn't a known production host, even with CHAD_ENVIRONMENT=prod", async () => {
+    setFullValidEnv();
+    process.env.MONGODB_URI = "mongodb://u:p@mongodb:27017/chad"; // local docker sibling host, not chad-mongodb
+    const before = await db.collection(GOOGLE_SHEETS_OUTBOX_COLLECTION).countDocuments({});
+    await queueDailyEntrySheetSyncIfEnabled({
+      repoGuid: "repo-guard-test-2",
+      username: "pawel_f",
+      loca: "78",
+      itemName: "01",
+      fields: { DATE: "2026-07-20" },
+      kind: "upsert",
+    });
+    const after = await db.collection(GOOGLE_SHEETS_OUTBOX_COLLECTION).countDocuments({});
+    assertEquals(after, before, "no job should be enqueued when MONGODB_URI doesn't resolve to a known production host");
   });
 
   // Leave no test jobs behind — see outbox.test.ts's matching cleanup for why

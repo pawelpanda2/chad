@@ -16,6 +16,7 @@
  */
 
 import { loadGoogleSheetsConfig, type GoogleSheetsConfig } from "./config.js";
+import { checkGoogleSheetsProductionGuard } from "./production-guard.js";
 import { GoogleSheetsApiClient } from "./sheets-api-client.js";
 import { runGoogleSheetsSyncWorker } from "./worker.js";
 import { ensureDailyTrackerLayout, ensureDatesLayout } from "./layout.js";
@@ -75,6 +76,18 @@ export function startGoogleSheetsSyncWorkerIfEnabled(intervalMs = 5000): (() => 
 
   if (!config.enabled) {
     console.log("[google-sheets] sync worker not started — GOOGLE_SHEETS_ENABLED is not true.");
+    return null;
+  }
+
+  // Defense-in-depth (2026-07-22, independent of GOOGLE_SHEETS_ENABLED) —
+  // the worker itself must refuse to run unless this is genuinely the real
+  // production environment connected to the real production Mongo. See
+  // production-guard.ts's own doc comment for the full reasoning (this is
+  // the check that matters even if GOOGLE_SHEETS_ENABLED were mistakenly
+  // left on in a local/test/staging context).
+  const guard = checkGoogleSheetsProductionGuard();
+  if (!guard.allowed) {
+    console.warn(`[google-sheets] sync worker NOT started — production guard blocked it: ${guard.reason}`);
     return null;
   }
 

@@ -50,3 +50,4 @@ export * from './google-sheets/worker.js';
 export * from './google-sheets/sync.js';
 export * from './google-sheets/layout.js';
 export * from './google-sheets/bootstrap.js';
+export * from './google-sheets/production-guard.js';

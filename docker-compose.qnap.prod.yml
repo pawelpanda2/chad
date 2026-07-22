@@ -41,15 +41,39 @@ services:
       # already had this) — without it, MongoCpProvider throws "MONGODB_URI
       # environment variable is not set" on every request.
       - MONGODB_URI=mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@chad-mongodb:27017/chad?authSource=admin
-      # Beeper CRM's Mongo *server* URI — same chad-mongodb container, no
-      # database segment (Story 73: each CHAD user gets their own
-      # `beeper_<repoGuid>` database, computed by
-      # packages/dba/src/mongo.ts's getBeeperMongoDb(), never taken from
-      # this URI — see documentation/beeper/architecture.md).
-      - BEEPER_MONGODB_URI=mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@chad-mongodb:27017?authSource=admin
+      # Beeper CRM's Mongo *server* URI — the SEPARATE beeper-mongodb
+      # container (Story 76, 2026-07-22 physical split; previously pointed
+      # at chad-mongodb, same as MONGODB_URI above). No database segment
+      # (Story 73: each CHAD user gets their own `beeper_<repoGuid>`
+      # database, computed by packages/dba/src/mongo.ts's
+      # getBeeperMongoDb(), never taken from this URI — see
+      # documentation/beeper/architecture.md). Own credentials, not
+      # MONGO_ROOT_USERNAME/PASSWORD — least privilege.
+      - BEEPER_MONGODB_URI=mongodb://${BEEPER_MONGO_ROOT_USERNAME}:${BEEPER_MONGO_ROOT_PASSWORD}@beeper-mongodb:27017?authSource=admin
       - DBA_MONGO_ENABLED=${DBA_MONGO_ENABLED:-true}
       - DBA_CONTENT_PROVIDER_ENABLED=${DBA_CONTENT_PROVIDER_ENABLED:-false}
       - DBA_PRIMARY_BACKEND=${DBA_PRIMARY_BACKEND:-mongo}
+      # Identifies this as the one real production environment — the
+      # Google Sheets sync worker (packages/dba/src/google-sheets/
+      # production-guard.ts) refuses to start unless this is exactly
+      # "prod", independent of GOOGLE_SHEETS_ENABLED below. Never set
+      # anywhere else (docker-compose.qnap.test.yml intentionally does NOT
+      # set this to "prod", even though TEST shares this same chad-mongodb
+      # — see production-guard.ts's own doc comment).
+      - CHAD_ENVIRONMENT=prod
+      # Story 75 — Google Sheets sync. Unset/false by default (safe) —
+      # only becomes active once .env.qnap sets GOOGLE_SHEETS_ENABLED=true
+      # AND production-guard.ts's checks pass (CHAD_ENVIRONMENT=prod above
+      # + MONGODB_URI resolving to a known production host, both already
+      # satisfied on this file). See ai-docs/google-sheets/architecture.md.
+      - GOOGLE_SHEETS_ENABLED=${GOOGLE_SHEETS_ENABLED:-false}
+      - GOOGLE_SHEETS_SPREADSHEET_MAP=${GOOGLE_SHEETS_SPREADSHEET_MAP:-}
+      - GOOGLE_SHEETS_DAILY_TRACKER_SHEET_NAME=${GOOGLE_SHEETS_DAILY_TRACKER_SHEET_NAME:-}
+      - GOOGLE_SHEETS_DATE_ENTRIES_SHEET_NAME=${GOOGLE_SHEETS_DATE_ENTRIES_SHEET_NAME:-}
+      - GOOGLE_SERVICE_ACCOUNT_EMAIL=${GOOGLE_SERVICE_ACCOUNT_EMAIL:-}
+      - GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY=${GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY:-}
+      - GOOGLE_SHEETS_VIEWER_ACCOUNT_EMAIL=${GOOGLE_SHEETS_VIEWER_ACCOUNT_EMAIL:-}
+      - GOOGLE_SHEETS_VIEWER_ACCOUNT_PASSWORD=${GOOGLE_SHEETS_VIEWER_ACCOUNT_PASSWORD:-}
     volumes:
       - chad-dashboard-prod-data:/app/data
     logging:

@@ -321,6 +321,66 @@ shifted for the new leading column; `worker.test.ts`: a dedicated
 insert-at-top ordering test) — full suite re-run and green (12+24+16+11+11+7
 = 81 tests) before this note was written.
 
+## 0g. Revision note (2026-07-22, Story 76 follow-up — production-only sync guard, independent of GOOGLE_SHEETS_ENABLED)
+
+Google Sheets is a **production report** — the user's own explicit
+instruction: it must never reflect local Mongo, test Mongo, developer
+data, migration data, test data, or temporary data, and the safeguard
+must not rest solely on `GOOGLE_SHEETS_ENABLED` (a single flag that could
+be left on by mistake in some future non-prod context, or on QNAP TEST —
+which, per Story 76's own finding, shares the exact same physical
+`chad-mongodb` container/data as PROD today, so "is this real data" alone
+doesn't distinguish TEST activity from PROD activity).
+
+New module: `packages/dba/src/google-sheets/production-guard.ts`,
+`checkGoogleSheetsProductionGuard()` — two independent conditions, both
+required, checked against **actual runtime state**, not a single trusted
+flag:
+
+1. `CHAD_ENVIRONMENT` must be exactly `"prod"` — a new env var, wired only
+   into `docker-compose.qnap.prod.yml` (never `.test.yml`, never
+   `docker-compose.local.yml`, which sets `CHAD_ENVIRONMENT=local`
+   unconditionally — even for a `DBA_MONGO_MODE=qnap` local session
+   pointed at QNAP's real Mongo, see the 2026-07-22 login-incident note in
+   `01_config.sh`). The sync worker is meant to run in exactly one place —
+   the real deployed PROD container — never a developer machine, never
+   TEST, regardless of which Mongo either happens to be pointed at.
+2. The resolved `MONGODB_URI`'s host must be on a known-production
+   allowlist (`chad-mongodb`, QNAP's Tailscale IP `100.117.139.83`) — the
+   check that survives a `CHAD_ENVIRONMENT` misconfiguration (e.g. a
+   copy-pasted compose file setting `CHAD_ENVIRONMENT=prod` but still
+   pointed at a local/test Mongo). Extracted via `extractMongoHost()`
+   (regex on the URI, no Mongo I/O).
+
+Wired into **both** ends of the sync path, not just the worker:
+
+- `sync.ts`'s `queueSheetSyncIfEnabled()` — a job must never even be
+  **written into the outbox** from a non-production run, checked right
+  after the existing `config.enabled` check, before resolving a
+  spreadsheet id. Logs via `console.warn` and returns (same
+  never-throw-into-the-caller contract as every other failure mode here).
+- `bootstrap.ts`'s `startGoogleSheetsSyncWorkerIfEnabled()` — the worker
+  itself refuses to start (`return null`, logged) unless the guard passes,
+  independent of and in addition to the existing `GOOGLE_SHEETS_ENABLED`
+  check.
+
+`docker-compose.qnap.prod.yml` previously had **no** `GOOGLE_SHEETS_*` env
+vars wired in at all (Sheets sync was never actually deployment-ready for
+QNAP before this note) — added now, all defaulting to disabled/empty via
+`${VAR:-...}` interpolation from `.env.qnap` (documented in
+`.env.qnap.example`'s own new section), consistent with
+`docker-compose.local.yml`'s existing pattern. `docker-compose.qnap.test.yml`
+deliberately gets `CHAD_ENVIRONMENT=test` and **no** `GOOGLE_SHEETS_*` vars
+at all — not just "guarded at runtime", structurally absent.
+
+Tests: `production-guard.test.ts` (9 tests, pure — env-var manipulation,
+no I/O) covers every combination of the two conditions directly;
+`sync.test.ts` gained two integration tests proving the guard is actually
+wired into the real enqueue path (blocked with fully-valid Sheets config
+but `CHAD_ENVIRONMENT` wrong; blocked with `CHAD_ENVIRONMENT=prod` but a
+non-production `MONGODB_URI` host) — full google-sheets suite: 92 tests,
+all green.
+
 ## 2. Why a parallel outbox, not `data-outbox.ts`
 
 `data-outbox.ts`/`data-outbox-worker.ts` (Story 72) already implement a

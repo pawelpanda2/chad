@@ -8,18 +8,32 @@
 #
 # Runtime na QNAP to WYŁĄCZNIE docker-compose (bez tmuxinator).
 #
-# One MongoDB, one Content Provider, shared by TEST and PROD dashboards —
-# TEST is an alternative UI onto the same live data, not an isolated data
-# environment. See documentation/dashboard/common/features/
-# shared-qnap-services.md.
+# Two MongoDB instances (Story 76, 2026-07-22 — physical split, see
+# ai-docs/deploy/2026-07-22_mongodb-chad-beeper-split.md), one Content
+# Provider, shared by TEST and PROD dashboards — TEST is an alternative UI
+# onto the same live data, not an isolated data environment. See
+# documentation/dashboard/common/features/shared-qnap-services.md.
 #
-# Dane MongoDB MUSZĄ być na trwałym bind moуncie QNAP
-# ($QNAP_CONTAINER_DATA_PATH/chad-shared/mongodb/db). docker compose down
-# (bez -v) nigdy nie usuwa tych danych — usuwa je tylko skasowanie katalogu
-# na hoście.
+# - chad-mongodb: cp_items/cp_history/cp_history_state/
+#   google_sheets_sync_outbox. Replica set rs0 (Change Streams).
+# - beeper-mongodb: every beeper_<repoGuid> database. Standalone —
+#   deliberately NO replica set, NO Change Streams, ever (explicit user
+#   decision) — durability via periodic mongodump instead.
 #
-# Backup logiczny: bash-scripts/mongo/backup.sh
-#   MONGO_CONTAINER_NAME=chad-mongodb bash bash-scripts/mongo/backup.sh
+# Dane obu instancji MongoDB MUSZĄ być na trwałym bind moуncie QNAP
+# ($QNAP_CONTAINER_DATA_PATH/chad-shared/{mongodb,beeper-mongodb}/db).
+# docker compose down (bez -v) nigdy nie usuwa tych danych — usuwa je tylko
+# skasowanie katalogu na hoście.
+#
+# Backup logiczny (bash-scripts/mongo/backup.sh, already parameterized by
+# MONGO_CONTAINER_NAME — no script changes needed, only correct env vars
+# per instance since beeper-mongodb gets its own separate credentials):
+#   MONGO_CONTAINER_NAME=chad-mongodb \
+#     MONGO_ROOT_USERNAME="$MONGO_ROOT_USERNAME" MONGO_ROOT_PASSWORD="$MONGO_ROOT_PASSWORD" \
+#     bash bash-scripts/mongo/backup.sh
+#   MONGO_CONTAINER_NAME=beeper-mongodb \
+#     MONGO_ROOT_USERNAME="$BEEPER_MONGO_ROOT_USERNAME" MONGO_ROOT_PASSWORD="$BEEPER_MONGO_ROOT_PASSWORD" \
+#     bash bash-scripts/mongo/backup.sh
 #
 # mongodb: single-node replica set `rs0` (Story 74, 2026-07-20) — enabled
 # for MongoDB Change Streams (cp_history). Converts the EXISTING,
@@ -181,6 +195,65 @@ services:
       - "--authenticationDatabase"
       - "admin"
       - "/mongo-rs-init.js"
+
+  # Every beeper_<repoGuid> database (Story 73/76). Physically split from
+  # chad-mongodb (2026-07-22) — deliberately standalone: NO --replSet, NO
+  # keyfile, NO Change Streams, ever. This was an explicit user decision
+  # (not a default/oversight) accepting the one named tradeoff: beeper-crm.ts's
+  # live-update SSE endpoint degrades from instant (change-stream push) to
+  # 5s polling — already implemented as poll-only in beeper-crm.ts, so this
+  # container never needs to satisfy a change-stream consumer. Durability
+  # comes from periodic mongodump instead (bash-scripts/mongo/backup.sh,
+  # this file's own header comment). Separate credentials from chad-mongodb
+  # on purpose (least privilege — a compromised Beeper container credential
+  # must not also grant access to cp_items).
+  beeper-mongodb:
+    image: mongo:4.4
+    container_name: beeper-mongodb
+    restart: unless-stopped
+    command: ["mongod", "--bind_ip_all"]
+    # Host port 12041 published — same reasoning as chad-mongodb's 12040
+    # (QNAP port convention reserves 12020-29/12030-39 for TEST/PROD;
+    # 12040 is chad-mongodb's own diagnostic port, 12041 is the next free
+    # slot, not a random pick). Reachable over Tailscale the same way:
+    # mongodb://<user>:<pass>@100.117.139.83:12041/?authSource=admin
+    # (no directConnection=true needed — standalone, no replica-set
+    # topology to discover).
+    ports:
+      - "12041:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: "${BEEPER_MONGO_ROOT_USERNAME}"
+      MONGO_INITDB_ROOT_PASSWORD: "${BEEPER_MONGO_ROOT_PASSWORD}"
+    volumes:
+      - "${QNAP_CONTAINER_DATA_PATH:-/share/ContainerData}/chad-shared/beeper-mongodb/db:/data/db"
+      - "${QNAP_CONTAINER_DATA_PATH:-/share/ContainerData}/chad-shared/beeper-mongodb/configdb:/data/configdb"
+      - "${QNAP_CONTAINER_DATA_PATH:-/share/ContainerData}/chad-shared/beeper-mongodb/backups:/backups"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      # "mongo" (legacy shell), not "mongosh" — same reason as
+      # chad-mongodb's healthcheck above (mongo:4.4 doesn't bundle mongosh).
+      test:
+        [
+          "CMD",
+          "mongo",
+          "--quiet",
+          "--eval",
+          "db.adminCommand({ ping: 1 })",
+          "-u",
+          "${BEEPER_MONGO_ROOT_USERNAME}",
+          "-p",
+          "${BEEPER_MONGO_ROOT_PASSWORD}",
+          "--authenticationDatabase",
+          "admin",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
 
   # cp_items change-stream consumer -> cp_history (Story 74).
   # Independent process: crash/restart never stops monitoring history or
