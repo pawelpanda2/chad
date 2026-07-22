@@ -63,11 +63,19 @@ services:
       # exact same chad-mongodb data as PROD (this file's own header
       # comment), the Google Sheets sync worker
       # (packages/dba/src/google-sheets/production-guard.ts) refuses to
-      # start unless CHAD_ENVIRONMENT is exactly "prod". No GOOGLE_SHEETS_*
-      # vars are wired into this file at all, on purpose — TEST must never
-      # be able to sync to the real production spreadsheets, full stop,
-      # not just "guarded at runtime".
+      # start unless CHAD_ENVIRONMENT is exactly "prod".
       - CHAD_ENVIRONMENT=test
+      # Story 78 — info-page-only vars (History -> Google Sheets link/info),
+      # deliberately NOT the full write-sync block: no GOOGLE_SHEETS_ENABLED
+      # (stays unset here, so the worker/outbox never starts — see
+      # production-guard.ts) and no GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY (not
+      # needed to show a link, never present on TEST at all). Both vars
+      # below are non-secret — a spreadsheet ID or a service-account email
+      # grants nothing without the separately-secret private key, which
+      # stays PROD-only. See loadGoogleSheetsInfoConfig() in
+      # packages/dba/src/google-sheets/config.ts.
+      - GOOGLE_SHEETS_SPREADSHEET_MAP=${GOOGLE_SHEETS_SPREADSHEET_MAP:-}
+      - GOOGLE_SERVICE_ACCOUNT_EMAIL=${GOOGLE_SERVICE_ACCOUNT_EMAIL:-}
     volumes:
       - chad-dashboard-test-data:/app/data
     logging:

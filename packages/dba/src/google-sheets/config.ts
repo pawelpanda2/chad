@@ -98,6 +98,60 @@ export function resolveSpreadsheetIdForUser(config: GoogleSheetsConfig, username
   return spreadsheetId;
 }
 
+/**
+ * Info-page-only config (Story 78) — deliberately independent of
+ * `GOOGLE_SHEETS_ENABLED`/`loadGoogleSheetsConfig()`. Before this Story, the
+ * History -> Google Sheets info page used `loadGoogleSheetsConfig().enabled`
+ * as its ONLY signal, conflating two different questions: "may the sync
+ * worker write to Google" (a production-only concern, gated further by
+ * `production-guard.ts`) and "does the info page have anything non-secret
+ * to show" (which should work anywhere a spreadsheet is mapped, including
+ * QNAP TEST, where GOOGLE_SHEETS_ENABLED is deliberately always false —
+ * see docker-compose.qnap.test.yml). The practical bug: TEST always showed
+ * "Google Sheets sync is not enabled on this environment." with nothing
+ * else, even when a user's spreadsheet link would have been perfectly safe
+ * and useful to show.
+ *
+ * Only ever reads the two non-secret fields a link/info page needs — the
+ * spreadsheet map (spreadsheet IDs are not credentials; without the
+ * separately-secret service-account key, an ID alone grants nothing) and
+ * the service account's own email (also not a credential — see
+ * info/route.ts's header comment). **Never reads
+ * GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY** — that stays exclusively inside
+ * `loadGoogleSheetsConfig()`, used only by the write-sync path.
+ */
+export interface GoogleSheetsInfoConfig {
+  spreadsheetMap: Record<string, string>;
+  serviceAccountEmail: string;
+}
+
+/**
+ * Never throws — a missing/partial info config just means "nothing to show
+ * yet" (empty map), the same as the disabled shape `loadGoogleSheetsConfig`
+ * already returns when GOOGLE_SHEETS_ENABLED is false. The info page itself
+ * decides what to render for that case.
+ */
+export function loadGoogleSheetsInfoConfig(): GoogleSheetsInfoConfig {
+  const rawMap = process.env.GOOGLE_SHEETS_SPREADSHEET_MAP;
+  let spreadsheetMap: Record<string, string> = {};
+  if (rawMap) {
+    try {
+      spreadsheetMap = parseSpreadsheetMap(rawMap);
+    } catch {
+      // A malformed map must not crash the info page — treat as "nothing
+      // configured yet", same as unset. The write-sync path
+      // (loadGoogleSheetsConfig) still throws on this, loudly, since a
+      // malformed map there is a real deployment misconfiguration blocking
+      // real writes.
+      spreadsheetMap = {};
+    }
+  }
+  return {
+    spreadsheetMap,
+    serviceAccountEmail: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || "",
+  };
+}
+
 function readBool(name: string, defaultValue: boolean): boolean {
   const raw = process.env[name];
   if (raw === undefined || raw === "") return defaultValue;

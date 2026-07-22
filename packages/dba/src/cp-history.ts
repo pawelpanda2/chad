@@ -47,6 +47,15 @@ export interface CpHistoryListItem {
   bodyChanged: boolean;
 }
 
+export interface CpHistoryEnvelope {
+  status: string;
+  watchStatus: string | null;
+  watchOpenedAt: string | null;
+  lastHeartbeatAt: string | null;
+  lastEventAt: string | null;
+  historyGapAt: string | null;
+}
+
 export interface CpHistoryDetail extends CpHistoryListItem {
   changes: {
     config: CpHistoryConfigOp[];
@@ -87,6 +96,13 @@ interface CpHistoryDoc {
   address: string | null;
   operationType: string;
   changedAt: Date;
+  // Story 78 — BSON clusterTime Timestamp's own (seconds, increment)
+  // components, giving a stable total order even for several operations
+  // inside the same wall-clock second (changedAt alone only has second
+  // precision). Optional: history docs written before this Story lack
+  // them — see the sort below for why that's still correct.
+  orderSeconds?: number;
+  orderIncrement?: number;
   actor: CpHistoryActor | null;
   beforeUnknown: boolean;
   changes: {
@@ -138,7 +154,16 @@ export async function listCpHistory(input: ListCpHistoryInput): Promise<ListCpHi
   const [docs, total] = await Promise.all([
     collection
       .find(filter)
-      .sort({ changedAt: -1 })
+      // Story 78: orderSeconds/orderIncrement (the change event's own BSON
+      // clusterTime components) give a stable total order across several
+      // operations inside the same wall-clock second; changedAt (second
+      // precision only) is kept as the final tiebreaker. Pre-Story-78 docs
+      // that lack orderSeconds/orderIncrement sort as MongoDB's "missing
+      // field" value, which is BSON-lowest — in this descending
+      // (newest-first) sort they correctly fall after every doc that does
+      // have the field, since every such doc is, by construction,
+      // chronologically older than any doc written after this Story shipped.
+      .sort({ orderSeconds: -1, orderIncrement: -1, changedAt: -1 })
       .skip((page - 1) * pageSize)
       .limit(pageSize)
       .toArray(),
@@ -146,6 +171,36 @@ export async function listCpHistory(input: ListCpHistoryInput): Promise<ListCpHi
   ]);
 
   return { items: docs.map(toListItem), total, page, pageSize };
+}
+
+interface CpHistoryStateDoc {
+  status?: string;
+  watchStatus?: string;
+  watchOpenedAt?: Date;
+  lastHeartbeatAt?: Date;
+  lastEventAt?: Date;
+  historyGapAt?: Date;
+}
+
+/**
+ * Diagnostic read of `cp_history_state` (the history-worker's own global
+ * singleton status document, Story 74/78) — used by tests/tooling to check
+ * readiness/health without a separate worker-status API. Never scoped to a
+ * repo (this is process-level status, not per-user data) and never used for
+ * repo-isolation decisions.
+ */
+export async function getCpHistoryWorkerStatus(): Promise<CpHistoryEnvelope | null> {
+  const db = await getMongoDb();
+  const doc = await db.collection<CpHistoryStateDoc>("cp_history_state").findOne({ _id: "cp_history_worker" } as never);
+  if (!doc) return null;
+  return {
+    status: doc.status ?? "unknown",
+    watchStatus: doc.watchStatus ?? null,
+    watchOpenedAt: doc.watchOpenedAt ? new Date(doc.watchOpenedAt).toISOString() : null,
+    lastHeartbeatAt: doc.lastHeartbeatAt ? new Date(doc.lastHeartbeatAt).toISOString() : null,
+    lastEventAt: doc.lastEventAt ? new Date(doc.lastEventAt).toISOString() : null,
+    historyGapAt: doc.historyGapAt ? new Date(doc.historyGapAt).toISOString() : null,
+  };
 }
 
 export async function getCpHistoryEntry(id: string, repoGuid: string): Promise<CpHistoryDetail | null> {

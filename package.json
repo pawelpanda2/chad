@@ -16,9 +16,20 @@
     "mongo:restore": "./bash-scripts/mongo/restore.sh",
     "mongo:migrate-contacts": "node ./bash-scripts/mongo/migrate-contacts-to-chad.mjs",
     "mongo:migrate-contacts:apply": "node ./bash-scripts/mongo/migrate-contacts-to-chad.mjs --apply",
-    "dev": "./bash-scripts/dev.sh"
+    "dev": "./bash-scripts/dev.sh",
+    "test:unit": "vitest run packages/history-worker/lib/history-event-mapper.test.mjs packages/dba/src/testing/test3-guard.test.ts",
+    "test:integration:local-mongo": "vitest run packages/history-worker/worker-process.test.mjs && pnpm --filter dba build && cd packages/dba && MONGODB_URI=\"mongodb://localhost:27017/chad_test_story78_ci?directConnection=true\" node dist/cp-history.test.js && MONGODB_URI=\"mongodb://localhost:27017/chad_test_story78_ci?directConnection=true\" node dist/google-sheets/config.test.js",
+    "test:provision-test3": "pnpm --filter dba build && node test/support/provision-test3.mjs",
+    "test:integration:daily-dates": "pnpm test:provision-test3 && vitest run test/integration/qnap-test3-daily-dates.test.mjs",
+    "test:e2e:daily-dates": "playwright test --config=test/e2e/playwright.config.mjs",
+    "test:regression:daily-dates": "pnpm test:unit && pnpm test:integration:local-mongo && pnpm test:integration:daily-dates && pnpm test:e2e:daily-dates"
   },
   "dependencies": {
     "mongodb": "^7.1.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.1",
+    "dotenv": "^17.4.2",
+    "vitest": "^4.1.10"
   }
 }
