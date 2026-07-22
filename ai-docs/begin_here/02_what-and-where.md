@@ -263,13 +263,14 @@ zapisujący do `chad.cp_history`/`cp_history_state`, warstwa odczytu w
 `dba` (`cp-history.ts`), API i UI zakładki `History` w Dashboardzie
 (Story 74).
 
-**Lokalizacja:** [`ai-docs/history/how-it-works.md`](../history/how-it-works.md)
-— pipeline, `rs0`/oplog, jak worker liczy diff bez pre-images (Mongo 4.4),
-resume token, mapowanie Daily Trackera, jak dodać nowy typ widoku, jak
-testować lokalnie, jak wykonać rollback.
+**Zacznij od:** [`ai-docs/history/ai-start.md`](../history/ai-start.md) —
+indeks, potem [`how-it-works.md`](../history/how-it-works.md) — pipeline,
+`rs0`/oplog, jak worker liczy diff bez pre-images (Mongo 4.4), resume
+token, mapowanie Daily Trackera, jak dodać nowy typ widoku, jak testować
+lokalnie, jak wykonać rollback.
 
 **Czytać gdy:** dowolna zmiana w `packages/history-worker`,
-`packages/dba/src/cp-history.ts`, `packages/dashboard/app/api/content-provider/{history,daily-history}`,
+`packages/dba/src/cp-history.ts`, `packages/dashboard/app/api/content-provider/{history,daily-history,dates-history}`,
 `packages/dashboard/app/(dashboard)/dashboard/history/`, albo zakładki
 `History` w ogóle.
 
@@ -294,7 +295,11 @@ testować lokalnie, jak wykonać rollback.
 poprzedniego samodzielnego repo `contacts`, schemat Mongo. Od Story 73
 (2026-07-19): każdy CHAD użytkownik ma osobną bazę MongoDB
 (`beeper_<repoGuid>`), nie jedną wspólną `beeper` — krytyczna poprawka
-izolacji danych (wcześniej `kamil_s` widział kontakty `pawel_f`).
+izolacji danych (wcześniej `kamil_s` widział kontakty `pawel_f`). Od Story
+76 (2026-07-22): osobny fizyczny kontener `beeper-mongodb` (standalone, bez
+replica setu, bez Change Streams — `beeper-crm.ts` i `beeper-oplog` już
+tylko pollują) — kod/konfiguracja gotowe, realna migracja danych na QNAP
+jeszcze NIE wykonana, patrz `ai-docs/deploy/2026-07-22_mongodb-chad-beeper-split.md`.
 
 **Lokalizacja:** `ai-docs/beeper/` (przeniesione 2026-07-19, Story 73, z
 `human-docs/beeper/` — ten katalog jest częścią globalnej wiedzy AI, nie

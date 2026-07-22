@@ -1,197 +1,230 @@
-# History (Change Streams) — how it works
+# History (cp_history) — how it works
 
-Status: written 2026-07-21, Story 74 (continuation session — Claude Code,
-after earlier Claude Code / Copilot / Cline sessions on the same Story).
-Read `backlog/stories/74/` for the full task history, root-cause
-investigation, and what was fixed in this session specifically.
+Status: rewritten 2026-07-23, Story 80 — **PostgreSQL is now CHAD's source
+of truth** (`cp_items`/`cp_history`/`cp_outbox_data_sync`/
+`cp_outbox_google_sheets_sync`); MongoDB is retired for CHAD and kept only
+for Beeper CRM (`beeper_<repoGuid>` databases, entirely separate — see
+`documentation/beeper/architecture.md`). Story 79's MongoDB-transaction
+mechanism (below, kept as historical record) is **superseded** by this
+Story, the same way Story 79 itself superseded Story 74/78's Change-Stream
+`history-worker`. Read `backlog/stories/80/` for the full rationale.
 
-## Pipeline
+**Deployment status (do not assume more than this says):** local dev
+(`docker-compose.local.yml`) defaults to PostgreSQL as primary
+(`DBA_PRIMARY_BACKEND=postgres`). QNAP TEST and PROD have **not** cut over
+as of Story 80 — both still run on the Story 79 MongoDB mechanism described
+in the second half of this file, reading/writing the same shared
+`chad-mongodb`. A Postgres container exists on QNAP (`docker-compose.qnap.
+shared.yml`, shared between TEST/PROD, holding the same data once cut
+over) but neither environment's `DBA_PRIMARY_BACKEND` has been flipped —
+see `backlog/stories/80/05_tasks_and_checklist.md` for why (a partial
+TEST-only cutover would split TEST and PROD into two diverging sources of
+truth, and flipping PROD is a PROD deploy, out of that Story's scope).
+
+## Why this changed (Story 80)
+
+Story 79 already made Mongo's `cp_items`+`cp_history` writes atomic via a
+multi-document transaction, but that still required a hand-rolled
+single-node replica set (`rs0`) on QNAP hardware with no AVX support. Story
+80 moves the same guarantees (atomic write+history, versioning,
+actor/hash-chain, no Change Stream, no separate worker process) onto
+PostgreSQL, using a database trigger instead of a Mongo transaction, and
+retires the Mongo replica-set requirement for CHAD entirely.
+
+## Pipeline (PostgreSQL, Story 80)
 
 ```
 Dashboard UI/API
-  -> dba (packages/dba/src/leads.ts, repo-context.ts, data-commands.ts,
-          data-router.ts, data-providers/mongo-cp-provider.ts)
-  -> chad.cp_items (MongoDB, replica set rs0)
-  -> MongoDB Change Stream
-  -> packages/history-worker (independent process)
-  -> chad.cp_history / chad.cp_history_state
-  -> packages/dba/src/cp-history.ts
-  -> packages/dashboard/app/api/content-provider/{history,daily-history}
-  -> packages/dashboard/app/(dashboard)/dashboard/history/page.tsx
+  -> dba (leads.ts, repo-context.ts, data-commands.ts, data-router.ts)
+  -> PostgresCpProvider.putItem / .createChild / .deleteItem
+       (packages/dba/src/data-providers/postgres-cp-provider.ts)
+  -> executeCpMutationWithHistoryPostgres / runCpMutation
+       (packages/dba/src/cp-history/mutate-postgres.ts)
+       one Postgres transaction:
+         SET LOCAL app.mutation_id / app.request_id / app.actor_*
+         SELECT ... FOR UPDATE (row lock, read current cp_items row)
+         INSERT/UPDATE/DELETE cp_items
+           -> cp_items_write_history trigger fires (sql/migrations/0001_init.sql):
+                computes version, writes exactly one cp_history row
+         commit
+  -> packages/dba/src/cp-history-postgres.ts (read side; diff computed at
+       read time from before/after snapshots via cp-history/diff.ts)
+  -> packages/dashboard/app/api/content-provider/{history,daily-history,dates-history}
+  -> packages/dashboard/app/(dashboard)/dashboard/history/{page.tsx,entry/[id]/page.tsx}
 ```
 
-The worker is a separate process from the Dashboard on purpose: a
-Dashboard restart/crash never stops history tracking, and a bug in the
-worker never takes the Dashboard down.
+`cp-history.ts`/`data-outbox.ts`/`google-sheets/outbox.ts` are thin
+dispatchers on `loadDataProvidersConfig().primaryBackend` — the Mongo
+implementations (`cp-history-mongo.ts`, `data-outbox-mongo.ts`,
+`google-sheets/outbox-mongo.ts`) are unchanged and still exactly what runs
+wherever `DBA_PRIMARY_BACKEND=mongo` (QNAP TEST/PROD today).
 
-## `rs0` — why and how
+## History trigger — why a trigger, not just application code
 
-MongoDB Change Streams require a replica set (even a single-node one).
-`rs0` is a one-member set (`chad-mongodb:27017` on QNAP,
-`chad-mongodb-local-mac-docker:27017` locally). Initialization is
-idempotent (`bash-scripts/mongo/rs-init.js` — safe to run on every
-restart: does nothing if `rs0` is already configured).
+`cp_items_write_history()` (`packages/dba/sql/migrations/0001_init.sql`) is
+a `BEFORE INSERT OR UPDATE OR DELETE` trigger on `cp_items`. This means
+history is written at the database level, not the application level — a
+manual `psql` write (bypassing `PostgresCpProvider` entirely) still
+produces a `cp_history` row, with `actor_kind = 'unknown'` and a
+server-generated `mutation_id` (`SET LOCAL app.*` unset). The only thing
+that can be "lost" for an out-of-band write is actor attribution — the fact
+of the change itself can never be skipped. `cp_history` itself is
+immutable: separate triggers reject any `UPDATE`/`DELETE` against it
+outright, at the database level, matching Story 80's append-only
+requirement.
 
-Verify:
+## `cp_items` bookkeeping columns
 
-```bash
-docker exec <mongo-container> mongosh --quiet --eval "
-  printjson({ok: rs.status().ok, setName: db.hello().setName, primary: db.hello().isWritablePrimary})
-"
+Set by the trigger, never directly by application code:
+
+```
+history_version integer,        -- 1 on first insert, +1 per mutation
+last_mutation_id text,
+last_request_id text,
+last_actor_username text,
+last_actor_repo_guid text,
+last_actor_kind text,           -- user | system | migration | unknown
 ```
 
-Expect `{ok: 1, setName: "rs0", primary: true}`. This survives a normal
-`docker compose down`/`up` cycle (no `-v`) because the replica set
-configuration lives in the `local` database on the same persistent data
-volume as everything else.
+`id` is `text`, not `uuid` — confirmed against real legacy data during this
+Story's own local cutover that not every historical `cp_items._id` is
+UUID-shaped.
 
-**Local Mac Docker specifically runs without Mongo auth** (`mongod
---replSet rs0 --oplogSize 1024`, no `--auth`, no root user) — this is a
-local-only simplification that predates this Story's continuation session;
-QNAP keeps its own separate compose file and keyfile-based auth
-unaffected by it.
+## `cp_history` — the only history/audit table
 
-## Oplog
-
-Shared across every database on the same `mongod` (including
-`beeper_<repoGuid>` per-user databases) — sized at 1024MB by
-`--oplogSize 1024`. A resume token that falls outside the current oplog
-window can no longer be resumed from; see "Resume token" below for how
-the worker handles that.
-
-## History worker (`packages/history-worker`)
-
-Plain Node.js (`index.mjs`, ESM, no build step — deployed via `pnpm
-deploy --prod` in its Dockerfile, not `tsc`). Watches `cp_items` via
-`itemsCol.watch([], { fullDocument: "updateLookup" })` and writes one
-`cp_history` document per change event.
-
-**No pre-images.** MongoDB 4.4 (the QNAP target version) has no
-`fullDocumentBeforeChange`/pre-image support (6.0+ only), and a delete
-event's change-stream document never carries `fullDocument` at all,
-regardless of Mongo version. The worker keeps its own in-memory
-`lastKnownState` cache (`Map<sourceId, {config, body, actor}>`),
-populated *progressively* from events it has actually observed since its
-own last start — never bootstrapped from a full collection scan at
-startup (that would make catch-up-after-downtime diffs subtly wrong, by
-diffing against state from before the worker ever ran). The first event
-seen for any given item after a (re)start has no known "before" and is
-recorded honestly as `beforeUnknown: true` — never fabricated.
-
-**Actor attribution.** Writes flow `_lastActor` onto the `cp_items`
-document itself (`repo-context.ts`'s `tryGetCurrentActor()` →
-`data-commands.ts` → `MongoCpProvider.putItem`/`createChild`). The worker
-reads `change.fullDocument._lastActor` for insert/update/replace. **A
-delete event has no `fullDocument`**, so `MongoCpProvider.deleteItem()`
-never gets a chance to record an actor for that specific operation either
-way — the worker instead falls back to the actor it cached from that
-item's own last insert/update (`cached?.actor`), which is the only actor
-information a delete event can possibly carry under this architecture.
-
-**Idempotency.** Each `cp_history` document's `_id` is the change event's
-own resume-token data string — unique and stable per event. A retried
-insert of the same event hits Mongo's unique-`_id` constraint
-(`error.code === 11000`), caught and logged as "duplicate event, skipping"
-rather than needing a separate dedup check.
-
-## Resume token (`chad.cp_history_state`)
-
-Singleton document, `_id: "cp_history_worker"`:
-
-```js
-{
-  resumeToken: <opaque>,
-  status: "running" | "error" | "stopped",
-  startedAt, lastHeartbeatAt, lastEventAt,
-  lastError, historyGapAt,
-}
+```
+id bigserial, mutation_id, request_id,
+source_id, repo_guid, address, item_name, version,
+operation_type,                          -- insert | update | delete
+actor_username, actor_repo_guid, actor_kind,   -- kind: user|system|migration|unknown
+changed_at,
+before_hash, after_hash,                 -- Postgres-native sha256 (digest(jsonb::text)) —
+                                          -- NOT byte-comparable to Mongo's hashCpState;
+                                          -- see hash.ts's doc comment
+config_diff, body_diff,                  -- NULL for native rows (diff computed at read
+                                          -- time from snapshots); non-NULL only for rows
+                                          -- carried over by the Mongo->Postgres migrator
+before_snapshot, after_snapshot,         -- ALWAYS full on every native-Postgres event
+                                          -- (unlike Mongo's every-20th-update cadence)
 ```
 
-On start, the worker calls `itemsCol.watch([], { resumeAfter:
-existingState.resumeToken })` if a token is persisted, else starts fresh
-from "now". If the persisted token has fallen outside the oplog window,
-`watch()` throws a resume-token-lost error — the worker logs a clear
-warning, starts fresh from "now" (never fabricates the missing history),
-and records `historyGapAt`.
+- **Diff at read time**: `cp-history-postgres.ts` computes `config`/`body`
+  diffs from `before_snapshot`/`after_snapshot` using the same
+  `diffConfig`/`diffBody` (`cp-history/diff.ts`) Mongo's write path uses —
+  reusing DB-agnostic pure functions, not duplicating diff logic in
+  PL/pgSQL. Migrated rows (where a pre-Story-79-cadence Mongo update had no
+  snapshot to carry over) instead carry their originally-computed diff
+  directly in `config_diff`/`body_diff` — the read side prefers a non-null
+  `config_diff` over recomputing from (possibly absent) snapshots.
+- **Hash chain**: internally consistent per algorithm-origin only —
+  `before_hash(N) == after_hash(N-1)` holds within a contiguous run of
+  native-Postgres events (Postgres's own `digest()` algorithm) or within a
+  contiguous run of migrated Mongo events (Mongo's `hashCpState`
+  algorithm), but NOT across the seam between them (different hash
+  functions, both internally sound, not directly comparable) — a disclosed
+  limitation, not a bug; `cp-postgres-integrity-check.mjs` skips the
+  chain check specifically across that seam (using a non-null
+  `config_diff` as the "this side of the pair is migrated" marker).
+- **Idempotency**: `UNIQUE(mutation_id)` — a retried mutationId either
+  short-circuits on a pre-transaction lookup or hits the unique constraint
+  (`23505`), caught and treated as a replay; reusing a mutationId for a
+  *different* item is rejected (`CpMutationIdReusedError`).
+- **Concurrency**: `SELECT ... FOR UPDATE` takes a row lock on `cp_items`
+  before the trigger computes the next version — the second of two
+  concurrent writers simply waits for the first transaction to commit, no
+  custom optimistic-lock/retry code needed.
 
-**Restarting the worker never loses events that happened while it was
-down**, as long as the gap is within the oplog window — verified in Story
-74 by stopping the container, making a real change, restarting it, and
-confirming the missed event was captured with no duplicate. **Restarting
-the *container* with a newly built image requires `docker compose up -d
-<service>`, not `docker stop`/`docker start`** — the latter reuses the
-existing container's already-baked-in image layer and will silently keep
-running old code.
+## Child address allocation — no counter table
 
-## Daily Tracker mapping
+`PostgresCpProvider.createChild` uses `pg_advisory_xact_lock(hashtextextended(
+repoGuid || ':' || parentAddress, 0))` — a transaction-scoped advisory lock,
+released automatically at COMMIT/ROLLBACK — instead of Mongo's separate
+`folder_child_counters` collection. No `cp_folder_child_counters` table
+exists in Postgres.
 
-Not a hardcoded address. `resolveDailyTrackerAddressPrefix(repoGuid)`
-(`packages/dba/src/cp-history.ts`) calls the same `getByNames({repoGuid,
-names: ["views", "daily"]})` lookup the real save/read path already uses
-(`saveDailyEntry`/`getAllDailyEntries` in `leads.ts`), and filters
-`cp_history` by that resolved address as a prefix. If the repo has no
-Daily Tracker folder yet, this returns `null` and
-`listDailyTrackerHistory` returns an empty result — not an error.
+## Migrating Mongo → Postgres
 
-## Repo isolation
+`packages/dba/scripts/migrate-mongo-to-postgres.mjs (--repoGuid=<guid> |
+--all) [--apply]` — dry-run by default, idempotent, reports conflicts
+(never overwrites), verifies migrated `cp_items` hash equality against the
+Mongo source via the shared `hashCpState`. Requires the source repo's
+`cp_items` to already carry `_historyVersion` (Story 79's own
+`migrate-legacy-cp-items-to-history.mjs` — this script doesn't fabricate a
+starting version either). Pre-Story-79 `cp_history` documents (Story
+74/78's Change-Stream shape — no `mutationId`/`repoGuid`/`version` fields)
+are detected and reported as incompatible, never coerced. The `cp_items`
+write-history trigger is disabled for the duration of the migrator's own
+inserts (`ALTER TABLE ... DISABLE/ENABLE TRIGGER`, always re-enabled in a
+`finally`) so a migrated item's real historical `cp_history` rows can be
+inserted verbatim instead of the trigger minting a fresh, wrong one.
 
-`listCpHistory`/`getCpHistoryEntry` filter by a regex anchored on the
-caller's own `repoGuid` (`^${repoGuid}(/|$)`), sourced only from the
-session/repo-context — never trusted from request query/body. Covered by
-`packages/dba/src/cp-history.test.ts`, including a regression test for the
-specific failure mode of a bare string-prefix match leaking across repos
-whose GUIDs happen to share a prefix.
+## Integrity checking
 
-## Adding a new History view type (beyond Daily Tracker)
+`pnpm test:cp-postgres-integrity -- --repoGuid=<guid>` (or `--all`) —
+`packages/dba/scripts/cp-postgres-integrity-check.mjs`. Read-only, stdout +
+exit code, no separate error table. Checks: `cp_items.id/address/name`
+match `config`, `repo_guid` matches the address-derived repo, no duplicate
+address, no duplicate child name under one parent, `cp_history` version
+continuity, hash-chain continuity (migrated/native seam-aware, see above),
+the last event for a still-existing item matches `cp_items.history_version`,
+a deleted item's last event is `delete` with no surviving row, stale-locked
+outbox jobs, and (when `MONGODB_URI` is also set) `cp_items` count parity
+against the Mongo source per repo.
 
-`History`'s menu (`packages/dashboard/app/(dashboard)/dashboard/history/page.tsx`)
-is a `viewParam` switch, not hardcoded to Daily Tracker alone — adding
-Reports/Statuses/Leads/etc. means:
+## Mongo mechanism (Story 79) — superseded, still what QNAP TEST/PROD run
 
-1. A `resolveXAddressPrefix(repoGuid)` in `cp-history.ts`, following the
-   same "reuse the real save/read path's own folder lookup" pattern as
-   `resolveDailyTrackerAddressPrefix` — never guess or hardcode an
-   address.
-2. A `listXHistory` wrapper around `listCpHistory` (or reuse
-   `content-provider/history?addressPrefix=...` directly from the
-   Dashboard if a dedicated convenience endpoint isn't needed).
-3. A new entry in `HistoryMenuPage`'s button list and the `HistoryView`
-   union type, following the existing `daily-tracker` case.
+Everything below is unchanged from Story 79 and describes what's still
+actually running wherever `DBA_PRIMARY_BACKEND=mongo` (QNAP TEST/PROD as of
+Story 80 — see the deployment-status note at the top of this file).
+
+Story 74/78's `history-worker` derived `cp_history` asynchronously from a
+MongoDB Change Stream watching `cp_items` — a separate process, its own
+resume-token/shadow-state collections (`cp_history_state`,
+`cp_history_last_state`), in-memory caches to rebuild across restarts.
+Story 79 replaced all of that with a single MongoDB **transaction** around
+every `cp_items` write: the mutation and its one `cp_history` event commit
+together, or neither commits. No separate process, no resume token, no
+shadow state, no Change Stream at all.
+
+```
+Dashboard UI/API
+  -> dba (leads.ts, repo-context.ts, data-commands.ts, data-router.ts)
+  -> MongoCpProvider.putItem / .createChild / .deleteItem
+       (packages/dba/src/data-providers/mongo-cp-provider.ts)
+  -> executeCpMutationWithHistory (packages/dba/src/cp-history/mutate.ts)
+       one MongoDB transaction:
+         read current cp_items doc (same session)
+         compute version / diff / hashes / mutationId
+         write cp_items
+         insert exactly one cp_history doc
+         commit
+  -> packages/dba/src/cp-history-mongo.ts (read side)
+```
+
+`rs0` (the single-node replica set) is still required by this mechanism
+for multi-document transactions — unchanged by Story 80, still running on
+QNAP for as long as QNAP TEST/PROD stay on the Mongo primary.
+
+`packages/dba/scripts/migrate-legacy-cp-items-to-history.mjs --repoGuid=<guid>
+[--apply]` and `pnpm test:cp-history:integrity` (Mongo-side integrity
+checker) are unchanged and still the right tools for any repo still on the
+Mongo primary.
 
 ## How to test locally
 
 ```bash
-# DBA-layer tests (repo isolation, addressPrefix, pagination, Daily
-# Tracker resolution) — real local Mongo, dedicated scratch database:
-cd packages/dba
-MONGODB_URI="mongodb://localhost:27017/chad_test_story74?directConnection=true" \
-  npx tsc && node dist/cp-history.test.js
+pnpm test:unit                        # hash/diff/versioning — no DB needed
+pnpm test:integration:local-mongo     # real local rs0 (Mongo mechanism)
+pnpm test:integration:local-postgres  # real local Postgres (Story 80 mechanism)
 ```
-
-`directConnection=true` is required when connecting from the **host**
-(outside Docker) — `rs0`'s configured member hostname
-(`chad-mongodb-local-mac-docker`) only resolves inside the Docker network,
-and a replica-set-aware driver would otherwise try (and fail) to reach
-that hostname during topology discovery. Not needed from inside another
-container on the same Docker network (e.g. the Dashboard or
-history-worker containers themselves use the Compose service name
-`mongodb`, which resolves fine there).
-
-End-to-end (worker + Change Streams): make a real change through the
-Dashboard UI, then check `chad.cp_history`/`chad.cp_history_state`
-directly and confirm it via the `History` UI itself.
 
 ## Rollback
 
-Disabling history entirely: stop the `history-worker` container/service
-(`docker compose stop history-worker` or remove it from
-`docker-compose.*.yml`) — this does not affect `cp_items` writes at all
-(the worker is a pure read-side consumer of the change stream, never in
-the write path). `chad.cp_history`/`cp_history_state` can be dropped
-independently of `cp_items` with zero effect on the rest of the
-application. Disabling the replica set itself (only relevant if `rs0`
-somehow needs to be reverted) means restarting `mongod` without
-`--replSet` — same data directory, same volume, no data loss — see
-`backlog/stories/74/01_input.md` §9 for the original rollback procedure
-(this Story's continuation session never needed to invoke it; `rs0` stayed
-stable throughout).
+Postgres and Mongo providers can both be registered simultaneously
+(`DBA_MONGO_ENABLED=true` + `DBA_POSTGRES_ENABLED=true`), but only one is
+ever `primaryBackend` at a time — never two primaries. Rolling back a
+cutover means flipping `DBA_PRIMARY_BACKEND` back to `mongo`; the Mongo
+data is never deleted by the migrator, so it stays valid as a rollback
+source for as long as it's kept around (see `backlog/stories/80/02_plan.md`
+§"Cutover" for the intended rollback-window procedure — not yet exercised
+on QNAP as of Story 80).

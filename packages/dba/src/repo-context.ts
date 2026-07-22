@@ -29,6 +29,14 @@ import { AsyncLocalStorage } from "node:async_hooks";
 export interface RepoContext {
   repoGuid: string;
   username: string;
+  /**
+   * Best-effort request correlation id (Story 79, cp_history rewrite) —
+   * optional and non-breaking: existing callers of runWithRepoContext that
+   * don't pass one still compile and still work, and history events for
+   * those requests simply carry `requestId: null`. Never required for a
+   * write to succeed; see tryGetCurrentRequestId().
+   */
+  requestId?: string;
 }
 
 const storage = new AsyncLocalStorage<RepoContext>();
@@ -73,4 +81,14 @@ export function getCurrentUsername(): string {
  */
 export function tryGetCurrentActor(): RepoContext | null {
   return storage.getStore() ?? null;
+}
+
+/**
+ * Non-throwing request-correlation id for the cp_history mutation writer
+ * (Story 79) — `null` when the calling route never passed one to
+ * runWithRepoContext, or when called outside any context (migration
+ * scripts, tests). Never blocks a write.
+ */
+export function tryGetCurrentRequestId(): string | null {
+  return storage.getStore()?.requestId ?? null;
 }

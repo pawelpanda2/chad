@@ -22,6 +22,7 @@
 import { randomUUID } from "node:crypto";
 import { loadGoogleSheetsConfig, resolveSpreadsheetIdForUser } from "./config.js";
 import { enqueueGoogleSheetsSync } from "./outbox.js";
+import { checkGoogleSheetsProductionGuard } from "./production-guard.js";
 import type { GoogleSheetsSyncKind, SheetRecordType, SheetSyncPayload } from "./types.js";
 
 export interface QueueSheetSyncInput {
@@ -48,6 +49,16 @@ async function queueSheetSyncIfEnabled(
     return;
   }
   if (!config.enabled) return;
+
+  // Defense-in-depth (2026-07-22, independent of GOOGLE_SHEETS_ENABLED) —
+  // a job must never even be written into the outbox from a non-production
+  // run. See production-guard.ts's own doc comment for why a single flag
+  // isn't trusted alone.
+  const guard = checkGoogleSheetsProductionGuard();
+  if (!guard.allowed) {
+    console.warn(`[google-sheets] enqueue blocked by production guard: ${guard.reason}`);
+    return;
+  }
 
   let spreadsheetId: string;
   try {

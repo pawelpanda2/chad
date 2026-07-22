@@ -8,18 +8,32 @@
 #
 # Runtime na QNAP to WYŁĄCZNIE docker-compose (bez tmuxinator).
 #
-# One MongoDB, one Content Provider, shared by TEST and PROD dashboards —
-# TEST is an alternative UI onto the same live data, not an isolated data
-# environment. See documentation/dashboard/common/features/
-# shared-qnap-services.md.
+# Two MongoDB instances (Story 76, 2026-07-22 — physical split, see
+# ai-docs/deploy/2026-07-22_mongodb-chad-beeper-split.md), one Content
+# Provider, shared by TEST and PROD dashboards — TEST is an alternative UI
+# onto the same live data, not an isolated data environment. See
+# documentation/dashboard/common/features/shared-qnap-services.md.
 #
-# Dane MongoDB MUSZĄ być na trwałym bind moуncie QNAP
-# ($QNAP_CONTAINER_DATA_PATH/chad-shared/mongodb/db). docker compose down
-# (bez -v) nigdy nie usuwa tych danych — usuwa je tylko skasowanie katalogu
-# na hoście.
+# - chad-mongodb: cp_items/cp_history/cp_history_state/
+#   google_sheets_sync_outbox. Replica set rs0 (Change Streams).
+# - beeper-mongodb: every beeper_<repoGuid> database. Standalone —
+#   deliberately NO replica set, NO Change Streams, ever (explicit user
+#   decision) — durability via periodic mongodump instead.
 #
-# Backup logiczny: bash-scripts/mongo/backup.sh
-#   MONGO_CONTAINER_NAME=chad-mongodb bash bash-scripts/mongo/backup.sh
+# Dane obu instancji MongoDB MUSZĄ być na trwałym bind moуncie QNAP
+# ($QNAP_CONTAINER_DATA_PATH/chad-shared/{mongodb,beeper-mongodb}/db).
+# docker compose down (bez -v) nigdy nie usuwa tych danych — usuwa je tylko
+# skasowanie katalogu na hoście.
+#
+# Backup logiczny (bash-scripts/mongo/backup.sh, already parameterized by
+# MONGO_CONTAINER_NAME — no script changes needed, only correct env vars
+# per instance since beeper-mongodb gets its own separate credentials):
+#   MONGO_CONTAINER_NAME=chad-mongodb \
+#     MONGO_ROOT_USERNAME="$MONGO_ROOT_USERNAME" MONGO_ROOT_PASSWORD="$MONGO_ROOT_PASSWORD" \
+#     bash bash-scripts/mongo/backup.sh
+#   MONGO_CONTAINER_NAME=beeper-mongodb \
+#     MONGO_ROOT_USERNAME="$BEEPER_MONGO_ROOT_USERNAME" MONGO_ROOT_PASSWORD="$BEEPER_MONGO_ROOT_PASSWORD" \
+#     bash bash-scripts/mongo/backup.sh
 #
 # mongodb: single-node replica set `rs0` (Story 74, 2026-07-20) — enabled
 # for MongoDB Change Streams (cp_history). Converts the EXISTING,
@@ -65,6 +79,19 @@
 # service below (see git history for the removed block: image, build
 # context packages/net-content-provider, CP_REPOS_HOST_PATH/_2 volume
 # mounts, appsettings.json bind mount).
+#
+# postgres (Story 80, added 2026-07-23): CHAD's own PostgreSQL datastore
+# (cp_items/cp_history/cp_outbox_*), the eventual replacement primary for
+# chad-mongodb. Added here — the SHARED compose file — rather than to
+# either docker-compose.qnap.test.yml or .prod.yml, per the user's explicit
+# direction mid-Story: this Postgres instance is meant to hold ONE shared
+# set of data for both TEST and PROD, exactly like chad-mongodb today, not
+# a TEST-only sandbox. Neither TEST's nor PROD's dashboard has its
+# DBA_PRIMARY_BACKEND flipped to "postgres" yet — this only adds the
+# container so a future cutover Story can migrate real data into it and
+# flip both environments together (a TEST-only flip would split TEST/PROD
+# into two diverging sources of truth; flipping PROD is a PROD deploy —
+# both out of scope here). See backlog/stories/80/ for the full rationale.
 services:
   # Idempotent — if the keyfile already exists on the persistent volume,
   # leaves it untouched (never rotates a key under a running replica set,
@@ -182,29 +209,106 @@ services:
       - "admin"
       - "/mongo-rs-init.js"
 
-  # cp_items change-stream consumer -> cp_history (Story 74).
-  # Independent process: crash/restart never stops monitoring history or
-  # takes the Dashboard down. Requires MongoDB replica set rs0 (enabled
-  # above for Change Streams). Resume token + status persisted in
-  # cp_history_state collection — survives process restart.
-  history-worker:
-    build:
-      context: .
-      dockerfile: packages/history-worker/Dockerfile
-      target: runner
-    container_name: chad-history-worker
+  # Every beeper_<repoGuid> database (Story 73/76). Physically split from
+  # chad-mongodb (2026-07-22) — deliberately standalone: NO --replSet, NO
+  # keyfile, NO Change Streams, ever. This was an explicit user decision
+  # (not a default/oversight) accepting the one named tradeoff: beeper-crm.ts's
+  # live-update SSE endpoint degrades from instant (change-stream push) to
+  # 5s polling — already implemented as poll-only in beeper-crm.ts, so this
+  # container never needs to satisfy a change-stream consumer. Durability
+  # comes from periodic mongodump instead (bash-scripts/mongo/backup.sh,
+  # this file's own header comment). Separate credentials from chad-mongodb
+  # on purpose (least privilege — a compromised Beeper container credential
+  # must not also grant access to cp_items).
+  beeper-mongodb:
+    image: mongo:4.4
+    container_name: beeper-mongodb
     restart: unless-stopped
-    depends_on:
-      mongodb:
-        condition: service_healthy
+    command: ["mongod", "--bind_ip_all"]
+    # Host port 12041 published — same reasoning as chad-mongodb's 12040
+    # (QNAP port convention reserves 12020-29/12030-39 for TEST/PROD;
+    # 12040 is chad-mongodb's own diagnostic port, 12041 is the next free
+    # slot, not a random pick). Reachable over Tailscale the same way:
+    # mongodb://<user>:<pass>@100.117.139.83:12041/?authSource=admin
+    # (no directConnection=true needed — standalone, no replica-set
+    # topology to discover).
+    ports:
+      - "12041:27017"
     environment:
-      - NODE_ENV=production
-      - MONGODB_URI=mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@chad-mongodb:27017/chad?authSource=admin
+      MONGO_INITDB_ROOT_USERNAME: "${BEEPER_MONGO_ROOT_USERNAME}"
+      MONGO_INITDB_ROOT_PASSWORD: "${BEEPER_MONGO_ROOT_PASSWORD}"
+    volumes:
+      - "${QNAP_CONTAINER_DATA_PATH:-/share/ContainerData}/chad-shared/beeper-mongodb/db:/data/db"
+      - "${QNAP_CONTAINER_DATA_PATH:-/share/ContainerData}/chad-shared/beeper-mongodb/configdb:/data/configdb"
+      - "${QNAP_CONTAINER_DATA_PATH:-/share/ContainerData}/chad-shared/beeper-mongodb/backups:/backups"
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
+    healthcheck:
+      # "mongo" (legacy shell), not "mongosh" — same reason as
+      # chad-mongodb's healthcheck above (mongo:4.4 doesn't bundle mongosh).
+      test:
+        [
+          "CMD",
+          "mongo",
+          "--quiet",
+          "--eval",
+          "db.adminCommand({ ping: 1 })",
+          "-u",
+          "${BEEPER_MONGO_ROOT_USERNAME}",
+          "-p",
+          "${BEEPER_MONGO_ROOT_PASSWORD}",
+          "--authenticationDatabase",
+          "admin",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  # PostgreSQL 17 — see the file-header comment above for why this lives
+  # here (shared) and not in docker-compose.qnap.{test,prod}.yml. Separate
+  # credentials from both Mongo instances (least privilege), own persistent
+  # bind mount, never touches chad-mongodb/beeper-mongodb's data/volumes.
+  postgres:
+    image: postgres:17
+    container_name: chad-postgres
+    restart: unless-stopped
+    # Host port 12042 published over Tailscale — next free diagnostic slot
+    # past chad-mongodb's 12040 and beeper-mongodb's 12041 (same QNAP port
+    # convention: 12020-29 TEST, 12030-39 PROD, 12040+ shared-service
+    # diagnostic ports), not a random pick.
+    ports:
+      - "12042:5432"
+    environment:
+      POSTGRES_USER: "${POSTGRES_USER:-chad}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
+      POSTGRES_DB: "${POSTGRES_DB:-chad}"
+    volumes:
+      - "${QNAP_CONTAINER_DATA_PATH:-/share/ContainerData}/chad-shared/postgres/db:/var/lib/postgresql/data"
+      - "${QNAP_CONTAINER_DATA_PATH:-/share/ContainerData}/chad-shared/postgres/backups:/backups"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-chad} -d ${POSTGRES_DB:-chad}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  # history-worker (Story 74/78's Change-Stream consumer -> cp_history) is
+  # retired as of Story 79 — cp_history is now written transactionally by
+  # the Dashboard's own dba layer (executeCpMutationWithHistory), inside the
+  # same MongoDB transaction as the cp_items write itself, instead of by a
+  # separate async process reading the oplog after the fact. See
+  # ai-docs/history/how-it-works.md. rs0 (enabled above) stays — MongoDB
+  # still requires a replica set for the multi-document transactions Story
+  # 79 uses, even though Change Streams are no longer the mechanism.
 
 networks:
   default:

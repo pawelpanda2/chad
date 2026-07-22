@@ -138,6 +138,16 @@ require_shared_services_healthy() {
     return 1
   fi
 
+  # beeper-mongodb (Story 76, 2026-07-22 physical split) — separate
+  # standalone container, same preflight treatment as chad-mongodb above.
+  local beeper_mongo_state
+  beeper_mongo_state="$(docker inspect -f '{{.State.Health.Status}}' beeper-mongodb 2>/dev/null || true)"
+  if [ "$beeper_mongo_state" != "healthy" ]; then
+    log_error "Shared beeper-mongodb container is not running/healthy (state: ${beeper_mongo_state:-not found})."
+    log_error "  Fix: bash bash-scripts/dashboard/00_qnap_shared/03_re-start.sh"
+    return 1
+  fi
+
   return 0
 }
 

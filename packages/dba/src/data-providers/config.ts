@@ -15,6 +15,8 @@ import type { DataBackendName } from "./types.js";
 export interface DbaDataProvidersConfig {
   mongoEnabled: boolean;
   contentProviderEnabled: boolean;
+  /** Story 80 — CHAD's PostgreSQL datastore. Off by default until a repo has actually cut over. */
+  postgresEnabled: boolean;
   primaryBackend: DataBackendName;
   followerWritesEnabled: boolean;
   /** Always true in this Story — kept as an explicit field per Story 72 §4's shape, not a live toggle. */
@@ -32,10 +34,10 @@ function readBool(name: string, defaultValue: boolean): boolean {
 
 function readBackendName(name: string, defaultValue: DataBackendName): DataBackendName {
   const raw = process.env[name];
-  if (raw === "mongo" || raw === "content-provider") return raw;
+  if (raw === "mongo" || raw === "content-provider" || raw === "postgres") return raw;
   if (raw !== undefined && raw !== "") {
     throw new Error(
-      `${name} must be "mongo" or "content-provider", got: "${raw}"`
+      `${name} must be "mongo", "content-provider" or "postgres", got: "${raw}"`
     );
   }
   return defaultValue;
@@ -43,12 +45,16 @@ function readBackendName(name: string, defaultValue: DataBackendName): DataBacke
 
 /**
  * Reads the current configuration from env vars. Defaults match Story 72
- * §4's "first stage" values (Mongo primary, CP follower, shadow reads on).
+ * §4's "first stage" values (Mongo primary, CP follower, shadow reads on) —
+ * Story 80 adds `postgres` as an alternative primary, opt-in via
+ * `DBA_PRIMARY_BACKEND=postgres` + `DBA_POSTGRES_ENABLED=true`, never a
+ * silent default change to any existing deployment.
  */
 export function loadDataProvidersConfig(): DbaDataProvidersConfig {
   const config: DbaDataProvidersConfig = {
     mongoEnabled: readBool("DBA_MONGO_ENABLED", true),
     contentProviderEnabled: readBool("DBA_CONTENT_PROVIDER_ENABLED", true),
+    postgresEnabled: readBool("DBA_POSTGRES_ENABLED", false),
     primaryBackend: readBackendName("DBA_PRIMARY_BACKEND", "mongo"),
     followerWritesEnabled: readBool("DBA_FOLLOWER_WRITES_ENABLED", true),
     followerWritesAsync: true,
@@ -64,9 +70,9 @@ export function loadDataProvidersConfig(): DbaDataProvidersConfig {
  * (Story 72 §4 — "Nie pozwól uruchomić systemu bez aktywnego primary").
  */
 export function validateDataProvidersConfig(config: DbaDataProvidersConfig): void {
-  if (!config.mongoEnabled && !config.contentProviderEnabled) {
+  if (!config.mongoEnabled && !config.contentProviderEnabled && !config.postgresEnabled) {
     throw new Error(
-      "Invalid data providers config: at least one of mongoEnabled/contentProviderEnabled must be true."
+      "Invalid data providers config: at least one of mongoEnabled/contentProviderEnabled/postgresEnabled must be true."
     );
   }
 
@@ -83,13 +89,29 @@ export function validateDataProvidersConfig(config: DbaDataProvidersConfig): voi
         "contentProviderEnabled is false. The primary backend must always be enabled."
     );
   }
+
+  if (config.primaryBackend === "postgres" && !config.postgresEnabled) {
+    throw new Error(
+      "Invalid data providers config: primaryBackend is \"postgres\" but " +
+        "postgresEnabled is false. The primary backend must always be enabled."
+    );
+  }
 }
 
-/** The follower is whichever enabled backend isn't the primary, if any. */
+/**
+ * The follower is whichever enabled backend isn't the primary, if any.
+ * Story 80: `postgres` never acts as a follower (it's the migration target,
+ * not a shadow-mirror participant) — when it's primary, the only possible
+ * follower is `content-provider`, same as when `mongo` is primary. This
+ * also means Postgres and Mongo are never simultaneously primary+follower
+ * of each other (Story 80 §18 — "Nie utrzymuj dwóch primary"); moving data
+ * between them is the explicit, one-off migrator script, never the
+ * follower/outbox mechanism.
+ */
 export function resolveFollowerBackendName(
   config: DbaDataProvidersConfig
 ): DataBackendName | null {
-  if (config.primaryBackend === "mongo") {
+  if (config.primaryBackend === "mongo" || config.primaryBackend === "postgres") {
     return config.contentProviderEnabled ? "content-provider" : null;
   }
   return config.mongoEnabled ? "mongo" : null;

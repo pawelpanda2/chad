@@ -1,7 +1,7 @@
 # Story 76 — Todos
 
-Planning phase complete (`02_plan.md`, `03_knowledge.md`). Nothing
-implemented yet — waiting on the user to read the plan, in particular:
+Real migration + TEST deployment done (2026-07-22, see
+`05_tasks_and_checklist.md`). Remaining open items:
 
 - §3: **DECIDED by the user (2026-07-22), implemented same session.** No
   replica set for `beeper-mongodb`, ever — Change Streams ruled out
@@ -20,10 +20,12 @@ implemented yet — waiting on the user to read the plan, in particular:
   keep-as-plain-`.mjs` for relocating `history-worker` into the Dashboard
   process. (Resource footprint is no longer a factor either way — see next
   item.)
-- §6: separate vs. shared Mongo credentials for the new `beeper-mongodb`
-  container.
+- §6: **DECIDED, implemented.** Separate credentials
+  (`BEEPER_MONGO_ROOT_USERNAME/PASSWORD`, generated, stored in real
+  `.env.qnap` on QNAP).
 
-Once confirmed, move to `05_tasks_and_checklist.md` for the actual
-implementation, with the same real-data-verification discipline Story 75
-used (real counts before/after every step, never "command exited 0"
-alone) — this Story touches real personal Beeper contact/message data.
+Still open:
+- §4: TypeScript-port vs. keep-as-`.mjs` for `history-worker` — explicitly
+  out of scope for the 2026-07-22 TEST deployment session.
+- PROD cutover — TEST is deployed and verified; PROD deliberately not
+  touched, needs its own explicit go-ahead.

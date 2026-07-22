@@ -13,9 +13,11 @@ import type { DataWriteCommand, DataWriteResult } from "../data-commands.js";
  * `/invoke` HTTP wire API). "file" == `FileCpProvider` (direct filesystem
  * reads/writes against the same repo tree, bypassing the .NET app
  * entirely — currently an empty stub, not yet registered by
- * `getDataRouter()`/`data-providers/config.ts`).
+ * `getDataRouter()`/`data-providers/config.ts`). "postgres" ==
+ * `PostgresCpProvider` (Story 80 — CHAD's PostgreSQL datastore, the
+ * intended eventual replacement primary for "mongo").
  */
-export type DataBackendName = "mongo" | "content-provider" | "file";
+export type DataBackendName = "mongo" | "content-provider" | "file" | "postgres";
 
 /**
  * Two supported lookup keys, matching CP's own two natural ways to find
