@@ -3,7 +3,13 @@
  * Run via: cd packages/dba && npx tsc && node dist/google-sheets/config.test.js
  */
 
-import { loadGoogleSheetsConfig, normalizePrivateKey, parseSpreadsheetMap, resolveSpreadsheetIdForUser } from "./config.js";
+import {
+  loadGoogleSheetsConfig,
+  loadGoogleSheetsInfoConfig,
+  normalizePrivateKey,
+  parseSpreadsheetMap,
+  resolveSpreadsheetIdForUser,
+} from "./config.js";
 
 const ENV_KEYS = [
   "GOOGLE_SHEETS_ENABLED",
@@ -218,6 +224,40 @@ function runTests() {
   test("normalizePrivateKey leaves a key that already has real newlines untouched", () => {
     const real = "line1\nline2\nline3";
     assertEquals(normalizePrivateKey(real), real);
+  });
+
+  // --- loadGoogleSheetsInfoConfig (Story 78) ---
+
+  test("loadGoogleSheetsInfoConfig works with GOOGLE_SHEETS_ENABLED unset/false — the whole point of the split", () => {
+    // Deliberately NOT calling setFullValidEnv() — this is exactly QNAP
+    // TEST's real shape: GOOGLE_SHEETS_ENABLED unset, no private key, just
+    // the map + service account email.
+    process.env.GOOGLE_SHEETS_SPREADSHEET_MAP = '{"test3":"sheet-test3-abc"}';
+    process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL = "svc@example.iam.gserviceaccount.com";
+    const info = loadGoogleSheetsInfoConfig();
+    assertEquals(info.spreadsheetMap, { test3: "sheet-test3-abc" });
+    assertEquals(info.serviceAccountEmail, "svc@example.iam.gserviceaccount.com");
+  });
+
+  test("loadGoogleSheetsInfoConfig never requires or reads GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY", () => {
+    process.env.GOOGLE_SHEETS_SPREADSHEET_MAP = '{"test3":"sheet-test3-abc"}';
+    process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL = "svc@example.iam.gserviceaccount.com";
+    // No GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY set at all — must not throw.
+    const info = loadGoogleSheetsInfoConfig();
+    assert(!("serviceAccountPrivateKey" in info), "GoogleSheetsInfoConfig must not carry a private-key field at all");
+    assertEquals(info.spreadsheetMap.test3, "sheet-test3-abc");
+  });
+
+  test("loadGoogleSheetsInfoConfig returns an empty map (never throws) when the map var is unset", () => {
+    const info = loadGoogleSheetsInfoConfig();
+    assertEquals(info.spreadsheetMap, {});
+    assertEquals(info.serviceAccountEmail, "");
+  });
+
+  test("loadGoogleSheetsInfoConfig returns an empty map (never throws) on malformed JSON, unlike loadGoogleSheetsConfig", () => {
+    process.env.GOOGLE_SHEETS_SPREADSHEET_MAP = "{not valid json";
+    const info = loadGoogleSheetsInfoConfig();
+    assertEquals(info.spreadsheetMap, {}, "a malformed map must degrade to 'nothing configured', never crash the info page");
   });
 
   console.log(`\n${passed} passed, ${failed} failed`);

@@ -21,6 +21,12 @@ bower_components/
 # Build outputs (JS/TS)
 # ============================================
 dist/
+
+# Story 78 — Playwright/Vitest run artifacts (traces/screenshots kept only
+# on failure by test/e2e/playwright.config.mjs; never committed).
+test-results/
+playwright-report/
+.playwright-mcp/
 .next/
 out/
 build/

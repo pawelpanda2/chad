@@ -3,6 +3,7 @@ import * as yaml from 'js-yaml';
 import {
   saveDateEntry,
   updateDateEntry,
+  deleteDateEntry,
   getAllDateEntries,
   generateEntryName,
   runWithRepoContext,
@@ -208,6 +209,40 @@ export async function PATCH(request: Request) {
       await updateDateEntry(loca, bodyYaml);
     });
 
+    return NextResponse.json({ success: true, loca });
+  } catch (error) {
+    return NextResponse.json(
+      { success: false, error: error instanceof Error ? error.message : "Unknown error" },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * DELETE /api/forms/date-entry?loca=<loca>
+ *
+ * Permanently removes a Date Entry — real deletion, only available on the
+ * Mongo backend (see deleteDateEntry's own doc comment in packages/dba).
+ * Story 78 — before this, Dates had no real delete endpoint at all; the
+ * UI's own "Delete" button could only PATCH-blank a record's fields via
+ * the PATCH handler above, which is a data-integrity gap this endpoint
+ * fixes, not a redesign of PATCH itself (still used for normal edits).
+ */
+export async function DELETE(request: Request) {
+  const user = await getCurrentUserFromCookies();
+  if (!user) {
+    return NextResponse.json({ success: false, error: "Not authenticated" }, { status: 401 });
+  }
+
+  const loca = new URL(request.url).searchParams.get("loca");
+  if (!loca) {
+    return NextResponse.json({ success: false, error: "Missing loca" }, { status: 400 });
+  }
+
+  try {
+    await runWithRepoContext(user, async () => {
+      await deleteDateEntry(loca);
+    });
     return NextResponse.json({ success: true, loca });
   } catch (error) {
     return NextResponse.json(

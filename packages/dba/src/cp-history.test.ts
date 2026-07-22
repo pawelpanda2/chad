@@ -23,6 +23,7 @@ import {
   listDailyTrackerHistory,
   resolveDateEntriesAddressPrefix,
   listDateEntriesHistory,
+  getCpHistoryWorkerStatus,
   type CpHistoryConfigOp,
 } from "./cp-history.js";
 import { buildCreateChildItemCommand } from "./data-commands.js";
@@ -42,6 +43,8 @@ interface HistoryTestDoc {
   address: string;
   operationType: string;
   changedAt: Date;
+  orderSeconds?: number;
+  orderIncrement?: number;
   actor: { username: string; repoGuid: string } | null;
   beforeUnknown: boolean;
   changes: { config: CpHistoryConfigOp[]; body: null };
@@ -59,12 +62,14 @@ function makeHistoryDoc(overrides: {
   address: string;
   operationType?: string;
   changedAt?: Date;
+  orderSeconds?: number;
+  orderIncrement?: number;
   actor?: { username: string; repoGuid: string } | null;
 }): HistoryTestDoc {
   const configOps: CpHistoryConfigOp[] = [
     { op: "add", path: "/name", oldValue: null, newValue: "x" },
   ];
-  return {
+  const doc: HistoryTestDoc = {
     _id: overrides.id,
     sourceCollection: "cp_items",
     sourceId: overrides.id,
@@ -75,6 +80,9 @@ function makeHistoryDoc(overrides: {
     beforeUnknown: true,
     changes: { config: configOps, body: null },
   };
+  if (overrides.orderSeconds !== undefined) doc.orderSeconds = overrides.orderSeconds;
+  if (overrides.orderIncrement !== undefined) doc.orderIncrement = overrides.orderIncrement;
+  return doc;
 }
 
 async function runTests() {
@@ -320,6 +328,60 @@ async function runTests() {
     const result = await listDateEntriesHistory({ repoGuid: REPO_B });
     assertEquals(result.items, []);
     assertEquals(result.total, 0);
+  });
+
+  await test("listCpHistory sorts by orderSeconds/orderIncrement, not changedAt alone (Story 78)", async () => {
+    // Deliberately give all four docs the SAME changedAt (same wall-clock
+    // second) — only orderSeconds/orderIncrement can distinguish them.
+    // Insertion order here is intentionally scrambled so a pass would only
+    // happen if the sort key actually works, not by accident of Mongo's
+    // natural insertion order.
+    await db.collection<HistoryTestDoc>(HISTORY_COLLECTION).deleteMany({});
+    const sameSecond = new Date("2026-01-01T00:00:00.000Z");
+    await db.collection<HistoryTestDoc>(HISTORY_COLLECTION).insertMany([
+      makeHistoryDoc({ id: "o-delete", address: `${REPO_A}/09`, operationType: "delete", changedAt: sameSecond, orderSeconds: 2000, orderIncrement: 4 }),
+      makeHistoryDoc({ id: "o-insert", address: `${REPO_A}/09`, operationType: "insert", changedAt: sameSecond, orderSeconds: 2000, orderIncrement: 1 }),
+      makeHistoryDoc({ id: "o-update2", address: `${REPO_A}/09`, operationType: "update", changedAt: sameSecond, orderSeconds: 2000, orderIncrement: 3 }),
+      makeHistoryDoc({ id: "o-update1", address: `${REPO_A}/09`, operationType: "update", changedAt: sameSecond, orderSeconds: 2000, orderIncrement: 2 }),
+    ]);
+    const result = await listCpHistory({ repoGuid: REPO_A, addressPrefix: `${REPO_A}/09` });
+    assertEquals(
+      result.items.map((i) => i.id),
+      ["o-delete", "o-update2", "o-update1", "o-insert"],
+      "newest-first order must follow orderIncrement, not insertion/document order"
+    );
+  });
+
+  await test("listCpHistory places pre-Story-78 docs (no orderSeconds/orderIncrement) after every doc that has it", async () => {
+    await db.collection<HistoryTestDoc>(HISTORY_COLLECTION).deleteMany({});
+    const now = new Date();
+    await db.collection<HistoryTestDoc>(HISTORY_COLLECTION).insertMany([
+      makeHistoryDoc({ id: "legacy", address: `${REPO_A}/10`, changedAt: new Date(now.getTime() - 60_000) }), // no orderSeconds/orderIncrement
+      makeHistoryDoc({ id: "modern", address: `${REPO_A}/10`, changedAt: new Date(now.getTime() - 120_000), orderSeconds: 1, orderIncrement: 1 }),
+    ]);
+    const result = await listCpHistory({ repoGuid: REPO_A, addressPrefix: `${REPO_A}/10` });
+    assertEquals(result.items.map((i) => i.id), ["modern", "legacy"]);
+  });
+
+  await test("getCpHistoryWorkerStatus reads the global cp_history_state singleton", async () => {
+    await db.collection<{ _id: string }>("cp_history_state").updateOne(
+      { _id: "cp_history_worker" },
+      {
+        $set: {
+          status: "running",
+          watchStatus: "ready",
+          watchOpenedAt: new Date(),
+          lastHeartbeatAt: new Date(),
+          lastEventAt: new Date(),
+        },
+      },
+      { upsert: true }
+    );
+    const status = await getCpHistoryWorkerStatus();
+    assert(status !== null, "status document should exist after upsert");
+    assertEquals(status!.status, "running");
+    assertEquals(status!.watchStatus, "ready");
+    assert(status!.watchOpenedAt !== null, "watchOpenedAt should be present");
   });
 
   console.log(`\n${passed} passed, ${failed} failed`);

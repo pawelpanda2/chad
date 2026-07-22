@@ -28,12 +28,13 @@ import { Plus, X, CheckCircle2, AlertCircle } from "lucide-react";
 
 const MIN_SAVE_INDICATOR_MS = 450;
 
-// Content Provider has no working delete anywhere in this app (confirmed
-// empty stub — see backlog/stories/62's Task 9/28 write-ups), so "Clear"
-// blanks the entry's fields via the same real PATCH path instead of
-// removing the row. One of these is picked at random each time the
-// confirmation dialog opens, so the user must actually read and retype
-// it rather than muscle-memory a fixed word (Story 62 Round 8).
+// Both Daily Entry and Date Entry now have a real, permanent Mongo delete
+// (deleteDailyEntry/deleteDateEntry in packages/dba — the Content
+// Provider's own Delete is still a confirmed empty stub, but that backend
+// is no longer in the delete path for either form, see each function's own
+// doc comment). One of these words is picked at random each time the
+// confirmation dialog opens, so the user must actually read and retype it
+// rather than muscle-memory a fixed word (Story 62 Round 8).
 const CLEAR_CONFIRM_WORDS = ["DELETE", "CONFIRM", "CLEAR", "WYCZYSC", "USUN", "PERMANENT"];
 
 const APPROACH_KINDS = [
@@ -431,46 +432,26 @@ function FormsPageContent() {
     jakosc: "",
   });
 
-  // Daily Entries: real deletion (DELETE /api/forms/daily-entry), now that
-  // the Mongo backend supports it. Date Entries still use the old
-  // "blank the fields in place" workaround via PATCH — the Content Provider
-  // path (still relevant for Date Entries) has no working delete (confirmed
-  // empty stub — see backlog/stories/62's Task 9/28 write-ups), and Date
-  // Entries weren't part of this fix's scope. One of CLEAR_CONFIRM_WORDS is
-  // picked at random each time the confirmation dialog opens, so the user
-  // must actually read and retype it rather than muscle-memory a fixed word
+  // Real deletion for both Daily Entries (DELETE /api/forms/daily-entry)
+  // and Date Entries (DELETE /api/forms/date-entry, Story 78 — before this,
+  // Dates had no real delete and this button only PATCH-blanked the
+  // entry's fields, leaving an empty row behind; see deleteDateEntry's own
+  // doc comment in packages/dba). One of CLEAR_CONFIRM_WORDS is picked at
+  // random each time the confirmation dialog opens, so the user must
+  // actually read and retype it rather than muscle-memory a fixed word
   // (Story 62 Round 8).
   const handleClearEntry = useCallback(async () => {
     if (!editLoca || clearConfirmInput.trim() !== clearConfirmWord) return;
     setClearing(true);
     try {
       const isDateForm = selectedForm === "date_entry";
-      if (isDateForm) {
-        const blankFields = {
-          "DATA": dateEntryData.data,
-          "ŹRÓDŁO": "",
-          "NAZWA": "",
-          "LINK": "",
-          "PULL": "FALSE",
-          "CLOSE": "NIE",
-          "JAKOŚĆ": "",
-        };
-        const response = await fetch("/api/forms/date-entry", {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ loca: editLoca, fields: blankFields }),
-        });
-        const result = await response.json();
-        if (!result.success) throw new Error(result.error || "Unknown error");
-        toast.success("Entry cleared");
-      } else {
-        const response = await fetch(`/api/forms/daily-entry?loca=${encodeURIComponent(editLoca)}`, {
-          method: "DELETE",
-        });
-        const result = await response.json();
-        if (!result.success) throw new Error(result.error || "Unknown error");
-        toast.success("Entry deleted");
-      }
+      const endpoint = isDateForm ? "/api/forms/date-entry" : "/api/forms/daily-entry";
+      const response = await fetch(`${endpoint}?loca=${encodeURIComponent(editLoca)}`, {
+        method: "DELETE",
+      });
+      const result = await response.json();
+      if (!result.success) throw new Error(result.error || "Unknown error");
+      toast.success("Entry deleted");
       setClearDialogOpen(false);
       router.push(isDateForm ? "/dashboard/views?view=dates" : "/dashboard/views?view=tracker");
     } catch (error) {
@@ -478,7 +459,7 @@ function FormsPageContent() {
     } finally {
       setClearing(false);
     }
-  }, [editLoca, clearConfirmInput, clearConfirmWord, selectedForm, dateEntryData.data, router]);
+  }, [editLoca, clearConfirmInput, clearConfirmWord, selectedForm, router]);
 
   // Contacts state
   const [contacts, setContacts] = useState<ContactLine[]>([]);
@@ -1273,7 +1254,7 @@ function FormsPageContent() {
                       variant="destructive"
                       disabled={dateEntryStillLoading}
                       onClick={openClearDialog}
-                      title="Content Provider has no working delete — this blanks the entry's fields instead of removing the row"
+                      title="Permanently deletes this Date Entry"
                     >
                       Delete
                     </Button>
@@ -1389,15 +1370,13 @@ function FormsPageContent() {
             </form>
 
             {/* Delete confirmation — same shared flow as ADD DAILY ENTRY's
-                edit mode (Story 62 Round 8). */}
+                edit mode (Story 62 Round 8; real delete since Story 78). */}
             <Dialog open={clearDialogOpen} onOpenChange={(open) => !clearing && setClearDialogOpen(open)}>
               <DialogContent>
                 <DialogHeader>
                   <DialogTitle>Delete this entry?</DialogTitle>
                   <DialogDescription>
-                    Content Provider has no working delete, so this blanks every field on this
-                    Date Entry instead — the row itself stays in the table, empty. This can&apos;t
-                    be undone from here.
+                    This permanently removes this Date Entry. This can&apos;t be undone.
                   </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-2">

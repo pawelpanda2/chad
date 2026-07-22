@@ -1617,6 +1617,46 @@ export async function deleteDailyEntry(loca: string): Promise<void> {
   );
 }
 
+/**
+ * Permanently removes a Date Entry, identified by its real `loca` — mirrors
+ * `deleteDailyEntry` exactly (Story 78; before this, Date Entry had no
+ * delete at all, and the "Delete" button in the UI could only PATCH-blank
+ * a record's fields, leaving an empty row behind — see
+ * `human-docs/dashboard/forms/features/daily-tracker-dates.md` and
+ * `ai-docs/google-sheets/architecture.md` §9's own note on this gap). Same
+ * Mongo-only constraint as `deleteDailyEntry`: the .NET Content Provider's
+ * own `Delete` is a permanent no-op stub, so this throws (never a pretend
+ * success) when only that backend is active — per
+ * `ai-docs/begin_here/05_endpoint-rules.md` §3.
+ */
+export async function deleteDateEntry(loca: string): Promise<void> {
+  const config = loadDataProvidersConfig();
+  if (config.mongoEnabled) {
+    const repoGuid = getCurrentRepoGuid();
+    const address = loca ? `${repoGuid}/${loca}` : repoGuid;
+    const mongo = getMongoProvider();
+    const deleted = await mongo.deleteItem(address);
+    if (!deleted) {
+      throw new Error(`Could not find date entry at loca "${loca}" to delete (Mongo)`);
+    }
+    // Google Sheets follower (Story 75/78) — marks the row CHAD_SYNC_STATUS =
+    // DELETED in place, same convention as deleteDailyEntry above. Only
+    // after the real Mongo delete above succeeded.
+    await queueDateEntrySheetSyncIfEnabled({
+      repoGuid,
+      username: getCurrentUsername(),
+      loca,
+      itemName: "",
+      fields: {},
+      kind: "delete",
+    });
+    return;
+  }
+  throw new Error(
+    "Date entry deletion requires the Mongo backend — the Content Provider's own Delete is a non-functional stub."
+  );
+}
+
 async function updateDailyEntryContentProvider(loca: string, bodyYaml: string): Promise<void> {
   const repoGuid = getCurrentRepoGuid();
 

@@ -207,7 +207,8 @@ function GoogleSheetsViewContent() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<{
-    enabled: boolean;
+    infoConfigured: boolean;
+    syncWritesEnabled: boolean;
     chadUsername?: string;
     spreadsheetId?: string | null;
     spreadsheetUrl?: string | null;
@@ -239,14 +240,22 @@ function GoogleSheetsViewContent() {
 
       {error && <ErrorBox message={error} />}
 
-      {!isLoading && data && !data.enabled && (
+      {!isLoading && data && !data.infoConfigured && (
         <div className="text-sm text-muted-foreground py-4">
-          Google Sheets sync is not enabled on this environment.
+          Google Sheets is not configured on this environment (no
+          GOOGLE_SHEETS_SPREADSHEET_MAP set).
         </div>
       )}
 
-      {!isLoading && data && data.enabled && (
+      {!isLoading && data && data.infoConfigured && (
         <>
+          {!data.syncWritesEnabled && (
+            <div className="text-xs text-amber-700 bg-amber-50 dark:bg-amber-950/30 rounded-md px-3 py-2">
+              Sync writes are disabled on this environment — this page shows
+              your spreadsheet link/info only; saves here do not sync to
+              Google.
+            </div>
+          )}
           {/* Header card: CHAD username + link to their spreadsheet, same layout as leads/details' Lead Header Card */}
           <Card className="gap-0 py-0">
             <CardContent className="px-[14px] py-[12px]">
