@@ -21,6 +21,8 @@ import {
   getCpHistoryEntry,
   resolveDailyTrackerAddressPrefix,
   listDailyTrackerHistory,
+  resolveDateEntriesAddressPrefix,
+  listDateEntriesHistory,
   type CpHistoryConfigOp,
 } from "./cp-history.js";
 import { buildCreateChildItemCommand } from "./data-commands.js";
@@ -269,6 +271,53 @@ async function runTests() {
 
   await test("listDailyTrackerHistory returns empty (not an error) for a repo with no Daily Tracker yet", async () => {
     const result = await listDailyTrackerHistory({ repoGuid: REPO_B });
+    assertEquals(result.items, []);
+    assertEquals(result.total, 0);
+  });
+
+  await test("resolveDateEntriesAddressPrefix returns null when the repo has no Dates folder yet", async () => {
+    const prefix = await resolveDateEntriesAddressPrefix(REPO_B);
+    assertEquals(prefix, null);
+  });
+
+  await test("resolveDateEntriesAddressPrefix resolves the real views/dates folder address once it exists", async () => {
+    const mongo = getMongoProvider();
+    const views = await mongo.getByNames({ repoGuid: REPO_A, names: ["views"] });
+    assert(views !== null, "precondition: views folder must exist (created by the Daily Tracker test above)");
+
+    const datesCmd = buildCreateChildItemCommand(
+      {
+        parentItemId: views!._id,
+        parentAddress: views!.config.address,
+        name: "dates",
+        type: "Folder",
+      },
+      systemClock
+    );
+    const datesResult = await mongo.executeWrite(datesCmd);
+
+    const prefix = await resolveDateEntriesAddressPrefix(REPO_A);
+    assertEquals(prefix, datesResult.item.config.address);
+  });
+
+  await test("listDateEntriesHistory only returns entries under the resolved Dates address, never Daily Tracker's", async () => {
+    const datesPrefix = await resolveDateEntriesAddressPrefix(REPO_A);
+    const dailyPrefix = await resolveDailyTrackerAddressPrefix(REPO_A);
+    assert(datesPrefix !== null && dailyPrefix !== null, "precondition: both folders must exist (previous tests)");
+
+    await db.collection<HistoryTestDoc>(HISTORY_COLLECTION).deleteMany({});
+    await db.collection<HistoryTestDoc>(HISTORY_COLLECTION).insertMany([
+      makeHistoryDoc({ id: "de1", address: `${datesPrefix}/01` }),
+      makeHistoryDoc({ id: "de2", address: `${dailyPrefix}/01` }),
+    ]);
+
+    const result = await listDateEntriesHistory({ repoGuid: REPO_A });
+    assertEquals(result.items.length, 1);
+    assertEquals(result.items[0].id, "de1");
+  });
+
+  await test("listDateEntriesHistory returns empty (not an error) for a repo with no Dates folder yet", async () => {
+    const result = await listDateEntriesHistory({ repoGuid: REPO_B });
     assertEquals(result.items, []);
     assertEquals(result.total, 0);
   });

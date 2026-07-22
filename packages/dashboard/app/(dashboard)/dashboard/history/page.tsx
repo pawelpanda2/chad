@@ -17,10 +17,11 @@ import {
   ArrowRight,
   ChevronDown,
   ChevronUp,
+  ExternalLink,
 } from "lucide-react";
 import { toast } from "sonner";
 
-type HistoryView = "items" | "daily-tracker" | null;
+type HistoryView = "items" | "google-sheets" | "daily-tracker" | "dates" | null;
 
 interface HistoryItem {
   id: string;
@@ -83,7 +84,15 @@ export default function HistoryPage() {
 
   const viewParam = searchParams.get("view");
   const selectedView: HistoryView =
-    viewParam === "daily-tracker" ? "daily-tracker" : viewParam === "items" ? "items" : null;
+    viewParam === "daily-tracker"
+      ? "daily-tracker"
+      : viewParam === "dates"
+        ? "dates"
+        : viewParam === "google-sheets"
+          ? "google-sheets"
+          : viewParam === "items"
+            ? "items"
+            : null;
 
   if (!selectedView) {
     return <HistoryMenuPage />;
@@ -93,10 +102,14 @@ export default function HistoryPage() {
     return (
       <HistoryListContent
         apiUrl="/api/content-provider/history"
-        title="Items History"
+        title="All Items History"
         emptyLabel="items-history"
       />
     );
+  }
+
+  if (selectedView === "google-sheets") {
+    return <GoogleSheetsViewContent />;
   }
 
   if (selectedView === "daily-tracker") {
@@ -105,6 +118,16 @@ export default function HistoryPage() {
         apiUrl="/api/content-provider/daily-history"
         title="Daily Tracker History"
         emptyLabel="daily-tracker-history"
+      />
+    );
+  }
+
+  if (selectedView === "dates") {
+    return (
+      <HistoryListContent
+        apiUrl="/api/content-provider/dates-history"
+        title="Dates History"
+        emptyLabel="dates-history"
       />
     );
   }
@@ -124,6 +147,9 @@ function HistoryMenuPage() {
       {/*
         Same 4-column grid pattern as Views' own top-level menu — buttons
         keep their column width top-left instead of stretching/centering.
+        Row 1: general/bookkeeping buttons (all items, Google Sheets link).
+        Row 2 (below a light separator): mirrors Views' own button order
+        (Daily Tracker, Dates) — one history view per Views tab.
       */}
       <div className="grid grid-cols-4 gap-2">
         <button
@@ -131,8 +157,20 @@ function HistoryMenuPage() {
           onClick={() => handleSelectView("items")}
           className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
         >
-          <span className="font-semibold text-sm">ITEMS</span>
+          <span className="font-semibold text-sm">ALL ITEMS</span>
         </button>
+        <button
+          type="button"
+          onClick={() => handleSelectView("google-sheets")}
+          className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
+        >
+          <span className="font-semibold text-sm">GOOGLE SHEETS</span>
+        </button>
+      </div>
+
+      <hr className="border-t my-3" />
+
+      <div className="grid grid-cols-4 gap-2">
         <button
           type="button"
           onClick={() => handleSelectView("daily-tracker")}
@@ -140,7 +178,108 @@ function HistoryMenuPage() {
         >
           <span className="font-semibold text-sm">DAILY TRACKER</span>
         </button>
+        <button
+          type="button"
+          onClick={() => handleSelectView("dates")}
+          className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
+        >
+          <span className="font-semibold text-sm">DATES</span>
+        </button>
       </div>
+    </DashboardPageShell>
+  );
+}
+
+/**
+ * History -> Google Sheets. Shows the current user's own spreadsheet link
+ * (never another user's — resolved server-side from the session, see
+ * /api/google-sheets/info), the service account it's shared with (safe to
+ * show — an email address, not a credential), and, only if configured, the
+ * shared viewing account's login (GOOGLE_SHEETS_VIEWER_ACCOUNT_EMAIL/
+ * PASSWORD env vars — intentionally never set by default, see
+ * .env.local.example).
+ */
+function GoogleSheetsViewContent() {
+  const router = useRouter();
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [data, setData] = useState<{
+    enabled: boolean;
+    spreadsheetId?: string | null;
+    spreadsheetUrl?: string | null;
+    spreadsheetError?: string | null;
+    serviceAccountEmail?: string | null;
+    viewerAccount?: { email: string; password: string } | null;
+  } | null>(null);
+
+  useEffect(() => {
+    fetch("/api/google-sheets/info")
+      .then((res) => res.json())
+      .then((json: { success: boolean; data?: typeof data; error?: string }) => {
+        if (!json.success || !json.data) throw new Error(json.error || "Failed to load Google Sheets info");
+        setData(json.data);
+      })
+      .catch((err) => setError(err instanceof Error ? err.message : "Unknown error"))
+      .finally(() => setIsLoading(false));
+  }, []);
+
+  const handleBack = () => router.push("/dashboard/history");
+
+  return (
+    <DashboardPageShell upLevel={{ onClick: handleBack }} title="Google Sheets">
+      {isLoading && (
+        <div className="flex items-center justify-center py-8">
+          <RefreshCw className="h-5 w-5 animate-spin text-muted-foreground" />
+        </div>
+      )}
+
+      {error && <ErrorBox message={error} />}
+
+      {!isLoading && data && !data.enabled && (
+        <div className="text-sm text-muted-foreground py-4">
+          Google Sheets sync is not enabled on this environment.
+        </div>
+      )}
+
+      {!isLoading && data && data.enabled && (
+        <div className="space-y-4">
+          <div className={cn(LIST_ROW_CLASS, "flex-col items-start gap-2")}>
+            <span className="text-xs font-medium text-muted-foreground">Your spreadsheet</span>
+            {data.spreadsheetUrl ? (
+              <a
+                href={data.spreadsheetUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
+              >
+                {data.spreadsheetUrl}
+                <ExternalLink className="h-3.5 w-3.5" />
+              </a>
+            ) : (
+              <span className="text-sm text-amber-700">{data.spreadsheetError || "No spreadsheet configured for your account."}</span>
+            )}
+          </div>
+
+          {data.serviceAccountEmail && (
+            <div className={cn(LIST_ROW_CLASS, "flex-col items-start gap-2")}>
+              <span className="text-xs font-medium text-muted-foreground">Shared with (service account — edit access, no interactive login)</span>
+              <span className="text-sm font-mono">{data.serviceAccountEmail}</span>
+            </div>
+          )}
+
+          {data.viewerAccount ? (
+            <div className={cn(LIST_ROW_CLASS, "flex-col items-start gap-2")}>
+              <span className="text-xs font-medium text-muted-foreground">Shared viewing account (log in with this to open the sheet in Google Sheets)</span>
+              <span className="text-sm font-mono">Email: {data.viewerAccount.email}</span>
+              <span className="text-sm font-mono">Password: {data.viewerAccount.password}</span>
+            </div>
+          ) : (
+            <div className="text-xs text-muted-foreground">
+              No shared viewing account configured (GOOGLE_SHEETS_VIEWER_ACCOUNT_EMAIL/PASSWORD unset).
+            </div>
+          )}
+        </div>
+      )}
     </DashboardPageShell>
   );
 }
