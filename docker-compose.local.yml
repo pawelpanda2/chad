@@ -99,6 +99,10 @@ services:
       - GOOGLE_SHEETS_DATE_ENTRIES_SHEET_NAME=${GOOGLE_SHEETS_DATE_ENTRIES_SHEET_NAME:-}
       - GOOGLE_SERVICE_ACCOUNT_EMAIL=${GOOGLE_SERVICE_ACCOUNT_EMAIL:-}
       - GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY=${GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY:-}
+      # Optional — shown on History -> Google Sheets so a user can log into
+      # the shared viewing account. Unset = that section just doesn't render.
+      - GOOGLE_SHEETS_VIEWER_ACCOUNT_EMAIL=${GOOGLE_SHEETS_VIEWER_ACCOUNT_EMAIL:-}
+      - GOOGLE_SHEETS_VIEWER_ACCOUNT_PASSWORD=${GOOGLE_SHEETS_VIEWER_ACCOUNT_PASSWORD:-}
     volumes:
       - chad-dashboard-local-mac-docker-data:/app/data
     logging:

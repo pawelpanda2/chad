@@ -181,6 +181,23 @@ async function runTests() {
     assertEquals(processed, 1);
   });
 
+  await test("new records are inserted at the TOP of the data range, newest first — never appended at the bottom (2026-07-22 fix, mirrors cp_history's oplog order)", async () => {
+    await db.collection(GOOGLE_SHEETS_OUTBOX_COLLECTION).deleteMany({});
+    const client = new FakeGoogleSheetsClient();
+    await enqueueGoogleSheetsSync({ operationId: "order-1", kind: "upsert", payload: payload("01", { DATE: "2026-07-01" }) });
+    await drainGoogleSheetsSyncOnce({ client, sheetNames: SHEET_NAMES, workerId: "w1" });
+    await enqueueGoogleSheetsSync({ operationId: "order-2", kind: "upsert", payload: payload("02", { DATE: "2026-07-02" }) });
+    await drainGoogleSheetsSyncOnce({ client, sheetNames: SHEET_NAMES, workerId: "w1" });
+    await enqueueGoogleSheetsSync({ operationId: "order-3", kind: "upsert", payload: payload("03", { DATE: "2026-07-03" }) });
+    await drainGoogleSheetsSyncOnce({ client, sheetNames: SHEET_NAMES, workerId: "w1" });
+
+    const rows = client.getRows(DAILY_TARGET);
+    assertEquals(rows.length, 3);
+    assertEquals(rows[0].CHAD_RECORD_KEY, "repo-A:03", "the most recently created record must be the topmost row");
+    assertEquals(rows[1].CHAD_RECORD_KEY, "repo-A:02");
+    assertEquals(rows[2].CHAD_RECORD_KEY, "repo-A:01", "the first-ever created record must end up at the bottom");
+  });
+
   await test("two different repos with the same loca get two independent rows (isolation)", async () => {
     await db.collection(GOOGLE_SHEETS_OUTBOX_COLLECTION).deleteMany({});
     const client = new FakeGoogleSheetsClient();

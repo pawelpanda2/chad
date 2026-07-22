@@ -72,9 +72,9 @@ async function runTests() {
       runs.map((r) => r.group),
       ["none", "training", "action", "texting", "results"]
     );
-    assertEquals(runs[0], { group: "none", start: 0, end: 1 }, "DATE alone");
-    assertEquals(runs[1], { group: "training", start: 1, end: 7 }, "STATE..FIELD REVIEW");
-    assertEquals(runs[4], { group: "results", start: 16, end: 20 }, "CLOSES AUTO..OUTINGS");
+    assertEquals(runs[0], { group: "none", start: 0, end: 2 }, "N + DATE");
+    assertEquals(runs[1], { group: "training", start: 2, end: 8 }, "STATE..FIELD REVIEW");
+    assertEquals(runs[4], { group: "results", start: 17, end: 21 }, "CLOSES AUTO..OUTINGS");
   });
 
   await test("groupRuns: dates columns are all one 'none' run (Dashboard never renders a group row for Dates)", () => {
@@ -86,13 +86,16 @@ async function runTests() {
   // applyHeaderFormatting
   // ==========================================================================
 
-  await test("applyHeaderFormatting (daily, 2 header rows): includes a merged, labeled updateCells+mergeCells pair per multi-column group, none for the single-column 'none' group", () => {
+  await test("applyHeaderFormatting (daily, 2 header rows): includes a merged, labeled updateCells+mergeCells pair per multi-column group; the 'none' group (N+DATE) merges too but stays unlabeled (blank, matching the Dashboard's own blank leading cell)", () => {
     const requests = applyHeaderFormatting(999, DAILY_ENTRY_DOMAIN_COLUMNS, DAILY_TRACKER_HEADER_ROW_COUNT);
     const merges = requests.filter((r) => "mergeCells" in r);
-    // 4 groups span >1 column (training/action/texting/results) -> 4 merges; "none" (DATE alone) never merges.
-    assertEquals(merges.length, 4);
+    // 4 labeled groups span >1 column (training/action/texting/results) -> 4 labeled merges;
+    // "none" (N+DATE, 2026-07-22: N added, so "none" is no longer single-column) also merges
+    // -> 5 total, but never gets an updateCells label (blank, matching Dashboard's own blank cell).
+    assertEquals(merges.length, 5);
     const updateCells = requests.filter((r) => "updateCells" in r) as any[];
-    const trainingLabel = updateCells.find((r) => r.updateCells.range.startColumnIndex === 1);
+    assertEquals(updateCells.length, 4, "only the 4 non-'none' groups get a label — 'none' stays blank");
+    const trainingLabel = updateCells.find((r) => r.updateCells.range.startColumnIndex === 2);
     assert(trainingLabel.updateCells.rows[0].values[0].userEnteredValue.stringValue === "TRAINING", "group label text must be the uppercased group name");
     assert(trainingLabel.updateCells.range.startRowIndex === 0 && trainingLabel.updateCells.range.endRowIndex === 1, "group label row must be row 0 only");
   });
@@ -107,7 +110,7 @@ async function runTests() {
     const requests = applyHeaderFormatting(999, DAILY_ENTRY_DOMAIN_COLUMNS, DAILY_TRACKER_HEADER_ROW_COUNT) as any[];
     const realHeaderRow = DAILY_TRACKER_HEADER_ROW_COUNT - 1;
     const trainingHeader = requests.find(
-      (r) => r.repeatCell?.range.startRowIndex === realHeaderRow && r.repeatCell.range.startColumnIndex === 1
+      (r) => r.repeatCell?.range.startRowIndex === realHeaderRow && r.repeatCell.range.startColumnIndex === 2
     );
     assertEquals(trainingHeader.repeatCell.cell.userEnteredFormat.backgroundColor, { red: 220 / 255, green: 252 / 255, blue: 231 / 255 });
     assertEquals(trainingHeader.repeatCell.cell.userEnteredFormat.horizontalAlignment, "LEFT", "Dashboard never right-aligns anything, not even inside the header");

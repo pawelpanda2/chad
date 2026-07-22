@@ -1062,65 +1062,37 @@ ${historyStr}`;
 
 // ── Live updates (SSE) ───────────────────────────────────────────────────
 
+/** How often the SSE endpoint pings the client to refetch (client re-fetches full data on every ping — see route.ts). */
+const BEEPER_LIVE_UPDATES_POLL_INTERVAL_MS = 5000;
+
 /**
- * Subscribes to live changes on the Beeper CRM database. Prefers MongoDB
- * change streams (db.watch()), which require a replica set — NOT yet
- * deployed on QNAP (see documentation/beeper/architecture.md). Falls back
- * to a 5s polling ping so the SSE endpoint keeps working (client just
- * refetches on every ping) until the replica set migration lands.
+ * Subscribes to live changes on the Beeper CRM database via polling only —
+ * deliberately never MongoDB change streams (`db.watch()`), even though
+ * `beeper_<repoGuid>` currently happens to live on the same physical
+ * replica-set instance as `chad-mongodb` (Story 74). Story 76 (2026-07-22)
+ * decided `beeper-mongodb` (the target standalone container for all
+ * `beeper_*` data) will deliberately have NO replica set — periodic
+ * `mongodump` backups instead — so change streams must never be a real
+ * dependency here, not even an opportunistic one. Previously this function
+ * DID try `db.watch()` first and only fell back to polling on failure; that
+ * code is gone, not merely unreachable, so there is no latent dependency
+ * left to accidentally reintroduce.
  *
  * Returns an unsubscribe function.
  *
  * Must be called from within a runWithRepoContext(...) callback (same rule
  * as every other function in this file) — reads getCurrentRepoGuid() once,
- * up front, to resolve which user's database to watch. Only needs the repo
+ * up front, to resolve which user's database to poll. Only needs the repo
  * context at this one setup call, not for the lifetime of the subscription.
  */
 export async function subscribeToBeeperChanges(onChange: () => void): Promise<() => void> {
-  const db = await getBeeperMongoDb(getCurrentRepoGuid());
+  // Resolves the repo context once, at setup — kept even though the
+  // returned interval doesn't need `db` itself, so a bad/unmapped repoGuid
+  // still fails fast at subscribe time rather than silently polling nothing.
+  await getBeeperMongoDb(getCurrentRepoGuid());
 
-  let pollInterval: ReturnType<typeof setInterval> | null = null;
-  let closed = false;
-  const startPolling = () => {
-    if (pollInterval || closed) return;
-    pollInterval = setInterval(onChange, 5000);
+  const pollInterval = setInterval(onChange, BEEPER_LIVE_UPDATES_POLL_INTERVAL_MS);
+  return () => {
+    clearInterval(pollInterval);
   };
-
-  try {
-    const stream = db.watch([], { fullDocument: "updateLookup" });
-    stream.on("change", () => onChange());
-    // db.watch() against a standalone (non-replica-set) MongoDB does NOT
-    // throw synchronously here — the driver returns a ChangeStream object
-    // immediately and the "not supported" failure only surfaces later as an
-    // async 'error' event. The try/catch below only ever catches a
-    // synchronous throw, so without this handler the fallback-to-polling
-    // branch was silent dead code on every standalone deployment (found
-    // during Story 59 local runtime verification: SSE never delivered a
-    // single "data: update" over a 17s window with real writes happening
-    // mid-stream, while the poll fallback — once actually reached — worked
-    // correctly).
-    stream.on("error", (err) => {
-      console.warn(
-        "[beeper-crm] change stream failed (standalone MongoDB, not a replica set) — falling back to polling.",
-        err instanceof Error ? err.message : err
-      );
-      stream.close().catch(() => {});
-      startPolling();
-    });
-    return () => {
-      closed = true;
-      stream.close().catch(() => {});
-      if (pollInterval) clearInterval(pollInterval);
-    };
-  } catch (err) {
-    console.warn(
-      "[beeper-crm] db.watch() unavailable (standalone MongoDB, not a replica set) — falling back to polling.",
-      err instanceof Error ? err.message : err
-    );
-    startPolling();
-    return () => {
-      closed = true;
-      if (pollInterval) clearInterval(pollInterval);
-    };
-  }
 }
