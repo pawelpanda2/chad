@@ -68,7 +68,19 @@ if [ "$DBA_MONGO_MODE" = "qnap" ]; then
   BEEPER_MONGODB_URI="mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@${QNAP_TAILSCALE_HOST}:${QNAP_MONGO_PORT}?authSource=admin&directConnection=true"
   export MONGODB_URI BEEPER_MONGODB_URI
   log_info "DBA_MONGO_MODE=qnap — local dashboard will use QNAP's Mongo over Tailscale (${QNAP_TAILSCALE_HOST}:${QNAP_MONGO_PORT})."
-elif [ "$DBA_MONGO_MODE" != "local" ]; then
+elif [ "$DBA_MONGO_MODE" = "local" ]; then
+  # Safety guard (2026-07-22, real incident): GOOGLE_SHEETS_ENABLED in
+  # .env.local is a single flag with no awareness of DBA_MONGO_MODE — left
+  # alone, a normal DBA_MONGO_MODE=local dev session (test/dev data, safe to
+  # wipe/reset) would still run the embedded Google Sheets worker against
+  # that same test data and sync it straight into the REAL, per-user
+  # production spreadsheets. Sheets sync must only ever reflect production
+  # (QNAP) data — forced off here unconditionally whenever DBA_MONGO_MODE is
+  # "local", regardless of what .env.local itself says; only DBA_MONGO_MODE=
+  # qnap (production Mongo) can leave it enabled.
+  export GOOGLE_SHEETS_ENABLED=false
+  log_info "DBA_MONGO_MODE=local — Google Sheets sync forced OFF (would otherwise sync local/test data into the real production spreadsheets)."
+else
   log_error "Invalid DBA_MONGO_MODE=\"$DBA_MONGO_MODE\" in $ENV_FILE — must be \"local\" or \"qnap\"."
   exit 1
 fi

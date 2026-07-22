@@ -188,3 +188,24 @@ export async function listDailyTrackerHistory(
   }
   return listCpHistory({ ...input, addressPrefix });
 }
+
+/**
+ * Same as `resolveDailyTrackerAddressPrefix`, for the Dates ("Date Entry")
+ * folder (`["views", "dates"]` — the exact same logical path `leads.ts`'s
+ * `saveDateEntryMongo`/`getAllDateEntries` already use).
+ */
+export async function resolveDateEntriesAddressPrefix(repoGuid: string): Promise<string | null> {
+  const mongo = getMongoProvider();
+  const folder = await mongo.getByNames({ repoGuid, names: ["views", "dates"] });
+  return folder?.config.address ?? null;
+}
+
+export async function listDateEntriesHistory(
+  input: Omit<ListCpHistoryInput, "addressPrefix">
+): Promise<ListCpHistoryResult> {
+  const addressPrefix = await resolveDateEntriesAddressPrefix(input.repoGuid);
+  if (!addressPrefix) {
+    return { items: [], total: 0, page: input.page ?? 1, pageSize: input.pageSize ?? 50 };
+  }
+  return listCpHistory({ ...input, addressPrefix });
+}
