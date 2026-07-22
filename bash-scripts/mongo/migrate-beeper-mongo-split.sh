@@ -80,13 +80,22 @@ echo ""
 # 2. Per-database collection counts on the SOURCE, captured now so step 5
 #    has something concrete to verify against (never "the command exited
 #    0" alone — same discipline as Story 75's real backfill verification).
-declare -A SOURCE_COUNTS
+#    Stored in a temp file (dbname<TAB>counts per line), not a bash
+#    associative array — QNAP's bash is 3.2 (no `declare -A`, that's a
+#    bash 4.0+ feature; confirmed via `bash --version` on the real host).
+SOURCE_COUNTS_FILE="$(mktemp)"
+trap 'rm -f "$SOURCE_COUNTS_FILE"' EXIT
+
+source_counts_for() {
+  awk -F'\t' -v db="$1" '$1 == db { print $2 }' "$SOURCE_COUNTS_FILE"
+}
+
 while IFS= read -r dbname; do
   [ -z "$dbname" ] && continue
   counts="$(docker exec "$SOURCE_CONTAINER" mongo --quiet "$dbname" \
     -u "$MONGO_ROOT_USERNAME" -p "$MONGO_ROOT_PASSWORD" --authenticationDatabase admin \
     --eval 'db.getCollectionNames().map(c => c + "=" + db.getCollection(c).countDocuments({})).join(",")')"
-  SOURCE_COUNTS["$dbname"]="$counts"
+  printf '%s\t%s\n' "$dbname" "$counts" >> "$SOURCE_COUNTS_FILE"
   echo "  $dbname source counts: ${counts:-(no collections)}"
 done <<< "$DB_LIST_JSON"
 echo ""
@@ -149,10 +158,11 @@ while IFS= read -r dbname; do
   target_counts="$(docker exec "$TARGET_CONTAINER" mongo --quiet "$dbname" \
     -u "$BEEPER_MONGO_ROOT_USERNAME" -p "$BEEPER_MONGO_ROOT_PASSWORD" --authenticationDatabase admin \
     --eval 'db.getCollectionNames().map(c => c + "=" + db.getCollection(c).countDocuments({})).join(",")')"
-  if [ "$target_counts" = "${SOURCE_COUNTS[$dbname]}" ]; then
-    echo "  ✓ $dbname matches (source: ${SOURCE_COUNTS[$dbname]:-none})"
+  source_counts="$(source_counts_for "$dbname")"
+  if [ "$target_counts" = "$source_counts" ]; then
+    echo "  ✓ $dbname matches (source: ${source_counts:-none})"
   else
-    echo "  ✗ $dbname MISMATCH — source: ${SOURCE_COUNTS[$dbname]:-none} / target: ${target_counts:-none}"
+    echo "  ✗ $dbname MISMATCH — source: ${source_counts:-none} / target: ${target_counts:-none}"
     ALL_MATCH=false
   fi
 done <<< "$DB_LIST_JSON"
