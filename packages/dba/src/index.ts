@@ -40,6 +40,24 @@ export * from './data-sync-diagnostics.js';
 export * from './item-ops.js';
 export * from './admin-users.js';
 export * from './cp-history.js';
+// Named (not `export *`) — cp-history/mutate.ts's own CpHistoryActor/
+// CpHistoryDoc types intentionally differ in shape from cp-history.ts's
+// read-side types of the same name (e.g. mutate.ts's is the raw write-side
+// shape); a blanket `export *` here would silently make either name
+// ambiguous/unresolvable through this barrel. Only the migration
+// script/integrity checker (packages/dba/scripts/) need these.
+export {
+  executeCpMutationWithHistory,
+  migrateLegacyCpItem,
+  ensureCpHistoryIndexes,
+  CP_ITEMS_COLLECTION,
+  CP_HISTORY_COLLECTION,
+  HISTORY_SNAPSHOT_INTERVAL,
+  CpItemNotMigratedError,
+  CpItemAlreadyDeletedError,
+  CpHistoryVersionConflictError,
+} from './cp-history/mutate.js';
+export { hashCpState, canonicalCpStateJson } from './cp-history/hash.js';
 export * from './google-sheets/types.js';
 export * from './google-sheets/config.js';
 export * from './google-sheets/mapper.js';

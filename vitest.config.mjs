@@ -9,17 +9,18 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     include: [
-      "packages/history-worker/**/*.test.mjs",
+      "packages/dba/src/cp-history/**/*.test.ts",
       "packages/dba/src/testing/**/*.test.ts",
       "test/**/*.test.{ts,mjs}",
     ],
     exclude: ["**/node_modules/**", "**/dist/**"],
     testTimeout: 30_000,
     hookTimeout: 30_000,
-    // Sequential by default — several of these tests spawn a real
-    // history-worker child process against a shared local Mongo server (a
-    // different scratch database per test file, but the same mongod) and
-    // rely on ordering guarantees that concurrent runs would make flaky.
+    // Sequential by default — several of these tests run real MongoDB
+    // transactions (cp-history/mutate.test.ts, Story 79) against a shared
+    // local Mongo server (a different scratch database per test file, but
+    // the same mongod) and rely on ordering guarantees that concurrent
+    // runs would make flaky.
     fileParallelism: false,
   },
 });

@@ -255,29 +255,14 @@ services:
       retries: 10
       start_period: 20s
 
-  # cp_items change-stream consumer -> cp_history (Story 74).
-  # Independent process: crash/restart never stops monitoring history or
-  # takes the Dashboard down. Requires MongoDB replica set rs0 (enabled
-  # above for Change Streams). Resume token + status persisted in
-  # cp_history_state collection — survives process restart.
-  history-worker:
-    build:
-      context: .
-      dockerfile: packages/history-worker/Dockerfile
-      target: runner
-    container_name: chad-history-worker
-    restart: unless-stopped
-    depends_on:
-      mongodb:
-        condition: service_healthy
-    environment:
-      - NODE_ENV=production
-      - MONGODB_URI=mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@chad-mongodb:27017/chad?authSource=admin
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
+  # history-worker (Story 74/78's Change-Stream consumer -> cp_history) is
+  # retired as of Story 79 — cp_history is now written transactionally by
+  # the Dashboard's own dba layer (executeCpMutationWithHistory), inside the
+  # same MongoDB transaction as the cp_items write itself, instead of by a
+  # separate async process reading the oplog after the fact. See
+  # ai-docs/history/how-it-works.md. rs0 (enabled above) stays — MongoDB
+  # still requires a replica set for the multi-document transactions Story
+  # 79 uses, even though Change Streams are no longer the mechanism.
 
 networks:
   default:

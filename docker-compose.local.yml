@@ -118,23 +118,12 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  history-worker:
-    build:
-      context: .
-      dockerfile: packages/history-worker/Dockerfile
-    container_name: chad-history-worker-local-mac-docker
-    restart: unless-stopped
-    depends_on:
-      mongodb:
-        condition: service_healthy
-    environment:
-      - NODE_ENV=production
-      - MONGODB_URI=mongodb://mongodb:27017/chad
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
+  # history-worker (Story 74/78's Change-Stream consumer) is retired as of
+  # Story 79 — cp_history is now written transactionally by the Dashboard's
+  # own dba layer (executeCpMutationWithHistory), alongside every cp_items
+  # write, instead of by a separate async process. See
+  # ai-docs/history/how-it-works.md. rs0 itself stays (still required for
+  # multi-document transactions, not just Change Streams).
 
 volumes:
   chad-mongodb-local-mac-docker-db:
