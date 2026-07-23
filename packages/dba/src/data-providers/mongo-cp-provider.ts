@@ -7,18 +7,24 @@
  * past the parent, mirroring `ReadFolderWorker.ListOfIndexesQNames` on the
  * real Content Provider (see Story 72 `03_knowledge.md`).
  *
- * Standalone MongoDB (no replica set — see `02_plan.md` §1 point 8) means
- * no multi-document transactions. Concurrency safety for "create the next
- * numbered child" instead relies on a single-document atomic counter
+ * Every cp_items mutation (`putItem`/`createChild`/`deleteItem`) goes
+ * through `executeCpMutationWithHistory` (`../cp-history/mutate.ts`,
+ * Story 79) — a single MongoDB multi-document transaction that writes the
+ * cp_items change and its one `cp_history` event together. This requires
+ * the single-node replica set (`rs0`) Story 74 already introduced for
+ * Change Streams; Story 79 repurposes that same replica set for
+ * transactions instead (Change Streams/`history-worker` are retired — see
+ * `ai-docs/history/how-it-works.md`). Concurrency safety for "create the
+ * next numbered child" still relies on the single-document atomic counter
  * (`folder_child_counters`) plus the unique address index as a second,
- * independent safety net — see `reserveNextChildAddress` below.
+ * independent safety net — see `reserveNextChildAddress` below — this part
+ * is unchanged by Story 79.
  */
 
 import type { Db } from "mongodb";
 import { getMongoDb } from "../mongo.js";
 import {
   assertValidCpItem,
-  formatCpTimestamp,
   nextChildIndexFromSiblings,
   repoAndLocaToAddress,
   splitAddress,
@@ -27,6 +33,13 @@ import {
 import type { Clock } from "../data-clock.js";
 import { systemClock } from "../data-clock.js";
 import type { DataWriteCommand, DataWriteResult } from "../data-commands.js";
+import {
+  executeCpMutationWithHistory,
+  ensureCpHistoryIndexes,
+  CpItemAlreadyDeletedError,
+  type CpItemDoc as HistoryCpItemDoc,
+} from "../cp-history/mutate.js";
+import { tryGetCurrentActor, tryGetCurrentRequestId } from "../repo-context.js";
 import type {
   CpCompatibleDataProvider,
   GetByNames2Input,
@@ -64,22 +77,16 @@ export class DuplicateChildNameError extends Error {
   }
 }
 
-interface ItemDoc {
-  _id: string;
-  config: CpItem["config"];
-  body: string;
-  /**
-   * Best-effort acting user for the most recent write, top-level and
-   * SIBLING to config/body (never inside config) — never round-trips to
-   * Content Provider's config.yaml (docToItem() below deliberately never
-   * reads it), purely a Mongo-side bookkeeping field for the cp_history
-   * feature (Story 74) to attribute change-stream events without a
-   * separate side-table. Absent/null is expected and handled (history
-   * records the change as actor "unknown") — never required for a write to
-   * succeed.
-   */
-  _lastActor?: { username: string; repoGuid: string } | null;
-}
+/**
+ * `_historyVersion`/`_lastMutationId`/`_lastActor`/`_lastRequestId` (Story
+ * 79) are top-level SIBLINGS to config/body (never inside config) — never
+ * round-trip to Content Provider's config.yaml (`docToItem()` below
+ * deliberately never reads them), purely Mongo-side bookkeeping for
+ * `executeCpMutationWithHistory` (`../cp-history/mutate.ts`). Absent on
+ * pre-Story-79 documents until the migration script runs — see
+ * `CpItemNotMigratedError`.
+ */
+type ItemDoc = HistoryCpItemDoc;
 
 interface FolderChildCounterDoc {
   _id: string; // parentAddress
@@ -102,11 +109,12 @@ export class MongoCpProvider implements CpCompatibleDataProvider {
     return db;
   }
 
-  /** Idempotent — safe to call every startup (Story 72 §10). */
+  /** Idempotent — safe to call every startup (Story 72 §10; Story 79 added the cp_history indexes). */
   async ensureIndexes(db?: Db): Promise<void> {
     const database = db ?? (await getMongoDb());
     const collection = database.collection<ItemDoc>(ITEMS_COLLECTION);
     await collection.createIndex({ "config.address": 1 }, { unique: true, name: "config_address_unique" });
+    await ensureCpHistoryIndexes(database);
   }
 
   /**
@@ -127,7 +135,19 @@ export class MongoCpProvider implements CpCompatibleDataProvider {
     const collection = db.collection<ItemDoc>(ITEMS_COLLECTION);
     const existing = await collection.findOne({ "config.address": address });
     if (!existing || existing._id === expectedId) return false;
-    await collection.deleteOne({ _id: existing._id });
+    if (existing._historyVersion === undefined) {
+      // Pre-Story-79 orphan — fall back to the old raw delete rather than
+      // blocking this migration-repair helper on the history migration
+      // script (packages/dba/scripts/migrate-legacy-cp-items-to-history.mjs).
+      await collection.deleteOne({ _id: existing._id });
+      return true;
+    }
+    await executeCpMutationWithHistory(
+      this.clock.newId(),
+      { kind: "delete", itemId: existing._id },
+      { actor: null, requestId: null, actorKind: "migration", commandKind: "resolve-stale-address-conflict" },
+      this.clock
+    );
     return true;
   }
 
@@ -139,12 +159,32 @@ export class MongoCpProvider implements CpCompatibleDataProvider {
    * (see `NetFileCpProvider` — callers on that backend must keep using the
    * existing "blank the fields in place" workaround). Returns whether a
    * document was actually found and removed.
+   *
+   * Story 79: routes through `executeCpMutationWithHistory` so the delete
+   * and its one `cp_history` event commit atomically. `actor`/`requestId`
+   * are read from the ambient request-scoped repo context
+   * (`../repo-context.js`) rather than added as new parameters here, so
+   * existing callers (`leads.ts`'s `deleteDailyEntry`/`deleteDateEntry`)
+   * need no signature change to get real actor attribution.
    */
   async deleteItem(address: string): Promise<boolean> {
     const db = await this.db();
     const collection = db.collection<ItemDoc>(ITEMS_COLLECTION);
-    const result = await collection.deleteOne({ "config.address": address });
-    return result.deletedCount > 0;
+    const existing = await collection.findOne({ "config.address": address });
+    if (!existing) return false;
+
+    try {
+      await executeCpMutationWithHistory(
+        this.clock.newId(),
+        { kind: "delete", itemId: existing._id },
+        { actor: tryGetCurrentActor(), requestId: tryGetCurrentRequestId(), commandKind: "delete-item" },
+        this.clock
+      );
+    } catch (error) {
+      if (error instanceof CpItemAlreadyDeletedError) return false;
+      throw error;
+    }
+    return true;
   }
 
   async getItem(input: GetItemInput, expectedRepoGuid?: string): Promise<CpItem | null> {
@@ -260,7 +300,7 @@ export class MongoCpProvider implements CpCompatibleDataProvider {
 
   async executeWrite(command: DataWriteCommand): Promise<DataWriteResult> {
     if (command.kind === "put-item") {
-      return this.putItem(command.item, command.actor);
+      return this.putItem(command.item, command.actor, command.operationId, { commandKind: "put-item" });
     }
     return this.createChild(command);
   }
@@ -272,48 +312,57 @@ export class MongoCpProvider implements CpCompatibleDataProvider {
    * around on the CP side, so this is just `putItem` with the existing
    * document's `body` preserved unchanged (or `""` if the document is new
    * — matching `PutItemConfig`'s "config only, no body write" contract on
-   * the CP side).
+   * the CP side). No `DataWriteCommand` exists at this call site (not
+   * wired through the router), so the mutation id is minted fresh here and
+   * the actor comes from the ambient repo context, same as `deleteItem`.
    */
   async putItemConfig(item: CpItem): Promise<CpItem> {
     const db = await this.db();
     const collection = db.collection<ItemDoc>(ITEMS_COLLECTION);
     const existing = await collection.findOne({ _id: item._id });
-    const result = await this.putItem({ ...item, body: existing?.body ?? "" });
+    const result = await this.putItem({ ...item, body: existing?.body ?? "" }, tryGetCurrentActor(), this.clock.newId(), {
+      commandKind: "put-item-config",
+    });
     return result.item;
   }
 
+  /**
+   * Story 79: the only place this provider writes to `cp_items` for an
+   * insert/update, via `executeCpMutationWithHistory` — the cp_items
+   * mutation and its one `cp_history` event commit in a single transaction.
+   * `mutationId` should be a caller-supplied, retry-stable id (e.g. a
+   * `DataWriteCommand`'s own `operationId`) wherever one is available, so a
+   * genuine retry of the same logical write is idempotent instead of
+   * minting a second version — see `mutate.ts`'s doc comment.
+   */
   private async putItem(
     item: CpItem,
-    actor: { username: string; repoGuid: string } | null = null
+    actor: { username: string; repoGuid: string } | null = null,
+    mutationId?: string,
+    extra?: { commandKind?: string; endpoint?: string; requestId?: string | null }
   ): Promise<DataWriteResult> {
     assertValidCpItem(item);
-    const db = await this.db();
-    const collection = db.collection<ItemDoc>(ITEMS_COLLECTION);
-
-    const now = formatCpTimestamp(this.clock.now());
-    const existing = await collection.findOne({ _id: item._id });
-
-    const config: CpItem["config"] = {
-      ...item.config,
-      // Preserve `created` across updates; only ever set once, on insert.
-      created: existing?.config.created ?? item.config.created ?? now,
-      modified: now,
-    };
+    await this.db(); // ensures indexes (cp_items' + cp_history's) on first use
 
     try {
-      await collection.updateOne(
-        { _id: item._id },
-        { $set: { config, body: item.body, _lastActor: actor } },
-        { upsert: true }
+      const result = await executeCpMutationWithHistory(
+        mutationId ?? this.clock.newId(),
+        { kind: "put", itemId: item._id, config: item.config, body: item.body },
+        {
+          actor,
+          requestId: extra?.requestId ?? tryGetCurrentRequestId(),
+          commandKind: extra?.commandKind,
+          endpoint: extra?.endpoint,
+        },
+        this.clock
       );
+      return { item: result.item!, alreadyExisted: result.alreadyExisted };
     } catch (error) {
       if (isDuplicateKeyError(error)) {
         throw new AddressConflictError(item.config.address, error);
       }
       throw error;
     }
-
-    return { item: { _id: item._id, config, body: item.body }, alreadyExisted: !!existing };
   }
 
   private async createChild(command: Extract<DataWriteCommand, { kind: "create-child-item" }>): Promise<DataWriteResult> {
@@ -324,7 +373,7 @@ export class MongoCpProvider implements CpCompatibleDataProvider {
     // FOLLOWER replaying a primary's decision), never re-run allocation —
     // just write it via the normal put path (Story 72 §8/§23).
     if (command.item) {
-      return this.putItem(command.item);
+      return this.putItem(command.item, command.actor, command.operationId, { commandKind: "create-child-item(replay)" });
     }
 
     // find-or-create: exact name match among direct children.
@@ -337,36 +386,24 @@ export class MongoCpProvider implements CpCompatibleDataProvider {
     }
 
     const address = await this.reserveNextChildAddress(db, command.parentAddress, children.map((c) => c.config.address));
-    const now = formatCpTimestamp(this.clock.now());
-    const newItem: CpItem = {
-      _id: this.clock.newId(),
-      config: {
-        id: "",
-        address,
-        type: command.type,
-        name: command.name,
-        created: now,
-        modified: now,
-      },
-      body: command.body,
+    const newItemId = this.clock.newId();
+    const newConfig: CpItem["config"] = {
+      id: newItemId,
+      address,
+      type: command.type,
+      name: command.name,
+      // `created`/`modified` deliberately omitted — executeCpMutationWithHistory
+      // (via putItem below) fills them in from this same clock.
     };
-    newItem.config.id = newItem._id;
 
-    try {
-      await collection.insertOne({
-        _id: newItem._id,
-        config: newItem.config,
-        body: newItem.body,
-        _lastActor: command.actor,
-      });
-    } catch (error) {
-      if (isDuplicateKeyError(error)) {
-        throw new AddressConflictError(address, error);
-      }
-      throw error;
-    }
+    const result = await this.putItem(
+      { _id: newItemId, config: newConfig, body: command.body },
+      command.actor,
+      command.operationId,
+      { commandKind: "create-child-item" }
+    );
 
-    return { item: newItem, alreadyExisted: false };
+    return { item: result.item, alreadyExisted: false };
   }
 
   /**

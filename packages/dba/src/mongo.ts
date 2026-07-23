@@ -97,6 +97,18 @@ export async function getMongoDb(): Promise<Db> {
 }
 
 /**
+ * Returns the shared `chad`-database MongoClient itself (Story 79) — needed
+ * only by `cp-history-write.ts`'s `executeCpMutationWithHistory`, which must
+ * open a `ClientSession` for a multi-collection transaction
+ * (`cp_items` + `cp_history` in one commit). Everything else in this
+ * package should keep using `getMongoDb()`; a session/transaction is only
+ * ever needed around a single cp_items mutation + its one cp_history event.
+ */
+export async function getMongoClient(): Promise<MongoClient> {
+  return connect();
+}
+
+/**
  * Returns this user's own Beeper Mongo database handle
  * (`beeper_<repoGuid>` — contacts/channels/messages/timeline_events/...),
  * connecting once per process and reusing the connection for every user

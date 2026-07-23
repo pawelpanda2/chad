@@ -1,197 +1,169 @@
-# History (Change Streams) — how it works
+# History (transactional, cp_history) — how it works
 
-Status: written 2026-07-21, Story 74 (continuation session — Claude Code,
-after earlier Claude Code / Copilot / Cline sessions on the same Story).
-Read `backlog/stories/74/` for the full task history, root-cause
-investigation, and what was fixed in this session specifically.
+Status: rewritten 2026-07-23, Story 79 — replaces the Change-Stream-based
+mechanism Story 74 built and Story 78 hardened. Read `backlog/stories/79/`
+for the full rationale; `backlog/stories/74/` and `backlog/stories/78/` are
+kept as historical record of the superseded approach (their `rs0`
+replica-set work is still in effect, just repurposed — see below).
+
+## Why this changed
+
+Story 74/78's `history-worker` derived `cp_history` asynchronously from a
+MongoDB Change Stream watching `cp_items` — a separate process, its own
+resume-token/shadow-state collections (`cp_history_state`,
+`cp_history_last_state`), in-memory caches to rebuild across restarts.
+Story 79 replaced all of that with a single MongoDB **transaction** around
+every `cp_items` write: the mutation and its one `cp_history` event commit
+together, or neither commits. No separate process, no resume token, no
+shadow state, no Change Stream at all.
 
 ## Pipeline
 
 ```
 Dashboard UI/API
-  -> dba (packages/dba/src/leads.ts, repo-context.ts, data-commands.ts,
-          data-router.ts, data-providers/mongo-cp-provider.ts)
-  -> chad.cp_items (MongoDB, replica set rs0)
-  -> MongoDB Change Stream
-  -> packages/history-worker (independent process)
-  -> chad.cp_history / chad.cp_history_state
-  -> packages/dba/src/cp-history.ts
-  -> packages/dashboard/app/api/content-provider/{history,daily-history}
-  -> packages/dashboard/app/(dashboard)/dashboard/history/page.tsx
+  -> dba (leads.ts, repo-context.ts, data-commands.ts, data-router.ts)
+  -> MongoCpProvider.putItem / .createChild / .deleteItem
+       (packages/dba/src/data-providers/mongo-cp-provider.ts)
+  -> executeCpMutationWithHistory (packages/dba/src/cp-history/mutate.ts)
+       one MongoDB transaction:
+         read current cp_items doc (same session)
+         compute version / diff / hashes / mutationId
+         write cp_items
+         insert exactly one cp_history doc
+         commit
+  -> packages/dba/src/cp-history.ts (read side)
+  -> packages/dashboard/app/api/content-provider/{history,daily-history,dates-history}
+  -> packages/dashboard/app/(dashboard)/dashboard/history/{page.tsx,entry/[id]/page.tsx}
 ```
 
-The worker is a separate process from the Dashboard on purpose: a
-Dashboard restart/crash never stops history tracking, and a bug in the
-worker never takes the Dashboard down.
+`MongoCpProvider`'s `putItem`/`createChild`/`deleteItem` are the **only**
+three places in the whole monorepo that ever write `cp_items` — every
+business function (`leads.ts`'s Daily/Date Entry save/update/delete, the
+folder-chain helpers used by Views) already goes through
+`mongo.executeWrite(command)` or `mongo.deleteItem(address)`, so wiring
+those three methods was enough to make history impossible to bypass
+without touching any call site.
 
-## `rs0` — why and how
+## `rs0` — still needed, different reason
 
-MongoDB Change Streams require a replica set (even a single-node one).
-`rs0` is a one-member set (`chad-mongodb:27017` on QNAP,
-`chad-mongodb-local-mac-docker:27017` locally). Initialization is
-idempotent (`bash-scripts/mongo/rs-init.js` — safe to run on every
-restart: does nothing if `rs0` is already configured).
+MongoDB requires a replica set for **both** Change Streams (Story 74's
+original reason) **and** multi-document transactions (Story 79's reason).
+`rs0` itself — the single-node replica set, its keyfile, its idempotent
+initialization (`bash-scripts/mongo/rs-init.js`) — is completely unchanged
+by this Story. See Story 74's own doc (superseded above) for how `rs0` is
+configured/verified; nothing there changed.
 
-Verify:
+## `cp_items` bookkeeping fields (Story 79)
 
-```bash
-docker exec <mongo-container> mongosh --quiet --eval "
-  printjson({ok: rs.status().ok, setName: db.hello().setName, primary: db.hello().isWritablePrimary})
-"
-```
-
-Expect `{ok: 1, setName: "rs0", primary: true}`. This survives a normal
-`docker compose down`/`up` cycle (no `-v`) because the replica set
-configuration lives in the `local` database on the same persistent data
-volume as everything else.
-
-**Local Mac Docker specifically runs without Mongo auth** (`mongod
---replSet rs0 --oplogSize 1024`, no `--auth`, no root user) — this is a
-local-only simplification that predates this Story's continuation session;
-QNAP keeps its own separate compose file and keyfile-based auth
-unaffected by it.
-
-## Oplog
-
-Shared across every database on the same `mongod` (including
-`beeper_<repoGuid>` per-user databases) — sized at 1024MB by
-`--oplogSize 1024`. A resume token that falls outside the current oplog
-window can no longer be resumed from; see "Resume token" below for how
-the worker handles that.
-
-## History worker (`packages/history-worker`)
-
-Plain Node.js (`index.mjs`, ESM, no build step — deployed via `pnpm
-deploy --prod` in its Dockerfile, not `tsc`). Watches `cp_items` via
-`itemsCol.watch([], { fullDocument: "updateLookup" })` and writes one
-`cp_history` document per change event.
-
-**No pre-images.** MongoDB 4.4 (the QNAP target version) has no
-`fullDocumentBeforeChange`/pre-image support (6.0+ only), and a delete
-event's change-stream document never carries `fullDocument` at all,
-regardless of Mongo version. The worker keeps its own in-memory
-`lastKnownState` cache (`Map<sourceId, {config, body, actor}>`),
-populated *progressively* from events it has actually observed since its
-own last start — never bootstrapped from a full collection scan at
-startup (that would make catch-up-after-downtime diffs subtly wrong, by
-diffing against state from before the worker ever ran). The first event
-seen for any given item after a (re)start has no known "before" and is
-recorded honestly as `beforeUnknown: true` — never fabricated.
-
-**Actor attribution.** Writes flow `_lastActor` onto the `cp_items`
-document itself (`repo-context.ts`'s `tryGetCurrentActor()` →
-`data-commands.ts` → `MongoCpProvider.putItem`/`createChild`). The worker
-reads `change.fullDocument._lastActor` for insert/update/replace. **A
-delete event has no `fullDocument`**, so `MongoCpProvider.deleteItem()`
-never gets a chance to record an actor for that specific operation either
-way — the worker instead falls back to the actor it cached from that
-item's own last insert/update (`cached?.actor`), which is the only actor
-information a delete event can possibly carry under this architecture.
-
-**Idempotency.** Each `cp_history` document's `_id` is the change event's
-own resume-token data string — unique and stable per event. A retried
-insert of the same event hits Mongo's unique-`_id` constraint
-(`error.code === 11000`), caught and logged as "duplicate event, skipping"
-rather than needing a separate dedup check.
-
-## Resume token (`chad.cp_history_state`)
-
-Singleton document, `_id: "cp_history_worker"`:
+Every `cp_items` document now carries, as top-level siblings of
+`config`/`body` (never inside `config` — so they never affect the content
+hash, see below):
 
 ```js
 {
-  resumeToken: <opaque>,
-  status: "running" | "error" | "stopped",
-  startedAt, lastHeartbeatAt, lastEventAt,
-  lastError, historyGapAt,
+  _historyVersion: number,       // 1 on first insert, +1 per mutation
+  _lastMutationId: string,       // ties this state to its cp_history event
+  _lastActor: { username, repoGuid } | null,
+  _lastRequestId: string | null,
 }
 ```
 
-On start, the worker calls `itemsCol.watch([], { resumeAfter:
-existingState.resumeToken })` if a token is persisted, else starts fresh
-from "now". If the persisted token has fallen outside the oplog window,
-`watch()` throws a resume-token-lost error — the worker logs a clear
-warning, starts fresh from "now" (never fabricates the missing history),
-and records `historyGapAt`.
+A document written before this Story has none of these fields. Mutating it
+throws `CpItemNotMigratedError` — deliberately, never a silent guess at a
+starting version. See "Migrating pre-Story-79 data" below.
 
-**Restarting the worker never loses events that happened while it was
-down**, as long as the gap is within the oplog window — verified in Story
-74 by stopping the container, making a real change, restarting it, and
-confirming the missed event was captured with no duplicate. **Restarting
-the *container* with a newly built image requires `docker compose up -d
-<service>`, not `docker stop`/`docker start`** — the latter reuses the
-existing container's already-baked-in image layer and will silently keep
-running old code.
+## `cp_history` — the only history/audit collection
 
-## Daily Tracker mapping
+One document per mutation, `_id === mutationId`:
 
-Not a hardcoded address. `resolveDailyTrackerAddressPrefix(repoGuid)`
-(`packages/dba/src/cp-history.ts`) calls the same `getByNames({repoGuid,
-names: ["views", "daily"]})` lookup the real save/read path already uses
-(`saveDailyEntry`/`getAllDailyEntries` in `leads.ts`), and filters
-`cp_history` by that resolved address as a prefix. If the repo has no
-Daily Tracker folder yet, this returns `null` and
-`listDailyTrackerHistory` returns an empty result — not an error.
+```js
+{
+  _id, mutationId, requestId,
+  sourceCollection: "cp_items", sourceId, repoGuid, address, itemName,
+  version, operationType,                 // insert | update | delete
+  actor: { username, repoGuid, kind },    // kind: user | system | migration
+  changedAt,
+  beforeHash, afterHash,                  // sha256 of canonical {config,body}
+  changes: { config: [...ops], body: [...hunks] | null },
+  afterSnapshot: { config, body } | null, // insert: always. delete: pre-delete state. update: every HISTORY_SNAPSHOT_INTERVAL-th version only.
+  metadata: { endpoint?, commandKind?, environment?, seedRunId? },
+}
+```
 
-## Repo isolation
+- **Hash chain**: `beforeHash` of version N equals `afterHash` of version
+  N-1 (verified by the integrity checker, see below). `afterHash` of the
+  latest event for a still-existing item always equals
+  `hashCpState(currentItem.config, currentItem.body)`.
+- **`itemName`**: the item's `config.name` at the time of the event —
+  stored directly (not derived from a snapshot, which isn't present on
+  every event) for the Dashboard History table's "Item" column. Events
+  from before this field existed fall back to the address's last segment
+  at read time (`cp-history.ts`'s `toListItem`) — a documented fallback,
+  never a silent invention.
+- **Idempotency**: `_id === mutationId` — a retried mutationId either
+  short-circuits on a pre-transaction lookup or hits the collection's own
+  unique-`_id` constraint; either way, exactly one event, one version.
+  Reusing a mutationId for a *different* item is rejected
+  (`CpMutationIdReusedError`), never silently treated as a replay of the
+  wrong item.
+- **Concurrency**: two concurrent mutations of the same item rely on
+  MongoDB's own transaction conflict detection — the losing transaction
+  gets a `TransientTransactionError`, which the driver's
+  `session.withTransaction()` retries automatically, re-reading the
+  now-updated version. No custom optimistic-lock code needed.
 
-`listCpHistory`/`getCpHistoryEntry` filter by a regex anchored on the
-caller's own `repoGuid` (`^${repoGuid}(/|$)`), sourced only from the
-session/repo-context — never trusted from request query/body. Covered by
-`packages/dba/src/cp-history.test.ts`, including a regression test for the
-specific failure mode of a bare string-prefix match leaking across repos
-whose GUIDs happen to share a prefix.
+## No pre-Story-79 collections in the read/write path
 
-## Adding a new History view type (beyond Daily Tracker)
+`cp_history_state` and `cp_history_last_state` are no longer read or
+written by anything (they may still physically exist from Story 74/78 on a
+long-lived deployment — nothing in this Story drops them automatically,
+since that would be a destructive operation on shared data outside this
+Story's scope). `packages/history-worker` is retired: its `index.mjs` is
+now a no-op stub that logs a clear message and exits if something still
+starts it (see the file's own header comment) — no docker-compose file in
+this repo references it anymore.
 
-`History`'s menu (`packages/dashboard/app/(dashboard)/dashboard/history/page.tsx`)
-is a `viewParam` switch, not hardcoded to Daily Tracker alone — adding
-Reports/Statuses/Leads/etc. means:
+## Migrating pre-Story-79 data
 
-1. A `resolveXAddressPrefix(repoGuid)` in `cp-history.ts`, following the
-   same "reuse the real save/read path's own folder lookup" pattern as
-   `resolveDailyTrackerAddressPrefix` — never guess or hardcode an
-   address.
-2. A `listXHistory` wrapper around `listCpHistory` (or reuse
-   `content-provider/history?addressPrefix=...` directly from the
-   Dashboard if a dedicated convenience endpoint isn't needed).
-3. A new entry in `HistoryMenuPage`'s button list and the `HistoryView`
-   union type, following the existing `daily-tracker` case.
+`packages/dba/scripts/migrate-legacy-cp-items-to-history.mjs --repoGuid=<guid> [--apply]`
+— explicit, per-repoGuid, dry-run by default. For each `cp_items` document
+under that repoGuid missing `_historyVersion`, establishes
+`_historyVersion: 1` and a matching `insert`-shaped `cp_history` event
+built from the document's own current state (`actor.kind: "migration"`),
+via `migrateLegacyCpItem` (`cp-history/mutate.ts`) — the same transactional
+guarantee as a live mutation. Idempotent (already-migrated items are
+skipped, not re-processed).
+
+## Integrity checking
+
+`pnpm test:cp-history:integrity -- --repoGuid=<guid>` (or
+`CP_HISTORY_INTEGRITY_REPO_GUID=<guid>`) —
+`packages/dba/scripts/cp-history-integrity-check.mjs`. Per repo, verifies:
+version continuity (1..N, no gaps/duplicates), the hash chain, that the
+last event for a still-existing item matches current `cp_items` exactly,
+that a deleted item's last event is a `delete` with no surviving document,
+that every event carries `actor`/`repoGuid`/`address`, and that
+insert/delete snapshots self-consistently hash to their own
+`afterHash`/`beforeHash`. Prints a plain-text report and exits non-zero on
+any inconsistency — no separate error collection is ever written.
 
 ## How to test locally
 
 ```bash
-# DBA-layer tests (repo isolation, addressPrefix, pagination, Daily
-# Tracker resolution) — real local Mongo, dedicated scratch database:
-cd packages/dba
-MONGODB_URI="mongodb://localhost:27017/chad_test_story74?directConnection=true" \
-  npx tsc && node dist/cp-history.test.js
+pnpm test:unit                      # hash/diff/versioning — no Mongo needed
+pnpm test:integration:local-mongo   # real local rs0: mutate.test.ts + cp-history.test.ts + google-sheets/config.test.ts
 ```
 
-`directConnection=true` is required when connecting from the **host**
-(outside Docker) — `rs0`'s configured member hostname
-(`chad-mongodb-local-mac-docker`) only resolves inside the Docker network,
-and a replica-set-aware driver would otherwise try (and fail) to reach
-that hostname during topology discovery. Not needed from inside another
-container on the same Docker network (e.g. the Dashboard or
-history-worker containers themselves use the Compose service name
-`mongodb`, which resolves fine there).
-
-End-to-end (worker + Change Streams): make a real change through the
-Dashboard UI, then check `chad.cp_history`/`chad.cp_history_state`
-directly and confirm it via the `History` UI itself.
+`mutate.test.ts` (`packages/dba/src/cp-history/mutate.test.ts`) calls
+`executeCpMutationWithHistory` directly against the real local `rs0` — no
+child process to spawn, no restart to simulate (there's no separate
+process left to restart).
 
 ## Rollback
 
-Disabling history entirely: stop the `history-worker` container/service
-(`docker compose stop history-worker` or remove it from
-`docker-compose.*.yml`) — this does not affect `cp_items` writes at all
-(the worker is a pure read-side consumer of the change stream, never in
-the write path). `chad.cp_history`/`cp_history_state` can be dropped
-independently of `cp_items` with zero effect on the rest of the
-application. Disabling the replica set itself (only relevant if `rs0`
-somehow needs to be reverted) means restarting `mongod` without
-`--replSet` — same data directory, same volume, no data loss — see
-`backlog/stories/74/01_input.md` §9 for the original rollback procedure
-(this Story's continuation session never needed to invoke it; `rs0` stayed
-stable throughout).
+There is no longer a separate "history" process to stop — history is
+inseparable from the `cp_items` write itself (same transaction). Disabling
+history entirely would mean not calling `executeCpMutationWithHistory`,
+which is not a supported configuration (it's the only write path). Rolling
+back this Story means reverting to the Story 78 code (Change Streams +
+`history-worker`) via git — `rs0` itself needs no change either way.

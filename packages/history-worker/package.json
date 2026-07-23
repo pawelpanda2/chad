@@ -2,14 +2,12 @@
   "name": "history-worker",
   "private": true,
   "type": "module",
-  "description": "QNAP-targeted MongoDB change-stream consumer: chad.cp_items -> chad.cp_history/cp_history_state (Story 74). Requires MongoDB replica set (change streams) — see ai-docs/deploy/2026-07-10_mongodb-replica-set-migration-plan.md.",
+  "description": "RETIRED (Story 79) — was a MongoDB Change-Stream consumer (chad.cp_items -> chad.cp_history/cp_history_state, Story 74/78). cp_history is now written transactionally by packages/dba's executeCpMutationWithHistory instead. index.mjs is kept only as a safe no-op stub — see its own header comment and ai-docs/history/how-it-works.md.",
   "scripts": {
     "dev": "node index.mjs",
     "start": "node index.mjs"
   },
   "dependencies": {
-    "diff": "^7.0.0",
-    "dotenv": "^17.4.0",
-    "mongodb": "^7.1.1"
+    "dotenv": "^17.4.0"
   }
 }
