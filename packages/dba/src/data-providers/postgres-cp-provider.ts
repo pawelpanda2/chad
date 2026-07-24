@@ -36,6 +36,7 @@ import {
 } from "../cp-history/mutate-postgres.js";
 import { tryGetCurrentActor, tryGetCurrentRequestId } from "../repo-context.js";
 import { isUniqueViolation } from "../postgres.js";
+import { assertRepoAllowlisted } from "./repo-allowlist-guard.js";
 import type {
   CpCompatibleDataProvider,
   GetByNames2Input,
@@ -196,6 +197,7 @@ export class PostgresCpProvider implements CpCompatibleDataProvider {
     mutationId?: string,
     extra?: { commandKind?: string; requestId?: string | null }
   ): Promise<DataWriteResult> {
+    assertRepoAllowlisted(splitAddress(item.config.address).repoGuid);
     try {
       const result = await executeCpMutationWithHistoryPostgres(
         mutationId ?? this.clock.newId(),
@@ -213,6 +215,7 @@ export class PostgresCpProvider implements CpCompatibleDataProvider {
   }
 
   async deleteItem(address: string): Promise<boolean> {
+    assertRepoAllowlisted(splitAddress(address).repoGuid);
     const existing = await this.getItem({ address });
     if (!existing) return false;
 
@@ -235,6 +238,8 @@ export class PostgresCpProvider implements CpCompatibleDataProvider {
     if (command.item) {
       return this.putItem(command.item, command.actor, command.operationId, { commandKind: "create-child-item(replay)" });
     }
+
+    assertRepoAllowlisted(splitAddress(command.parentAddress).repoGuid);
 
     return withPostgresClient(async (client) => {
       await client.query("BEGIN");
