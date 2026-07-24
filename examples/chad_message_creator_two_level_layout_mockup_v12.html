@@ -1,0 +1,934 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CHAD Message Creator — v4 mockup</title>
+  <style>
+    :root {
+      --bg: #f5f6f8;
+      --panel: #ffffff;
+      --border: #dcdfe4;
+      --text: #17191c;
+      --muted: #6f7680;
+      --accent: #111111;
+      --soft: #eef0f3;
+      --hover: #f0f2f5;
+      --shadow: 0 1px 4px rgba(0,0,0,.08);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--text);
+      background: var(--bg);
+      overflow: hidden;
+    }
+
+    .app {
+      height: 100vh;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      transition: grid-template-columns .2s ease;
+    }
+
+    .app.analysis-mode {
+      grid-template-columns: minmax(0, 1fr) 36%;
+    }
+
+    .main {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      background: var(--panel);
+    }
+
+    .topbar {
+      height: 58px;
+      flex: 0 0 58px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 14px;
+      border-bottom: 1px solid var(--border);
+      background: #fff;
+    }
+
+    .btn {
+      border: 1px solid var(--border);
+      background: #fff;
+      border-radius: 8px;
+      padding: 7px 10px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    .btn:hover { background: var(--hover); }
+
+    .title-wrap {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      margin-left: 3px;
+    }
+
+    .title { font-size: 16px; font-weight: 700; }
+    .subtitle { font-size: 12px; color: var(--muted); }
+
+    .modebar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border);
+      background: #fff;
+    }
+
+    .mode-btn {
+      border: 1px solid var(--border);
+      background: #fff;
+      border-radius: 8px;
+      padding: 8px 14px;
+      font-size: 13px;
+      cursor: pointer;
+      color: var(--muted);
+    }
+
+    .mode-btn.active {
+      background: #111;
+      color: #fff;
+      border-color: #111;
+      font-weight: 650;
+    }
+
+    .model-select {
+      height: 34px;
+      min-width: 190px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #fff;
+      padding: 0 10px;
+      font-size: 13px;
+    }
+
+    .model-select.hidden {
+      display: none;
+    }
+
+    .mode-btn.disabled {
+      opacity: .35;
+      cursor: not-allowed;
+      pointer-events: none;
+    }
+
+    .content {
+      flex: 1;
+      min-height: 0;
+      position: relative;
+      background: #fafafa;
+    }
+
+    .panel {
+      display: none;
+      height: 100%;
+    }
+
+    .panel.active { display: block; }
+
+    .conversation {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .message-row {
+      display: grid;
+      grid-template-columns: minmax(0,1fr) 190px;
+      gap: 12px;
+      align-items: center;
+      width: 100%;
+    }
+
+    .message-cell {
+      display: flex;
+    }
+
+    .message-row.she .message-cell { justify-content: flex-start; }
+    .message-row.you .message-cell { justify-content: flex-end; }
+
+    .message {
+      max-width: 72%;
+      border-radius: 14px;
+      padding: 10px 13px;
+      font-size: 14px;
+      line-height: 1.4;
+      box-shadow: var(--shadow);
+      border: 1px solid transparent;
+    }
+
+    .message-row.she .message {
+      background: #fff;
+      border-color: var(--border);
+    }
+
+    .message-row.you .message {
+      background: #1f2329;
+      color: #fff;
+    }
+
+    .message small {
+      display: block;
+      margin-top: 5px;
+      opacity: .62;
+      font-size: 11px;
+    }
+
+    .message-action-cell {
+      display: flex;
+      justify-content: flex-end;
+    }
+
+    .message-row {
+      cursor: pointer;
+    }
+
+    .message-row.selected-row .message {
+      outline: 3px solid rgba(30, 110, 255, .18);
+      border-color: #4384ff;
+    }
+
+    .message-action-select {
+      width: 100%;
+      max-width: 180px;
+      height: 32px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #fff;
+      font-size: 12px;
+      padding: 0 8px;
+    }
+
+    .composer-wrap {
+      border-top: 1px solid var(--border);
+      background: #fff;
+    }
+
+    .proposals-toggle {
+      width: 100%;
+      border: none;
+      background: #fff;
+      padding: 8px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+      font-size: 12px;
+      color: var(--muted);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .proposals-panel {
+      display: none;
+      padding: 10px 14px;
+      background: #fafafa;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .proposals-panel.open { display: block; }
+
+    .proposal-row {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 10px;
+      align-items: center;
+      padding: 8px 9px;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin-bottom: 7px;
+      font-size: 12px;
+    }
+
+    .proposal-group {
+      margin-bottom: 12px;
+    }
+
+    .proposal-group:last-child {
+      margin-bottom: 0;
+    }
+
+    .proposal-group-title {
+      margin: 0 0 6px 2px;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .05em;
+    }
+
+    .send-btn {
+      border: none;
+      background: #111;
+      color: #fff;
+      border-radius: 7px;
+      padding: 6px 9px;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .composer {
+      padding: 10px 14px;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 9px;
+    }
+
+    .composer textarea {
+      width: 100%;
+      resize: none;
+      min-height: 58px;
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      padding: 9px 11px;
+      font: inherit;
+      font-size: 13px;
+    }
+
+    .primary {
+      border: none;
+      background: var(--accent);
+      color: #fff;
+      border-radius: 9px;
+      padding: 0 15px;
+      font-weight: 600;
+      cursor: pointer;
+      line-height: 1.05;
+    }
+
+    .analysis-main {
+      height: 100%;
+      padding: 16px;
+      overflow-y: auto;
+    }
+
+    .analysis-empty {
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--muted);
+      font-size: 14px;
+      text-align: center;
+      padding: 24px;
+    }
+
+    .analysis-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0,1fr));
+      gap: 12px;
+    }
+
+    .card {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 11px;
+      padding: 14px;
+      box-shadow: var(--shadow);
+    }
+
+    .card h3 { margin: 0 0 7px; font-size: 14px; }
+    .card p { margin: 0; color: var(--muted); line-height: 1.45; font-size: 13px; }
+
+    .issue-list { display: grid; gap: 7px; }
+
+    .issue-item {
+      padding: 8px 9px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #fafafa;
+      font-size: 12px;
+    }
+
+    .issue-item strong {
+      display: block;
+      margin-bottom: 2px;
+    }
+
+    .analysis-side {
+      display: none;
+      position: relative;
+      min-width: 0;
+      background: #fff;
+      border-left: 1px solid var(--border);
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    .app.analysis-mode .analysis-side {
+      display: grid;
+      grid-template-rows: 50% 50%;
+    }
+
+    .side-conversation {
+      overflow-y: auto;
+      padding: 12px;
+      border-bottom: 1px solid var(--border);
+      background: #fafafa;
+    }
+
+    .side-title {
+      font-size: 12px;
+      font-weight: 700;
+      margin-bottom: 10px;
+    }
+
+    .mini-message {
+      max-width: 88%;
+      border-radius: 10px;
+      padding: 8px 9px;
+      font-size: 11px;
+      line-height: 1.35;
+      margin-bottom: 8px;
+      border: 1px solid var(--border);
+      background: #fff;
+    }
+
+    .mini-message.you {
+      margin-left: auto;
+      background: #202329;
+      color: #fff;
+      border-color: #202329;
+    }
+
+    .analysis-actions {
+      padding: 12px;
+      overflow-y: auto;
+      background: #fff;
+    }
+
+    .send-new {
+      width: 100%;
+      border: none;
+      background: #111;
+      color: #fff;
+      border-radius: 8px;
+      padding: 10px;
+      font-size: 12px;
+      font-weight: 650;
+      cursor: pointer;
+      margin-bottom: 10px;
+    }
+
+    .analysis-version {
+      width: 100%;
+      text-align: left;
+      border: 1px solid var(--border);
+      background: #fff;
+      border-radius: 8px;
+      padding: 9px 10px;
+      font-size: 12px;
+      cursor: pointer;
+      margin-bottom: 7px;
+    }
+
+    .analysis-version:hover,
+    .analysis-version.active {
+      background: var(--soft);
+    }
+
+
+    .resize-handle {
+      position: absolute;
+      left: -4px;
+      top: 0;
+      bottom: 0;
+      width: 8px;
+      cursor: col-resize;
+      z-index: 20;
+    }
+
+    .resize-handle::after {
+      content: "";
+      position: absolute;
+      left: 3px;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background: var(--border);
+    }
+
+    .resize-handle:hover::after,
+    .resize-handle.dragging::after {
+      background: #111;
+    }
+
+    .side-model-select {
+      width: 100%;
+      height: 34px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #fff;
+      padding: 0 9px;
+      font-size: 12px;
+      margin-bottom: 8px;
+    }
+
+
+    .analysis-context-frame {
+      border: 4px solid #dc2626;
+      border-radius: 12px;
+      padding: 8px;
+      margin-top: 8px;
+      background: rgba(220, 38, 38, 0.03);
+    }
+
+
+    @media (max-width: 1100px) {
+      .app.analysis-mode { grid-template-columns: minmax(0,1fr) 42%; }
+      .message-row { grid-template-columns: minmax(0,1fr) 165px; }
+      .analysis-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app" id="app">
+    <main class="main">
+      <header class="topbar">
+        <button class="btn">← Back</button>
+        <button class="btn">Forw →</button>
+        <div class="title-wrap">
+          <div class="title">26-07-23_pn_roza</div>
+          
+        </div>
+        <button class="btn" style="margin-left:auto">↻</button>
+      </header>
+
+      <div class="modebar">
+        <button class="mode-btn active" data-mode="beeper">Beeper</button>
+        <button class="mode-btn disabled" data-mode="analysis" aria-disabled="true">Analysis</button>
+
+        <select class="model-select hidden" id="modelSelect">
+          <option value="">Select prompt version...</option>
+        </select>
+      </div>
+
+      <section class="content">
+        <div id="beeperPanel" class="panel active">
+          <div class="conversation">
+            <div class="messages">
+              <div class="message-row you" data-message-index="1">
+                <div class="message-cell">
+                  <div class="message">Hey<small>22 Jun 2026, 22:54</small></div>
+                </div>
+                <div class="message-action-cell">
+                  <select class="message-action-select" data-message-index="1">
+                    <option>Open (3)</option>
+                    <option>SD-PL_v2 (2)</option>
+                    <option>UMP_v1 (1)</option>
+                    <option>Love-system_v1 (0)</option>
+                    <option>SD-PL_v1 (0)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="message-row you" data-message-index="2">
+                <div class="message-cell">
+                  <div class="message">I hope yesterday was cool adventure for you 😉<small>23 Jun 2026, 14:56</small></div>
+                </div>
+                <div class="message-action-cell">
+                  <select class="message-action-select" data-message-index="2">
+                    <option>Open (5)</option>
+                    <option>SD-PL_v2 (3)</option>
+                    <option>UMP_v1 (1)</option>
+                    <option>Love-system_v1 (1)</option>
+                    <option>SD-PL_v1 (0)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="message-row she" data-message-index="3">
+                <div class="message-cell">
+                  <div class="message">hey! Yes it was a very random birthday day for sure 😅<small>24 Jun 2026, 12:15</small></div>
+                </div>
+                <div class="message-action-cell">
+                  <select class="message-action-select" data-message-index="3">
+                    <option>Open (7)</option>
+                    <option>SD-PL_v2 (4)</option>
+                    <option>Love-system_v1 (2)</option>
+                    <option>UMP_v1 (1)</option>
+                    <option>SD-PL_v1 (0)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="message-row she" data-message-index="4">
+                <div class="message-cell">
+                  <div class="message">I arrived back to the UK and the weather is very hot<small>24 Jun 2026, 13:48</small></div>
+                </div>
+                <div class="message-action-cell">
+                  <select class="message-action-select" data-message-index="4">
+                    <option>Open (10)</option>
+                    <option>SD-PL_v2 (5)</option>
+                    <option>UMP_v1 (3)</option>
+                    <option>Love-system_v1 (2)</option>
+                    <option>SD-PL_v1 (0)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="message-row you" data-message-index="5">
+                <div class="message-cell">
+                  <div class="message">Sounds like perfect timing for another random adventure 😄<small>24 Jun 2026, 14:10</small></div>
+                </div>
+                <div class="message-action-cell"></div>
+              </div>
+            </div>
+
+            <div class="composer-wrap">
+              <button class="proposals-toggle" id="proposalsToggle">
+                <span>Message proposals</span>
+                <span id="proposalArrow">⌃</span>
+              </button>
+
+              <div class="proposals-panel" id="proposalsPanel">
+                <div class="proposal-group">
+                  <div class="proposal-group-title">You</div>
+                  <div class="proposal-row">
+                    <button class="send-btn">Send</button>
+                    <span>Sounds like perfect timing for another random adventure 😄</span>
+                  </div>
+                </div>
+
+                <div class="proposal-group">
+                  <div class="proposal-group-title">SD-PL_v2</div>
+                  <div class="proposal-row">
+                    <button class="send-btn">Send</button>
+                    <span>Random birthday and UK heat — sounds like you collected two adventures in one week 😄 when are you back?</span>
+                  </div>
+                  <div class="proposal-row">
+                    <button class="send-btn">Send</button>
+                    <span>So the birthday survived and now the UK is pretending to be Spain 😄</span>
+                  </div>
+                </div>
+
+                <div class="proposal-group">
+                  <div class="proposal-group-title">UMP_v1</div>
+                  <div class="proposal-row">
+                    <button class="send-btn">Send</button>
+                    <span>Very random birthday is usually the best kind. What was the most unexpected part?</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="composer">
+                <textarea placeholder="Write or paste your own message proposal..."></textarea>
+                <button class="primary">Save<br>msg</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="analysisPanel" class="panel">
+          <div class="analysis-main">
+            <div class="analysis-empty" id="analysisEmpty">
+              Select a model before opening Analysis.
+            </div>
+
+            <div class="analysis-grid" id="analysisGrid" style="display:none;">
+              <div class="card">
+                <h3>Model score</h3>
+                <p>Selected model: <strong id="selectedModelLabel">SD-PL_v2</strong></p>
+              </div>
+
+              <div class="card">
+                <h3>Recommended directions</h3>
+                <p>1. Birthday callback.<br>2. Playful tease about the UK heat.<br>3. Soft seed for meeting.</p>
+              </div>
+
+              <div class="card">
+                <h3>Mistakes</h3>
+                <div class="issue-list">
+                  <div class="issue-item">
+                    <strong>Ping 1</strong>
+                    Ping 1 was sent too late before the planned meeting.
+                  </div>
+                  <div class="issue-item">
+                    <strong>Needy</strong>
+                    The previous message was too needy and gave away too much investment.
+                  </div>
+                </div>
+              </div>
+
+              <div class="card">
+                <h3>Proposal score</h3>
+                <p>Version 05: 8.4/10 — strongest callback and cleanest direction.</p>
+              </div>
+
+              <div class="card">
+                <h3>Previous messages score</h3>
+                <p>Previous sequence: 6.2/10 — good energy, but weak escalation and unclear logistics.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <aside class="analysis-side" id="analysisSide"><div class="resize-handle" id="resizeHandle" title="Drag up to 50px left or right"></div>
+      <div class="side-conversation">
+        <div class="side-title">Conversation</div>
+        <div class="mini-message you">Hey</div>
+        <div class="mini-message you">I hope yesterday was cool adventure for you 😉</div>
+
+        <div class="analysis-context-frame">
+          <div class="mini-message">hey! Yes it was a very random birthday day for sure 😅</div>
+          <div class="mini-message">I arrived back to the UK and the weather is very hot</div>
+          <div class="mini-message you">Sounds like perfect timing for another random adventure 😄</div>
+        </div>
+      </div>
+
+      <div class="analysis-actions">
+        <select class="side-model-select" id="sideModelSelect">
+          <option value="">Select model...</option>
+          <option value="sdpl_v2">SD-PL_v2</option>
+          <option value="ump_v1">UMP_v1</option>
+          <option value="love_v1">Love-system_v1</option>
+        </select>
+        <button class="send-new">Send new</button>
+        <button class="analysis-version active">04 SD-PL_v2</button>
+        <button class="analysis-version">03 UMP_v1</button>
+        <button class="analysis-version">02 Love-system_v1</button>
+        <button class="analysis-version">01 SD-PL_v1</button>
+      </div>
+    </aside>
+  </div>
+
+  <script>
+    const app = document.getElementById("app");
+    const beeperBtn = document.querySelector('[data-mode="beeper"]');
+    const analysisBtn = document.querySelector('[data-mode="analysis"]');
+    const beeperPanel = document.getElementById("beeperPanel");
+    const analysisPanel = document.getElementById("analysisPanel");
+    const modelSelect = document.getElementById("modelSelect");
+    const analysisEmpty = document.getElementById("analysisEmpty");
+    const analysisGrid = document.getElementById("analysisGrid");
+    const selectedModelLabel = document.getElementById("selectedModelLabel");
+    let selectedMessageIndex = null;
+    let selectedPromptVersion = "";
+
+    function copyMessageOptionsToTopSelect(messageIndex) {
+      const source = document.querySelector(
+        `.message-action-select[data-message-index="${messageIndex}"]`
+      );
+
+      modelSelect.innerHTML = "";
+
+      if (!source) {
+        const placeholder = document.createElement("option");
+        placeholder.value = "";
+        placeholder.textContent = "Select prompt version...";
+        modelSelect.appendChild(placeholder);
+        return;
+      }
+
+      Array.from(source.options).forEach((option, index) => {
+        const copy = document.createElement("option");
+        copy.value = option.value || option.textContent;
+        copy.textContent = option.textContent;
+        if (index === 0) {
+          copy.selected = true;
+        }
+        modelSelect.appendChild(copy);
+      });
+    }
+
+    function activateMode(mode) {
+      const analysis = mode === "analysis";
+
+      if (
+        analysis &&
+        (
+          !selectedMessageIndex ||
+          !selectedPromptVersion ||
+          selectedPromptVersion.startsWith("Open")
+        )
+      ) {
+        return;
+      }
+
+      beeperBtn.classList.toggle("active", !analysis);
+      analysisBtn.classList.toggle("active", analysis);
+      beeperPanel.classList.toggle("active", !analysis);
+      analysisPanel.classList.toggle("active", analysis);
+      app.classList.toggle("analysis-mode", analysis);
+      if (!analysis) {
+        app.style.gridTemplateColumns = "";
+      }
+
+      if (analysis) {
+        const hasModel = Boolean(modelSelect.value);
+        analysisEmpty.style.display = hasModel ? "none" : "flex";
+        analysisGrid.style.display = hasModel ? "grid" : "none";
+        if (hasModel) {
+          selectedModelLabel.textContent =
+            modelSelect.options[modelSelect.selectedIndex]?.textContent || selectedPromptVersion;
+        }
+      }
+    }
+
+    beeperBtn.addEventListener("click", () => activateMode("beeper"));
+    analysisBtn.addEventListener("click", () => {
+      if (!analysisBtn.classList.contains("disabled")) {
+        activateMode("analysis");
+      }
+    });
+
+    modelSelect.addEventListener("change", () => {
+      const selectedText = modelSelect.options[modelSelect.selectedIndex]?.textContent || "";
+      selectedPromptVersion = modelSelect.value;
+
+      if (!selectedMessageIndex || selectedText.startsWith("Open")) {
+        analysisBtn.classList.add("disabled");
+        analysisBtn.setAttribute("aria-disabled", "true");
+        return;
+      }
+
+      analysisBtn.classList.remove("disabled");
+      analysisBtn.setAttribute("aria-disabled", "false");
+
+      const normalized = selectedText.replace(/\s*\(\d+\)\s*$/, "");
+      const sideOption = Array.from(sideModelSelect.options).find(
+        option => option.textContent === normalized
+      );
+      if (sideOption) {
+        sideModelSelect.value = sideOption.value;
+      }
+    });
+
+    document.querySelectorAll(".message-row").forEach(row => {
+      row.addEventListener("click", (event) => {
+        if (event.target.closest(".message-action-select")) return;
+
+        document.querySelectorAll(".message-row").forEach(x => {
+          x.classList.remove("selected-row");
+        });
+        row.classList.add("selected-row");
+
+        selectedMessageIndex = row.dataset.messageIndex || null;
+        selectedPromptVersion = "";
+
+        copyMessageOptionsToTopSelect(selectedMessageIndex);
+        modelSelect.selectedIndex = 0;
+        modelSelect.classList.remove("hidden");
+
+        analysisBtn.classList.add("disabled");
+        analysisBtn.setAttribute("aria-disabled", "true");
+      });
+    });
+
+    document.querySelectorAll(".message-action-select").forEach(select => {
+      select.addEventListener("change", () => {
+        if (select.value.startsWith("Open")) {
+          return;
+        }
+
+        const matched = Array.from(modelSelect.options).find(opt =>
+          select.value.startsWith(opt.text)
+        );
+
+        if (!matched) return;
+
+        selectedMessageIndex = select.dataset.messageIndex;
+        selectedPromptVersion = select.value;
+
+        document.querySelectorAll(".message-row").forEach(x => {
+          x.classList.toggle(
+            "selected-row",
+            x.dataset.messageIndex === selectedMessageIndex
+          );
+        });
+
+        copyMessageOptionsToTopSelect(selectedMessageIndex);
+        modelSelect.value = select.value;
+        modelSelect.classList.remove("hidden");
+        analysisBtn.classList.remove("disabled");
+        analysisBtn.setAttribute("aria-disabled", "false");
+
+        activateMode("analysis");
+      });
+    });
+
+    document.querySelectorAll(".analysis-version").forEach(btn => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".analysis-version").forEach(x => x.classList.remove("active"));
+        btn.classList.add("active");
+      });
+    });
+
+
+    const analysisSide = document.getElementById("analysisSide");
+    const resizeHandle = document.getElementById("resizeHandle");
+    const sideModelSelect = document.getElementById("sideModelSelect");
+
+    let dragStartX = 0;
+    let startWidth = 0;
+    let isDragging = false;
+    const MAX_SHIFT = 50;
+
+    resizeHandle.addEventListener("mousedown", (event) => {
+      if (!app.classList.contains("analysis-mode")) return;
+      isDragging = true;
+      dragStartX = event.clientX;
+      startWidth = analysisSide.getBoundingClientRect().width;
+      resizeHandle.classList.add("dragging");
+      document.body.style.userSelect = "none";
+      document.body.style.cursor = "col-resize";
+      event.preventDefault();
+    });
+
+    window.addEventListener("mousemove", (event) => {
+      if (!isDragging) return;
+      const rawDelta = dragStartX - event.clientX;
+      const delta = Math.max(-MAX_SHIFT, Math.min(MAX_SHIFT, rawDelta));
+      const newWidth = startWidth + delta;
+      app.style.gridTemplateColumns = `minmax(0, 1fr) ${newWidth}px`;
+    });
+
+    window.addEventListener("mouseup", () => {
+      if (!isDragging) return;
+      isDragging = false;
+      resizeHandle.classList.remove("dragging");
+      document.body.style.userSelect = "";
+      document.body.style.cursor = "";
+    });
+
+    sideModelSelect.addEventListener("change", () => {
+      if (sideModelSelect.value) {
+        modelSelect.value = sideModelSelect.value;
+        activateMode("analysis");
+      }
+    });
+
+    const proposalsToggle = document.getElementById("proposalsToggle");
+    const proposalsPanel = document.getElementById("proposalsPanel");
+    const proposalArrow = document.getElementById("proposalArrow");
+
+    proposalsToggle.addEventListener("click", () => {
+      proposalsPanel.classList.toggle("open");
+      proposalArrow.textContent = proposalsPanel.classList.contains("open") ? "⌄" : "⌃";
+    });
+  </script>
+</body>
+</html>

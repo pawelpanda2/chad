@@ -24,7 +24,11 @@ import {
   putItemBody,
 } from "./item-ops.js";
 import { chad_GetRelativeLoca, chad_GetFirstSegment } from "./path-resolver.js";
-import { queueDailyEntrySheetSyncIfEnabled, queueDateEntrySheetSyncIfEnabled } from "./google-sheets/sync.js";
+import {
+  queueDailyEntrySheetSyncIfEnabled,
+  queueDateEntrySheetSyncIfEnabled,
+  queueLeadSheetSyncIfEnabled,
+} from "./google-sheets/sync.js";
 import yaml from "js-yaml";
 
 /**
@@ -1366,7 +1370,11 @@ async function computeDailyAutoFieldsForSheetSync(dateStr: string): Promise<Reco
  * behavior means replaying the same record's current state twice just
  * converges the same row to the same values again, never a duplicate row.
  */
-export async function backfillGoogleSheetsSyncForCurrentUser(): Promise<{ dailyCount: number; dateCount: number }> {
+export async function backfillGoogleSheetsSyncForCurrentUser(): Promise<{
+  dailyCount: number;
+  dateCount: number;
+  leadCount: number;
+}> {
   const repoGuid = getCurrentRepoGuid();
   const username = getCurrentUsername();
 
@@ -1399,7 +1407,23 @@ export async function backfillGoogleSheetsSyncForCurrentUser(): Promise<{ dailyC
     });
   }
 
-  return { dailyCount: dailyEntries.length, dateCount: dateEntries.length };
+  const leads = await getAllLeadsWithContacts();
+  for (const lead of leads) {
+    if (!lead.loca) continue;
+    await queueLeadSheetSyncIfEnabled({
+      repoGuid,
+      username,
+      loca: lead.loca,
+      itemName: lead.leadKey,
+      fields: {
+        "LEAD NAME": lead.leadName,
+        "HAS CONTACTS": lead.hasContacts ? "yes" : "no",
+      },
+      kind: "upsert",
+    });
+  }
+
+  return { dailyCount: dailyEntries.length, dateCount: dateEntries.length, leadCount: leads.length };
 }
 
 /**
@@ -2328,6 +2352,21 @@ export async function createLead(
 
     // Step 4: Create msg workout folder under the lead
     await createOrGetChild(lead, "msg workout", "Folder");
+
+    // Google Sheets follower — same non-throwing enqueue pattern as daily/dates.
+    // N column mirrors Dashboard leadKey (last loca segment under all-items).
+    const leadKey = leadLoca.split("/").pop() || leadLoca;
+    await queueLeadSheetSyncIfEnabled({
+      repoGuid: getCurrentRepoGuid(),
+      username: getCurrentUsername(),
+      loca: leadLoca,
+      itemName: leadKey,
+      fields: {
+        "LEAD NAME": leadName,
+        "HAS CONTACTS": "yes",
+      },
+      kind: "upsert",
+    });
 
     return {
       success: true,

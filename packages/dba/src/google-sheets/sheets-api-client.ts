@@ -215,6 +215,20 @@ export class GoogleSheetsApiClient implements GoogleSheetsClient {
     return match.properties.sheetId;
   }
 
+  async ensureSheetExists(target: GoogleSheetsTarget): Promise<boolean> {
+    try {
+      await this.getSheetId(target);
+      return false;
+    } catch {
+      await this.batchUpdate(target.spreadsheetId, [
+        { addSheet: { properties: { title: target.sheetName } } },
+      ]);
+      // Drop any negative cache miss — next getSheetId re-reads the list.
+      this.sheetIdCache.delete(`${target.spreadsheetId}::${target.sheetName}`);
+      return true;
+    }
+  }
+
   async batchUpdate(spreadsheetId: string, requests: Record<string, unknown>[]): Promise<void> {
     if (requests.length === 0) return;
     const url = `${API_BASE}/${spreadsheetId}:batchUpdate`;

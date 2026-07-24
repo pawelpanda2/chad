@@ -18,7 +18,7 @@ export type GoogleSheetsSyncKind = "upsert" | "delete";
  * today (no `deleteDateEntry` exists), but the type isn't narrowed to
  * enforce that — it's a real-world fact, not an invariant worth encoding.
  */
-export type SheetRecordType = "daily-entry" | "date-entry";
+export type SheetRecordType = "daily-entry" | "date-entry" | "lead";
 
 /**
  * Everything needed to write (or mark-delete) exactly one row in Google
@@ -127,6 +127,15 @@ export interface GoogleSheetsClient {
    * path above never needs it.
    */
   getSheetId(target: GoogleSheetsTarget): Promise<number>;
+
+  /**
+   * Ensures a tab named `target.sheetName` exists in the spreadsheet.
+   * Returns `true` when a new tab was created, `false` when it already existed.
+   * Used so the "leads" (and any future) tab can be provisioned automatically
+   * at worker startup instead of requiring a manual addSheet in each user's
+   * spreadsheet.
+   */
+  ensureSheetExists(target: GoogleSheetsTarget): Promise<boolean>;
 
   /**
    * Raw passthrough to the Sheets API's `spreadsheets.batchUpdate` — the

@@ -1,11 +1,9 @@
-# Feature: Message Creator (Story 84)
+# Feature: Message Creator (Story 84 + Story 85)
 
 ## Purpose
 
-Lead-scoped GUI that places the Beeper conversation beside a two-level
-creator panel (You + schools). Extends existing msg-workout / Console AI
-flows — does **not** replace the classic `/dashboard/leads/msg-workout`
-document editor.
+Lead-scoped GUI for Beeper conversation review and message-level analysis.
+Does **not** replace the classic `/dashboard/leads/msg-workout` document editor.
 
 ## Route
 
@@ -13,20 +11,20 @@ document editor.
 /dashboard/leads/message-creator?leadName=…&leadLoca=…
 ```
 
-Entry: Lead details → **Open Message Creator**.
+Entry: Msg Auto → **CREATOR**, or Lead details → **Open Message Creator**.
 
-## Layout
+## Modes (Story 85)
 
-- Desktop: conversation | creator (~48/52), independent scrolls
-- Mobile: stacked conversation above creator
-- Shell: `EditorPageShell`
+- **Beeper** — full-width conversation; per-message analysis combobox when
+  saved run count &gt; 0; Message proposals (You + prompt versions); Save msg.
+- **Analysis** — left: Recommended directions / Mistakes / Proposal score /
+  Previous messages score; right (~36% ±50px): conversation with red context
+  frame + model select + Send new + numbered run history.
 
-## Level 1 / Level 2
-
-- **You** → My Proposals, My Reports
-- **SD-PL** (full title: Social Dynamics Poland) → Conversation Health,
-  Capital, Next Message, Improve + **Analyze Full Conversation**
-- Additional schools come from DBA seed config (`listMessageCreatorSchools`)
+Active mode uses black background / white text. Analysis stays disabled until
+a message is selected and a concrete prompt version (not `Open (N)`) is chosen.
+Top **Select prompt version** is hidden until a message is selected; options
+match the per-message combobox (same builder).
 
 ## Data (per user repo via `runWithRepoContext`)
 
@@ -36,19 +34,19 @@ Entry: Lead details → **Open Message Creator**.
 | My proposals | `{lead}/msg workout/my proposals` (Text) |
 | Analysis runs | `{lead}/msg workout/{yy-MM-dd}; {schoolId}; {op}` |
 
-Historical `YY-MM-DD; ai bot` and classic workouts are never overwritten.
-Optional soft-import of `//you` sections into empty proposals (read-only until Save).
+Schema v2 runs may include `targetMessageId`, `promptVersionId`, `modelId`,
+`runNumber`, `proposalText`. Legacy runs without message target remain readable.
+
+Message IDs: deterministic FNV-1a over `timestamp|sender|raw` (see Story 85).
 
 ## API
 
-- `GET /api/leads/message-creator` — bootstrap
+- `GET /api/leads/message-creator` — bootstrap (messages, prompt versions, models,
+  messageRunCounts, allRuns)
 - `PUT /api/leads/message-creator` — `{ kind: "approach"|"proposals", leadLoca, text }`
-- `POST /api/leads/message-creator/ai` — school operations
+- `POST /api/leads/message-creator/ai` — Send new / school ops (`promptVersionId`,
+  `targetMessageId`, `modelId`)
 
-AI returns `PROMPT_NOT_CONFIGURED` / UI **Not configured** until mentor
-prompts are wired. No fake scores.
-
-## Freshness
-
-`conversationHash = sha256(raw body)`. Latest run vs current hash →
-Current / Outdated / Not analyzed yet / No data. No AI on render.
+AI returns `PROMPT_NOT_CONFIGURED` / UI **Not configured** until mentor prompts
+are wired. No fake scores. No AI on mount. Beeper Send on proposals is disabled
+until outbound send exists.

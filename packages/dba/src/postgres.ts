@@ -7,23 +7,30 @@
  *
  * This is the ONLY place in the monorepo allowed to open a `pg` connection —
  * same rule as `mongo.ts` for MongoDB (`packages/dashboard` must never
- * import `pg` directly).
+ * import `pg` directly). Routed through `dev-db-override.ts` so the Dev
+ * Panel Settings tab can switch local/`next dev` between local and QNAP
+ * Postgres without a process restart.
  */
 
 import { Pool, type PoolClient } from "pg";
+import { getEffectivePostgresUri, getPostgresOverrideGeneration } from "./dev-db-override.js";
 
 function getPostgresUri(): string {
-  const uri = process.env.POSTGRES_URI;
-  if (!uri) {
-    throw new Error("POSTGRES_URI environment variable is not set");
-  }
-  return uri;
+  return getEffectivePostgresUri();
 }
 
 let pool: Pool | null = null;
+let poolGeneration = -1;
 
 function getPool(): Pool {
+  const generation = getPostgresOverrideGeneration();
+  if (pool && poolGeneration !== generation) {
+    const stale = pool;
+    pool = null;
+    stale.end().catch(() => {});
+  }
   if (!pool) {
+    poolGeneration = generation;
     pool = new Pool({ connectionString: getPostgresUri() });
   }
   return pool;
@@ -86,6 +93,7 @@ export async function closePostgresConnection(): Promise<void> {
   if (pool) {
     const p = pool;
     pool = null;
+    poolGeneration = -1;
     await p.end();
   }
 }

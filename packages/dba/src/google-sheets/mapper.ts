@@ -163,6 +163,23 @@ export const DATE_ENTRIES_SHEET_HEADERS: string[] = [
   ...TECHNICAL_COLUMNS,
 ];
 
+/**
+ * Leads tab columns — mirror Views → LEADS list fields (lead key / name /
+ * has-contacts), plus the shared technical CHAD_* columns.
+ */
+export const LEADS_HEADER_ROW_COUNT = 1;
+
+export const LEAD_DOMAIN_COLUMNS: SheetColumnSpec[] = [
+  ITEM_NUMBER_COLUMN,
+  { key: "LEAD NAME", label: "LEAD NAME", group: "none" },
+  { key: "HAS CONTACTS", label: "HAS CONTACTS", group: "none" },
+];
+
+export const LEADS_SHEET_HEADERS: string[] = [
+  ...LEAD_DOMAIN_COLUMNS.map((c) => c.label),
+  ...TECHNICAL_COLUMNS,
+];
+
 export type SyncStatusColumnValue = "ACTIVE" | "DELETED";
 
 function mapToSheetRow(
@@ -215,6 +232,15 @@ export function mapDateEntryToSheetRow(
   syncStatus: SyncStatusColumnValue = "ACTIVE"
 ): SheetRowValues {
   return mapToSheetRow(DATE_ENTRY_DOMAIN_COLUMNS, payload, now, syncStatus);
+}
+
+/** Same mapping, for the "leads" tab. */
+export function mapLeadToSheetRow(
+  payload: SheetSyncPayload,
+  now: string,
+  syncStatus: SyncStatusColumnValue = "ACTIVE"
+): SheetRowValues {
+  return mapToSheetRow(LEAD_DOMAIN_COLUMNS, payload, now, syncStatus);
 }
 
 /**

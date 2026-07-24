@@ -1,54 +1,85 @@
 import { NextResponse } from 'next/server';
-import { getMongoSource, setMongoSource, describeEffectiveMongoTarget, type MongoSource } from 'dba';
+import {
+  getMongoSource,
+  setMongoSource,
+  describeEffectiveMongoTarget,
+  getPostgresSource,
+  setPostgresSource,
+  describeEffectivePostgresTarget,
+  type DbSource,
+} from 'dba';
 
 /**
  * GET/POST /api/dev-settings/db-source
  *
- * Backs the Dev Panel's Settings tab (Story 83): lets a local `next dev`
- * session see and change, live, whether `dba` talks to the local or the
- * QNAP (shared, real) Mongo — previously only decidable once, at
- * shell/container-start time, via `DBA_MONGO_MODE`.
+ * Backs the Dev Panel's Settings tab: live, independent switches for
+ * Postgres (CHAD primary, Story 80/81) and Mongo (Beeper / leftover paths)
+ * between local docker and QNAP-over-Tailscale — previously only decidable
+ * at shell start via `DBA_MONGO_MODE`.
  *
- * SAFETY: hard-blocked whenever `NODE_ENV === "production"` — every
- * Docker-built deployment (local-mac-docker, QNAP test, QNAP prod) runs
- * with `NODE_ENV=production` regardless of environment name (see
- * `lib/flags.ts`), so this can never be reachable on a shared, multi-user
- * server process, only on a single developer's own bare `next dev`. This
- * check is independent of (and in addition to) the `DEV_PANEL_ENABLED`
- * build flag that gates whether the Dev Panel UI is even mounted.
+ * SAFETY: allowed only for local — `CHAD_ENVIRONMENT=local` (official
+ * local-mac-docker) or bare `next dev`. Hard-blocked on QNAP TEST/PROD.
  */
+
 function assertDevOnly(): NextResponse | null {
-  if (process.env.NODE_ENV === 'production') {
-    return NextResponse.json({ error: 'DISABLED_IN_PRODUCTION' }, { status: 403 });
+  const chadEnv = process.env.CHAD_ENVIRONMENT;
+  const allowed =
+    chadEnv === 'local' || (chadEnv !== 'test' && chadEnv !== 'prod' && process.env.NODE_ENV !== 'production');
+  if (!allowed) {
+    return NextResponse.json({ error: 'DISABLED_OUTSIDE_LOCAL' }, { status: 403 });
   }
   return null;
+}
+
+function snapshot() {
+  return {
+    postgres: { current: getPostgresSource(), target: describeEffectivePostgresTarget() },
+    mongo: { current: getMongoSource(), target: describeEffectiveMongoTarget() },
+  };
 }
 
 export async function GET() {
   const blocked = assertDevOnly();
   if (blocked) return blocked;
 
-  return NextResponse.json({ current: getMongoSource(), target: describeEffectiveMongoTarget() });
+  return NextResponse.json(snapshot());
 }
 
 export async function POST(request: Request) {
   const blocked = assertDevOnly();
   if (blocked) return blocked;
 
-  let payload: { source?: unknown };
+  let payload: { postgres?: unknown; mongo?: unknown; source?: unknown };
   try {
     payload = await request.json();
   } catch {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
 
-  const source = payload.source;
-  if (source !== 'local' && source !== 'qnap') {
-    return NextResponse.json({ error: 'Invalid "source" (must be "local" or "qnap")' }, { status: 400 });
+  // Backward compat: old UI sent `{ source }` for Mongo only.
+  const postgres = payload.postgres ?? undefined;
+  const mongo = payload.mongo ?? payload.source ?? undefined;
+
+  if (postgres === undefined && mongo === undefined) {
+    return NextResponse.json(
+      { error: 'Provide "postgres" and/or "mongo" ("local" | "qnap")' },
+      { status: 400 }
+    );
   }
 
   try {
-    setMongoSource(source as MongoSource);
+    if (postgres !== undefined) {
+      if (postgres !== 'local' && postgres !== 'qnap') {
+        return NextResponse.json({ error: 'Invalid "postgres" (must be "local" or "qnap")' }, { status: 400 });
+      }
+      setPostgresSource(postgres as DbSource);
+    }
+    if (mongo !== undefined) {
+      if (mongo !== 'local' && mongo !== 'qnap') {
+        return NextResponse.json({ error: 'Invalid "mongo" (must be "local" or "qnap")' }, { status: 400 });
+      }
+      setMongoSource(mongo as DbSource);
+    }
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'UNKNOWN_ERROR' },
@@ -56,5 +87,5 @@ export async function POST(request: Request) {
     );
   }
 
-  return NextResponse.json({ current: getMongoSource(), target: describeEffectiveMongoTarget() });
+  return NextResponse.json(snapshot());
 }
