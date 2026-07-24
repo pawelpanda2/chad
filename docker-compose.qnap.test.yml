@@ -73,9 +73,14 @@ services:
       # exact same shared env var name; a plain default-value read here
       # would silently apply to PROD too on its next restart/redeploy. See
       # backlog/stories/81/02_plan.md.
-      - DBA_MONGO_ENABLED=false
+      # EMERGENCY ROLLBACK 2026-07-24: real user (pawel_f) locked out of
+      # login + hit "not authenticated" on save while this was live on
+      # Postgres primary. Root cause under investigation — see
+      # backlog/stories/81/06_others_from_report.md. Reverted immediately,
+      # investigate before re-attempting.
+      - DBA_MONGO_ENABLED=true
       - DBA_POSTGRES_ENABLED=true
-      - DBA_PRIMARY_BACKEND=postgres
+      - DBA_PRIMARY_BACKEND=mongo
       - DBA_CONTENT_PROVIDER_ENABLED=${DBA_CONTENT_PROVIDER_ENABLED:-false}
       # Story 81 — data-sync outbox worker, wired into this process
       # (data-outbox-bootstrap.ts) for the first time. Stays inert here
