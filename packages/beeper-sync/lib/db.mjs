@@ -109,6 +109,9 @@ export async function upsertContact(senderID, senderName, network, extra = {}) {
           tags:       [],
           avatarURL:  extra.imgURL  || null,
           identities: [{ network, senderID, senderName: senderName || '', username: extra.username || '' }],
+          // Story 86 — new contacts default to full sync (same as migrated legacy)
+          include:    true,
+          exclude:    false,
           createdAt:  new Date(),
           updatedAt:  new Date(),
         },

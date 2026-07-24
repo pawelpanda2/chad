@@ -34,6 +34,7 @@ import {
   MY_SENDER_ID,
   ObjectId,
 } from "./db.mjs";
+import { resolveSyncMode } from "./sync-permissions.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -313,10 +314,18 @@ Tryb: ${force ? "FORCE (pełny re-import)" : "incremental"}
         // Upsert kontaktu
         let contactID = null;
         if (!isSelf && senderContactID) {
+          const existing = await contactsCol.findOne({ "identities.senderID": senderContactID });
+          const mode = resolveSyncMode(existing);
+          if (mode === "exclude") {
+            continue;
+          }
           const participantInfo = participantMap.get(senderContactID);
           const displayName = participantInfo?.displayName || senderContactID;
           contactID = await upsertContact(senderContactID, displayName, network);
           await addParticipant(channelID, contactID);
+          if (mode === "metadata") {
+            continue;
+          }
         }
 
         // Pobierz tekst

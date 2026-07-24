@@ -9,6 +9,7 @@ import {
 
 import {
   channelsCol,
+  contactsCol,
   upsertChannel,
   upsertContact,
   addParticipant,
@@ -18,6 +19,7 @@ import {
   setSyncState,
   MY_SENDER_ID,
 } from "./db.mjs";
+import { resolveSyncMode } from "./sync-permissions.mjs";
 
 /**
  * Synchronizuje cały kanał: metadane + wiadomości + kontakty.
@@ -108,8 +110,21 @@ export async function syncChannel(beeperChatID, options = {}) {
       // ── Kontakt (tylko jeśli to nie my) ─────────────────────────────────
       let contactID = null;
       if (!isSelf && senderID) {
+        const existing = await contactsCol.findOne({ "identities.senderID": senderID });
+        const mode = resolveSyncMode(existing);
+
+        if (mode === "exclude") {
+          // Story 86 — fully ignored; do not upsert contact or message
+          continue;
+        }
+
         contactID = await upsertContact(senderID, senderName, network);
         await addParticipant(channelID, contactID);
+
+        if (mode === "metadata") {
+          // Story 86 — keep/update contact basics only; skip message history
+          continue;
+        }
       }
 
       // ── Mapuj reakcje z pola reactions[] ────────────────────────────────
