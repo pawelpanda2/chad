@@ -26,9 +26,10 @@ test.describe("QNAP TEST — test3 History table + details route", () => {
     await expect(table).toBeVisible();
 
     // Columns, in order.
-    await expect(table.getByRole("columnheader").nth(0)).toHaveText("Date");
-    await expect(table.getByRole("columnheader").nth(1)).toHaveText("Op");
-    await expect(table.getByRole("columnheader").nth(2)).toHaveText("loca");
+    await expect(table.getByRole("columnheader").nth(0)).toHaveText("date");
+    await expect(table.getByRole("columnheader").nth(1)).toHaveText("o");
+    await expect(table.getByRole("columnheader").nth(2)).toHaveText("name");
+    await expect(table.getByRole("columnheader").nth(3)).toHaveText("loca");
 
     // No pagination remnants anywhere on the page.
     await expect(page.getByRole("button", { name: "Previous" })).toHaveCount(0);
@@ -75,7 +76,7 @@ test.describe("QNAP TEST — test3 History table + details route", () => {
     await filter.selectOption("");
   });
 
-  test("loca column shows path (no repoGuid) + name on two lines, and clicking a row opens details", async ({ page }) => {
+  test("name and loca are separate columns; loca has no repoGuid; row opens details", async ({ page }) => {
     await page.goto("/dashboard/history?view=items");
     const table = page.getByTestId("history-table");
     await expect(table).toBeVisible();
@@ -83,11 +84,10 @@ test.describe("QNAP TEST — test3 History table + details route", () => {
     const firstRow = page.getByTestId("history-row").first();
     await expect(firstRow).toBeVisible();
 
-    const locaCell = firstRow.locator("td").nth(2);
-    const locaCellText = (await locaCell.textContent())?.trim() ?? "";
-    expect(locaCellText.length).toBeGreaterThan(0);
-    // Must not show the full repoGuid (UUID) in the loca path line.
-    expect(locaCellText).not.toMatch(
+    const nameText = (await firstRow.locator("td").nth(2).textContent())?.trim() ?? "";
+    const locaText = (await firstRow.locator("td").nth(3).textContent())?.trim() ?? "";
+    expect(nameText.length).toBeGreaterThan(0);
+    expect(locaText).not.toMatch(
       /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
     );
 
