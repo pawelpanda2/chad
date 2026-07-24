@@ -9,7 +9,7 @@
 | 5 | DONE | | Start PostgreSQL selectively on QNAP shared (no Mongo restart) |
 | 6 | DONE | | Apply Postgres migrations on QNAP |
 | 7 | DONE | | Migrate test3 only (dry-run then apply), verify integrity + parity |
-| 8 | NOT DONE YET | | Cut QNAP TEST over to Postgres primary (isolated from PROD's env) |
+| 8 | DONE | | Fixed a real gap: `leads.ts` business functions had no Postgres branch — cut QNAP TEST over to Postgres primary (isolated from PROD's env) |
 | 9 | NOT DONE YET | | Verify Google Sheets / Content Provider / data-outbox workers against Postgres on TEST |
 | 10 | NOT DONE YET | | QNAP TEST smoke/integration tests (test3) |
 | 11 | BLOCKED | | Playwright e2e — no `E2E_TEST3_PASSWORD` in this environment |
@@ -132,6 +132,78 @@ integrity + parity + hash comparison; no other repo's records.
 
 **Files changed:** none (scripts already committed).
 **Tested:** all commands above, against the real QNAP Mongo/Postgres.
+**Status: DONE**
+
+# Task 8 — Cut QNAP TEST over to Postgres primary
+
+**Requested:** isolated TEST-only cutover; TEST connects to Postgres, PROD
+stays on Mongo; separate flags; TEST doesn't mutate other repos; Beeper
+unaffected; workers read Postgres outbox; restart TEST only.
+
+**Done, in two passes:**
+
+**Pass 1 (initial cutover):** `docker-compose.qnap.test.yml` hardcoded
+`DBA_MONGO_ENABLED=false`, `DBA_POSTGRES_ENABLED=true`,
+`DBA_PRIMARY_BACKEND=postgres`, `DBA_POSTGRES_REPO_ALLOWLIST=<test3-guid>`,
+`POSTGRES_URI=...@chad-postgres:5432/...` — verified via `docker compose
+config` that PROD's own compose resolves `DBA_PRIMARY_BACKEND=mongo` with
+zero `POSTGRES_*` vars, unaffected. Restarted TEST only
+(`04_qnap_test/03_re-start.sh`), confirmed env inside the container and
+`chad-mongodb`/`beeper-mongodb` `StartedAt` unchanged.
+
+**Real bug found and fixed before declaring this done:** a direct
+DBA-function-level smoke test (`saveDateEntry` against QNAP's real
+Postgres) failed outright. Root cause: `packages/dba/src/leads.ts`'s
+business functions (`saveDateEntry`/`saveDailyEntry`/`getAllDateEntries`/
+`getAllDailyEntries`/`update*Entry`/`delete*Entry` — everything the
+Dashboard's Daily Tracker/Dates UI actually calls) only ever branched on
+`config.mongoEnabled`/`config.contentProviderEnabled` — there was no
+`postgresEnabled`/`primaryBackend==="postgres"` case anywhere in this
+file, so every one of them silently no-op'd (reads returned `[]`, writes
+returned `success:false`) under TEST's new cutover config. (Two EARLIER
+"successful" Postgres smoke tests were false positives caused by an
+unrelated ordering bug in my own verification script — `loadQnapEnv()`
+reset `DBA_MONGO_ENABLED` back to its default before the actual call,
+so those runs silently read Mongo's still-present, identical data instead
+of Postgres.)
+
+Immediately rolled QNAP TEST back to `DBA_PRIMARY_BACKEND=mongo` (commit
+`cccc293`) as a safety measure while fixing this for real — TEST was
+briefly deployed in a state where Daily/Dates wouldn't actually work.
+
+Fix: the four shared Mongo-specific helpers in `leads.ts`
+(`getAllChildTextItemsMongo`, `findOrCreateFolderChainMongo`,
+`saveChildTextItemMongo`, `updateItemBodyMongo`) were parameterized to
+accept a `CpCompatibleDataProvider` instead of hardcoding
+`getMongoProvider()` — both `MongoCpProvider` and `PostgresCpProvider`
+already implement the identical interface, so this is a small, mechanical
+change, not a rewrite. All 8 public functions now switch explicitly on
+`config.primaryBackend` (`"postgres"` → `getPostgresProvider()`,
+`"mongo"` → `getMongoProvider()`, else → Content Provider), replacing the
+old ambiguous "both independently `if (enabled)`" pattern that would have
+double-fired if two backends were ever simultaneously `enabled`.
+
+Verified (real local Postgres, then re-verified against QNAP after
+redeploy):
+```
+node ...leads-postgres-smoke... (ad hoc, then formalized as a real test):
+create/update/delete Date Entry -> exactly one insert/update/delete
+cp_history event each, correct body after update, empty list after delete.
+Same for Daily Entry.
+```
+Formalized as `packages/dba/src/leads-postgres.test.ts` (2 tests, real
+local Postgres) — both pass. Full local regression re-run after the fix:
+`pnpm test:unit` (28), `pnpm test:integration:local-mongo` (34),
+`pnpm test:integration:local-postgres` (24 + 2 new = 26) — all green.
+`pnpm --filter dashboard build` — clean.
+
+Re-applied the TEST cutover (same compose values as Pass 1) and restarted
+TEST again — see Task 9 below for the post-fix verification against
+QNAP's real Postgres/test3.
+
+**Files changed:** `docker-compose.qnap.test.yml` (2 revisions — cutover,
+rollback, re-cutover), `packages/dba/src/leads.ts`,
+`packages/dba/src/leads-postgres.test.ts`, `vitest.config.mjs`.
 **Status: DONE**
 
 # Task 1 — Verify current state
