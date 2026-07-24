@@ -1,19 +1,49 @@
-# Docker Compose — local Mac dev, full stack under Docker (mongo +
+# Docker Compose — local Mac dev, full stack under Docker (postgres + mongo +
 # dashboard). Used by bash-scripts/dashboard/03_local_mac_docker/*.sh. Env
 # file: .env.local (shared with 02_local_mac — copy from .env.local.example,
 # never commit the real one).
 #
-# Content Provider (content-provider-api) removed from this stack — Mongo
-# is the only active runtime backend now (DBA_CONTENT_PROVIDER_ENABLED=false,
-# DBA_PRIMARY_BACKEND=mongo). The .NET adapter code (`NetFileCpProvider`)
-# and the `net-content-provider` submodule are untouched; this is a
-# deployment-only change, reversible by re-adding the service below.
+# Story 80: PostgreSQL is now CHAD's own datastore
+# (cp_items/cp_history/cp_outbox_*) — DBA_PRIMARY_BACKEND=postgres,
+# DBA_MONGO_ENABLED=false. `mongodb` stays in this stack for local Beeper
+# CRM testing only (BEEPER_MONGODB_URI, per-user `beeper_<repoGuid>`
+# databases — entirely separate from CHAD's own data and unaffected by this
+# Story). Before running the dashboard against a fresh Postgres volume, run
+# `POSTGRES_URI=... node packages/dba/scripts/apply-postgres-migrations.mjs`
+# once to create the schema.
+#
+# Content Provider (content-provider-api) removed from this stack — the
+# .NET adapter code (`NetFileCpProvider`) and the `net-content-provider`
+# submodule are untouched; this is a deployment-only change, reversible by
+# re-adding the service below.
 #
 # For local dev WITHOUT Docker (pnpm/tmuxinator instead), see
 # bash-scripts/dashboard/02_local_mac/ — that path runs mongo standalone (no
 # replica set) too, matching this file's mongo service.
 
 services:
+  # Story 80 — CHAD's PostgreSQL datastore (cp_items/cp_history/outboxes).
+  # `mongodb` below stays running for local Beeper testing only (Beeper CRM
+  # is unaffected by this Story) — CHAD's own data no longer needs it once
+  # DBA_PRIMARY_BACKEND=postgres (see the dashboard service's env below).
+  postgres:
+    image: postgres:17
+    container_name: chad-postgres-local-mac-docker
+    restart: unless-stopped
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-chad}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      - POSTGRES_DB=${POSTGRES_DB:-chad}
+    volumes:
+      - chad-postgres-local-mac-docker-db:/var/lib/postgresql/data
+    healthcheck:
+      test: pg_isready -U ${POSTGRES_USER:-chad} -d ${POSTGRES_DB:-chad}
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   mongodb:
     image: mongo:7
     container_name: chad-mongodb-local-mac-docker
@@ -54,12 +84,21 @@ services:
         ENABLE_DEV_PANEL: "true"
     container_name: chad-dashboard-local-mac-docker
     restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
     ports:
       - "${DASHBOARD_PORT:-12020}:3000"
     environment:
       - NODE_ENV=production
       - NEXT_TELEMETRY_DISABLED=1
       - DATABASE_URL=file:/app/data/dev.db
+      # Story 80 — CHAD's PostgreSQL datastore (cp_items/cp_history/
+      # outboxes). See postgres.ts; POSTGRES_URI is read lazily the same
+      # way MONGODB_URI is.
+      - POSTGRES_URI=${POSTGRES_URI:-postgres://${POSTGRES_USER:-chad}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-chad}}
       # From .env.local (DBA_MONGO_MODE=local, default) or overridden by
       # 01_config.sh (DBA_MONGO_MODE=qnap — points at QNAP's chad-mongodb
       # over Tailscale instead, see that file). Must use host.docker.internal
@@ -67,7 +106,9 @@ services:
       # directly, since this runs inside the container's own network
       # namespace — not needed for either DBA_MONGO_MODE today (local mode
       # uses the sibling `mongodb` service by Compose service name, qnap
-      # mode uses QNAP's real Tailscale IP).
+      # mode uses QNAP's real Tailscale IP). Only relevant to Beeper now
+      # (see BEEPER_MONGODB_URI below) — CHAD's own cp_items no longer read
+      # this once DBA_PRIMARY_BACKEND=postgres.
       - MONGODB_URI=${MONGODB_URI:-mongodb://mongodb:27017/chad}
       # Beeper CRM's Mongo *server* URI — same physical mongo server as
       # MONGODB_URI. Story 73: each CHAD user gets their own
@@ -75,16 +116,18 @@ services:
       # timeline_events/..., predates this monorepo — ported from the
       # standalone `contacts` repo), computed by dba's getBeeperMongoDb(),
       # never a database segment on this URI. Never merged into `chad`
-      # alongside CP items.
+      # alongside CP items. This is the ONLY thing `mongodb` above is still
+      # needed for locally, post-Story-80.
       - BEEPER_MONGODB_URI=${BEEPER_MONGODB_URI:-mongodb://mongodb:27017}
-      # Story 72 data-providers config (packages/dba/src/data-providers/
-      # config.ts) — defaults here match the follow-up session's priority:
-      # MongoDB as the only active/primary backend, CP follower disabled
-      # (not removed — a documented, reversible next step, see Story 72's
-      # 06_others_from_report.md).
-      - DBA_MONGO_ENABLED=${DBA_MONGO_ENABLED:-true}
+      # Story 80 data-providers config (packages/dba/src/data-providers/
+      # config.ts) — PostgreSQL is now the primary/only backend for CHAD's
+      # own cp_items; DBA_MONGO_ENABLED=false here means Mongo is never even
+      # registered as a CP-items provider (Beeper's connection is separate
+      # and unaffected — see BEEPER_MONGODB_URI above).
+      - DBA_MONGO_ENABLED=${DBA_MONGO_ENABLED:-false}
       - DBA_CONTENT_PROVIDER_ENABLED=${DBA_CONTENT_PROVIDER_ENABLED:-false}
-      - DBA_PRIMARY_BACKEND=${DBA_PRIMARY_BACKEND:-mongo}
+      - DBA_POSTGRES_ENABLED=${DBA_POSTGRES_ENABLED:-true}
+      - DBA_PRIMARY_BACKEND=${DBA_PRIMARY_BACKEND:-postgres}
       - DBA_FOLLOWER_WRITES_ENABLED=${DBA_FOLLOWER_WRITES_ENABLED:-false}
       - DBA_SHADOW_READS_ENABLED=${DBA_SHADOW_READS_ENABLED:-false}
       # Always "local" here, never "prod" — regardless of DBA_MONGO_MODE
@@ -126,6 +169,8 @@ services:
   # multi-document transactions, not just Change Streams).
 
 volumes:
+  chad-postgres-local-mac-docker-db:
+    name: chad-postgres-local-mac-docker-db
   chad-mongodb-local-mac-docker-db:
     name: chad-mongodb-local-mac-docker-db
   chad-mongodb-local-mac-docker-configdb:

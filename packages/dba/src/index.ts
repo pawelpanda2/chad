@@ -15,6 +15,7 @@ export * from './reports.js';
 export * from './report-entries.js';
 export * from './beeper.js';
 export * from './mongo.js';
+export * from './postgres.js';
 export * from './secrets-crypto.js';
 export * from './beeper-crm.js';
 export * from './path-resolver.js';
@@ -29,6 +30,12 @@ export * from './data-commands.js';
 export * from './data-providers/types.js';
 export * from './data-providers/config.js';
 export * from './data-providers/mongo-cp-provider.js';
+// Named (not `export *`) — postgres-cp-provider.ts's AddressConflictError/
+// DuplicateChildNameError intentionally share names with
+// mongo-cp-provider.ts's own (same concept, independent backend
+// implementation); a blanket `export *` here would collide with the Mongo
+// exports above.
+export { PostgresCpProvider } from './data-providers/postgres-cp-provider.js';
 export * from './data-providers/net-file-cp-provider.js';
 export * from './data-providers/file-cp-provider.js';
 export * from './data-providers/cp-fs-reader.js';

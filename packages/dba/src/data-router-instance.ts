@@ -12,11 +12,13 @@
 import { loadDataProvidersConfig } from "./data-providers/config.js";
 import { MongoCpProvider } from "./data-providers/mongo-cp-provider.js";
 import { NetFileCpProvider } from "./data-providers/net-file-cp-provider.js";
+import { PostgresCpProvider } from "./data-providers/postgres-cp-provider.js";
 import { DbaDataRouter } from "./data-router.js";
 import type { CpCompatibleDataProvider, DataBackendName } from "./data-providers/types.js";
 
 let instance: DbaDataRouter | null = null;
 let mongoProviderInstance: MongoCpProvider | null = null;
+let postgresProviderInstance: PostgresCpProvider | null = null;
 
 export function getDataRouter(): DbaDataRouter {
   if (!instance) {
@@ -24,6 +26,7 @@ export function getDataRouter(): DbaDataRouter {
     const providers: Partial<Record<DataBackendName, CpCompatibleDataProvider>> = {};
     if (config.mongoEnabled) providers.mongo = getMongoProvider();
     if (config.contentProviderEnabled) providers["content-provider"] = new NetFileCpProvider();
+    if (config.postgresEnabled) providers.postgres = getPostgresProvider();
 
     instance = new DbaDataRouter({
       config,
@@ -45,4 +48,12 @@ export function getMongoProvider(): MongoCpProvider {
     mongoProviderInstance = new MongoCpProvider();
   }
   return mongoProviderInstance;
+}
+
+/** Direct Postgres access for read-model helpers (Story 80) — same role as `getMongoProvider()` above, once a repo has cut over. */
+export function getPostgresProvider(): PostgresCpProvider {
+  if (!postgresProviderInstance) {
+    postgresProviderInstance = new PostgresCpProvider();
+  }
+  return postgresProviderInstance;
 }
