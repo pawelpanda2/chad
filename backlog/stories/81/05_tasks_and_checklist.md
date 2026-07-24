@@ -130,6 +130,37 @@ the exact collision. Committed (`6da1230`) and pushed.
 **Files changed:** `packages/dba/src/cp-history/mutate.ts`,
 `packages/dba/src/cp-history/mutate.test.ts`.
 **Tested:** `pnpm test:integration:local-mongo` — 14 (now 15, +1 new
-regression test) passed locally. Redeploying to QNAP TEST to confirm the
-fix against the real data that triggered it (Task 4).
+regression test) passed locally. Redeployed to QNAP TEST (Task 4).
+
+A second, related issue surfaced after redeploy: the OLD `history-worker`
+had created an index named `address_1_changedAt_-1` (key pattern
+`{address:1,changedAt:-1}`); Story 79's `ensureCpHistoryIndexes()` tries to
+create a DIFFERENTLY-NAMED index (`address_changedAt`) with that exact same
+key pattern, which MongoDB 4.4 rejects as `IndexOptionsConflict` (code 85) —
+same end symptom (every `cp_history` write broken). Per explicit user
+direction, fixed via a new idempotent, index-metadata-only script (never
+touches documents):
+
+```
+$ MONGODB_URI=... node packages/dba/scripts/fix-cp-history-legacy-index-conflict.mjs
+[fix-index] cp_history indexes BEFORE:
+  ... address_1_changedAt_-1 (legacy) ...
+[fix-index] dropping legacy index "address_1_changedAt_-1" ...
+[fix-index] ensuring current cp_history indexes (ensureCpHistoryIndexes)...
+[fix-index] cp_history indexes AFTER:
+  ... address_changedAt (correct, Story 79 name) ...
+```
+
+Verified fixed:
+```
+$ node test/support/provision-test3.mjs
+[provision-test3] initial seed already present (2 daily, 3 date entries) — skipping, idempotent.
+[provision-test3] done. (idempotent no-op)
+```
+No crash — confirms TEST's Story 79 Mongo mechanism (read path) now works
+against real QNAP data.
+
+**Files changed:** `packages/dba/src/cp-history/mutate.ts`,
+`packages/dba/src/cp-history/mutate.test.ts`,
+`packages/dba/scripts/fix-cp-history-legacy-index-conflict.mjs`.
 **Status: DONE**
