@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, type MouseEvent } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -368,6 +368,9 @@ function HistoryListContent({
   const [operationTypeFilter, setOperationTypeFilter] = useState<
     "insert" | "update" | "delete" | ""
   >("");
+  // name column starts narrow (truncates); drag the header edge to widen
+  // and reveal more — outer frame also scrolls horizontally (Statuses pattern).
+  const [nameColWidth, setNameColWidth] = useState(96);
 
   const fetchAllHistory = useCallback(async () => {
     try {
@@ -416,6 +419,22 @@ function HistoryListContent({
 
   const handleRowClick = (id: string) => {
     router.push(`/dashboard/history/entry/${id}`);
+  };
+
+  const onNameColResizeStart = (e: MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+    const startW = nameColWidth;
+    const onMove = (ev: MouseEvent) => {
+      setNameColWidth(Math.max(48, Math.min(480, startW + (ev.clientX - startX))));
+    };
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
   };
 
   return (
@@ -471,17 +490,33 @@ function HistoryListContent({
 
       {!isLoading && items.length > 0 && (
         <div className="border bg-muted/10">
-          <table className="w-full border-collapse text-sm" data-testid="history-table">
+          <table className="w-full border-collapse text-sm table-fixed" data-testid="history-table">
+            <colgroup>
+              <col className="w-[9.5rem]" />
+              <col className="w-6" />
+              <col style={{ width: nameColWidth }} />
+              <col />
+            </colgroup>
             <thead className="bg-muted">
               <tr>
-                <th className="border p-1 text-left font-medium text-muted-foreground whitespace-nowrap w-px">
-                  Date
+                <th className="border p-1 text-left font-medium text-muted-foreground whitespace-nowrap">
+                  date
                 </th>
                 <th
-                  className="border p-1 text-center font-medium text-muted-foreground whitespace-nowrap w-px"
+                  className="border p-1 text-center font-medium text-muted-foreground whitespace-nowrap"
                   title="C=Created, U=Updated, D=Deleted"
                 >
-                  Op
+                  o
+                </th>
+                <th className="border p-1 text-left font-medium text-muted-foreground relative select-none">
+                  name
+                  <span
+                    role="separator"
+                    aria-orientation="vertical"
+                    aria-label="Resize name column"
+                    onMouseDown={onNameColResizeStart}
+                    className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-primary/40"
+                  />
                 </th>
                 <th className="border p-1 text-left font-medium text-muted-foreground">loca</th>
               </tr>
@@ -496,23 +531,23 @@ function HistoryListContent({
                     onClick={() => handleRowClick(item.id)}
                     className="hover:bg-accent/50 cursor-pointer"
                   >
-                    <td className="border p-1 whitespace-nowrap text-xs text-muted-foreground font-mono w-px">
+                    <td className="border p-1 whitespace-nowrap text-xs text-muted-foreground font-mono">
                       {formatHistoryDate(item.changedAt)}
                     </td>
                     <td
                       className={cn(
-                        "border p-1 whitespace-nowrap text-xs font-semibold text-center w-px",
+                        "border p-1 whitespace-nowrap text-xs font-semibold text-center",
                         operationBadgeClass(item.operationType)
                       )}
                       title={item.operationType}
                     >
                       {operationLetter(item.operationType)}
                     </td>
-                    <td className="border p-1 text-xs leading-tight">
-                      <div className="font-mono text-muted-foreground truncate">
-                        {locaPath || "—"}
-                      </div>
-                      <div className="font-medium truncate">{item.itemName}</div>
+                    <td className="border p-1 text-xs font-medium truncate" title={item.itemName}>
+                      {item.itemName}
+                    </td>
+                    <td className="border p-1 text-xs font-mono text-muted-foreground truncate">
+                      {locaPath || "—"}
                     </td>
                   </tr>
                 );
