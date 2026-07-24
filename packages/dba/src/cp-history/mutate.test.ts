@@ -77,6 +77,57 @@ afterAll(async () => {
   await closeMongoConnection();
 });
 
+describe("ensureCpHistoryIndexes — coexistence with pre-Story-79 legacy documents", () => {
+  it("succeeds (partial unique index) even when legacy documents with no `version` field share a duplicate sourceId — real QNAP TEST incident, Story 81", async () => {
+    // Reproduces the real failure found deploying to QNAP TEST (Story 81):
+    // Story 74/78's Change-Stream-produced cp_history documents have no
+    // `version` field at all, so a NON-partial unique index on
+    // {sourceId,version} treats every one of them as version:null — two or
+    // more legacy events for the same sourceId (e.g. an item created then
+    // deleted under the old mechanism) collide as "duplicates" and abort
+    // the entire index build, breaking cp_history writes for every repo on
+    // that deployment, not just the one under test.
+    const legacySourceId = randomUUID();
+    await historyCol().insertMany([
+      {
+        _id: randomUUID(),
+        sourceCollection: "cp_items",
+        sourceId: legacySourceId,
+        address: `${REPO}/legacy-1`,
+        operationType: "insert",
+        actor: null,
+        changedAt: new Date(),
+        changes: { config: [], body: null },
+      } as unknown as CpHistoryDoc,
+      {
+        _id: randomUUID(),
+        sourceCollection: "cp_items",
+        sourceId: legacySourceId, // same sourceId, still no `version` field — must NOT collide
+        address: `${REPO}/legacy-1`,
+        operationType: "delete",
+        actor: null,
+        changedAt: new Date(),
+        changes: { config: [], body: null },
+      } as unknown as CpHistoryDoc,
+    ]);
+
+    await expect(ensureCpHistoryIndexes(db)).resolves.not.toThrow();
+
+    // And a real Story-79-native write for a DIFFERENT item still gets full
+    // uniqueness protection (the partial filter only excludes documents
+    // that lack `version`, never documents that have one).
+    const itemId = freshItemId();
+    const result = await executeCpMutationWithHistory(
+      randomUUID(),
+      { kind: "put", itemId, config: { id: itemId, address: `${REPO}/14`, type: "Text", name: "n14" }, body: "x" },
+      ctx()
+    );
+    expect(result.historyDoc.version).toBe(1);
+
+    await historyCol().deleteMany({ sourceId: legacySourceId });
+  });
+});
+
 describe("executeCpMutationWithHistory — insert", () => {
   it("creates cp_items and exactly one cp_history doc, version 1, correct hashes", async () => {
     const itemId = freshItemId();
