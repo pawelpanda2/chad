@@ -75,15 +75,17 @@ services:
       # exact same shared env var name; a plain default-value read here
       # would silently apply to PROD too on its next restart/redeploy. See
       # backlog/stories/81/02_plan.md.
-      # EMERGENCY ROLLBACK 2026-07-24: real user (pawel_f) locked out of
-      # login + hit "not authenticated" on save while Postgres primary lacked
-      # chad_admin (users-list lives in 0fc7da8d-3466-4964-a24c-dfc0d0fef87c).
-      # Fixed: legacy+baseline history in Mongo, migrated chad_admin to
-      # Postgres, allowlist includes both test3 + chad_admin — see
-      # backlog/stories/81/05_tasks_and_checklist.md.
-      - DBA_MONGO_ENABLED=false
+      # EMERGENCY ROLLBACK 2026-07-24 (Folders): TEST on postgres-primary
+      # with only test3+chad_admin migrated → every other repo (e.g.
+      # 21d11bdc-… Folders tab) returns "Item not found" because
+      # getItemByAddress reads primary only and DBA_MONGO_ENABLED=false.
+      # Folders/item-ops wiring and address format are fine — data for
+      # non-migrated repos still lives only in Mongo. Revert primary to
+      # mongo until every real repo used on TEST is migrated. Postgres
+      # stays up with migrated test3+chad_admin data intact.
+      - DBA_MONGO_ENABLED=true
       - DBA_POSTGRES_ENABLED=true
-      - DBA_PRIMARY_BACKEND=postgres
+      - DBA_PRIMARY_BACKEND=mongo
       - DBA_CONTENT_PROVIDER_ENABLED=${DBA_CONTENT_PROVIDER_ENABLED:-false}
       # Story 81 — data-sync outbox worker, wired into this process
       # (data-outbox-bootstrap.ts) for the first time. Stays inert here
