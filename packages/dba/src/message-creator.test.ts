@@ -121,6 +121,12 @@ test("pickLatestAnalysisRuns keeps first per school+op", () => {
       createdAt: "2026-07-24T12:00:00.000Z",
       freshness: "current",
       payload: null,
+      targetMessageId: null,
+      promptVersionId: null,
+      modelId: null,
+      runNumber: null,
+      proposalText: null,
+      status: null,
     },
     {
       schoolId: "sd-pl",
@@ -131,6 +137,12 @@ test("pickLatestAnalysisRuns keeps first per school+op", () => {
       createdAt: "2026-07-24T10:00:00.000Z",
       freshness: "outdated",
       payload: null,
+      targetMessageId: null,
+      promptVersionId: null,
+      modelId: null,
+      runNumber: null,
+      proposalText: null,
+      status: null,
     },
   ];
   const latest = pickLatestAnalysisRuns(runs);

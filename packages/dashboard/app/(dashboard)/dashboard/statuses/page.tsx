@@ -708,6 +708,7 @@ function StatusesPageContent() {
     return (
       <DashboardPageShell
         contentClassName={cn(FRAME_SECTION_GAP_CLASS, "overscroll-contain overflow-x-auto")}
+        upLevel={{ href: "/dashboard/msg-automation" }}
         title="Statuses"
       >
         {/* Page-specific controls now live inside the main frame, not above
@@ -979,6 +980,7 @@ function StatusesPageContent() {
   return (
     <DashboardPageShell
       title="Statuses"
+      upLevel={{ href: "/dashboard/msg-automation" }}
       contentClassName={FRAME_SECTION_GAP_CLASS}
     >
       <div className="flex shrink-0 flex-wrap items-center gap-3">

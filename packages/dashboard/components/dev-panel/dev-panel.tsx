@@ -3,18 +3,23 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useDevPanelStore } from '@/lib/dev-panel/dev-panel-store';
 
-type MongoSource = 'local' | 'qnap';
+type DbSource = 'local' | 'qnap';
 
-interface DbSourceState {
-  current: MongoSource;
-  target: { source: MongoSource; hostPort: string; error?: string };
+interface SourceState {
+  current: DbSource;
+  target: { source: DbSource; hostPort: string; error?: string };
 }
 
-/** Settings tab content: live local/QNAP Mongo switch (Story 83) — see /api/dev-settings/db-source. */
+interface DbSourceState {
+  postgres: SourceState;
+  mongo: SourceState;
+}
+
+/** Settings tab: independent local/QNAP switches for Postgres + Mongo — see /api/dev-settings/db-source. */
 function DevPanelSettingsTab() {
   const [state, setState] = useState<DbSourceState | null>(null);
   const [loading, setLoading] = useState(true);
-  const [switching, setSwitching] = useState(false);
+  const [switching, setSwitching] = useState<'postgres' | 'mongo' | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -39,14 +44,14 @@ function DevPanelSettingsTab() {
     load();
   }, [load]);
 
-  async function handleChange(source: MongoSource) {
-    setSwitching(true);
+  async function handleChange(kind: 'postgres' | 'mongo', source: DbSource) {
+    setSwitching(kind);
     setError(null);
     try {
       const res = await fetch('/api/dev-settings/db-source', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ source }),
+        body: JSON.stringify({ [kind]: source }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -57,7 +62,7 @@ function DevPanelSettingsTab() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to reach server');
     } finally {
-      setSwitching(false);
+      setSwitching(null);
     }
   }
 
@@ -65,36 +70,57 @@ function DevPanelSettingsTab() {
     <div className="dev-tab-section">
       <div className="dev-section-title">⚙️ Settings</div>
 
-      <div style={{ marginBottom: '12px' }}>
-        <label htmlFor="dev-panel-db-source" style={{ display: 'block', marginBottom: '4px', fontWeight: 600 }}>
-          Baza danych (Mongo)
+      <div style={{ marginBottom: '16px' }}>
+        <label htmlFor="dev-panel-postgres-source" style={{ display: 'block', marginBottom: '4px', fontWeight: 600 }}>
+          Postgres (CHAD — Folders / History / login)
         </label>
         <select
-          id="dev-panel-db-source"
-          value={state?.current ?? 'local'}
-          disabled={loading || switching || !state}
-          onChange={(e) => handleChange(e.target.value as MongoSource)}
+          id="dev-panel-postgres-source"
+          value={state?.postgres.current ?? 'local'}
+          disabled={loading || switching !== null || !state}
+          onChange={(e) => handleChange('postgres', e.target.value as DbSource)}
           className="dev-btn"
-          style={{ minWidth: '220px' }}
+          style={{ minWidth: '260px' }}
         >
-          <option value="local">Local (docker/local Mongo)</option>
-          <option value="qnap">QNAP (server, współdzielone dane)</option>
+          <option value="local">Local Postgres (docker :5433)</option>
+          <option value="qnap">QNAP Postgres (server :12042)</option>
         </select>
-        {switching && <span style={{ marginLeft: '8px' }}>Przełączanie...</span>}
+        {switching === 'postgres' && <span style={{ marginLeft: '8px' }}>Przełączanie...</span>}
+        {!loading && state && (
+          <pre className="dev-log-pre" style={{ marginTop: '6px' }}>
+            {state.postgres.current === 'qnap' ? 'QNAP Postgres' : 'Local Postgres'}
+            {'\n'}host:port = {state.postgres.target.hostPort}
+            {state.postgres.target.error ? `\n(błąd: ${state.postgres.target.error})` : ''}
+          </pre>
+        )}
+      </div>
+
+      <div style={{ marginBottom: '12px' }}>
+        <label htmlFor="dev-panel-mongo-source" style={{ display: 'block', marginBottom: '4px', fontWeight: 600 }}>
+          Mongo (Beeper)
+        </label>
+        <select
+          id="dev-panel-mongo-source"
+          value={state?.mongo.current ?? 'local'}
+          disabled={loading || switching !== null || !state}
+          onChange={(e) => handleChange('mongo', e.target.value as DbSource)}
+          className="dev-btn"
+          style={{ minWidth: '260px' }}
+        >
+          <option value="local">Local Mongo</option>
+          <option value="qnap">QNAP Mongo (server :12040)</option>
+        </select>
+        {switching === 'mongo' && <span style={{ marginLeft: '8px' }}>Przełączanie...</span>}
+        {!loading && state && (
+          <pre className="dev-log-pre" style={{ marginTop: '6px' }}>
+            {state.mongo.current === 'qnap' ? 'QNAP Mongo' : 'Local Mongo'}
+            {'\n'}host:port = {state.mongo.target.hostPort}
+            {state.mongo.target.error ? `\n(błąd: ${state.mongo.target.error})` : ''}
+          </pre>
+        )}
       </div>
 
       {loading && <div className="dev-no-logs">Ładowanie...</div>}
-
-      {!loading && state && (
-        <div className="dev-request-detail">
-          <strong>Aktualnie połączony z:</strong>
-          <pre className="dev-log-pre">
-            {state.current === 'qnap' ? 'QNAP (100.117.139.83:12040)' : 'Local'}
-            {'\n'}host:port = {state.target.hostPort}
-            {state.target.error ? `\n(błąd rozwiązania: ${state.target.error})` : ''}
-          </pre>
-        </div>
-      )}
 
       {error && (
         <div className="dev-request-detail dev-request-error">
@@ -104,9 +130,10 @@ function DevPanelSettingsTab() {
       )}
 
       <div className="dev-no-logs" style={{ marginTop: '12px' }}>
-        Dostępne tylko lokalnie (bare `next dev`) — zablokowane, gdy NODE_ENV=production (czyli na każdym
-        środowisku Docker: local-mac-docker, QNAP TEST, QNAP PROD). Zmiana dotyczy całego procesu serwera, nie
-        tylko tej karty przeglądarki.
+        Działa lokalnie (`CHAD_ENVIRONMENT=local` / local-mac-docker oraz bare `next dev`).
+        Zablokowane na QNAP TEST/PROD. Każdy combobox działa niezależnie; zmiana dotyczy całego
+        procesu serwera. QNAP Postgres może wymagać `POSTGRES_QNAP_PASSWORD` w `.env.local` gdy
+        hasło różni się od lokalnego volume.
       </div>
     </div>
   );

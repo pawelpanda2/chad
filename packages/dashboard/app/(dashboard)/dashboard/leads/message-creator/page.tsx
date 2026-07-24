@@ -1,111 +1,289 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { EditorPageShell } from "@/components/shared/editor-page-shell";
 import { NavGroup } from "@/components/shared/nav-group";
-import { BeeperConversationView } from "@/components/shared/beeper-conversation-view";
-import { TextEditorWithToolbar } from "@/components/shared/text-editor-with-toolbar";
+import {
+  BeeperConversationView,
+  type ParsedWhatsAppMessage,
+} from "@/components/shared/beeper-conversation-view";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import {
   AlertCircle,
   ChevronDown,
-  ChevronRight,
-  Copy,
+  ChevronUp,
   Loader2,
   RefreshCw,
 } from "lucide-react";
 
-type Operation =
-  | "health"
-  | "capital"
-  | "next-message"
-  | "improve"
-  | "full-analysis";
+type Mode = "beeper" | "analysis";
 
-type Freshness = "current" | "outdated" | "not-analyzed" | "no-data";
-
-interface School {
+interface PromptVersion {
   id: string;
-  tabLabel: string;
-  fullName: string;
+  displayName: string;
+  schoolId: string;
+  order: number;
+  enabled: boolean;
+}
+
+interface LlmModel {
+  id: string;
+  displayName: string;
   order: number;
   enabled: boolean;
 }
 
 interface AnalysisRun {
   schoolId: string;
-  operation: Operation;
+  operation: string;
   itemName: string;
   loca: string;
   conversationHash: string | null;
   createdAt: string | null;
-  freshness: Freshness;
+  freshness: string;
   payload: Record<string, unknown> | null;
-}
-
-interface ReportSummary {
-  name: string | null;
-  category: string | null;
-  address: string | null;
-  found: boolean;
-  preview: string | null;
-  body: string | null;
+  targetMessageId: string | null;
+  promptVersionId: string | null;
+  modelId: string | null;
+  runNumber: number | null;
+  proposalText: string | null;
+  status: string | null;
 }
 
 interface Bootstrap {
   leadName: string;
   leadLoca: string;
-  schools: School[];
+  schools: unknown[];
+  promptVersions: PromptVersion[];
+  models: LlmModel[];
   approachContext: string;
   proposals: string;
   historicalYouSuggestion: string | null;
-  reports: ReportSummary[];
+  reports: Array<{ name: string | null; preview: string | null; body: string | null }>;
   conversation: {
     found: boolean;
     body: string | null;
     channel: string | null;
     hash: string | null;
     error?: string;
+    messages: ParsedWhatsAppMessage[];
   };
-  analysis: AnalysisRun[];
-  relatedWorkouts: Array<{ logicalName: string; loca: string }>;
+  allRuns: AnalysisRun[];
+  messageRunCounts: Record<string, Record<string, number>>;
 }
 
-type Level1 = "you" | string; // school id
-type YouTab = "proposals" | "reports";
-type SchoolTab = "health" | "capital" | "next-message" | "improve";
+interface PromptOption {
+  value: string;
+  label: string;
+  isOpen: boolean;
+  promptVersionId: string | null;
+  count: number;
+}
 
-function freshnessLabel(f: Freshness): string {
-  switch (f) {
-    case "current":
-      return "Current";
-    case "outdated":
-      return "Outdated";
-    case "no-data":
-      return "No data";
-    default:
-      return "Not analyzed yet";
+const OPEN_VALUE = "__open__";
+const DEFAULT_SIDE_PCT = 36;
+const MAX_SHIFT_PX = 50;
+
+/** Mirrors dba/buildMessagePromptVersionOptions — single client source for both selects. */
+function buildPromptOptions(
+  versions: PromptVersion[],
+  countsByVersionId: Record<string, number>
+): PromptOption[] {
+  const rows = versions.map((v) => ({
+    id: v.id,
+    displayName: v.displayName,
+    order: v.order,
+    count: countsByVersionId[v.id] ?? 0,
+  }));
+  rows.sort((a, b) => {
+    const aPos = a.count > 0 ? 1 : 0;
+    const bPos = b.count > 0 ? 1 : 0;
+    if (aPos !== bPos) return bPos - aPos;
+    if (a.count !== b.count) return b.count - a.count;
+    return a.order - b.order;
+  });
+  const sum = rows.reduce((acc, r) => acc + (r.count > 0 ? r.count : 0), 0);
+  return [
+    {
+      value: OPEN_VALUE,
+      label: `Open (${sum})`,
+      isOpen: true,
+      promptVersionId: null,
+      count: sum,
+    },
+    ...rows.map((r) => ({
+      value: r.id,
+      label: `${r.displayName} (${r.count})`,
+      isOpen: false,
+      promptVersionId: r.id,
+      count: r.count,
+    })),
+  ];
+}
+
+function analysisContextMessageIds(
+  messages: ParsedWhatsAppMessage[],
+  targetMessageId: string
+): string[] {
+  const idx = messages.findIndex((m) => m.id === targetMessageId);
+  if (idx < 0) return [];
+  const target = messages[idx];
+  if (target.sender === "she") {
+    let start = idx;
+    while (start > 0 && messages[start - 1].sender === "she") start -= 1;
+    return messages.slice(start, idx + 1).map((m) => m.id);
   }
+  if (target.sender === "you") {
+    const framed: string[] = [];
+    let i = idx - 1;
+    while (i >= 0 && messages[i].sender === "she") {
+      framed.unshift(messages[i].id);
+      i -= 1;
+    }
+    framed.push(target.id);
+    return framed;
+  }
+  return [target.id];
 }
 
-function AnalysisStatusBadge({ freshness }: { freshness: Freshness }) {
+function payloadString(payload: Record<string, unknown> | null, keys: string[]): string | null {
+  if (!payload) return null;
+  for (const key of keys) {
+    const v = payload[key];
+    if (typeof v === "string" && v.trim()) return v;
+  }
+  return null;
+}
+
+function payloadMistakes(
+  payload: Record<string, unknown> | null
+): Array<{ title: string; body: string }> {
+  if (!payload) return [];
+  const raw = payload.mistakes ?? payload.errors;
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item) => {
+      if (typeof item === "string") return { title: "Mistake", body: item };
+      if (item && typeof item === "object") {
+        const o = item as Record<string, unknown>;
+        return {
+          title: String(o.title ?? o.name ?? "Mistake"),
+          body: String(o.body ?? o.description ?? o.text ?? ""),
+        };
+      }
+      return null;
+    })
+    .filter((x): x is { title: string; body: string } => Boolean(x && x.body));
+}
+
+function splitYouProposals(text: string): string[] {
+  return text
+    .split(/\n{2,}|\n/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+function MessageCreatorLeadPicker() {
+  const router = useRouter();
+  const [leads, setLeads] = useState<
+    Array<{ leadKey: string; leadName: string; loca: string; hasContacts: boolean }>
+  >([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [filter, setFilter] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await fetch("/api/leads-dashboard");
+        const json = await res.json();
+        if (!res.ok || json?.ok === false) {
+          throw new Error(json?.error || `Failed to load leads (${res.status})`);
+        }
+        if (!cancelled) setLeads(Array.isArray(json) ? json : []);
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const filtered = useMemo(() => {
+    const q = filter.trim().toLowerCase();
+    if (!q) return leads;
+    return leads.filter((l) => l.leadName.toLowerCase().includes(q));
+  }, [leads, filter]);
+
   return (
-    <span
-      className={cn(
-        "inline-flex rounded-md border px-2 py-0.5 text-xs font-medium",
-        freshness === "current" && "border-green-600/40 text-green-700 dark:text-green-400",
-        freshness === "outdated" && "border-amber-600/40 text-amber-700 dark:text-amber-400",
-        (freshness === "not-analyzed" || freshness === "no-data") &&
-          "border-muted-foreground/30 text-muted-foreground"
-      )}
-    >
-      {freshnessLabel(freshness)}
-    </span>
+    <EditorPageShell>
+      <div className="flex shrink-0 items-center gap-2 border-b px-2 py-1.5 pl-14">
+        <NavGroup upLevel={{ href: "/dashboard/msg-automation", label: "Msg Auto" }} />
+        <div className="min-w-0 flex-1">
+          <h1 className="truncate text-sm font-semibold">Message Creator</h1>
+          <p className="truncate text-xs text-muted-foreground">Pick a lead to open</p>
+        </div>
+      </div>
+      <div className="flex min-h-0 flex-1 flex-col gap-3 p-3">
+        <input
+          type="search"
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          placeholder="Filter leads…"
+          className="h-9 w-full max-w-md rounded-md border bg-background px-3 text-sm"
+        />
+        {loading ? (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Loading leads…
+          </div>
+        ) : error ? (
+          <div className="flex items-center gap-2 text-sm text-destructive">
+            <AlertCircle className="h-4 w-4" />
+            {error}
+          </div>
+        ) : filtered.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No leads found.</p>
+        ) : (
+          <ul className="min-h-0 flex-1 divide-y overflow-y-auto rounded-md border">
+            {filtered.map((lead) => (
+              <li key={lead.leadKey || `${lead.leadName}:${lead.loca}`}>
+                <button
+                  type="button"
+                  className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left text-sm hover:bg-muted"
+                  onClick={() =>
+                    router.push(
+                      `/dashboard/leads/message-creator?leadName=${encodeURIComponent(lead.leadName)}&leadLoca=${encodeURIComponent(lead.loca)}`
+                    )
+                  }
+                >
+                  <span className="min-w-0 truncate font-medium">{lead.leadName}</span>
+                  <span className="shrink-0 text-xs text-muted-foreground">
+                    {lead.hasContacts ? "Has contacts" : "Open →"}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </EditorPageShell>
   );
 }
 
@@ -124,31 +302,37 @@ function MessageCreatorPageContent() {
   const leadLoca = searchParams.get("leadLoca") ?? "";
 
   const [bootstrap, setBootstrap] = useState<Bootstrap | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(Boolean(leadName && leadLoca));
   const [error, setError] = useState<string | null>(null);
 
-  const [level1, setLevel1] = useState<Level1>("you");
-  const [youTab, setYouTab] = useState<YouTab>("proposals");
-  const [schoolTab, setSchoolTab] = useState<SchoolTab>("health");
-
-  const [approachOpen, setApproachOpen] = useState(true);
-  const [approachText, setApproachText] = useState("");
-  const [approachSaving, setApproachSaving] = useState(false);
-  const [approachSaved, setApproachSaved] = useState(false);
-
-  const [proposalsText, setProposalsText] = useState("");
-  const [proposalsSaving, setProposalsSaving] = useState(false);
-  const [proposalsSaved, setProposalsSaved] = useState(false);
-
-  const [improveInput, setImproveInput] = useState("");
-  const [expandedReport, setExpandedReport] = useState<string | null>(null);
-  const [fullAnalysisOpen, setFullAnalysisOpen] = useState(false);
+  const [mode, setMode] = useState<Mode>("beeper");
+  const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
+  const [topPromptValue, setTopPromptValue] = useState("");
+  const [selectedPromptVersionId, setSelectedPromptVersionId] = useState<string | null>(null);
+  const [selectedModelId, setSelectedModelId] = useState("");
+  const [activeRunLoca, setActiveRunLoca] = useState<string | null>(null);
   const [aiBusy, setAiBusy] = useState(false);
   const [aiMessage, setAiMessage] = useState<string | null>(null);
 
+  const [proposalsText, setProposalsText] = useState("");
+  const [draftProposal, setDraftProposal] = useState("");
+  const [proposalsOpen, setProposalsOpen] = useState(false);
+  const [proposalsSaving, setProposalsSaving] = useState(false);
+
+  const [approachOpen, setApproachOpen] = useState(false);
+  const [approachText, setApproachText] = useState("");
+  const [approachSaving, setApproachSaving] = useState(false);
+  const [reportsOpen, setReportsOpen] = useState(false);
+
+  const shellRef = useRef<HTMLDivElement>(null);
+  const [sideWidthPx, setSideWidthPx] = useState<number | null>(null);
+  const defaultSideWidthRef = useRef<number | null>(null);
+  const dragRef = useRef<{ startX: number; startWidth: number } | null>(null);
+
   const loadBootstrap = useCallback(async () => {
     if (!leadName || !leadLoca) {
-      setError("Missing leadName or leadLoca");
+      setBootstrap(null);
+      setError(null);
       setLoading(false);
       return;
     }
@@ -166,30 +350,93 @@ function MessageCreatorPageContent() {
       setBootstrap(data);
       setApproachText(data.approachContext ?? "");
       setProposalsText(data.proposals ?? "");
-      if (!data.proposals?.trim() && data.historicalYouSuggestion) {
-        // Soft import suggestion only — user must Save to persist
+      if (!selectedModelId && data.models[0]) {
+        setSelectedModelId(data.models[0].id);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
-  }, [leadName, leadLoca]);
+  }, [leadName, leadLoca, selectedModelId]);
 
   useEffect(() => {
     loadBootstrap();
-  }, [loadBootstrap]);
+    // intentionally only on lead change
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leadName, leadLoca]);
 
-  const selectedSchool = useMemo(() => {
-    if (level1 === "you" || !bootstrap) return null;
-    return bootstrap.schools.find((s) => s.id === level1) ?? null;
-  }, [level1, bootstrap]);
+  useEffect(() => {
+    if (mode !== "analysis" || !shellRef.current) return;
+    if (defaultSideWidthRef.current != null) return;
+    const w = shellRef.current.getBoundingClientRect().width;
+    const def = Math.round((w * DEFAULT_SIDE_PCT) / 100);
+    defaultSideWidthRef.current = def;
+    setSideWidthPx(def);
+  }, [mode]);
 
-  const runFor = useCallback(
-    (schoolId: string, operation: Operation): AnalysisRun | undefined =>
-      bootstrap?.analysis.find((a) => a.schoolId === schoolId && a.operation === operation),
-    [bootstrap]
+  const messages = bootstrap?.conversation.messages ?? [];
+  const promptVersions = bootstrap?.promptVersions ?? [];
+  const messageRunCounts = bootstrap?.messageRunCounts ?? {};
+
+  const optionsForSelected = useMemo(() => {
+    if (!selectedMessageId) return [];
+    return buildPromptOptions(promptVersions, messageRunCounts[selectedMessageId] ?? {});
+  }, [selectedMessageId, promptVersions, messageRunCounts]);
+
+  const analysisEnabled = Boolean(
+    selectedMessageId && selectedPromptVersionId && selectedPromptVersionId !== OPEN_VALUE
   );
+
+  const messageRuns = useMemo(() => {
+    if (!bootstrap || !selectedMessageId) return [];
+    const filtered = bootstrap.allRuns.filter((r) => {
+      if (r.targetMessageId !== selectedMessageId) return false;
+      if (selectedPromptVersionId && r.promptVersionId !== selectedPromptVersionId) return false;
+      return true;
+    });
+    const chronological = [...filtered].sort((a, b) => {
+      const ca = a.createdAt ?? "";
+      const cb = b.createdAt ?? "";
+      if (ca !== cb) return ca.localeCompare(cb);
+      return a.itemName.localeCompare(b.itemName);
+    });
+    return chronological
+      .map((run, index) => ({ ...run, runNumber: run.runNumber ?? index + 1 }))
+      .reverse();
+  }, [bootstrap, selectedMessageId, selectedPromptVersionId]);
+
+  const allMessageRunsNewestFirst = useMemo(() => {
+    if (!bootstrap || !selectedMessageId) return [];
+    const filtered = bootstrap.allRuns.filter((r) => r.targetMessageId === selectedMessageId);
+    const chronological = [...filtered].sort((a, b) => {
+      const ca = a.createdAt ?? "";
+      const cb = b.createdAt ?? "";
+      if (ca !== cb) return ca.localeCompare(cb);
+      return a.itemName.localeCompare(b.itemName);
+    });
+    return chronological
+      .map((run, index) => ({ ...run, runNumber: run.runNumber ?? index + 1 }))
+      .reverse();
+  }, [bootstrap, selectedMessageId]);
+
+  const displayRuns =
+    selectedPromptVersionId && selectedPromptVersionId !== OPEN_VALUE
+      ? messageRuns
+      : allMessageRunsNewestFirst;
+
+  const activeRun = useMemo(() => {
+    if (!displayRuns.length) return null;
+    if (activeRunLoca) {
+      return displayRuns.find((r) => r.loca === activeRunLoca) ?? displayRuns[0];
+    }
+    return displayRuns[0];
+  }, [displayRuns, activeRunLoca]);
+
+  const contextFrameIds = useMemo(() => {
+    if (!selectedMessageId || mode !== "analysis") return null;
+    return analysisContextMessageIds(messages, selectedMessageId);
+  }, [messages, selectedMessageId, mode]);
 
   const conversationStatus = !bootstrap
     ? ""
@@ -197,10 +444,48 @@ function MessageCreatorPageContent() {
       ? `Loaded${bootstrap.conversation.channel ? ` · ${bootstrap.conversation.channel}` : ""}`
       : "No conversation found";
 
+  function selectMessage(messageId: string) {
+    setSelectedMessageId(messageId);
+    setTopPromptValue(OPEN_VALUE);
+    setSelectedPromptVersionId(null);
+    setActiveRunLoca(null);
+    setAiMessage(null);
+  }
+
+  function openAnalysisForPrompt(messageId: string, promptVersionId: string) {
+    setSelectedMessageId(messageId);
+    setSelectedPromptVersionId(promptVersionId);
+    setTopPromptValue(promptVersionId);
+    setActiveRunLoca(null);
+    setAiMessage(null);
+    setMode("analysis");
+  }
+
+  function handleTopPromptChange(value: string) {
+    setTopPromptValue(value);
+    if (!value || value === OPEN_VALUE) {
+      setSelectedPromptVersionId(null);
+      return;
+    }
+    setSelectedPromptVersionId(value);
+  }
+
+  function handleRowPromptChange(messageId: string, value: string) {
+    if (!value || value === OPEN_VALUE) {
+      selectMessage(messageId);
+      return;
+    }
+    openAnalysisForPrompt(messageId, value);
+  }
+
+  function tryActivateAnalysis() {
+    if (!analysisEnabled) return;
+    setMode("analysis");
+  }
+
   async function saveApproach() {
     if (!leadLoca) return;
     setApproachSaving(true);
-    setApproachSaved(false);
     try {
       const res = await fetch("/api/leads/message-creator", {
         method: "PUT",
@@ -209,8 +494,7 @@ function MessageCreatorPageContent() {
       });
       const json = await res.json();
       if (!res.ok || !json.success) throw new Error(json.error || "Save failed");
-      setApproachSaved(true);
-      setTimeout(() => setApproachSaved(false), 2500);
+      setApproachOpen(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -218,20 +502,22 @@ function MessageCreatorPageContent() {
     }
   }
 
-  async function saveProposals() {
-    if (!leadLoca) return;
+  async function saveDraftProposal() {
+    if (!leadLoca || !draftProposal.trim()) return;
     setProposalsSaving(true);
-    setProposalsSaved(false);
     try {
+      const next = proposalsText.trim()
+        ? `${proposalsText.trim()}\n\n${draftProposal.trim()}`
+        : draftProposal.trim();
       const res = await fetch("/api/leads/message-creator", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kind: "proposals", leadLoca, text: proposalsText }),
+        body: JSON.stringify({ kind: "proposals", leadLoca, text: next }),
       });
       const json = await res.json();
       if (!res.ok || !json.success) throw new Error(json.error || "Save failed");
-      setProposalsSaved(true);
-      setTimeout(() => setProposalsSaved(false), 2500);
+      setProposalsText(next);
+      setDraftProposal("");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -239,8 +525,11 @@ function MessageCreatorPageContent() {
     }
   }
 
-  async function runAi(operation: Operation, userInput?: string) {
-    if (!selectedSchool || !leadName || !leadLoca) return;
+  async function sendNew() {
+    if (!leadName || !leadLoca || !selectedMessageId || !selectedPromptVersionId || !selectedModelId) {
+      setAiMessage("Select a message, prompt version, and model before Send new.");
+      return;
+    }
     setAiBusy(true);
     setAiMessage(null);
     try {
@@ -250,20 +539,19 @@ function MessageCreatorPageContent() {
         body: JSON.stringify({
           leadName,
           leadLoca,
-          schoolId: selectedSchool.id,
-          operation,
-          userInput,
+          promptVersionId: selectedPromptVersionId,
+          targetMessageId: selectedMessageId,
+          modelId: selectedModelId,
+          operation: "full-analysis",
           force: true,
         }),
       });
       const json = await res.json();
       if (!res.ok || !json.success) throw new Error(json.error || "AI request failed");
-      const status = json.data?.status as string;
+      const status = json.data?.status as string | undefined;
       if (status === "PROMPT_NOT_CONFIGURED") {
         setAiMessage("Not configured");
-      } else if (status === "NO_CONVERSATION") {
-        setAiMessage("No conversation found");
-      } else {
+      } else if (status && status !== "COMPLETE") {
         setAiMessage(json.data?.message || status);
       }
       await loadBootstrap();
@@ -274,17 +562,63 @@ function MessageCreatorPageContent() {
     }
   }
 
-  function handleBack() {
-    if (leadName && leadLoca) {
-      router.push(
-        `/dashboard/leads/details?leadName=${encodeURIComponent(leadName)}&leadLoca=${encodeURIComponent(leadLoca)}`
-      );
-    } else {
-      router.push("/dashboard/leads");
-    }
+  function onResizeStart(clientX: number) {
+    if (sideWidthPx == null) return;
+    dragRef.current = { startX: clientX, startWidth: sideWidthPx };
+    document.body.style.userSelect = "none";
+    document.body.style.cursor = "col-resize";
   }
 
-  if (loading) {
+  useEffect(() => {
+    function onMove(e: MouseEvent) {
+      if (!dragRef.current || defaultSideWidthRef.current == null) return;
+      const rawDelta = dragRef.current.startX - e.clientX;
+      const delta = Math.max(-MAX_SHIFT_PX, Math.min(MAX_SHIFT_PX, rawDelta));
+      const base = dragRef.current.startWidth;
+      // Clamp absolute width to default ± 50
+      const def = defaultSideWidthRef.current;
+      const next = Math.max(def - MAX_SHIFT_PX, Math.min(def + MAX_SHIFT_PX, base + delta));
+      setSideWidthPx(next);
+    }
+    function onUp() {
+      if (!dragRef.current) return;
+      dragRef.current = null;
+      document.body.style.userSelect = "";
+      document.body.style.cursor = "";
+    }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, []);
+
+  const youProposals = useMemo(() => splitYouProposals(proposalsText), [proposalsText]);
+  const proposalGroups = useMemo(() => {
+    const groups: Array<{ title: string; items: string[] }> = [
+      { title: "You", items: youProposals },
+    ];
+    if (!bootstrap) return groups;
+    const byVersion = new Map<string, string[]>();
+    for (const run of bootstrap.allRuns) {
+      if (!run.proposalText?.trim() || !run.promptVersionId) continue;
+      const list = byVersion.get(run.promptVersionId) ?? [];
+      list.push(run.proposalText.trim());
+      byVersion.set(run.promptVersionId, list);
+    }
+    for (const v of promptVersions) {
+      const items = byVersion.get(v.id);
+      if (items?.length) groups.push({ title: v.displayName, items });
+    }
+    return groups;
+  }, [bootstrap, youProposals, promptVersions]);
+
+  if (!leadName || !leadLoca) {
+    return <MessageCreatorLeadPicker />;
+  }
+
+  if (loading && !bootstrap) {
     return (
       <EditorPageShell>
         <div className="flex h-full items-center justify-center gap-2 text-muted-foreground">
@@ -302,23 +636,60 @@ function MessageCreatorPageContent() {
           <AlertCircle className="h-4 w-4" />
           {error}
         </div>
-        <Button variant="outline" className="m-4 w-fit" onClick={handleBack}>
+        <Button
+          variant="outline"
+          className="m-4 w-fit"
+          onClick={() => router.push("/dashboard/msg-automation")}
+        >
           Back
         </Button>
       </EditorPageShell>
     );
   }
 
+  const recommended =
+    payloadString(activeRun?.payload ?? null, [
+      "recommendedDirections",
+      "recommended_directions",
+      "directions",
+      "availableAnswers",
+    ]) ?? null;
+  const proposalScore =
+    payloadString(activeRun?.payload ?? null, ["proposalScore", "proposal_score", "recommendation"]) ??
+    null;
+  const previousScore =
+    payloadString(activeRun?.payload ?? null, [
+      "previousMessagesScore",
+      "previous_messages_score",
+    ]) ?? null;
+  const mistakes = payloadMistakes(activeRun?.payload ?? null);
+
+  const canSendNew = Boolean(
+    selectedMessageId && selectedPromptVersionId && selectedPromptVersionId !== OPEN_VALUE && selectedModelId
+  );
+
   return (
     <EditorPageShell>
       <div className="flex shrink-0 items-center gap-2 border-b px-2 py-1.5 pl-14">
-        <NavGroup upLevel={{ onClick: handleBack, label: "Back to lead" }} />
+        <NavGroup
+          upLevel={{
+            onClick: () =>
+              router.push(
+                `/dashboard/leads/details?leadName=${encodeURIComponent(leadName)}&leadLoca=${encodeURIComponent(leadLoca)}`
+              ),
+            label: "Back to lead",
+          }}
+        />
         <div className="min-w-0 flex-1">
-          <h1 className="truncate text-sm font-semibold">{leadName || "Message Creator"}</h1>
-          <p className="truncate text-xs text-muted-foreground">
-            Message Creator · {conversationStatus}
-          </p>
+          <h1 className="truncate text-sm font-semibold">{leadName}</h1>
+          <p className="truncate text-xs text-muted-foreground">{conversationStatus}</p>
         </div>
+        <Button variant="outline" size="sm" className="h-8" onClick={() => setApproachOpen(true)}>
+          Approach
+        </Button>
+        <Button variant="outline" size="sm" className="h-8" onClick={() => setReportsOpen(true)}>
+          Reports
+        </Button>
         <Button
           variant="outline"
           size="sm"
@@ -330,6 +701,54 @@ function MessageCreatorPageContent() {
         </Button>
       </div>
 
+      <div className="flex shrink-0 items-center gap-2 border-b bg-background px-3 py-2">
+        <button
+          type="button"
+          className={cn(
+            "rounded-lg border px-3.5 py-2 text-[13px]",
+            mode === "beeper"
+              ? "border-[#111] bg-[#111] font-semibold text-white"
+              : "border-border bg-white text-muted-foreground"
+          )}
+          onClick={() => setMode("beeper")}
+        >
+          Beeper
+        </button>
+        <button
+          type="button"
+          disabled={!analysisEnabled}
+          aria-disabled={!analysisEnabled}
+          className={cn(
+            "rounded-lg border px-3.5 py-2 text-[13px]",
+            mode === "analysis"
+              ? "border-[#111] bg-[#111] font-semibold text-white"
+              : "border-border bg-white text-muted-foreground",
+            !analysisEnabled && "pointer-events-none opacity-35"
+          )}
+          onClick={tryActivateAnalysis}
+        >
+          Analysis
+        </button>
+        {selectedMessageId && (
+          <select
+            className="h-[34px] min-w-[190px] rounded-lg border bg-white px-2.5 text-[13px]"
+            value={topPromptValue || OPEN_VALUE}
+            onChange={(e) => handleTopPromptChange(e.target.value)}
+            aria-label="Select prompt version"
+          >
+            {optionsForSelected.length === 0 ? (
+              <option value="">Select prompt version...</option>
+            ) : (
+              optionsForSelected.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))
+            )}
+          </select>
+        )}
+      </div>
+
       {error && (
         <div className="flex shrink-0 items-center gap-2 border-b px-3 py-1.5 text-xs text-destructive">
           <AlertCircle className="h-3.5 w-3.5" />
@@ -337,415 +756,311 @@ function MessageCreatorPageContent() {
         </div>
       )}
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)_minmax(0,1.15fr)] md:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] md:grid-rows-1">
-        {/* Conversation pane */}
-        <section className="flex min-h-0 flex-col border-b md:border-b-0 md:border-r">
-          <div className="shrink-0 border-b px-3 py-2 text-xs font-medium text-muted-foreground">
-            Conversation
-          </div>
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            <BeeperConversationView
-              content={bootstrap?.conversation.body ?? null}
-              emptyLabel="No conversation found"
-              emptyHint="Creator loads the Beeper conversation for this lead automatically."
-            />
-          </div>
-        </section>
-
-        {/* Creator pane */}
-        <section className="flex min-h-0 flex-col">
-          <div className="min-h-0 flex-1 overflow-y-auto p-3 space-y-3">
-            {/* Approach context */}
-            <div className="rounded-lg border">
-              <button
-                type="button"
-                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium"
-                onClick={() => setApproachOpen((o) => !o)}
-              >
-                {approachOpen ? (
-                  <ChevronDown className="h-4 w-4" />
-                ) : (
-                  <ChevronRight className="h-4 w-4" />
-                )}
-                Approach context
-              </button>
-              {approachOpen && (
-                <div className="space-y-2 border-t px-3 py-2">
-                  <Textarea
-                    value={approachText}
-                    onChange={(e) => {
-                      setApproachText(e.target.value);
-                      setApproachSaved(false);
-                    }}
-                    placeholder="3–5 sentences describing the approach…"
-                    className="min-h-[88px] text-sm"
-                  />
-                  <div className="flex items-center gap-2">
-                    <Button size="sm" className="h-8" onClick={saveApproach} disabled={approachSaving}>
-                      {approachSaving ? "Saving…" : "Save"}
-                    </Button>
-                    {approachSaved && <span className="text-sm text-green-600">Saved</span>}
+      <div
+        ref={shellRef}
+        className={cn(
+          "grid min-h-0 flex-1 grid-cols-1",
+          mode === "analysis" &&
+            "md:[grid-template-columns:minmax(0,1fr)_var(--mc-side,36%)]"
+        )}
+        style={
+          mode === "analysis" && sideWidthPx != null
+            ? ({ ["--mc-side" as string]: `${sideWidthPx}px` } as CSSProperties)
+            : undefined
+        }
+      >
+        <div className="flex min-h-0 min-w-0 flex-col">
+          {mode === "beeper" ? (
+            <>
+              <div className="min-h-0 flex-1 overflow-y-auto bg-[#fafafa]">
+                <BeeperConversationView
+                  messages={messages}
+                  content={bootstrap?.conversation.body}
+                  showActions
+                  selectedMessageId={selectedMessageId}
+                  onSelectMessage={selectMessage}
+                  renderMessageAction={(msg) => {
+                    const opts = buildPromptOptions(
+                      promptVersions,
+                      messageRunCounts[msg.id] ?? {}
+                    );
+                    const openOpt = opts[0];
+                    if (!openOpt || openOpt.count <= 0) {
+                      return null;
+                    }
+                    return (
+                      <select
+                        className="h-8 w-full max-w-[180px] rounded-lg border bg-white px-2 text-xs"
+                        value=""
+                        aria-label={`Analyses for message`}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => {
+                          e.stopPropagation();
+                          const v = e.target.value;
+                          e.target.value = "";
+                          handleRowPromptChange(msg.id, v);
+                        }}
+                      >
+                        {opts.map((opt) => (
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
+                    );
+                  }}
+                />
+              </div>
+              <div className="shrink-0 border-t bg-white">
+                <button
+                  type="button"
+                  className="flex w-full items-center justify-between border-b px-3.5 py-2 text-xs text-muted-foreground"
+                  onClick={() => setProposalsOpen((o) => !o)}
+                >
+                  <span>Message proposals</span>
+                  {proposalsOpen ? (
+                    <ChevronDown className="h-3.5 w-3.5" />
+                  ) : (
+                    <ChevronUp className="h-3.5 w-3.5" />
+                  )}
+                </button>
+                {proposalsOpen && (
+                  <div className="max-h-48 space-y-3 overflow-y-auto border-b bg-[#fafafa] px-3.5 py-2.5">
+                    {proposalGroups.map((g) =>
+                      g.items.length === 0 && g.title !== "You" ? null : (
+                        <div key={g.title}>
+                          <div className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
+                            {g.title}
+                          </div>
+                          {g.items.length === 0 ? (
+                            <p className="text-xs text-muted-foreground">No proposals yet</p>
+                          ) : (
+                            g.items.map((text, i) => (
+                              <div
+                                key={`${g.title}-${i}`}
+                                className="mb-1.5 grid grid-cols-[auto_1fr] items-center gap-2.5 rounded-lg border bg-white px-2.5 py-2 text-xs"
+                              >
+                                <Button
+                                  size="sm"
+                                  className="h-7 bg-[#111] px-2 text-[11px] font-semibold text-white hover:bg-[#111]/90"
+                                  disabled
+                                  title="Not configured"
+                                >
+                                  Send
+                                </Button>
+                                <span>{text}</span>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      )
+                    )}
                   </div>
+                )}
+                <div className="grid grid-cols-[1fr_auto] gap-2 px-3.5 py-2.5">
+                  <Textarea
+                    value={draftProposal}
+                    onChange={(e) => setDraftProposal(e.target.value)}
+                    placeholder="Write or paste your own message proposal..."
+                    className="min-h-[58px] resize-none text-[13px]"
+                  />
+                  <Button
+                    className="h-auto bg-[#111] px-4 text-[13px] font-semibold leading-tight text-white hover:bg-[#111]/90"
+                    disabled={proposalsSaving || !draftProposal.trim()}
+                    onClick={saveDraftProposal}
+                  >
+                    Save
+                    <br />
+                    msg
+                  </Button>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="min-h-0 flex-1 overflow-y-auto p-4">
+              {!selectedPromptVersionId ? (
+                <div className="flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground">
+                  Select a prompt version before opening Analysis.
+                </div>
+              ) : !activeRun ? (
+                <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center text-sm text-muted-foreground">
+                  <p>No saved analysis for this message and prompt version yet.</p>
+                  <p className="text-xs">Use Send new in the right panel to create a run.</p>
+                  {aiMessage && <p className="text-destructive">{aiMessage}</p>}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <div className="rounded-[11px] border bg-white p-3.5 shadow-sm md:col-span-2">
+                    <h3 className="mb-1.5 text-sm font-semibold">Recommended directions</h3>
+                    <p className="text-[13px] leading-snug text-muted-foreground">
+                      {recommended ?? "No data in this run."}
+                    </p>
+                  </div>
+                  <div className="rounded-[11px] border bg-white p-3.5 shadow-sm">
+                    <h3 className="mb-1.5 text-sm font-semibold">Mistakes</h3>
+                    {mistakes.length === 0 ? (
+                      <p className="text-[13px] text-muted-foreground">No data in this run.</p>
+                    ) : (
+                      <div className="grid gap-1.5">
+                        {mistakes.map((m, i) => (
+                          <div
+                            key={i}
+                            className="rounded-lg border bg-[#fafafa] px-2.5 py-2 text-xs"
+                          >
+                            <strong className="mb-0.5 block">{m.title}</strong>
+                            {m.body}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="rounded-[11px] border bg-white p-3.5 shadow-sm">
+                    <h3 className="mb-1.5 text-sm font-semibold">Proposal score</h3>
+                    <p className="text-[13px] text-muted-foreground">
+                      {proposalScore ?? "No data in this run."}
+                    </p>
+                  </div>
+                  <div className="rounded-[11px] border bg-white p-3.5 shadow-sm md:col-span-2">
+                    <h3 className="mb-1.5 text-sm font-semibold">Previous messages score</h3>
+                    <p className="text-[13px] text-muted-foreground">
+                      {previousScore ?? "No data in this run."}
+                    </p>
+                  </div>
+                  {activeRun.status === "not-configured" && (
+                    <div className="rounded-[11px] border border-amber-500/40 bg-amber-50 p-3.5 text-sm text-amber-900 md:col-span-2">
+                      Not configured — mentor prompts are not wired yet. No scores were invented.
+                    </div>
+                  )}
+                  {aiMessage && (
+                    <p className="text-sm text-destructive md:col-span-2">{aiMessage}</p>
+                  )}
                 </div>
               )}
             </div>
+          )}
+        </div>
 
-            {/* Level 1 */}
-            <Tabs
-              value={level1}
-              onValueChange={(v) => setLevel1(v)}
+        {mode === "analysis" && (
+          <aside className="relative flex min-h-[50vh] min-w-0 flex-col border-t bg-white md:grid md:min-h-0 md:grid-rows-2 md:border-l md:border-t-0">
+            <div
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize analysis panel"
+              title="Drag up to 50px left or right"
+              className="absolute -left-1 top-0 z-20 hidden h-full w-2 cursor-col-resize md:block"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                onResizeStart(e.clientX);
+              }}
             >
-              <TabsList className="h-auto flex-wrap gap-1">
-                <TabsTrigger value="you" className="text-xs">
-                  You
-                </TabsTrigger>
-                {(bootstrap?.schools ?? []).map((s) => (
-                  <TabsTrigger key={s.id} value={s.id} className="text-xs">
-                    {s.tabLabel}
-                  </TabsTrigger>
+              <span className="absolute left-[3px] top-0 h-full w-0.5 bg-border hover:bg-[#111]" />
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto border-b bg-[#fafafa] md:flex-none">
+              <BeeperConversationView
+                messages={messages}
+                compact
+                contextFrameIds={contextFrameIds}
+              />
+            </div>
+            <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3 md:flex-none">
+              <select
+                className="mb-1 h-[34px] w-full rounded-lg border bg-white px-2 text-xs"
+                value={selectedModelId}
+                onChange={(e) => setSelectedModelId(e.target.value)}
+                aria-label="Select model"
+              >
+                <option value="">Select model...</option>
+                {(bootstrap?.models ?? []).map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.displayName}
+                  </option>
                 ))}
-              </TabsList>
-            </Tabs>
-
-            {level1 === "you" ? (
-              <div className="space-y-3">
-                <p className="text-sm font-medium">You</p>
-                <Tabs value={youTab} onValueChange={(v) => setYouTab(v as YouTab)}>
-                  <TabsList className="h-auto flex-wrap gap-1">
-                    <TabsTrigger value="proposals" className="text-xs">
-                      My Proposals
-                    </TabsTrigger>
-                    <TabsTrigger value="reports" className="text-xs">
-                      My Reports
-                    </TabsTrigger>
-                  </TabsList>
-                </Tabs>
-
-                {youTab === "proposals" && (
-                  <div className="space-y-2">
-                    {!proposalsText.trim() && (
-                      <p className="text-sm text-muted-foreground">No proposals yet</p>
-                    )}
-                    {bootstrap?.historicalYouSuggestion && !proposalsText.trim() && (
-                      <div className="rounded-md border border-dashed p-2 text-xs">
-                        <p className="mb-1 text-muted-foreground">
-                          Found historical //you text (not saved until you confirm):
-                        </p>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-7"
-                          onClick={() =>
-                            setProposalsText(bootstrap.historicalYouSuggestion ?? "")
-                          }
-                        >
-                          Use imported text
-                        </Button>
-                      </div>
-                    )}
-                    <div className="h-[280px]">
-                      <TextEditorWithToolbar
-                        value={proposalsText}
-                        onChange={(v) => {
-                          setProposalsText(v);
-                          setProposalsSaved(false);
-                        }}
-                        onSave={saveProposals}
-                        saving={proposalsSaving}
-                        saved={proposalsSaved}
-                        showPreview
-                        defaultTab="editor"
-                        placeholder="Write your message proposals…"
-                        className="h-full"
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {youTab === "reports" && (
-                  <div className="space-y-2">
-                    {(bootstrap?.reports?.length ?? 0) === 0 ? (
-                      <p className="text-sm text-muted-foreground">No reports found</p>
-                    ) : (
-                      bootstrap!.reports.map((r, i) => {
-                        const key = r.address ?? `${r.name}-${i}`;
-                        const open = expandedReport === key;
-                        return (
-                          <div key={key} className="rounded-md border">
-                            <button
-                              type="button"
-                              className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm"
-                              onClick={() => setExpandedReport(open ? null : key)}
-                            >
-                              <span className="min-w-0 truncate font-medium">
-                                {r.name || "Report"}
-                                {r.category ? (
-                                  <span className="ml-2 text-xs font-normal text-muted-foreground">
-                                    {r.category}
-                                  </span>
-                                ) : null}
-                              </span>
-                              {open ? (
-                                <ChevronDown className="h-4 w-4 shrink-0" />
-                              ) : (
-                                <ChevronRight className="h-4 w-4 shrink-0" />
-                              )}
-                            </button>
-                            {open && (
-                              <pre className="max-h-64 overflow-auto border-t bg-muted/20 p-3 text-xs whitespace-pre-wrap">
-                                {r.body || r.preview || "(empty)"}
-                              </pre>
-                            )}
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
-                )}
-              </div>
-            ) : selectedSchool ? (
-              <div className="space-y-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="text-sm font-medium">{selectedSchool.fullName}</p>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-8"
-                    disabled={aiBusy}
-                    onClick={() => {
-                      setFullAnalysisOpen(true);
-                      void runAi("full-analysis");
-                    }}
-                  >
-                    Analyze Full Conversation
-                  </Button>
-                </div>
-
-                <Tabs
-                  value={schoolTab}
-                  onValueChange={(v) => setSchoolTab(v as SchoolTab)}
-                >
-                  <TabsList className="h-auto flex-wrap gap-1">
-                    <TabsTrigger value="health" className="text-xs">
-                      Conversation Health
-                    </TabsTrigger>
-                    <TabsTrigger value="capital" className="text-xs">
-                      Capital
-                    </TabsTrigger>
-                    <TabsTrigger value="next-message" className="text-xs">
-                      Next Message
-                    </TabsTrigger>
-                    <TabsTrigger value="improve" className="text-xs">
-                      Improve
-                    </TabsTrigger>
-                  </TabsList>
-                </Tabs>
-
-                {aiMessage && (
-                  <div className="rounded-md border border-amber-600/30 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
-                    {aiMessage}
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="ml-2 h-7"
-                      disabled={aiBusy}
-                      onClick={() =>
-                        void runAi(
-                          schoolTab === "improve" ? "improve" : schoolTab,
-                          schoolTab === "improve" ? improveInput : undefined
-                        )
-                      }
-                    >
-                      Try Again
-                    </Button>
-                  </div>
-                )}
-
-                <SchoolPanel
-                  school={selectedSchool}
-                  tab={schoolTab}
-                  run={runFor(selectedSchool.id, schoolTab)}
-                  fullRun={runFor(selectedSchool.id, "full-analysis")}
-                  fullAnalysisOpen={fullAnalysisOpen}
-                  improveInput={improveInput}
-                  onImproveInputChange={setImproveInput}
-                  aiBusy={aiBusy}
-                  onAnalyze={(op) => void runAi(op, op === "improve" ? improveInput : undefined)}
-                />
-              </div>
-            ) : null}
-
-            {(bootstrap?.relatedWorkouts?.length ?? 0) > 0 && (
-              <div className="border-t pt-3">
-                <p className="mb-1 text-xs font-medium text-muted-foreground">Related workouts</p>
-                <ul className="space-y-1 text-sm">
-                  {bootstrap!.relatedWorkouts
-                    .filter((w) => w.logicalName !== "my proposals")
-                    .slice(0, 12)
-                    .map((w) => (
-                      <li key={w.loca}>
-                        <Link
-                          className="text-primary hover:underline"
-                          href={`/dashboard/leads/msg-workout?leadName=${encodeURIComponent(leadName)}&leadLoca=${encodeURIComponent(leadLoca)}&workoutName=${encodeURIComponent(w.logicalName)}&workoutLoca=${encodeURIComponent(w.loca)}`}
-                        >
-                          {w.logicalName}
-                        </Link>
-                      </li>
-                    ))}
-                </ul>
-              </div>
-            )}
-          </div>
-        </section>
-      </div>
-    </EditorPageShell>
-  );
-}
-
-function SchoolPanel({
-  school,
-  tab,
-  run,
-  fullRun,
-  fullAnalysisOpen,
-  improveInput,
-  onImproveInputChange,
-  aiBusy,
-  onAnalyze,
-}: {
-  school: School;
-  tab: SchoolTab;
-  run?: AnalysisRun;
-  fullRun?: AnalysisRun;
-  fullAnalysisOpen: boolean;
-  improveInput: string;
-  onImproveInputChange: (v: string) => void;
-  aiBusy: boolean;
-  onAnalyze: (op: Operation) => void;
-}) {
-  const freshness: Freshness = run?.freshness ?? "not-analyzed";
-  const configured =
-    run?.payload &&
-    typeof run.payload === "object" &&
-    (run.payload as { reason?: string }).reason === "PROMPT_NOT_CONFIGURED"
-      ? false
-      : run != null && freshness !== "not-analyzed";
-
-  return (
-    <div className="space-y-3 rounded-lg border p-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <AnalysisStatusBadge
-          freshness={
-            run?.payload &&
-            (run.payload as { reason?: string }).reason === "PROMPT_NOT_CONFIGURED"
-              ? "no-data"
-              : freshness
-          }
-        />
-        <span className="text-xs text-muted-foreground">{school.tabLabel}</span>
-        <Button
-          size="sm"
-          className="ml-auto h-8"
-          disabled={aiBusy}
-          onClick={() => onAnalyze(tab)}
-        >
-          {aiBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Analyze"}
-        </Button>
-      </div>
-
-      {tab === "health" && (
-        <p className="text-sm text-muted-foreground">
-          {configured && typeof run?.payload?.score === "number"
-            ? `Score: ${run.payload.score}/10`
-            : run?.payload && (run.payload as { reason?: string }).reason === "PROMPT_NOT_CONFIGURED"
-              ? "Not configured"
-              : freshnessLabel(freshness)}
-        </p>
-      )}
-
-      {tab === "capital" && (
-        <p className="text-sm text-muted-foreground">
-          {configured && run?.payload?.value != null
-            ? `Capital: ${String(run.payload.value)}${
-                run.payload.delta != null ? ` (Δ ${String(run.payload.delta)})` : ""
-              }`
-            : run?.payload && (run.payload as { reason?: string }).reason === "PROMPT_NOT_CONFIGURED"
-              ? "Not configured"
-              : freshnessLabel(freshness)}
-        </p>
-      )}
-
-      {tab === "next-message" && (
-        <div className="space-y-2">
-          {typeof run?.payload?.message === "string" ? (
-            <>
-              <p className="text-xs text-muted-foreground">From {school.fullName}</p>
-              <pre className="whitespace-pre-wrap rounded-md bg-muted/30 p-2 text-sm">
-                {run.payload.message as string}
-              </pre>
+              </select>
               <Button
-                size="sm"
-                variant="outline"
-                className="h-8"
-                onClick={() =>
-                  void navigator.clipboard.writeText(String(run.payload?.message ?? ""))
+                className="mb-1 h-10 w-full bg-[#111] text-xs font-semibold text-white hover:bg-[#111]/90"
+                disabled={!canSendNew || aiBusy}
+                onClick={sendNew}
+                title={
+                  canSendNew
+                    ? "Send new analysis"
+                    : "Select a message, prompt version, and model first"
                 }
               >
-                <Copy className="mr-1 h-3.5 w-3.5" />
-                Copy
+                {aiBusy ? "Sending…" : "Send new"}
               </Button>
-            </>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              {run?.payload && (run.payload as { reason?: string }).reason === "PROMPT_NOT_CONFIGURED"
-                ? "Not configured"
-                : freshnessLabel(freshness)}
-            </p>
-          )}
-        </div>
-      )}
+              {displayRuns.map((run) => {
+                const versionLabel =
+                  promptVersions.find((v) => v.id === run.promptVersionId)?.displayName ??
+                  run.promptVersionId ??
+                  run.schoolId;
+                const label = `${String(run.runNumber ?? 0).padStart(2, "0")} ${versionLabel}`;
+                const active = activeRun?.loca === run.loca;
+                return (
+                  <button
+                    key={run.loca}
+                    type="button"
+                    className={cn(
+                      "mb-1.5 w-full rounded-lg border px-2.5 py-2 text-left text-xs",
+                      active ? "bg-[#eef0f3]" : "bg-white hover:bg-[#eef0f3]"
+                    )}
+                    onClick={() => setActiveRunLoca(run.loca)}
+                    title={run.modelId ? `Model: ${run.modelId}` : undefined}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+              {displayRuns.length === 0 && (
+                <p className="text-xs text-muted-foreground">No runs yet for this message.</p>
+              )}
+            </div>
+          </aside>
+        )}
+      </div>
 
-      {tab === "improve" && (
-        <div className="space-y-2">
-          <label className="text-xs font-medium text-muted-foreground">Your draft</label>
+      <Dialog open={approachOpen} onOpenChange={setApproachOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Approach context</DialogTitle>
+          </DialogHeader>
           <Textarea
-            value={improveInput}
-            onChange={(e) => onImproveInputChange(e.target.value)}
-            placeholder="Paste or write your message draft…"
-            className="min-h-[100px] text-sm"
+            value={approachText}
+            onChange={(e) => setApproachText(e.target.value)}
+            className="min-h-[140px]"
+            placeholder="A few sentences of approach context…"
           />
-          <div className="rounded-md border bg-muted/20 p-2 text-sm text-muted-foreground">
-            <p className="mb-1 text-xs font-medium">AI result</p>
-            {run?.payload && (run.payload as { reason?: string }).reason === "PROMPT_NOT_CONFIGURED" ? (
-              <p>Not configured</p>
-            ) : run?.payload ? (
-              <pre className="whitespace-pre-wrap text-xs">
-                {JSON.stringify(run.payload, null, 2)}
-              </pre>
-            ) : (
-              <p>{freshnessLabel(freshness)}</p>
-            )}
-          </div>
-        </div>
-      )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setApproachOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={saveApproach} disabled={approachSaving}>
+              {approachSaving ? "Saving…" : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-      {fullAnalysisOpen && (
-        <div className="rounded-md border border-dashed p-2 text-sm">
-          <p className="mb-1 font-medium">Full conversation analysis</p>
-          {fullRun?.payload &&
-          (fullRun.payload as { reason?: string }).reason === "PROMPT_NOT_CONFIGURED" ? (
-            <p className="text-muted-foreground">Not configured</p>
-          ) : fullRun?.payload ? (
-            <pre className="whitespace-pre-wrap text-xs">
-              {JSON.stringify(fullRun.payload, null, 2)}
-            </pre>
+      <Dialog open={reportsOpen} onOpenChange={setReportsOpen}>
+        <DialogContent className="max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>My Reports</DialogTitle>
+          </DialogHeader>
+          {(bootstrap?.reports?.length ?? 0) === 0 ? (
+            <p className="text-sm text-muted-foreground">No reports found</p>
           ) : (
-            <p className="text-muted-foreground">
-              {freshnessLabel(fullRun?.freshness ?? "not-analyzed")}
-            </p>
+            <ul className="space-y-3">
+              {bootstrap!.reports.map((r, i) => (
+                <li key={i} className="rounded-lg border p-3 text-sm">
+                  <div className="font-medium">{r.name ?? "Report"}</div>
+                  <pre className="mt-2 whitespace-pre-wrap text-xs text-muted-foreground">
+                    {r.preview ?? r.body ?? ""}
+                  </pre>
+                </li>
+              ))}
+            </ul>
           )}
-        </div>
-      )}
-    </div>
+        </DialogContent>
+      </Dialog>
+    </EditorPageShell>
   );
 }

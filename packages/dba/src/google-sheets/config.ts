@@ -34,6 +34,8 @@ export interface GoogleSheetsConfig {
   dailyTrackerSheetName: string;
   /** Tab name for the Date Entry ("Dates") mirror — same spreadsheet, separate tab. */
   dateEntriesSheetName: string;
+  /** Tab name for the Leads list mirror — same spreadsheet, separate tab. */
+  leadsSheetName: string;
   serviceAccountEmail: string;
   /** Already un-escaped to real newlines — see `normalizePrivateKey` below. */
   serviceAccountPrivateKey: string;
@@ -43,6 +45,7 @@ const REQUIRED_WHEN_ENABLED = [
   "GOOGLE_SHEETS_SPREADSHEET_MAP",
   "GOOGLE_SHEETS_DAILY_TRACKER_SHEET_NAME",
   "GOOGLE_SHEETS_DATE_ENTRIES_SHEET_NAME",
+  "GOOGLE_SHEETS_LEADS_SHEET_NAME",
   "GOOGLE_SERVICE_ACCOUNT_EMAIL",
   "GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY",
 ] as const;
@@ -186,6 +189,7 @@ export function loadGoogleSheetsConfig(): GoogleSheetsConfig {
       spreadsheetMap: {},
       dailyTrackerSheetName: "",
       dateEntriesSheetName: "",
+      leadsSheetName: "",
       serviceAccountEmail: "",
       serviceAccountPrivateKey: "",
     };
@@ -207,6 +211,7 @@ export function loadGoogleSheetsConfig(): GoogleSheetsConfig {
     spreadsheetMap: parseSpreadsheetMap(process.env.GOOGLE_SHEETS_SPREADSHEET_MAP!),
     dailyTrackerSheetName: process.env.GOOGLE_SHEETS_DAILY_TRACKER_SHEET_NAME!,
     dateEntriesSheetName: process.env.GOOGLE_SHEETS_DATE_ENTRIES_SHEET_NAME!,
+    leadsSheetName: process.env.GOOGLE_SHEETS_LEADS_SHEET_NAME!,
     serviceAccountEmail: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL!,
     serviceAccountPrivateKey: normalizePrivateKey(process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY!),
   };

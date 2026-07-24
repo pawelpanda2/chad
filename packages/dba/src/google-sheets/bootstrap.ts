@@ -19,15 +19,15 @@ import { loadGoogleSheetsConfig, type GoogleSheetsConfig } from "./config.js";
 import { checkGoogleSheetsProductionGuard } from "./production-guard.js";
 import { GoogleSheetsApiClient } from "./sheets-api-client.js";
 import { runGoogleSheetsSyncWorker } from "./worker.js";
-import { ensureDailyTrackerLayout, ensureDatesLayout } from "./layout.js";
-import { DAILY_TRACKER_HEADER_ROW_COUNT, DATE_ENTRIES_HEADER_ROW_COUNT } from "./mapper.js";
+import { ensureDailyTrackerLayout, ensureDatesLayout, ensureLeadsLayout } from "./layout.js";
+import { DAILY_TRACKER_HEADER_ROW_COUNT, DATE_ENTRIES_HEADER_ROW_COUNT, LEADS_HEADER_ROW_COUNT } from "./mapper.js";
 import type { GoogleSheetsClient } from "./types.js";
 
 let started = false;
 
 /**
  * Lays out (or confirms already-laid-out, via `CHAD_SHEET_LAYOUT_VERSION`)
- * every configured user's own "daily"/"dates" tabs — once per user, at
+ * every configured user's own "daily"/"dates"/"leads" tabs — once per user, at
  * worker startup, deliberately separate from the per-record sync loop
  * (`layout.ts`'s own header comment). Fire-and-forget from the caller's
  * point of view (never awaited by `startGoogleSheetsSyncWorkerIfEnabled`,
@@ -48,8 +48,15 @@ async function ensureLayoutsForAllUsers(client: GoogleSheetsClient, config: Goog
         sheetName: config.dateEntriesSheetName,
         headerRowCount: DATE_ENTRIES_HEADER_ROW_COUNT,
       });
-      if (changedDaily || changedDates) {
-        console.log(`[google-sheets] layout ensured for username=${username} (daily=${changedDaily ? "applied" : "already current"}, dates=${changedDates ? "applied" : "already current"})`);
+      const changedLeads = await ensureLeadsLayout(client, {
+        spreadsheetId,
+        sheetName: config.leadsSheetName,
+        headerRowCount: LEADS_HEADER_ROW_COUNT,
+      });
+      if (changedDaily || changedDates || changedLeads) {
+        console.log(
+          `[google-sheets] layout ensured for username=${username} (daily=${changedDaily ? "applied" : "already current"}, dates=${changedDates ? "applied" : "already current"}, leads=${changedLeads ? "applied" : "already current"})`
+        );
       }
     } catch (error) {
       console.error(`[google-sheets] layout ensure failed for username=${username}:`, error instanceof Error ? error.message : error);
@@ -109,6 +116,7 @@ export function startGoogleSheetsSyncWorkerIfEnabled(intervalMs = 5000): (() => 
       sheetNames: {
         "daily-entry": config.dailyTrackerSheetName,
         "date-entry": config.dateEntriesSheetName,
+        lead: config.leadsSheetName,
       },
       // Paces requests under the Sheets API's default free-tier quota (60
       // read requests/minute/user) — see worker.ts's own doc comment.

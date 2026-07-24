@@ -3,9 +3,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
 import { ErrorBox } from "@/components/shared/error-box";
+import { TextEditorWithToolbar } from "@/components/shared/text-editor-with-toolbar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -13,7 +13,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ArrowLeft, ArrowRight, RefreshCw } from "lucide-react";
 
 /**
@@ -135,10 +134,9 @@ export default function FoldersPage() {
   const [createError, setCreateError] = useState<string | null>(null);
   const [createNotice, setCreateNotice] = useState<string | null>(null);
   const [editorBody, setEditorBody] = useState("");
-  const [activeTab, setActiveTab] = useState("preview");
   const [savingBody, setSavingBody] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [saveNotice, setSaveNotice] = useState<string | null>(null);
+  const [bodySaved, setBodySaved] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -215,10 +213,9 @@ export default function FoldersPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Resets per-item transient UI state whenever the shown item actually
-  // changes (navigation, or our own in-place replace after create/save).
-  // Never fires from background polling — there is none — so this can't
-  // clobber an in-progress unsaved edit the user didn't cause themselves.
+  // Reset editor/nav UI when the *shown address* changes (real navigation),
+  // not on in-place replace after save/create — otherwise Save's "Saved"
+  // flash (and an unsaved Text edit) would be wiped by our own refresh.
   useEffect(() => {
     if (currentItem && selectedRepoGuid) {
       setLocaInput(relativeLoca(currentItem.Address, selectedRepoGuid));
@@ -227,9 +224,11 @@ export default function FoldersPage() {
       setCreateError(null);
       setCreateNotice(null);
       setSaveError(null);
-      setSaveNotice(null);
+      setBodySaved(false);
     }
-  }, [currentItem, selectedRepoGuid]);
+    // Intentionally keyed on Address, not the whole currentItem object.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentItem?.Address, selectedRepoGuid]);
 
   async function handleGo() {
     setLoading(true);
@@ -311,7 +310,7 @@ export default function FoldersPage() {
 
     setSavingBody(true);
     setSaveError(null);
-    setSaveNotice(null);
+    setBodySaved(false);
     try {
       const res = await fetch("/api/folders", {
         method: "PUT",
@@ -325,7 +324,8 @@ export default function FoldersPage() {
       }
 
       replaceCurrentItem(data.item);
-      setSaveNotice("Zapisano!");
+      setBodySaved(true);
+      setTimeout(() => setBodySaved(false), 3000);
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : "Nie udało się zapisać");
     } finally {
@@ -333,7 +333,10 @@ export default function FoldersPage() {
     }
   }
 
-  const isBodyDirty = !!currentItem && editorBody !== currentItem.Body;
+  function handleEditorBodyChange(value: string) {
+    setEditorBody(value);
+    if (bodySaved) setBodySaved(false);
+  }
 
   return (
     <DashboardPageShell title="Folders">
@@ -438,36 +441,16 @@ export default function FoldersPage() {
               </div>
 
               <ErrorBox message={saveError} className="mb-0" />
-              {saveNotice && <p className="text-sm text-green-600">{saveNotice}</p>}
 
-              <Tabs value={activeTab} onValueChange={setActiveTab}>
-                <TabsList className="flex items-center gap-2">
-                  <TabsTrigger value="preview">Podgląd</TabsTrigger>
-                  <TabsTrigger value="editor">Edytor</TabsTrigger>
-                  {activeTab === "editor" && (
-                    <Button
-                      size="sm"
-                      className="ml-auto"
-                      onClick={handleSaveBody}
-                      disabled={!isBodyDirty || savingBody}
-                    >
-                      {savingBody ? "Zapisywanie..." : "Zapisz"}
-                    </Button>
-                  )}
-                </TabsList>
-                <TabsContent value="preview">
-                  <pre className="whitespace-pre-wrap break-words rounded-md border bg-muted/20 p-3 font-mono text-sm">
-                    {editorBody || <span className="italic text-muted-foreground">(empty)</span>}
-                  </pre>
-                </TabsContent>
-                <TabsContent value="editor">
-                  <Textarea
-                    value={editorBody}
-                    onChange={(e) => setEditorBody(e.target.value)}
-                    className="min-h-[300px] font-mono text-sm"
-                  />
-                </TabsContent>
-              </Tabs>
+              <TextEditorWithToolbar
+                value={editorBody}
+                onChange={handleEditorBodyChange}
+                onSave={handleSaveBody}
+                saving={savingBody}
+                saved={bodySaved}
+                placeholder="Enter text body..."
+                className="min-h-[360px] h-[50vh]"
+              />
             </div>
           )}
 

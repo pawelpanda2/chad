@@ -4,12 +4,23 @@ import { useEffect, useState, useCallback, type MouseEvent as ReactMouseEvent } 
 import { useSearchParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
 import { FRAME_SECTION_GAP_CLASS } from "@/components/shared/layout-tokens";
 import { ErrorBox } from "@/components/shared/error-box";
 import { cn } from "@/lib/utils";
 import { RefreshCw, User, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
+
+const REVEAL_CONFIRM_WORDS = ["REVEAL", "SHOW", "SECRET", "ODKRYJ", "POKAZ", "HASLO"];
 
 type HistoryView = "items" | "google-sheets" | "daily-tracker" | "dates" | null;
 
@@ -177,8 +188,13 @@ function GoogleSheetsViewContent() {
     spreadsheetUrl?: string | null;
     spreadsheetError?: string | null;
     serviceAccountEmail?: string | null;
-    viewerAccount?: { email: string; password: string } | null;
+    viewerAccount?: { email: string; hasPassword: boolean } | null;
   } | null>(null);
+  const [revealedPassword, setRevealedPassword] = useState<string | null>(null);
+  const [revealDialogOpen, setRevealDialogOpen] = useState(false);
+  const [revealConfirmWord, setRevealConfirmWord] = useState("");
+  const [revealConfirmInput, setRevealConfirmInput] = useState("");
+  const [revealing, setRevealing] = useState(false);
 
   useEffect(() => {
     fetch("/api/google-sheets/info")
@@ -192,6 +208,30 @@ function GoogleSheetsViewContent() {
   }, []);
 
   const handleBack = () => router.push("/dashboard/history");
+
+  const openRevealDialog = () => {
+    setRevealConfirmWord(REVEAL_CONFIRM_WORDS[Math.floor(Math.random() * REVEAL_CONFIRM_WORDS.length)]);
+    setRevealConfirmInput("");
+    setRevealDialogOpen(true);
+  };
+
+  const handleRevealPassword = async () => {
+    if (revealConfirmInput.trim() !== revealConfirmWord) return;
+    setRevealing(true);
+    try {
+      const res = await fetch("/api/google-sheets/reveal-password", { method: "POST" });
+      const json = (await res.json()) as { success: boolean; data?: { password: string }; error?: string };
+      if (!res.ok || !json.success || !json.data?.password) {
+        throw new Error(json.error || "Failed to reveal password");
+      }
+      setRevealedPassword(json.data.password);
+      setRevealDialogOpen(false);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to reveal password");
+    } finally {
+      setRevealing(false);
+    }
+  };
 
   return (
     <DashboardPageShell upLevel={{ onClick: handleBack }} title="Google Sheets" contentClassName="gap-1">
@@ -219,7 +259,6 @@ function GoogleSheetsViewContent() {
               Google.
             </div>
           )}
-          {/* Header card: CHAD username + link to their spreadsheet, same layout as leads/details' Lead Header Card */}
           <Card className="gap-0 py-0">
             <CardContent className="px-[14px] py-[12px]">
               <div className="flex items-start gap-3">
@@ -250,30 +289,39 @@ function GoogleSheetsViewContent() {
             </CardContent>
           </Card>
 
-          {/* Google account card: viewer login (email + password) to open the sheet interactively */}
           <Card className="gap-0 py-0">
             <CardContent className="px-[14px] py-[10px]">
               <h2 className="text-sm font-semibold mb-2">Google account</h2>
               {data.viewerAccount ? (
-                <div className="space-y-1 text-sm">
+                <div className="space-y-2 text-sm">
                   <div>
                     <span className="text-muted-foreground">Email:</span>{" "}
                     <span className="font-mono">{data.viewerAccount.email}</span>
                   </div>
-                  <div>
-                    <span className="text-muted-foreground">Password:</span>{" "}
-                    <span className="font-mono">{data.viewerAccount.password}</span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-muted-foreground">Password:</span>
+                    {revealedPassword ? (
+                      <span className="font-mono">{revealedPassword}</span>
+                    ) : data.viewerAccount.hasPassword ? (
+                      <>
+                        <span className="font-mono tracking-widest">••••••••</span>
+                        <Button type="button" variant="outline" size="sm" className="h-7" onClick={openRevealDialog}>
+                          Reveal password
+                        </Button>
+                      </>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">not configured</span>
+                    )}
                   </div>
                 </div>
               ) : (
                 <div className="text-xs text-muted-foreground">
-                  No test account configured (GOOGLE_SHEETS_VIEWER_ACCOUNT_EMAIL/PASSWORD unset).
+                  No test account configured (set GOOGLE_SHEETS_VIEWER_ACCOUNT_* or a per-repo `secrets` item).
                 </div>
               )}
             </CardContent>
           </Card>
 
-          {/* Service account card: edit-access identity the spreadsheet is shared with, no interactive login */}
           {data.serviceAccountEmail && (
             <Card className="gap-0 py-0">
               <CardContent className="px-[14px] py-[10px]">
@@ -285,6 +333,39 @@ function GoogleSheetsViewContent() {
               </CardContent>
             </Card>
           )}
+
+          <Dialog open={revealDialogOpen} onOpenChange={(open) => !revealing && setRevealDialogOpen(open)}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Reveal Google account password?</DialogTitle>
+                <DialogDescription>
+                  The password is stored encrypted. Confirm by typing the word below to decrypt and show it.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-2">
+                <p className="text-sm">
+                  Type <span className="font-mono font-bold">{revealConfirmWord}</span> to confirm.
+                </p>
+                <Input
+                  value={revealConfirmInput}
+                  onChange={(e) => setRevealConfirmInput(e.target.value)}
+                  placeholder={revealConfirmWord}
+                  autoFocus
+                />
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setRevealDialogOpen(false)} disabled={revealing}>
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleRevealPassword}
+                  disabled={revealing || revealConfirmInput.trim() !== revealConfirmWord}
+                >
+                  {revealing ? "Revealing..." : "Reveal password"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </>
       )}
     </DashboardPageShell>

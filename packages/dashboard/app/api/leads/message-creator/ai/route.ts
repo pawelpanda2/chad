@@ -1,8 +1,8 @@
 /**
  * POST /api/leads/message-creator/ai
  *
- * Single AI actions endpoint for school operations (Story 84).
- * Returns PROMPT_NOT_CONFIGURED when school prompt is not wired — never fake scores.
+ * Story 84 school operations + Story 85 message-level Send new.
+ * Thin adapter — logic in dba/message-creator.ts.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -10,6 +10,7 @@ import {
   isMessageCreatorOperation,
   runMessageCreatorAiAction,
   runWithRepoContext,
+  type MessageCreatorOperation,
 } from "dba";
 import { getCurrentUserFromCookies } from "@/lib/session";
 
@@ -24,21 +25,34 @@ export async function POST(request: NextRequest) {
       leadName?: string;
       leadLoca?: string;
       schoolId?: string;
+      promptVersionId?: string;
       operation?: string;
       userInput?: string;
       force?: boolean;
+      targetMessageId?: string;
+      modelId?: string;
     };
 
-    if (!body.leadName || !body.leadLoca || !body.schoolId || !body.operation) {
+    if (!body.leadName || !body.leadLoca) {
       return NextResponse.json(
-        {
-          success: false,
-          error: "Missing required fields: leadName, leadLoca, schoolId, operation",
-        },
+        { success: false, error: "Missing required fields: leadName, leadLoca" },
         { status: 400 }
       );
     }
-    if (!isMessageCreatorOperation(body.operation)) {
+
+    if (!body.promptVersionId && !body.schoolId) {
+      return NextResponse.json(
+        { success: false, error: "Missing promptVersionId or schoolId" },
+        { status: 400 }
+      );
+    }
+
+    const operation: MessageCreatorOperation =
+      body.operation && isMessageCreatorOperation(body.operation)
+        ? body.operation
+        : "full-analysis";
+
+    if (body.operation && !isMessageCreatorOperation(body.operation)) {
       return NextResponse.json({ success: false, error: "Invalid operation" }, { status: 400 });
     }
 
@@ -46,10 +60,13 @@ export async function POST(request: NextRequest) {
       runMessageCreatorAiAction({
         leadName: body.leadName!,
         leadLoca: body.leadLoca!,
-        schoolId: body.schoolId!,
-        operation: body.operation as Parameters<typeof runMessageCreatorAiAction>[0]["operation"],
+        schoolId: body.schoolId,
+        promptVersionId: body.promptVersionId,
+        operation,
         userInput: body.userInput,
         force: body.force ?? true,
+        targetMessageId: body.targetMessageId,
+        modelId: body.modelId,
       })
     );
 

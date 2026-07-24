@@ -1,9 +1,10 @@
 /**
- * Message Creator (Story 84) — DBA public API.
+ * Message Creator (Story 84 + Story 85) — DBA public API.
  *
- * Approach context, my proposals, school config, versioned analysis runs,
- * conversation freshness (sha256), and the OpenAI action boundary
- * (PROMPT_NOT_CONFIGURED until mentor prompts are wired in a later Story).
+ * Approach context, my proposals, school / prompt-version config, versioned
+ * analysis runs (including message-level targets), conversation freshness
+ * (sha256), and the OpenAI action boundary (PROMPT_NOT_CONFIGURED until mentor
+ * prompts are wired in a later Story).
  *
  * Does NOT replace SaveAiAnswerToMsgWorkout (Console) or classic msg-workout
  * Text items (`YY-MM-DD`, `YY-MM-DD; ai bot`).
@@ -25,6 +26,23 @@ import {
 } from "./item-ops.js";
 import { getCurrentRepoGuid } from "./repo-context.js";
 import { getLeadMsgWorkoutsByLoca } from "./leads.js";
+import {
+  buildMessagePromptVersionOptions,
+  parseWhatsAppMessages,
+  type ParsedWhatsAppMessage,
+  type PromptVersionOption,
+} from "./whatsapp-messages.js";
+
+export {
+  analysisContextMessageIds,
+  buildMessagePromptVersionOptions,
+  fnv1aHex,
+  parseWhatsAppMessages,
+  stableWhatsAppMessageId,
+  type ParsedWhatsAppMessage,
+  type PromptVersionOption,
+  type WhatsAppSender,
+} from "./whatsapp-messages.js";
 
 // ---------------------------------------------------------------------------
 // Schools
@@ -61,6 +79,60 @@ export function getMessageCreatorSchool(schoolId: string): MessageCreatorSchool 
 }
 
 // ---------------------------------------------------------------------------
+// Prompt versions (Story 85) — not LLM models
+// ---------------------------------------------------------------------------
+
+export interface MessageCreatorPromptVersion {
+  id: string;
+  displayName: string;
+  /** Links to school for future promptRef resolution. */
+  schoolId: string;
+  order: number;
+  enabled: boolean;
+}
+
+const MESSAGE_CREATOR_PROMPT_VERSIONS: MessageCreatorPromptVersion[] = [
+  { id: "sd-pl-v2", displayName: "SD-PL_v2", schoolId: "sd-pl", order: 10, enabled: true },
+  { id: "ump-v1", displayName: "UMP_v1", schoolId: "sd-pl", order: 20, enabled: true },
+  { id: "love-system-v1", displayName: "Love-system_v1", schoolId: "sd-pl", order: 30, enabled: true },
+  { id: "sd-pl-v1", displayName: "SD-PL_v1", schoolId: "sd-pl", order: 40, enabled: true },
+];
+
+export function listMessageCreatorPromptVersions(): MessageCreatorPromptVersion[] {
+  return MESSAGE_CREATOR_PROMPT_VERSIONS.filter((v) => v.enabled).sort((a, b) => a.order - b.order);
+}
+
+export function getMessageCreatorPromptVersion(
+  promptVersionId: string
+): MessageCreatorPromptVersion | undefined {
+  return MESSAGE_CREATOR_PROMPT_VERSIONS.find((v) => v.id === promptVersionId);
+}
+
+// ---------------------------------------------------------------------------
+// LLM models (Story 85) — seeded until a shared OpenAI catalog exists
+// ---------------------------------------------------------------------------
+
+export interface MessageCreatorLlmModel {
+  id: string;
+  displayName: string;
+  order: number;
+  enabled: boolean;
+}
+
+const MESSAGE_CREATOR_MODELS: MessageCreatorLlmModel[] = [
+  { id: "gpt-4o", displayName: "gpt-4o", order: 10, enabled: true },
+  { id: "gpt-4o-mini", displayName: "gpt-4o-mini", order: 20, enabled: true },
+];
+
+export function listMessageCreatorModels(): MessageCreatorLlmModel[] {
+  return MESSAGE_CREATOR_MODELS.filter((m) => m.enabled).sort((a, b) => a.order - b.order);
+}
+
+export function getMessageCreatorModel(modelId: string): MessageCreatorLlmModel | undefined {
+  return MESSAGE_CREATOR_MODELS.find((m) => m.id === modelId);
+}
+
+// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
@@ -92,12 +164,24 @@ export interface AnalysisRunSummary {
   freshness: AnalysisFreshness;
   /** Parsed payload fields when available (never invented). */
   payload: Record<string, unknown> | null;
+  /** Story 85 — null for legacy conversation-level runs. */
+  targetMessageId: string | null;
+  promptVersionId: string | null;
+  modelId: string | null;
+  runNumber: number | null;
+  proposalText: string | null;
+  status: string | null;
 }
+
+/** Per-message counts keyed by promptVersionId. */
+export type MessageRunCounts = Record<string, Record<string, number>>;
 
 export interface MessageCreatorBootstrap {
   leadName: string;
   leadLoca: string;
   schools: MessageCreatorSchool[];
+  promptVersions: MessageCreatorPromptVersion[];
+  models: MessageCreatorLlmModel[];
   approachContext: string;
   proposals: string;
   proposalsImportedFromHistorical: boolean;
@@ -109,8 +193,14 @@ export interface MessageCreatorBootstrap {
     channel: string | null;
     hash: string | null;
     error?: string;
+    messages: ParsedWhatsAppMessage[];
   };
+  /** Latest-per school/op (legacy Story 84 consumers). */
   analysis: AnalysisRunSummary[];
+  /** All runs (newest first), including message-level. */
+  allRuns: AnalysisRunSummary[];
+  /** messageId → promptVersionId → count */
+  messageRunCounts: MessageRunCounts;
   relatedWorkouts: Array<{ logicalName: string; loca: string }>;
 }
 
@@ -124,6 +214,10 @@ export interface SaveAnalysisRunInput {
   userInput?: string;
   status: "complete" | "error" | "not-configured";
   payload: Record<string, unknown>;
+  targetMessageId?: string | null;
+  promptVersionId?: string | null;
+  modelId?: string | null;
+  proposalText?: string | null;
 }
 
 export interface SaveAnalysisRunResult {
@@ -143,10 +237,14 @@ export type MessageCreatorAiStatus =
 export interface RunMessageCreatorAiInput {
   leadName: string;
   leadLoca: string;
-  schoolId: string;
-  operation: MessageCreatorOperation;
+  /** Preferred Story 85 path — resolves school via prompt version. */
+  promptVersionId?: string;
+  schoolId?: string;
+  operation?: MessageCreatorOperation;
   userInput?: string;
   force?: boolean;
+  targetMessageId?: string;
+  modelId?: string;
 }
 
 export interface RunMessageCreatorAiResult {
@@ -275,6 +373,11 @@ interface AnalysisFrontMatter {
   userInput?: string;
   status: string;
   payload?: Record<string, unknown>;
+  targetMessageId?: string;
+  promptVersionId?: string;
+  modelId?: string;
+  runNumber?: number;
+  proposalText?: string;
 }
 
 export function serializeAnalysisRunBody(meta: AnalysisFrontMatter): string {
@@ -433,6 +536,12 @@ export async function listAnalysisRuns(
       createdAt: meta?.createdAt ?? null,
       freshness: meta ? computeFreshness(runHash, currentConversationHash) : "no-data",
       payload: (meta?.payload as Record<string, unknown> | undefined) ?? null,
+      targetMessageId: meta?.targetMessageId ?? null,
+      promptVersionId: meta?.promptVersionId ?? null,
+      modelId: meta?.modelId ?? null,
+      runNumber: typeof meta?.runNumber === "number" ? meta.runNumber : null,
+      proposalText: meta?.proposalText ?? null,
+      status: meta?.status ?? null,
     });
   }
 
@@ -444,6 +553,62 @@ export async function listAnalysisRuns(
     return b.itemName.localeCompare(a.itemName);
   });
   return runs;
+}
+
+export function computeMessageRunCounts(runs: AnalysisRunSummary[]): MessageRunCounts {
+  const counts: MessageRunCounts = {};
+  for (const run of runs) {
+    if (!run.targetMessageId || !run.promptVersionId) continue;
+    const byVersion = counts[run.targetMessageId] ?? (counts[run.targetMessageId] = {});
+    byVersion[run.promptVersionId] = (byVersion[run.promptVersionId] ?? 0) + 1;
+  }
+  return counts;
+}
+
+export function listRunsForMessage(
+  runs: AnalysisRunSummary[],
+  targetMessageId: string,
+  promptVersionId?: string | null
+): AnalysisRunSummary[] {
+  const filtered = runs.filter((r) => {
+    if (r.targetMessageId !== targetMessageId) return false;
+    if (promptVersionId && r.promptVersionId !== promptVersionId) return false;
+    return true;
+  });
+  // Oldest → newest for numbering, then reverse for display helper
+  const chronological = [...filtered].sort((a, b) => {
+    const ca = a.createdAt ?? "";
+    const cb = b.createdAt ?? "";
+    if (ca !== cb) return ca.localeCompare(cb);
+    return a.itemName.localeCompare(b.itemName);
+  });
+  return chronological.map((run, index) => ({
+    ...run,
+    runNumber: run.runNumber ?? index + 1,
+  }));
+}
+
+export function formatRunListLabel(
+  run: AnalysisRunSummary,
+  promptVersions: MessageCreatorPromptVersion[] = listMessageCreatorPromptVersions()
+): string {
+  const n = String(run.runNumber ?? 0).padStart(2, "0");
+  const version =
+    promptVersions.find((v) => v.id === run.promptVersionId)?.displayName ??
+    run.promptVersionId ??
+    run.schoolId;
+  return `${n} ${version}`;
+}
+
+export function optionsForMessage(
+  messageId: string,
+  messageRunCounts: MessageRunCounts,
+  promptVersions: MessageCreatorPromptVersion[] = listMessageCreatorPromptVersions()
+): PromptVersionOption[] {
+  return buildMessagePromptVersionOptions(
+    promptVersions,
+    messageRunCounts[messageId] ?? {}
+  );
 }
 
 export function pickLatestAnalysisRuns(runs: AnalysisRunSummary[]): AnalysisRunSummary[] {
@@ -466,8 +631,17 @@ export async function saveAnalysisRun(input: SaveAnalysisRunInput): Promise<Save
       input.operation,
       existingNames
     );
+
+    let runNumber: number | undefined;
+    if (input.targetMessageId) {
+      const existingRuns = await listAnalysisRuns(input.leadLoca, null);
+      const forMessage = existingRuns.filter((r) => r.targetMessageId === input.targetMessageId);
+      runNumber = forMessage.length + 1;
+    }
+
+    const schemaVersion = input.targetMessageId || input.promptVersionId ? 2 : 1;
     const body = serializeAnalysisRunBody({
-      schemaVersion: 1,
+      schemaVersion,
       schoolId: input.schoolId,
       operation: input.operation,
       createdAt: new Date().toISOString(),
@@ -477,6 +651,11 @@ export async function saveAnalysisRun(input: SaveAnalysisRunInput): Promise<Save
       userInput: input.userInput,
       status: input.status,
       payload: input.payload,
+      targetMessageId: input.targetMessageId ?? undefined,
+      promptVersionId: input.promptVersionId ?? undefined,
+      modelId: input.modelId ?? undefined,
+      runNumber,
+      proposalText: input.proposalText ?? undefined,
     });
     const item = await createOrGetChild(folder, itemName, "Text", body);
     // createOrGetChild may return existing empty — always Put body
@@ -501,9 +680,21 @@ export async function saveAnalysisRun(input: SaveAnalysisRunInput): Promise<Save
 export async function runMessageCreatorAiAction(
   input: RunMessageCreatorAiInput
 ): Promise<RunMessageCreatorAiResult> {
-  const school = getMessageCreatorSchool(input.schoolId);
+  const promptVersion = input.promptVersionId
+    ? getMessageCreatorPromptVersion(input.promptVersionId)
+    : undefined;
+  const schoolId = promptVersion?.schoolId ?? input.schoolId;
+  if (!schoolId) {
+    return { status: "UNKNOWN_SCHOOL", message: "Missing schoolId / promptVersionId" };
+  }
+
+  const school = getMessageCreatorSchool(schoolId);
   if (!school || !school.enabled) {
-    return { status: "UNKNOWN_SCHOOL", message: `Unknown or disabled school: ${input.schoolId}` };
+    return { status: "UNKNOWN_SCHOOL", message: `Unknown or disabled school: ${schoolId}` };
+  }
+
+  if (input.modelId && !getMessageCreatorModel(input.modelId)) {
+    return { status: "ERROR", message: `Unknown model: ${input.modelId}` };
   }
 
   const conversation = await getLeadConversationForCreator(input.leadName);
@@ -514,6 +705,8 @@ export async function runMessageCreatorAiAction(
     };
   }
 
+  const operation: MessageCreatorOperation = input.operation ?? "full-analysis";
+
   if (!school.promptRef?.preparedPromptId) {
     // Persist a not-configured marker only when force=true — default just reports status
     // so opening tabs never writes junk. Explicit Analyze / Try Again may pass force.
@@ -521,13 +714,16 @@ export async function runMessageCreatorAiAction(
       const run = await saveAnalysisRun({
         leadName: input.leadName,
         leadLoca: input.leadLoca,
-        schoolId: input.schoolId,
-        operation: input.operation,
+        schoolId,
+        operation,
         conversationHash: conversation.hash,
         conversationChannel: conversation.channel,
         userInput: input.userInput,
         status: "not-configured",
         payload: { reason: "PROMPT_NOT_CONFIGURED" },
+        targetMessageId: input.targetMessageId ?? null,
+        promptVersionId: input.promptVersionId ?? promptVersion?.id ?? null,
+        modelId: input.modelId ?? null,
       });
       return {
         status: "PROMPT_NOT_CONFIGURED",
@@ -548,7 +744,7 @@ export async function runMessageCreatorAiAction(
   // Future Story: call OpenAI with school.promptRef, then saveAnalysisRun(status: complete).
   return {
     status: "ERROR",
-    message: "Prompt ref is set but OpenAI execution is not implemented in Story 84",
+    message: "Prompt ref is set but OpenAI execution is not implemented yet",
   };
 }
 
@@ -561,6 +757,8 @@ export async function getMessageCreatorBootstrap(
   leadLoca: string
 ): Promise<MessageCreatorBootstrap> {
   const schools = listMessageCreatorSchools();
+  const promptVersions = listMessageCreatorPromptVersions();
+  const models = listMessageCreatorModels();
 
   const [approach, proposals, reports, conversation, workoutsResult] = await Promise.all([
     getOrCreateApproachContext(leadLoca),
@@ -570,13 +768,17 @@ export async function getMessageCreatorBootstrap(
     getLeadMsgWorkoutsByLoca(leadLoca).catch(() => ({ workouts: [], error: null, notFound: true })),
   ]);
 
+  const messages = conversation.body ? parseWhatsAppMessages(conversation.body) : [];
   const allRuns = await listAnalysisRuns(leadLoca, conversation.hash);
   const analysis = pickLatestAnalysisRuns(allRuns);
+  const messageRunCounts = computeMessageRunCounts(allRuns);
 
   return {
     leadName,
     leadLoca,
     schools,
+    promptVersions,
+    models,
     approachContext: approach.text,
     proposals: proposals.text,
     proposalsImportedFromHistorical: proposals.importedFromHistorical,
@@ -588,8 +790,11 @@ export async function getMessageCreatorBootstrap(
       channel: conversation.channel,
       hash: conversation.hash,
       error: conversation.error,
+      messages,
     },
     analysis,
+    allRuns,
+    messageRunCounts,
     relatedWorkouts: (workoutsResult.workouts ?? [])
       .filter((w) => {
         if (w.logicalName === "my proposals") return false;
@@ -597,8 +802,8 @@ export async function getMessageCreatorBootstrap(
         return true;
       })
       .map((w) => ({
-      logicalName: w.logicalName,
-      loca: w.loca,
-    })),
+        logicalName: w.logicalName,
+        loca: w.loca,
+      })),
   };
 }

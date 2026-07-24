@@ -114,6 +114,14 @@ export class FakeGoogleSheetsClient implements GoogleSheetsClient {
     return this.sheet(target).sheetId;
   }
 
+  async ensureSheetExists(target: GoogleSheetsTarget): Promise<boolean> {
+    this.calls.push({ method: "ensureSheetExists", target, args: {} });
+    this.maybeFail();
+    const existed = this.sheets.has(this.key(target));
+    this.sheet(target);
+    return !existed;
+  }
+
   async batchUpdate(spreadsheetId: string, requests: Record<string, unknown>[]): Promise<void> {
     this.calls.push({ method: "batchUpdate", target: { spreadsheetId, sheetName: "" }, args: { requests } });
     this.maybeFail();
