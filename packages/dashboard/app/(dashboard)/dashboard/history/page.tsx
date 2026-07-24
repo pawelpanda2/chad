@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
+import { FRAME_SECTION_GAP_CLASS } from "@/components/shared/layout-tokens";
 import { ErrorBox } from "@/components/shared/error-box";
 import { cn } from "@/lib/utils";
 import { RefreshCw, User, ExternalLink } from "lucide-react";
@@ -290,15 +291,28 @@ function GoogleSheetsViewContent() {
   );
 }
 
-const OPERATION_LABEL: Record<string, string> = {
-  insert: "Created",
-  update: "Updated",
-  delete: "Deleted",
-  replace: "Updated",
-};
+/** Compact table date: `26-07-24 17:05:33` (local time). */
+function formatHistoryDate(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const yy = String(d.getFullYear()).slice(-2);
+  return `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${yy} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
 
-function operationLabel(type: string): string {
-  return OPERATION_LABEL[type] ?? type;
+/** Single-letter op codes to keep the column as narrow as possible. */
+function operationLetter(type: string): string {
+  switch (type) {
+    case "insert":
+      return "C";
+    case "delete":
+      return "D";
+    case "update":
+    case "replace":
+      return "U";
+    default:
+      return (type[0] ?? "?").toUpperCase();
+  }
 }
 
 function operationBadgeClass(type: string): string {
@@ -313,6 +327,13 @@ function operationBadgeClass(type: string): string {
     default:
       return "text-muted-foreground";
   }
+}
+
+/** Address without repoGuid — e.g. `guid/01/02` → `01/02`; repo root → empty. */
+function locaPathFromAddress(address: string): string {
+  const slash = address.indexOf("/");
+  if (slash < 0) return "";
+  return address.slice(slash + 1);
 }
 
 /**
@@ -398,8 +419,14 @@ function HistoryListContent({
   };
 
   return (
-    <DashboardPageShell upLevel={{ onClick: handleBack }} title={title}>
-      {/* Controls */}
+    <DashboardPageShell
+      upLevel={{ onClick: handleBack }}
+      title={title}
+      contentClassName={cn(FRAME_SECTION_GAP_CLASS, "overscroll-contain overflow-x-auto")}
+    >
+      {/* Controls + table live inside the outer shell frame — same scroll
+          pattern as Statuses / Daily Tracker (Story 62): one scrollbar on
+          the rounded frame, not a nested max-h table box. */}
       <div className="flex flex-wrap items-center gap-3">
         <select
           aria-label="Operation"
@@ -443,38 +470,53 @@ function HistoryListContent({
       )}
 
       {!isLoading && items.length > 0 && (
-        // Scrollable table container (not pagination) for large lists — the
-        // table's own header/rows stay put; only its body area scrolls.
-        // overflow-x-auto keeps any horizontal overflow (narrow mobile
-        // viewports) contained to this element, never the page itself.
-        <div className="border bg-muted/10 overflow-x-auto overflow-y-auto max-h-[65vh]">
+        <div className="border bg-muted/10">
           <table className="w-full border-collapse text-sm" data-testid="history-table">
-            <thead className="bg-muted sticky top-0 z-10">
+            <thead className="bg-muted">
               <tr>
-                <th className="border p-1 text-left font-medium text-muted-foreground whitespace-nowrap">Date</th>
-                <th className="border p-1 text-left font-medium text-muted-foreground whitespace-nowrap">Operation</th>
-                <th className="border p-1 text-left font-medium text-muted-foreground">Item</th>
+                <th className="border p-1 text-left font-medium text-muted-foreground whitespace-nowrap w-px">
+                  Date
+                </th>
+                <th
+                  className="border p-1 text-center font-medium text-muted-foreground whitespace-nowrap w-px"
+                  title="C=Created, U=Updated, D=Deleted"
+                >
+                  Op
+                </th>
+                <th className="border p-1 text-left font-medium text-muted-foreground">loca</th>
               </tr>
             </thead>
             <tbody>
-              {items.map((item) => (
-                <tr
-                  key={item.id}
-                  data-testid="history-row"
-                  onClick={() => handleRowClick(item.id)}
-                  className="hover:bg-accent/50 cursor-pointer"
-                >
-                  <td className="border p-1 whitespace-nowrap text-xs text-muted-foreground">
-                    {new Date(item.changedAt).toLocaleString()}
-                  </td>
-                  <td className={cn("border p-1 whitespace-nowrap text-xs font-medium", operationBadgeClass(item.operationType))}>
-                    {operationLabel(item.operationType)}
-                  </td>
-                  <td className="border p-1 truncate max-w-0">
-                    <span className="font-medium">{item.itemName}</span>
-                  </td>
-                </tr>
-              ))}
+              {items.map((item) => {
+                const locaPath = locaPathFromAddress(item.address);
+                return (
+                  <tr
+                    key={item.id}
+                    data-testid="history-row"
+                    onClick={() => handleRowClick(item.id)}
+                    className="hover:bg-accent/50 cursor-pointer"
+                  >
+                    <td className="border p-1 whitespace-nowrap text-xs text-muted-foreground font-mono w-px">
+                      {formatHistoryDate(item.changedAt)}
+                    </td>
+                    <td
+                      className={cn(
+                        "border p-1 whitespace-nowrap text-xs font-semibold text-center w-px",
+                        operationBadgeClass(item.operationType)
+                      )}
+                      title={item.operationType}
+                    >
+                      {operationLetter(item.operationType)}
+                    </td>
+                    <td className="border p-1 text-xs leading-tight">
+                      <div className="font-mono text-muted-foreground truncate">
+                        {locaPath || "—"}
+                      </div>
+                      <div className="font-medium truncate">{item.itemName}</div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
