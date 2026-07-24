@@ -24,25 +24,20 @@
  */
 
 import { MongoClient, type Db } from "mongodb";
+import { getEffectiveMongoUri, getEffectiveBeeperMongoUri, getDevDbOverrideGeneration } from "./dev-db-override.js";
 
 // Read lazily (not at module load) — same reason as client.ts's
 // getContentProviderApiUrl(): Next.js imports this module while collecting
 // page data at build time, before docker-compose has injected the runtime
-// env var, so throwing at import time would fail every build.
+// env var, so throwing at import time would fail every build. Routed
+// through dev-db-override.ts (Story 83) so the Dev Panel's Settings tab can
+// switch local dev between local/QNAP Mongo without a process restart.
 function getMongoUri(): string {
-  const uri = process.env.MONGODB_URI;
-  if (!uri) {
-    throw new Error("MONGODB_URI environment variable is not set");
-  }
-  return uri;
+  return getEffectiveMongoUri();
 }
 
 function getBeeperMongoUri(): string {
-  const uri = process.env.BEEPER_MONGODB_URI;
-  if (!uri) {
-    throw new Error("BEEPER_MONGODB_URI environment variable is not set");
-  }
-  return uri;
+  return getEffectiveBeeperMongoUri();
 }
 
 // Full-format GUID, case-insensitive (matches how repoGuid is generated
@@ -70,9 +65,23 @@ function assertValidRepoGuid(repoGuid: string): void {
 // nothing worth caching per-user beyond the shared underlying connection.
 let clientPromise: Promise<MongoClient> | null = null;
 let beeperClientPromise: Promise<MongoClient> | null = null;
+// Generation the currently-cached connection was opened under (Story 83) —
+// when the Dev Panel's Settings tab flips the Mongo source, the override's
+// generation counter bumps and these go stale; the next connect() call
+// below tears down the old connection and opens a fresh one against the
+// new source instead of silently keeping the old one alive forever.
+let connectedGeneration = -1;
+let beeperConnectedGeneration = -1;
 
 function connect(): Promise<MongoClient> {
+  const generation = getDevDbOverrideGeneration();
+  if (clientPromise && connectedGeneration !== generation) {
+    const stale = clientPromise;
+    clientPromise = null;
+    stale.then((client) => client.close()).catch(() => {});
+  }
   if (!clientPromise) {
+    connectedGeneration = generation;
     const client = new MongoClient(getMongoUri());
     clientPromise = client.connect();
   }
@@ -80,7 +89,14 @@ function connect(): Promise<MongoClient> {
 }
 
 function connectBeeperServer(): Promise<MongoClient> {
+  const generation = getDevDbOverrideGeneration();
+  if (beeperClientPromise && beeperConnectedGeneration !== generation) {
+    const stale = beeperClientPromise;
+    beeperClientPromise = null;
+    stale.then((client) => client.close()).catch(() => {});
+  }
   if (!beeperClientPromise) {
+    beeperConnectedGeneration = generation;
     const client = new MongoClient(getBeeperMongoUri());
     beeperClientPromise = client.connect();
   }

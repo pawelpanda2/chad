@@ -16,6 +16,7 @@ export * from './report-entries.js';
 export * from './beeper.js';
 export * from './mongo.js';
 export * from './postgres.js';
+export * from './dev-db-override.js';
 export * from './secrets-crypto.js';
 export * from './beeper-crm.js';
 export * from './path-resolver.js';
