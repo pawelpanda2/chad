@@ -6,9 +6,9 @@
 | 2 | DONE | | Deployed current `main` to QNAP TEST only (PROD untouched) |
 | 3 | DONE | | Found and fixed a real bug blocking TEST: `cp_history`'s unique index broke against real legacy Mongo data |
 | 4 | IN PROGRESS | | Redeploy TEST with the index fix |
-| 5 | NOT DONE YET | | Start PostgreSQL selectively on QNAP shared (no Mongo restart) |
-| 6 | NOT DONE YET | | Apply Postgres migrations on QNAP |
-| 7 | NOT DONE YET | | Migrate test3 only (dry-run then apply), verify integrity + parity |
+| 5 | DONE | | Start PostgreSQL selectively on QNAP shared (no Mongo restart) |
+| 6 | DONE | | Apply Postgres migrations on QNAP |
+| 7 | DONE | | Migrate test3 only (dry-run then apply), verify integrity + parity |
 | 8 | NOT DONE YET | | Cut QNAP TEST over to Postgres primary (isolated from PROD's env) |
 | 9 | NOT DONE YET | | Verify Google Sheets / Content Provider / data-outbox workers against Postgres on TEST |
 | 10 | NOT DONE YET | | QNAP TEST smoke/integration tests (test3) |
@@ -20,6 +20,119 @@
 This table is updated as each step is actually executed — no row is marked
 DONE without the real command + real output recorded in the matching Task
 section below.
+
+# Task 5 — Start PostgreSQL selectively on QNAP
+
+**Requested:** `docker compose ... up -d postgres` only, never the full
+shared restart; preflight the data path; confirm Mongo untouched.
+
+**Done:** Added `POSTGRES_USER`/`POSTGRES_PASSWORD`/`POSTGRES_DB` to the
+real (gitignored) `.env.qnap` on the QNAP host via SSH (value never
+printed — appended via a remote heredoc, verified only by checking the key
+name exists and the fetched value's *length*, never its content, in any
+subsequent step). Ran `bash-scripts/dashboard/00_qnap_shared/07_postgres_up.sh`
+(new script, Story 81) via `run_remote_script`:
+
+```
+$ bash bash-scripts/dashboard/00_qnap_shared/07_postgres_up.sh
+...
+ Container chad-postgres  Created
+ Container chad-postgres  Started
+[info] Waiting for PostgreSQL health...
+[ok] chad-postgres healthy.
+[info] chad-mongodb StartedAt (should be unchanged by this script): 2026-07-22T09:37:31Z
+[info] beeper-mongodb StartedAt (should be unchanged by this script): 2026-07-22T09:37:25Z
+[ok] chad-postgres is up.
+```
+(A `Found orphan containers ([chad-history-worker])` warning appeared —
+informational only, no `--remove-orphans` flag was passed, so
+`chad-history-worker` — still needed by PROD's pre-Story-79 code — was
+left running, untouched.)
+
+**Files changed:** none (uses the scripts already committed with the
+first Story 81 commit).
+**Tested:** `docker ps`/`docker inspect` confirm `chad-postgres` healthy,
+published on host port 12042, and `chad-mongodb`/`beeper-mongodb`
+`StartedAt` timestamps unchanged (not restarted).
+**Status: DONE**
+
+# Task 6 — Apply PostgreSQL migrations on QNAP
+
+**Requested:** run `apply-postgres-migrations.mjs`, confirm all 5 tables +
+triggers, idempotent.
+
+**Done:** Ran from the local Mac against QNAP's Postgres over Tailscale
+(port 12042 — same reachability pattern already proven for Mongo's 12040):
+```
+$ POSTGRES_URI=postgres://chad:***@100.117.139.83:12042/chad node packages/dba/scripts/apply-postgres-migrations.mjs
+[migrations] applying 0001_init.sql...
+[migrations] 0001_init.sql — applied.
+[migrations] done — 1 new migration(s) applied, 1 total on disk.
+```
+Verified tables and triggers:
+```
+$ docker exec chad-postgres psql -U chad -d chad -c "\dt"
+ cp_history, cp_items, cp_outbox_data_sync, cp_outbox_google_sheets_sync, schema_migrations   (all 5 present)
+
+$ ... SELECT tgname, tgrelid::regclass, tgenabled FROM pg_trigger WHERE NOT tgisinternal
+ cp_history_no_update | cp_history | O
+ cp_history_no_delete | cp_history | O
+ cp_items_before_insupd | cp_items | O
+ cp_items_before_delete | cp_items | O
+```
+Restart-persistence + Mongo-untouched re-verified:
+```
+$ docker restart chad-postgres  →  healthy again
+$ SELECT version FROM schema_migrations  →  0001   (data survived the restart)
+$ docker inspect -f '{{.State.StartedAt}}' chad-mongodb beeper-mongodb  →  unchanged (2026-07-22, not restarted)
+```
+
+**Files changed:** none (script already committed).
+**Tested:** as above, against the real QNAP host.
+**Status: DONE**
+
+# Task 7 — Migrate test3 only to Postgres
+
+**Requested:** exact repoGuid, guard before mutation, dry-run first, report
+counts/conflicts/legacy history, no fabrication, then apply; then
+integrity + parity + hash comparison; no other repo's records.
+
+**Done:**
+1. test3's real repoGuid confirmed from `testing/test3-guard.ts`:
+   `5a9c8b7d-6e5f-4a3b-2c1d-0e9f8a7b6c5d`.
+2. Prerequisite: test3's 8 `cp_items` predated Story 79 (no
+   `_historyVersion` — confirmed via direct Mongo query). Ran the EXISTING
+   Story 79 tool, scoped to test3 only:
+   ```
+   $ node packages/dba/scripts/migrate-legacy-cp-items-to-history.mjs --repoGuid=5a9c...c5d
+   [dry-run] 8 cp_items document(s) missing _historyVersion — listed, none other
+   $ node packages/dba/scripts/migrate-legacy-cp-items-to-history.mjs --repoGuid=5a9c...c5d --apply
+   migrated: 8 items -> version 1 each
+   $ node packages/dba/scripts/cp-history-integrity-check.mjs --repoGuid=5a9c...c5d
+   OK — zero inconsistencies.
+   ```
+3. Mongo → Postgres dry-run:
+   ```
+   $ node packages/dba/scripts/migrate-mongo-to-postgres.mjs --repoGuid=5a9c...c5d
+   {"itemsCandidates":8,"itemsMigrated":8,"itemsConflict":0,"historyEventsMigrated":8,
+    "historyEventsIncompatibleSkipped":23,"hashMismatches":0, outbox*: 0}
+   ```
+   (23 = the pre-Story-79 Change-Stream-shaped history events for these 8
+   items — correctly detected and reported as incompatible, never
+   fabricated into the new shape.)
+4. Applied: `--apply` — same report, `itemsMigrated: 8`, `hashMismatches: 0`,
+   exit code 0.
+5. Verified: `cp-postgres-integrity-check.mjs --repoGuid=5a9c...c5d` → "OK —
+   zero inconsistencies" (version continuity, hash chain, last-event vs
+   current state, no duplicates). `SELECT DISTINCT repo_guid FROM cp_items`
+   on QNAP's Postgres → exactly one row, test3's own GUID — no other repo's
+   data present. `SELECT count(*) FROM cp_items` / `cp_history` → 8/8,
+   matching Mongo exactly (hash equality already asserted per-item by the
+   migrator itself, not just a count check).
+
+**Files changed:** none (scripts already committed).
+**Tested:** all commands above, against the real QNAP Mongo/Postgres.
+**Status: DONE**
 
 # Task 1 — Verify current state
 
