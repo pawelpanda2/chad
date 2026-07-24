@@ -16,6 +16,7 @@ export * from './report-entries.js';
 export * from './beeper.js';
 export * from './mongo.js';
 export * from './postgres.js';
+export * from './dev-db-override.js';
 export * from './secrets-crypto.js';
 export * from './beeper-crm.js';
 export * from './path-resolver.js';
@@ -43,8 +44,10 @@ export * from './data-outbox.js';
 export * from './data-router.js';
 export * from './data-router-instance.js';
 export * from './data-outbox-worker.js';
+export * from './data-outbox-bootstrap.js';
 export * from './data-sync-diagnostics.js';
 export * from './item-ops.js';
+export * from './folders.js';
 export * from './admin-users.js';
 export * from './cp-history.js';
 // Named (not `export *`) — cp-history/mutate.ts's own CpHistoryActor/

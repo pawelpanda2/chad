@@ -1,7 +1,116 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useDevPanelStore } from '@/lib/dev-panel/dev-panel-store';
+
+type MongoSource = 'local' | 'qnap';
+
+interface DbSourceState {
+  current: MongoSource;
+  target: { source: MongoSource; hostPort: string; error?: string };
+}
+
+/** Settings tab content: live local/QNAP Mongo switch (Story 83) — see /api/dev-settings/db-source. */
+function DevPanelSettingsTab() {
+  const [state, setState] = useState<DbSourceState | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [switching, setSwitching] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/dev-settings/db-source');
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? `Request failed (${res.status})`);
+        return;
+      }
+      setState(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to reach server');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  async function handleChange(source: MongoSource) {
+    setSwitching(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/dev-settings/db-source', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? `Request failed (${res.status})`);
+        return;
+      }
+      setState(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to reach server');
+    } finally {
+      setSwitching(false);
+    }
+  }
+
+  return (
+    <div className="dev-tab-section">
+      <div className="dev-section-title">⚙️ Settings</div>
+
+      <div style={{ marginBottom: '12px' }}>
+        <label htmlFor="dev-panel-db-source" style={{ display: 'block', marginBottom: '4px', fontWeight: 600 }}>
+          Baza danych (Mongo)
+        </label>
+        <select
+          id="dev-panel-db-source"
+          value={state?.current ?? 'local'}
+          disabled={loading || switching || !state}
+          onChange={(e) => handleChange(e.target.value as MongoSource)}
+          className="dev-btn"
+          style={{ minWidth: '220px' }}
+        >
+          <option value="local">Local (docker/local Mongo)</option>
+          <option value="qnap">QNAP (server, współdzielone dane)</option>
+        </select>
+        {switching && <span style={{ marginLeft: '8px' }}>Przełączanie...</span>}
+      </div>
+
+      {loading && <div className="dev-no-logs">Ładowanie...</div>}
+
+      {!loading && state && (
+        <div className="dev-request-detail">
+          <strong>Aktualnie połączony z:</strong>
+          <pre className="dev-log-pre">
+            {state.current === 'qnap' ? 'QNAP (100.117.139.83:12040)' : 'Local'}
+            {'\n'}host:port = {state.target.hostPort}
+            {state.target.error ? `\n(błąd rozwiązania: ${state.target.error})` : ''}
+          </pre>
+        </div>
+      )}
+
+      {error && (
+        <div className="dev-request-detail dev-request-error">
+          <strong>ERROR:</strong>
+          <pre className="dev-log-pre dev-stack">{error}</pre>
+        </div>
+      )}
+
+      <div className="dev-no-logs" style={{ marginTop: '12px' }}>
+        Dostępne tylko lokalnie (bare `next dev`) — zablokowane, gdy NODE_ENV=production (czyli na każdym
+        środowisku Docker: local-mac-docker, QNAP TEST, QNAP PROD). Zmiana dotyczy całego procesu serwera, nie
+        tylko tej karty przeglądarki.
+      </div>
+    </div>
+  );
+}
 
 export function DevPanel() {
   const {
@@ -124,6 +233,12 @@ export function DevPanel() {
             onClick={() => setTab('errors')}
           >
             ⚠️ Errors {errorCount > 0 ? `(${errorCount})` : ''}
+          </button>
+          <button
+            className={`dev-tab ${activeTab === 'settings' ? 'active' : ''}`}
+            onClick={() => setTab('settings')}
+          >
+            ⚙️ Settings
           </button>
         </div>
 
@@ -274,6 +389,8 @@ export function DevPanel() {
               )}
             </div>
           )}
+
+          {activeTab === 'settings' && <DevPanelSettingsTab />}
         </div>
       </div>
     </div>

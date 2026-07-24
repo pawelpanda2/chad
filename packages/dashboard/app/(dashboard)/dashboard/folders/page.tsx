@@ -21,7 +21,9 @@ import { ArrowLeft, ArrowRight, RefreshCw } from "lucide-react";
  * packages/net-content-provider/front_blazor/BlazorApp/Pages/Repos.razor
  * (+ TextView.razor/FolderView.razor) — see documentation/stories/57,
  * corrected against real reference screenshots of the running Blazor app
- * (Input 3 in 01_input.md) after a first pass omitted too much.
+ * (Input 3 in 01_input.md) after a first pass omitted too much. Story 82
+ * added the first real write path (create Text/Folder child, edit+save a
+ * Text item's body) — previously GET-only with Add/Save rendered disabled.
  *
  * Deviations from the screenshots, both deliberate and documented:
  * - No Logout button — the user's ORIGINAL request explicitly said "bez
@@ -32,12 +34,19 @@ import { ArrowLeft, ArrowRight, RefreshCw } from "lucide-react";
  *   reading the real Blazor source that both call the exact same handler
  *   (dead/duplicate code), not two different features worth replicating.
  * - Folder/Content/Config/Terminal (cp-plugin — local file/terminal
- *   opening) and GoogleDoc/Tts buttons are rendered for visual parity but
- *   disabled — there is no cp-plugin bridge reachable from this web
- *   dashboard's deployment. Add / body-editing Save are rendered but also
- *   disabled — a real write path exists (cp-flow.ts's Put, already used
- *   elsewhere) but wiring it here is a bigger, separate decision (which
- *   repos a given user may WRITE to, not just browse) not yet made.
+ *   opening) and GoogleDoc/Tts buttons stay disabled — there is no
+ *   cp-plugin bridge reachable from this web dashboard's deployment; out of
+ *   scope for Story 82.
+ * - Text item's "Add" row (Blazor: Up/Down select + input) is REMOVED, not
+ *   wired up: reading `TextView.razor`'s real `OnAddClicked` shows it calls
+ *   an unrelated operation (`ItemWorker.AppendLine`), not
+ *   `PostParentItem`/child-creation — the "Up"/"Down" select isn't even
+ *   read by that handler. No confirmed, safe create-child semantics exist
+ *   for a Text item, so per Story 82's task instructions this form is left
+ *   out entirely rather than wired to the wrong operation or kept as a
+ *   misleading disabled stub.
+ * - Folder's "Add" type select offers Text/Folder only — Ref is
+ *   intentionally excluded (Story 82: no confirmed contract for it here).
  * - Repo picker: a real dropdown over ALL repos, but ONLY for the
  *   `pawel_f` login (see /api/folders/repos) — every other user still
  *   only ever sees their own repo, preserving this dashboard's existing
@@ -67,6 +76,20 @@ interface FolderApiResponse {
   error?: string;
 }
 
+interface CreateChildApiResponse {
+  item?: CpItem;
+  parent?: CpItem;
+  alreadyExisted?: boolean;
+  error?: string;
+  details?: string;
+}
+
+interface UpdateBodyApiResponse {
+  item?: CpItem;
+  error?: string;
+  details?: string;
+}
+
 interface RepoOption {
   id: string;
   name: string;
@@ -92,7 +115,7 @@ function parseChildNameMap(body: string): Array<{ index: string; name: string }>
   return [];
 }
 
-/** Disabled button matching the Blazor screenshot's layout for an action this dashboard can't perform yet (cp-plugin/write). */
+/** Disabled button matching the Blazor screenshot's layout for an action this dashboard can't perform yet (cp-plugin). */
 function InertButton({ children, title }: { children: React.ReactNode; title: string }) {
   return (
     <Button variant="outline" size="sm" disabled title={title}>
@@ -108,7 +131,14 @@ export default function FoldersPage() {
   const [locaInput, setLocaInput] = useState("");
   const [addName, setAddName] = useState("");
   const [addType, setAddType] = useState("Text");
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [createNotice, setCreateNotice] = useState<string | null>(null);
   const [editorBody, setEditorBody] = useState("");
+  const [activeTab, setActiveTab] = useState("preview");
+  const [savingBody, setSavingBody] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveNotice, setSaveNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -136,6 +166,16 @@ export default function FoldersPage() {
     setNav((prev) => {
       const truncated = prev.items.slice(0, prev.index + 1);
       return { items: [...truncated, item], index: truncated.length };
+    });
+  }, []);
+
+  /** Replaces the currently-shown item in place (no new history entry) — used after create/save refreshes. */
+  const replaceCurrentItem = useCallback((item: CpItem) => {
+    setNav((prev) => {
+      if (prev.index < 0) return prev;
+      const items = [...prev.items];
+      items[prev.index] = item;
+      return { ...prev, items };
     });
   }, []);
 
@@ -175,10 +215,19 @@ export default function FoldersPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Resets per-item transient UI state whenever the shown item actually
+  // changes (navigation, or our own in-place replace after create/save).
+  // Never fires from background polling — there is none — so this can't
+  // clobber an in-progress unsaved edit the user didn't cause themselves.
   useEffect(() => {
     if (currentItem && selectedRepoGuid) {
       setLocaInput(relativeLoca(currentItem.Address, selectedRepoGuid));
       setEditorBody(currentItem.Body);
+      setAddName("");
+      setCreateError(null);
+      setCreateNotice(null);
+      setSaveError(null);
+      setSaveNotice(null);
     }
   }, [currentItem, selectedRepoGuid]);
 
@@ -211,6 +260,80 @@ export default function FoldersPage() {
   function goForward() {
     setNav((prev) => (prev.index < prev.items.length - 1 ? { ...prev, index: prev.index + 1 } : prev));
   }
+
+  /**
+   * Creates a Text/Folder child under the current Folder. Mirrors
+   * `FolderView.razor`'s real `OnAddClicked`: stays on the current folder
+   * and refreshes its children in place, rather than navigating into the
+   * new item (that handler re-fetches `Item.AdrTuple`, the parent itself,
+   * never the child it just created).
+   */
+  async function handleAddChild() {
+    if (!currentItem || creating) return;
+    const trimmedName = addName.trim();
+    if (!trimmedName) {
+      setCreateError("Nazwa nie może być pusta");
+      return;
+    }
+
+    setCreating(true);
+    setCreateError(null);
+    setCreateNotice(null);
+    try {
+      const parentLoca = relativeLoca(currentItem.Address, selectedRepoGuid);
+      const res = await fetch("/api/folders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ parentLoca, type: addType, name: trimmedName }),
+      });
+      const data: CreateChildApiResponse = await res.json();
+      if (!res.ok || !data.parent) {
+        setCreateError(data.details ?? data.error ?? `Request failed (${res.status})`);
+        return;
+      }
+
+      replaceCurrentItem(data.parent);
+      setAddName("");
+      if (data.alreadyExisted) {
+        setCreateNotice(`Element "${trimmedName}" już istnieje — otwarto istniejący.`);
+      }
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : "Nie udało się utworzyć elementu");
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  /** Saves the Text editor's body. Mirrors `CodeEditorTabs.razor`'s Save: only meaningful while editing, never clobbers unsaved text on failure. */
+  async function handleSaveBody() {
+    if (!currentItem || savingBody) return;
+    const loca = relativeLoca(currentItem.Address, selectedRepoGuid);
+
+    setSavingBody(true);
+    setSaveError(null);
+    setSaveNotice(null);
+    try {
+      const res = await fetch("/api/folders", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ loca, body: editorBody }),
+      });
+      const data: UpdateBodyApiResponse = await res.json();
+      if (!res.ok || !data.item) {
+        setSaveError(data.details ?? data.error ?? `Request failed (${res.status})`);
+        return;
+      }
+
+      replaceCurrentItem(data.item);
+      setSaveNotice("Zapisano!");
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Nie udało się zapisać");
+    } finally {
+      setSavingBody(false);
+    }
+  }
+
+  const isBodyDirty = !!currentItem && editorBody !== currentItem.Body;
 
   return (
     <DashboardPageShell title="Folders">
@@ -313,34 +436,28 @@ export default function FoldersPage() {
                 <InertButton title="GoogleDoc — niepodłączone w dashboardzie">GoogleDoc</InertButton>
                 <InertButton title="Tts — niepodłączone w dashboardzie">Tts</InertButton>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <InertButton title="Zapis nie jest jeszcze obsługiwany w dashboardzie">Add</InertButton>
-                <Select value={addType} onValueChange={setAddType} disabled>
-                  <SelectTrigger className="w-[100px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Text">Up</SelectItem>
-                    <SelectItem value="Folder">Down</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Input
-                  value={addName}
-                  onChange={(e) => setAddName(e.target.value)}
-                  placeholder="nazwa"
-                  disabled
-                  className="w-[200px]"
-                />
-              </div>
 
-              <Tabs defaultValue="preview">
-                <TabsList>
+              <ErrorBox message={saveError} className="mb-0" />
+              {saveNotice && <p className="text-sm text-green-600">{saveNotice}</p>}
+
+              <Tabs value={activeTab} onValueChange={setActiveTab}>
+                <TabsList className="flex items-center gap-2">
                   <TabsTrigger value="preview">Podgląd</TabsTrigger>
                   <TabsTrigger value="editor">Edytor</TabsTrigger>
+                  {activeTab === "editor" && (
+                    <Button
+                      size="sm"
+                      className="ml-auto"
+                      onClick={handleSaveBody}
+                      disabled={!isBodyDirty || savingBody}
+                    >
+                      {savingBody ? "Zapisywanie..." : "Zapisz"}
+                    </Button>
+                  )}
                 </TabsList>
                 <TabsContent value="preview">
                   <pre className="whitespace-pre-wrap break-words rounded-md border bg-muted/20 p-3 font-mono text-sm">
-                    {currentItem.Body || <span className="italic text-muted-foreground">(empty)</span>}
+                    {editorBody || <span className="italic text-muted-foreground">(empty)</span>}
                   </pre>
                 </TabsContent>
                 <TabsContent value="editor">
@@ -348,8 +465,6 @@ export default function FoldersPage() {
                     value={editorBody}
                     onChange={(e) => setEditorBody(e.target.value)}
                     className="min-h-[300px] font-mono text-sm"
-                    disabled
-                    title="Zapis nie jest jeszcze obsługiwany w dashboardzie"
                   />
                 </TabsContent>
               </Tabs>
@@ -364,25 +479,31 @@ export default function FoldersPage() {
                 <InertButton title="Wymaga cp-plugin — niedostępne w dashboardzie">Terminal</InertButton>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <InertButton title="Zapis nie jest jeszcze obsługiwany w dashboardzie">Add</InertButton>
-                <Select value={addType} onValueChange={setAddType} disabled>
+                <Button size="sm" onClick={handleAddChild} disabled={creating}>
+                  {creating ? "Dodawanie..." : "Add"}
+                </Button>
+                <Select value={addType} onValueChange={setAddType} disabled={creating}>
                   <SelectTrigger className="w-[100px]">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="Text">Text</SelectItem>
                     <SelectItem value="Folder">Folder</SelectItem>
-                    <SelectItem value="Ref">Ref</SelectItem>
                   </SelectContent>
                 </Select>
                 <Input
                   value={addName}
                   onChange={(e) => setAddName(e.target.value)}
                   placeholder="nazwa"
-                  disabled
+                  disabled={creating}
                   className="w-[200px]"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleAddChild();
+                  }}
                 />
               </div>
+              <ErrorBox message={createError} className="mb-0" />
+              {createNotice && <p className="text-sm text-muted-foreground italic">{createNotice}</p>}
 
               <div className="space-y-1">
                 {parseChildNameMap(currentItem.Body).map(({ index, name }) => (

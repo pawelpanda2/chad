@@ -496,11 +496,31 @@ export async function migrateLegacyCpItem(
   }
 }
 
-/** Idempotent — safe to call on every process startup. */
+/**
+ * Idempotent — safe to call on every process startup.
+ *
+ * `sourceId_version_unique` is a PARTIAL unique index
+ * (`partialFilterExpression: { version: { $exists: true } }`) — discovered
+ * necessary against a real, long-lived deployment (QNAP TEST, Story 81):
+ * pre-Story-79 `cp_history` documents (Story 74/78's Change-Stream shape)
+ * have no `version` field at all, so a plain (non-partial) unique index on
+ * `{sourceId, version}` treats every one of them as `version: null` —
+ * multiple legacy events for the same `sourceId` (an item that was, say,
+ * created and later deleted under the old mechanism) then collide as
+ * "duplicates" and abort the ENTIRE index build, breaking every
+ * `cp_history` write, for every repo, on that deployment. Scoping the
+ * uniqueness constraint to documents that actually have a `version` field
+ * (i.e., only ever true for Story-79-native writes) excludes legacy
+ * documents from the constraint entirely, without migrating or touching
+ * them.
+ */
 export async function ensureCpHistoryIndexes(db?: Db): Promise<void> {
   const database = db ?? (await getMongoDb());
   const historyCol = database.collection(CP_HISTORY_COLLECTION);
-  await historyCol.createIndex({ sourceId: 1, version: 1 }, { unique: true, name: "sourceId_version_unique" });
+  await historyCol.createIndex(
+    { sourceId: 1, version: 1 },
+    { unique: true, name: "sourceId_version_unique", partialFilterExpression: { version: { $exists: true } } }
+  );
   await historyCol.createIndex({ repoGuid: 1, changedAt: -1 }, { name: "repoGuid_changedAt" });
   await historyCol.createIndex({ address: 1, changedAt: -1 }, { name: "address_changedAt" });
   // mutationId IS _id (see CpHistoryDoc), so no separate unique index is
