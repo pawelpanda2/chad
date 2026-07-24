@@ -1,15 +1,23 @@
 # Docker Compose — QNAP TEST: dashboard ONLY.
 #
-# TEST is an alternative UI onto the SAME live data as PROD — not an
-# isolated/sandboxed environment. It talks to the SAME shared MongoDB
-# (chad-mongodb) started by docker-compose.qnap.shared.yml
-# (bash-scripts/dashboard/00_qnap_shared/). Never starts/stops/rebuilds
-# shared services itself — see bash-scripts/dashboard/04_qnap_test/03_re-start.sh,
-# which refuses to start unless shared services are already up and healthy.
+# Story 81 (2026-07-24): TEST is cut over to PostgreSQL as primary — the
+# ONLY environment cut over so far (PROD stays on Mongo, see
+# docker-compose.qnap.prod.yml, deliberately untouched by this Story).
+# QNAP's `chad-postgres` (docker-compose.qnap.shared.yml) currently holds
+# ONLY test3's migrated data — DBA_POSTGRES_REPO_ALLOWLIST below rejects
+# any write for a different repoGuid instead of silently creating a
+# divergent island of data (see packages/dba/src/data-providers/
+# repo-allowlist-guard.ts, backlog/stories/81/).
 #
-# Content Provider (content-provider-api) removed from this stack — Mongo
-# is the only active runtime backend now. See docker-compose.qnap.shared.yml's
-# header comment for the reversible-removal note.
+# TEST is otherwise still an alternative UI onto the SAME live Mongo data
+# as PROD for Beeper (BEEPER_MONGODB_URI below, unaffected by this Story).
+# Never starts/stops/rebuilds shared services itself — see
+# bash-scripts/dashboard/04_qnap_test/03_re-start.sh, which refuses to
+# start unless shared services are already up and healthy.
+#
+# Content Provider (content-provider-api) removed from this stack. See
+# docker-compose.qnap.shared.yml's header comment for the
+# reversible-removal note.
 #
 # Used by bash-scripts/dashboard/04_qnap_test/*.sh, plus
 # bash-scripts/dashboard/06_qnap_test_ssh/*.sh (thin SSH wrappers over
@@ -56,9 +64,33 @@ services:
       # documentation/beeper/architecture.md). Own credentials, not
       # MONGO_ROOT_USERNAME/PASSWORD — least privilege.
       - BEEPER_MONGODB_URI=mongodb://${BEEPER_MONGO_ROOT_USERNAME}:${BEEPER_MONGO_ROOT_PASSWORD}@beeper-mongodb:27017?authSource=admin
-      - DBA_MONGO_ENABLED=${DBA_MONGO_ENABLED:-true}
+      # Story 81 — QNAP TEST cutover to PostgreSQL. Deliberately HARDCODED
+      # literal values, NOT ${DBA_PRIMARY_BACKEND:-mongo} reading the
+      # shared .env.qnap — docker-compose.qnap.prod.yml reads that exact
+      # same shared env var name; a plain default-value read here would
+      # silently apply to PROD too on its next restart/redeploy. See
+      # backlog/stories/81/02_plan.md.
+      - DBA_MONGO_ENABLED=false
+      - DBA_POSTGRES_ENABLED=true
+      - DBA_PRIMARY_BACKEND=postgres
       - DBA_CONTENT_PROVIDER_ENABLED=${DBA_CONTENT_PROVIDER_ENABLED:-false}
-      - DBA_PRIMARY_BACKEND=${DBA_PRIMARY_BACKEND:-mongo}
+      # Story 81 — data-sync outbox worker, wired into this process
+      # (data-outbox-bootstrap.ts) for the first time. Stays inert here
+      # while DBA_CONTENT_PROVIDER_ENABLED is false (nothing to follow
+      # toward — see that file's own startDataOutboxWorkerIfEnabled doc
+      # comment): present so the worker is exercised/logged, not because
+      # it has real work to do on TEST today.
+      - DBA_DATA_OUTBOX_WORKER_ENABLED=true
+      # chad-postgres (docker-compose.qnap.shared.yml) — POSTGRES_USER/
+      # PASSWORD/DB come from .env.qnap but are safe there: PROD's compose
+      # file never references these var names, so their presence has zero
+      # effect on PROD's interpolation (unlike DBA_PRIMARY_BACKEND above).
+      - POSTGRES_URI=postgres://${POSTGRES_USER:-chad}:${POSTGRES_PASSWORD}@chad-postgres:5432/${POSTGRES_DB:-chad}
+      # Transitional safety net (Story 81) — chad-postgres currently holds
+      # only test3's data; reject any write for a different repoGuid
+      # instead of silently creating a divergent island of data. Remove
+      # once every real repo has been migrated to Postgres.
+      - DBA_POSTGRES_REPO_ALLOWLIST=5a9c8b7d-6e5f-4a3b-2c1d-0e9f8a7b6c5d
       # Deliberately "test", never "prod" — even though TEST shares the
       # exact same chad-mongodb data as PROD (this file's own header
       # comment), the Google Sheets sync worker
