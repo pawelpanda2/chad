@@ -5,13 +5,21 @@ truth** (`cp_items`/`cp_history`/`cp_outbox_data_sync`/
 `cp_outbox_google_sheets_sync`); MongoDB is retired for CHAD and kept only
 for Beeper CRM (`beeper_<repoGuid>` databases, entirely separate — see
 `documentation/beeper/architecture.md`). Story 79's MongoDB-transaction
+<<<<<<< Updated upstream
 mechanism (below, kept as historical record) is **superseded**. Read
 `backlog/stories/80/` and `backlog/stories/81/` for the full rationale.
+=======
+mechanism (below, kept as historical record) is **superseded**, the same
+way Story 79 itself superseded Story 74/78's Change-Stream
+`history-worker`. Read `backlog/stories/80/` and `backlog/stories/81/` for
+the full rationale.
+>>>>>>> Stashed changes
 
 **Deployment status (do not assume more than this says):**
 
 ```
 LOCAL:      PostgreSQL (DBA_PRIMARY_BACKEND=postgres)
+<<<<<<< Updated upstream
 QNAP TEST:  PostgreSQL (DBA_PRIMARY_BACKEND=postgres) — test3 +
             chad_admin (0fc7da8d-3466-4964-a24c-dfc0d0fef87c) in
             chad-postgres; DBA_POSTGRES_REPO_ALLOWLIST = both GUIDs
@@ -31,6 +39,27 @@ over (PROD untouched).
 QNAP TEST and PROD do NOT share `DBA_PRIMARY_BACKEND` via `.env.qnap` —
 TEST's cutover values are hardcoded literals in
 `docker-compose.qnap.test.yml` (see `backlog/stories/81/02_plan.md`).
+=======
+QNAP TEST:  PostgreSQL (DBA_PRIMARY_BACKEND=postgres, cut over Story 81) —
+            chad-postgres currently holds ONLY test3's migrated data;
+            DBA_POSTGRES_REPO_ALLOWLIST rejects writes for any other repo
+QNAP PROD:  MongoDB (DBA_PRIMARY_BACKEND=mongo) — TEMPORARY, not yet cut
+            over; still runs Story 78's Change-Stream/history-worker
+            mechanism (see the second half of this file)
+Beeper:     MongoDB (beeper-mongodb), unaffected by any of the above,
+            everywhere
+```
+
+QNAP TEST and PROD deliberately do NOT share a `DBA_PRIMARY_BACKEND` value
+via the shared `.env.qnap` file — both `docker-compose.qnap.test.yml` and
+`docker-compose.qnap.prod.yml` read that exact env var name from the same
+file, so TEST's cutover values are hardcoded literals directly in its own
+compose file instead, guaranteeing PROD's compose interpolation is
+completely unaffected (see `backlog/stories/81/02_plan.md`). PROD's own
+cutover (migrate every real repo, not just test3; flip PROD's
+`DBA_PRIMARY_BACKEND`; retire Mongo CHAD) is real follow-up work requiring
+a PROD change window — not attempted in Story 81.
+>>>>>>> Stashed changes
 
 ## Why this changed (Story 80)
 

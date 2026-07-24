@@ -17,11 +17,15 @@ export * from './beeper.js';
 export * from './mongo.js';
 export * from './postgres.js';
 export * from './dev-db-override.js';
+export * from './sync-local-from-qnap.js';
 export * from './secrets-crypto.js';
 export * from './beeper-crm.js';
 export * from './path-resolver.js';
 export * from './ai-answer.js';
+export * from './ai-prompts.js';
+export * from './ai-prompts-openai.js';
 export * from './message-creator.js';
+export * from './lead-beeper-links.js';
 export * from './statuses-dashboard.js';
 export * from './headers-parser.js';
 export * from './trace.js';
@@ -51,6 +55,7 @@ export * from './item-ops.js';
 export * from './folders.js';
 export * from './admin-users.js';
 export * from './cp-history.js';
+export * from './history-pages.js';
 // Named (not `export *`) — cp-history/mutate.ts's own CpHistoryActor/
 // CpHistoryDoc types intentionally differ in shape from cp-history.ts's
 // read-side types of the same name (e.g. mutate.ts's is the raw write-side
@@ -81,3 +86,10 @@ export * from './google-sheets/sync.js';
 export * from './google-sheets/layout.js';
 export * from './google-sheets/bootstrap.js';
 export * from './google-sheets/production-guard.js';
+export * from './system-folders.js';
+export {
+  runWithGoogleSheetsTxnBuffer,
+  deferGoogleSheetsJob,
+  deferGoogleSheetsJobFactory,
+  flushPendingGoogleSheetsJobs,
+} from './google-sheets/txn-hook.js';

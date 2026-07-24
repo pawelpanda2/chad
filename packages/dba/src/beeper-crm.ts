@@ -30,6 +30,7 @@
 import { ObjectId } from "mongodb";
 import { getBeeperMongoDb } from "./mongo.js";
 import { getCurrentRepoGuid } from "./repo-context.js";
+import { ensureLeadBeeperLinksIndexes } from "./lead-beeper-links.js";
 
 // ── Collections ────────────────────────────────────────────────────────────
 
@@ -91,6 +92,8 @@ export async function ensureBeeperIndexes(repoGuid: string): Promise<void> {
     messages.createIndex({ channelID: 1, timestamp: 1, isSelf: 1 }),
     timelineEvents.createIndex({ contactID: 1, timestamp: 1 }),
   ]);
+
+  await ensureLeadBeeperLinksIndexes(repoGuid);
 }
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -113,6 +116,40 @@ export interface BeeperContactListItem {
   hasAvatar: boolean;
   channelCount: number;
   lastMessage: { text: string; timestamp: string | null; network: string } | null;
+  /** Story 86 — sync permission flags (defaults applied by migration). */
+  include: boolean;
+  exclude: boolean;
+}
+
+export type BeeperSyncMode = "include" | "exclude" | "metadata";
+
+export type BeeperPermissionFilter = "all" | "include" | "exclude" | "permission";
+
+/**
+ * Resolve sync mode from contact document fields.
+ * Unset (pre-migration) → include. Both false → metadata.
+ */
+export function resolveBeeperSyncMode(contact: {
+  include?: boolean | null;
+  exclude?: boolean | null;
+} | null | undefined): BeeperSyncMode {
+  if (!contact) return "include";
+  if (contact.exclude === true) return "exclude";
+  if (contact.include === true) return "include";
+  if (contact.include === false) return "metadata";
+  // include/exclude both unset
+  return "include";
+}
+
+export function normalizeBeeperPermissions(
+  include: boolean,
+  exclude: boolean
+): { include: boolean; exclude: boolean } {
+  if (include && exclude) {
+    // Mutual exclusion: last-writer wins is decided by caller; reject both true.
+    throw new Error("include and exclude cannot both be true");
+  }
+  return { include: Boolean(include), exclude: Boolean(exclude) };
 }
 
 export interface BeeperContactDetail {
@@ -273,10 +310,20 @@ function toObjectId(id: string): ObjectId {
  * Lists contacts (excludes spam + merged-away contacts by default). Pass a
  * tag to filter to a single tag (business / romantic / friends), matching
  * the source project's separate /business, /friends pages.
+ *
+ * Story 86: pass `view: "permissions"` for the Permissions table (all
+ * non-merged contacts, including those with no messages). Optional
+ * `permissionFilter` applies Include/Exclude/Permission filters.
  */
 export async function listBeeperContacts(opts?: {
   tag?: BeeperTag;
+  view?: "default" | "permissions";
+  permissionFilter?: BeeperPermissionFilter;
 }): Promise<BeeperContactListItem[]> {
+  if (opts?.view === "permissions") {
+    await ensureBeeperSyncPermissionsMigrated();
+  }
+
   const contacts = await contactsCol();
   const channels = await channelsCol();
   const messages = await messagesCol();
@@ -299,12 +346,18 @@ export async function listBeeperContacts(opts?: {
         .toArray();
       const channelIds = contactChannels.map((ch) => ch._id);
 
-      const lastMsg = await messages.findOne(
-        {
-          $or: [{ channelID: { $in: channelIds } }, { contactID: c._id, channelID: null }],
-        },
-        { sort: { timestamp: -1 } }
-      );
+      const lastMsg =
+        opts?.view === "permissions"
+          ? null
+          : await messages.findOne(
+              {
+                $or: [{ channelID: { $in: channelIds } }, { contactID: c._id, channelID: null }],
+              },
+              { sort: { timestamp: -1 } }
+            );
+
+      const include = c.include === true || (c.include == null && c.exclude !== true);
+      const exclude = c.exclude === true;
 
       const item: BeeperContactListItem = {
         _id: c._id.toString(),
@@ -321,10 +374,22 @@ export async function listBeeperContacts(opts?: {
               network: lastMsg.network,
             }
           : null,
+        include: exclude ? false : include,
+        exclude,
       };
       return item;
     })
   );
+
+  if (opts?.view === "permissions") {
+    const pf = opts.permissionFilter ?? "all";
+    return enriched.filter((c) => {
+      if (pf === "include") return c.include;
+      if (pf === "exclude") return c.exclude;
+      if (pf === "permission") return c.include && !c.exclude;
+      return true;
+    });
+  }
 
   if (opts?.tag) return enriched;
 
@@ -333,6 +398,56 @@ export async function listBeeperContacts(opts?: {
   return enriched.filter(
     (c) => c.channelCount > 0 || c.lastMessage !== null || (c.notes && c.notes.length > 0)
   );
+}
+
+/**
+ * Story 86 — set Include/Exclude on every contact missing either field.
+ * Existing contacts → include=true, exclude=false (no sync regression).
+ */
+export async function ensureBeeperSyncPermissionsMigrated(): Promise<{ updated: number }> {
+  const contacts = await contactsCol();
+  const missingInclude = await contacts.updateMany(
+    { include: { $exists: false } },
+    { $set: { include: true, exclude: false } }
+  );
+  const missingExclude = await contacts.updateMany(
+    { exclude: { $exists: false } },
+    { $set: { exclude: false } }
+  );
+  // If include was missing we already set exclude; second update is mostly a no-op.
+  return {
+    updated: (missingInclude.modifiedCount ?? 0) + (missingExclude.modifiedCount ?? 0),
+  };
+}
+
+/**
+ * Story 86 — update sync permission flags (mutually exclusive).
+ */
+export async function updateBeeperContactSyncPermissions(
+  id: string,
+  input: { include: boolean; exclude: boolean }
+): Promise<{ ok: true; include: boolean; exclude: boolean }> {
+  const { include, exclude } = normalizeBeeperPermissions(input.include, input.exclude);
+  const contacts = await contactsCol();
+  const contactId = toObjectId(id);
+  const existing = await contacts.findOne({ _id: contactId });
+  if (!existing) throw new Error(`Contact not found: ${id}`);
+  if (existing.mergedInto) {
+    throw new Error(`Contact was merged into ${existing.mergedInto.toString()}`);
+  }
+
+  await contacts.updateOne(
+    { _id: contactId },
+    {
+      $set: {
+        include,
+        exclude,
+        updatedAt: new Date(),
+      },
+    }
+  );
+
+  return { ok: true, include, exclude };
 }
 
 /**

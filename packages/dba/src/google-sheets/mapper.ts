@@ -13,7 +13,7 @@
  * under the `RESULTS` group — the live code wins).
  */
 
-import type { SheetRowValues, SheetSyncPayload } from "./types.js";
+import type { SheetRecordType, SheetRowValues, SheetSyncPayload } from "./types.js";
 
 /**
  * Current export schema version — bump if the technical/domain column set
@@ -259,4 +259,79 @@ export function mapDeleteToSheetRow(payload: SheetSyncPayload, now: string): She
     CHAD_SCHEMA_VERSION: SHEET_SCHEMA_VERSION,
     CHAD_SYNC_STATUS: "DELETED",
   };
+}
+
+/** Domain column keys (excluding the N sentinel) — used by forms / schema drift tests. */
+export function domainFieldKeysFor(recordType: SheetRecordType): string[] {
+  const cols =
+    recordType === "daily-entry"
+      ? DAILY_ENTRY_DOMAIN_COLUMNS
+      : recordType === "date-entry"
+        ? DATE_ENTRY_DOMAIN_COLUMNS
+        : LEAD_DOMAIN_COLUMNS;
+  return cols.filter((c) => c !== ITEM_NUMBER_COLUMN).map((c) => c.key);
+}
+
+/** Full required header labels for a record type (domain + technical). */
+export function requiredHeadersFor(recordType: SheetRecordType): string[] {
+  if (recordType === "daily-entry") return DAILY_TRACKER_SHEET_HEADERS;
+  if (recordType === "lead") return LEADS_SHEET_HEADERS;
+  return DATE_ENTRIES_SHEET_HEADERS;
+}
+
+/**
+ * Fails closed when a mapped upsert row is missing a required header.
+ * Worker must not mark synced if the mapper silently dropped a column.
+ * On updates, immutable-on-update columns may be absent (stripped by worker).
+ */
+export function assertMappedRowCoversRequiredHeaders(
+  recordType: SheetRecordType,
+  values: SheetRowValues,
+  options?: { allowMissingImmutable?: boolean }
+): void {
+  const required = requiredHeadersFor(recordType);
+  const skip = new Set<string>(
+    options?.allowMissingImmutable ? IMMUTABLE_ON_UPDATE_COLUMNS : []
+  );
+  const missing = required.filter((h) => !skip.has(h) && !(h in values));
+  if (missing.length > 0) {
+    throw new Error(
+      `Sheet mapper omitted required columns for ${recordType}: ${missing.join(", ")}`
+    );
+  }
+}
+
+/**
+ * Compares CHAD UI column keys against the sheet mapper. Used by
+ * `tests/tables-sync` so adding a UI column without updating the mapper
+ * fails the suite immediately.
+ */
+export function assertUiColumnsMatchMapper(
+  recordType: "daily-entry" | "date-entry",
+  uiColumns: Array<{ key: string; label: string }>
+): void {
+  const mapperCols =
+    recordType === "daily-entry"
+      ? DAILY_ENTRY_DOMAIN_COLUMNS.filter((c) => c !== ITEM_NUMBER_COLUMN)
+      : DATE_ENTRY_DOMAIN_COLUMNS.filter((c) => c !== ITEM_NUMBER_COLUMN);
+
+  const uiKeys = uiColumns.map((c) => c.key);
+  const mapperKeys = mapperCols.map((c) => c.key);
+  const missingInMapper = uiKeys.filter((k) => !mapperKeys.includes(k));
+  const extraInMapper = mapperKeys.filter((k) => !uiKeys.includes(k));
+  if (missingInMapper.length || extraInMapper.length) {
+    throw new Error(
+      `Column schema drift for ${recordType}: ` +
+        `UI→mapper missing=[${missingInMapper.join(",")}] ` +
+        `mapper→UI extra=[${extraInMapper.join(",")}]`
+    );
+  }
+  for (const ui of uiColumns) {
+    const m = mapperCols.find((c) => c.key === ui.key);
+    if (m && m.label !== ui.label) {
+      throw new Error(
+        `Column label drift for ${recordType} key=${ui.key}: UI="${ui.label}" mapper="${m.label}"`
+      );
+    }
+  }
 }

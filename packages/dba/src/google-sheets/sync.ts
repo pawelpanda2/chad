@@ -1,28 +1,21 @@
 /**
  * Entry points business functions (`leads.ts`) call — one `if
  * (config.googleSheetsEnabled) { ... }` block per Daily Entry/Date Entry
- * write, exactly the shape asked for in `backlog/stories/75/01_input.md`'s
- * pseudocode. Never throws: a Google Sheets problem (including
+ * write. Never throws: a Google Sheets problem (including
  * misconfiguration) must never turn a successful CHAD write into a failed
  * response — same non-throwing precedent as `data-router.ts`'s
  * `onFollowerEnqueueError`.
  *
- * Takes already-parsed `fields` (not a raw YAML body) — `leads.ts` owns
- * parsing its own YAML bodies and, for Daily Entry, computing the "— AUTO"
- * columns fresh at write time (see `computeDailyAutoFieldsForSheetSync`),
- * so this module stays free of both YAML and Date-Entry-lookup concerns.
- *
- * `input.username` must be the caller's own request-scoped username
- * (`getCurrentUsername()` in `repo-context.ts`, same source `leads.ts`
- * already uses for `repoGuid`) — never a value taken from request body or
- * query, so a user can never enqueue a job that resolves to someone else's
- * spreadsheet (Story 75 follow-up, see `config.ts`'s revision note).
+ * When called inside `runWithGoogleSheetsTxnBuffer` (Postgres mutation
+ * path), the job is deferred and flushed on the same client before COMMIT
+ * so cp_items + cp_history + outbox stay atomic.
  */
 
 import { randomUUID } from "node:crypto";
 import { loadGoogleSheetsConfig, resolveSpreadsheetIdForUser } from "./config.js";
 import { enqueueGoogleSheetsSync } from "./outbox.js";
-import { checkGoogleSheetsProductionGuard } from "./production-guard.js";
+import { checkGoogleSheetsProductionGuard, checkGoogleSheetsWriteAllowed } from "./production-guard.js";
+import { deferGoogleSheetsJob, deferGoogleSheetsJobFactory } from "./txn-hook.js";
 import type { GoogleSheetsSyncKind, SheetRecordType, SheetSyncPayload } from "./types.js";
 
 export interface QueueSheetSyncInput {
@@ -34,6 +27,8 @@ export interface QueueSheetSyncInput {
   /** Already-resolved field values (domain fields, plus AUTO fields for daily-entry if applicable). Ignored/empty for `kind: "delete"`. */
   fields: Record<string, string>;
   kind: GoogleSheetsSyncKind;
+  /** When known (Postgres txn path), becomes outbox operationId / payload.mutationId. */
+  mutationId?: string;
 }
 
 async function queueSheetSyncIfEnabled(
@@ -50,13 +45,15 @@ async function queueSheetSyncIfEnabled(
   }
   if (!config.enabled) return;
 
-  // Defense-in-depth (2026-07-22, independent of GOOGLE_SHEETS_ENABLED) —
-  // a job must never even be written into the outbox from a non-production
-  // run. See production-guard.ts's own doc comment for why a single flag
-  // isn't trusted alone.
   const guard = checkGoogleSheetsProductionGuard();
   if (!guard.allowed) {
     console.warn(`[google-sheets] enqueue blocked by production guard: ${guard.reason}`);
+    return;
+  }
+
+  const writeGuard = checkGoogleSheetsWriteAllowed(input.username);
+  if (!writeGuard.allowed) {
+    console.warn(`[google-sheets] enqueue blocked for user: ${writeGuard.reason}`);
     return;
   }
 
@@ -68,6 +65,7 @@ async function queueSheetSyncIfEnabled(
     return;
   }
 
+  const operationId = input.mutationId ?? randomUUID();
   const payload: SheetSyncPayload = {
     recordType,
     recordKey: `${input.repoGuid}:${input.loca}`,
@@ -77,10 +75,17 @@ async function queueSheetSyncIfEnabled(
     loca: input.loca,
     itemName: input.itemName,
     fields: input.fields,
+    mutationId: input.mutationId ?? operationId,
   };
 
+  const enqueueInput = { operationId, kind: input.kind, payload };
+
+  if (deferGoogleSheetsJob(enqueueInput)) {
+    return;
+  }
+
   try {
-    await enqueueGoogleSheetsSync({ operationId: randomUUID(), kind: input.kind, payload });
+    await enqueueGoogleSheetsSync(enqueueInput);
   } catch (error) {
     onEnqueueError(error);
   }
@@ -113,3 +118,69 @@ export async function queueLeadSheetSyncIfEnabled(
 function defaultOnEnqueueError(error: unknown): void {
   console.error("[google-sheets] Failed to enqueue sheet sync job:", error);
 }
+
+/**
+ * Registers a create-time sheet sync factory inside an open
+ * `runWithGoogleSheetsTxnBuffer`. Resolves spreadsheetId now; fills loca
+ * at flush from the created item.
+ */
+export function prepareSheetSyncFactoryInTxn(
+  recordType: SheetRecordType,
+  input: Omit<QueueSheetSyncInput, "loca" | "itemName" | "mutationId"> & {
+    itemName?: string;
+    loca?: string;
+  },
+  onEnqueueError: (error: unknown) => void = defaultOnEnqueueError
+): void {
+  let config;
+  try {
+    config = loadGoogleSheetsConfig();
+  } catch (error) {
+    onEnqueueError(error);
+    return;
+  }
+  if (!config.enabled) return;
+
+  const guard = checkGoogleSheetsProductionGuard();
+  if (!guard.allowed) {
+    console.warn(`[google-sheets] enqueue blocked by production guard: ${guard.reason}`);
+    return;
+  }
+  const writeGuard = checkGoogleSheetsWriteAllowed(input.username);
+  if (!writeGuard.allowed) {
+    console.warn(`[google-sheets] enqueue blocked for user: ${writeGuard.reason}`);
+    return;
+  }
+
+  let spreadsheetId: string;
+  try {
+    spreadsheetId = resolveSpreadsheetIdForUser(config, input.username);
+  } catch (error) {
+    onEnqueueError(error);
+    return;
+  }
+
+  deferGoogleSheetsJobFactory(({ mutationId, item }) => {
+    if (!item && input.kind !== "delete") return null;
+    const loca =
+      input.loca ||
+      (item ? item.config.address.replace(`${input.repoGuid}/`, "") : "");
+    const itemName = input.itemName || item?.config.name || "";
+    return {
+      operationId: mutationId,
+      kind: input.kind,
+      payload: {
+        recordType,
+        recordKey: `${input.repoGuid}:${loca}`,
+        repoGuid: input.repoGuid,
+        username: input.username,
+        spreadsheetId,
+        loca,
+        itemName,
+        fields: input.fields,
+        mutationId,
+      },
+    };
+  });
+}
+

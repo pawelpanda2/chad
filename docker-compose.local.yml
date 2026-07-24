@@ -13,9 +13,11 @@
 # once to create the schema.
 #
 # Content Provider (content-provider-api) removed from this stack — the
-# .NET adapter code (`NetFileCpProvider`) and the `net-content-provider`
-# submodule are untouched; this is a deployment-only change, reversible by
-# re-adding the service below.
+# .NET adapter code (`NetFileCpProvider`) is untouched; this is a
+# deployment-only change, reversible by re-adding the service below. The
+# `net-content-provider` submodule itself was removed from this monorepo
+# (legacy Content Provider fully migrated) — see git history if you need
+# its old .NET source.
 #
 # For local dev WITHOUT Docker (pnpm/tmuxinator instead), see
 # bash-scripts/dashboard/02_local_mac/ — that path runs mongo standalone (no
@@ -154,7 +156,10 @@ services:
       # runs inside this same process via instrumentation.ts, so these must
       # actually reach it. See ai-docs/google-sheets/architecture.md.
       - GOOGLE_SHEETS_ENABLED=${GOOGLE_SHEETS_ENABLED:-false}
-      - GOOGLE_SHEETS_SPREADSHEET_MAP=${GOOGLE_SHEETS_SPREADSHEET_MAP:-}
+      # Passthrough (no ${...} interpolation) so JSON quotes in the map survive.
+      # Compose ${VAR} stripping turned {"a":"b"} into {a:b} and 500'd History
+      # → Google Sheets. 01_config.sh exports the value from .env.local.
+      - GOOGLE_SHEETS_SPREADSHEET_MAP
       - GOOGLE_SHEETS_DAILY_TRACKER_SHEET_NAME=${GOOGLE_SHEETS_DAILY_TRACKER_SHEET_NAME:-}
       - GOOGLE_SHEETS_DATE_ENTRIES_SHEET_NAME=${GOOGLE_SHEETS_DATE_ENTRIES_SHEET_NAME:-}
       - GOOGLE_SHEETS_LEADS_SHEET_NAME=${GOOGLE_SHEETS_LEADS_SHEET_NAME:-}

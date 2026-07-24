@@ -39,10 +39,16 @@ One document per person (a merged identity across networks).
 
 | Field | Type | Notes |
 |---|---|---|
+| `include` | boolean | Story 86 — when true, full message sync. Migrated default: `true`. |
+| `exclude` | boolean | Story 86 — when true, sync skips contact + messages. Default: `false`. |
+| | | Both false = metadata-only sync (no message history). |
+|---|---|---|
 | `_id` | ObjectId | |
 | `displayName` | string | |
 | `notes`, `bio` | string | |
 | `tags` | string[] | subset of `business`, `romantic`, `friends`, `spam` |
+| `include` | boolean | Story 86 — `true` = full message sync. Migrated default: `true`. |
+| `exclude` | boolean | Story 86 — `true` = skip contact + messages. Both false = metadata-only. |
 | `avatarURL` | string \| null | base64 data URI (`data:image/...;base64,...`) or external URL |
 | `identities` | `{ network, senderID, senderName?, username? }[]` | one entry per network identity |
 | `phones` | `{ number, label }[]` | |

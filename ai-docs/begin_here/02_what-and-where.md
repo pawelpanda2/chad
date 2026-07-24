@@ -116,12 +116,15 @@ wszystkie zakładki.
 
 **Lokalizacja:** `documentation/dashboard/<zakładka>/{features,bugs}/`
 
-**Podkatalogi (potwierdzone, 2026-07-13):** `common/` (layout, edytor, panel
-dev, ssl/domeny, izolacja danych użytkownika), `statuses/`, `msg-todo/`
-(wraz z `documentation/features/todo-msg-*.md` — patrz niżej, częściowo
-zdublowane), `msg-planner/`, `leads/`, `forms/`, `views/`, `settings/`,
-`users/`, `beeper/` (UI zakładki Beeper w dashboardzie — **nie** to samo co
-kategoria "Beeper" niżej, która opisuje sync/integrację).
+**Podkatalogi (potwierdzone, 2026-07-13; `msg-automation/` dodane w Story 88,
+2026-07-25):** `common/` (layout, edytor, panel dev, ssl/domeny, izolacja
+danych użytkownika), `statuses/`, `msg-todo/` (wraz z
+`documentation/features/todo-msg-*.md` — patrz niżej, częściowo
+zdublowane), `msg-planner/`, `msg-automation/` (Msg Auto hub — obecnie
+`features/ai-prompts.md`, provider-neutralny rejestr promptów AI używany
+przez Message Creator), `leads/`, `forms/`, `views/`, `settings/`, `users/`,
+`beeper/` (UI zakładki Beeper w dashboardzie — **nie** to samo co kategoria
+"Beeper" niżej, która opisuje sync/integrację).
 
 **Najważniejsze dokumenty:**
 - `common/features/responsive-layout-standard.md` — jedyny obowiązujący
@@ -227,28 +230,26 @@ czytająca/zapisująca do Content Providera z dashboardu lub console.
 
 ---
 
-## Content Provider (domenowo, .NET)
+## Content Provider (domenowo, .NET) — USUNIĘTE (2026-07-27)
 
-**Opis:** Sam Content Provider (`packages/net-content-provider`) jako
-aplikacja — API, model Itemów, znane błędy domenowe. (Deployment/build tego
-serwisu jako kontenera QNAP jest w kategorii "Deploy" wyżej —
-`00_qnap_shared`/`shared-qnap-services.md`; to jest osobna, świadoma
-separacja udokumentowana w `dashboard-deployment-scripts.md`, sekcja "Różnica
-względem `packages/net-content-provider/03_scripts/qnap/*.sh`".)
+**Status:** Legacy .NET Content Provider (`packages/net-content-provider`,
+Git submodule) został usunięty z tego monorepo — funkcjonalność
+zmigrowana, submoduł nie jest już utrzymywany. Jego stare .NET źródło
+dostępne jest w historii gita tego repo (przed usunięciem) oraz w
+oryginalnym, wciąż istniejącym standalone repo
+(`git@github.com:pawelpanda2/contentprovider.git`).
 
-**Lokalizacja:** `documentation/content-provider/`
+Aktywny następca to `packages/content-provider` (TypeScript, patrz sekcja
+"Content Provider — adapter/model" wyżej) i `packages/cp-gui`/`packages/cp-plugin`.
 
-**Najważniejsze dokumenty:**
+**Lokalizacja starej dokumentacji (historyczna, nie opisuje aktywnego
+kodu):** `documentation/content-provider/`
 - `CONTENT_PROVIDER_GUIDE.md`, `content-provider.md` — ogólny przewodnik.
 - `project-items.md` — model Itemów (Folder/Text, numeryczne dzieci, config).
 - `frequent-bugs.md` — powtarzające się błędy przy pracy z CP.
 - `next-tasks/qnap-test-deployment.md` — dotyczy STAREGO,
   samodzielnego systemu deployu `packages/net-content-provider/03_scripts/qnap/*.sh`
-  (plain `docker run`, bez Compose) — **nie** tego samego co "Deploy" wyżej.
-
-**Uwaga:** `packages/net-content-provider` jest **w trakcie przepisywania**
-(patrz pamięć projektu / `project_net_content_provider_rewrite`) — nie
-analizuj ani nie zmieniaj bez wyraźnej prośby.
+  (plain `docker run`, bez Compose), który już nie istnieje w tym repo.
 
 **Czytać gdy:** zadanie dotyczy samego Content Providera jako aplikacji
 (nie jego deploymentu jako kontenera).

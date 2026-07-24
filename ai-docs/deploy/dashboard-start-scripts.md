@@ -29,13 +29,19 @@ bash re-start.sh
 
 1. **`dba`** (`tsc --watch`) — dashboard importuje `dba` jako pakiet workspace; `03_re-start.sh` robi jednorazowy build przed startem, jeśli `dist/` nie istnieje.
 2. **`dashboard`** (`next dev --turbopack`).
-3. **Content Provider API** — **realnie sprawdzane I uruchamiane, jeśli nie działa** (zmiana z poprzedniej wersji, która tylko ostrzegała). Używa **prawdziwego, istniejącego skryptu** z `packages/net-content-provider/03_scripts/03_local-mac_docker/02_run_api_charp.sh` (Docker) — nie wymyślonej alternatywy.
+3. **Content Provider API** — **realnie sprawdzane I uruchamiane, jeśli nie działa** (zmiana z poprzedniej wersji, która tylko ostrzegała). `bash-scripts/content-provider/run-content-provider-if-needed.sh` uruchamia gotowy, wcześniej zbudowany obraz Docker (`chad-content-provider-api`, budowany przez `03_local_mac_docker/02_build.sh` lub dowolnego innego środowiska) przez `docker run` — **nie** ma już zależności od jakiegokolwiek skryptu w `packages/net-content-provider` (submoduł usunięty 2026-07-27, patrz sekcja niżej).
 
 ### Celowo NIE uruchamiane
 
 `contacts`, `beeper-sync`, `beeper-ws`, `beeper-oplog`, MongoDB, `console` — nie są zależnościami obecnego kodu dashboardu (zweryfikowane analizą kodu, nie zgadywaniem).
 
 ## Content Provider: skąd się bierze (2026-07-10 — zmiana architektury)
+
+**Aktualizacja (2026-07-27):** submoduł `packages/net-content-provider`
+opisany niżej został usunięty z tego monorepo — legacy .NET Content
+Provider w pełni zmigrowany, submoduł nie jest już utrzymywany. Poniższa
+historia (subtree → submodule) jest zachowana wyłącznie jako kontekst
+architektoniczny; ścieżka `packages/net-content-provider` już nie istnieje.
 
 Do 2026-07-10 Content Provider był zewnętrznym sibling-repo (`../content-provider`, poza monorepo `chad`), wskazywanym opcjonalnym env `CONTENT_PROVIDER_REPO_PATH`. **To się zmieniło**: całe repo `content-provider` (nie tylko .NET — także Blazor, Aspire, próba Next.js, pluginy, eksperymenty TypeScript) zostało dołączone jako **Git subtree** pod:
 

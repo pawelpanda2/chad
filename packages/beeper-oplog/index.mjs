@@ -72,6 +72,8 @@ async function upsertContact(senderID, senderName, network) {
         notes: "",
         tags: [],
         identities: [{ network, senderID, senderName: senderName || "" }],
+        include: true,
+        exclude: false,
         createdAt: new Date(),
         updatedAt: new Date(),
       }
@@ -80,6 +82,16 @@ async function upsertContact(senderID, senderName, network) {
   );
 
   return doc.value ? doc.value._id : doc._id;
+}
+
+/** Story 86 — same rules as beeper-sync/lib/sync-permissions.mjs */
+function resolveSyncMode(contact) {
+  if (!contact) return "include";
+  if (contact.exclude === true) return "exclude";
+  if (contact.include === true) return "include";
+  if (contact.include === false && contact.exclude !== true) return "metadata";
+  if (contact.include == null && contact.exclude == null) return "include";
+  return "metadata";
 }
 
 /**
@@ -233,8 +245,16 @@ async function handleMessageUpserted(event) {
     // 2. Contact (tylko jeśli to nie my)
     let contactID = null;
     if (!isSelf && senderID) {
+      const existing = await contactsCol.findOne({ "identities.senderID": senderID });
+      const mode = resolveSyncMode(existing);
+      if (mode === "exclude") {
+        continue;
+      }
       contactID = await upsertContact(senderID, senderName, network);
       await addParticipant(channelID, contactID, ts);
+      if (mode === "metadata") {
+        continue;
+      }
     } else {
       // Nasza wiadomość — zaktualizuj tylko lastMessageAt
       await channelsCol.updateOne(

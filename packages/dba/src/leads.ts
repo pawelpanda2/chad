@@ -28,7 +28,9 @@ import {
   queueDailyEntrySheetSyncIfEnabled,
   queueDateEntrySheetSyncIfEnabled,
   queueLeadSheetSyncIfEnabled,
+  prepareSheetSyncFactoryInTxn,
 } from "./google-sheets/sync.js";
+import { runWithGoogleSheetsTxnBuffer } from "./google-sheets/txn-hook.js";
 import yaml from "js-yaml";
 
 /**
@@ -1206,23 +1208,33 @@ export async function saveDateEntry(
   bodyYaml: string
 ): Promise<{ itemName: string; loca: string; success: boolean }> {
   const config = loadDataProvidersConfig();
-  let result: { itemName: string; loca: string; success: boolean };
+  const sheetFields = parseYamlFieldsForSheetSync(bodyYaml);
+
   if (config.primaryBackend === "postgres") {
-    result = await saveChildTextItemGeneric(getPostgresProvider(), ["views", "dates"], itemName, bodyYaml);
-  } else if (config.primaryBackend === "mongo") {
+    return runWithGoogleSheetsTxnBuffer(async () => {
+      prepareSheetSyncFactoryInTxn("date-entry", {
+        repoGuid: getCurrentRepoGuid(),
+        username: getCurrentUsername(),
+        fields: sheetFields,
+        kind: "upsert",
+      });
+      return saveChildTextItemGeneric(getPostgresProvider(), ["views", "dates"], itemName, bodyYaml);
+    });
+  }
+
+  let result: { itemName: string; loca: string; success: boolean };
+  if (config.primaryBackend === "mongo") {
     result = await saveChildTextItemGeneric(getMongoProvider(), ["views", "dates"], itemName, bodyYaml);
   } else {
     result = await saveDateEntryContentProvider(itemName, bodyYaml);
   }
-  // Google Sheets follower (Story 75) — same non-throwing enqueue pattern as
-  // saveDailyEntry; no AUTO fields here, Date Entry's own "Dates" tab has none.
   if (result.success) {
     await queueDateEntrySheetSyncIfEnabled({
       repoGuid: getCurrentRepoGuid(),
       username: getCurrentUsername(),
       loca: result.loca,
       itemName: result.itemName,
-      fields: parseYamlFieldsForSheetSync(bodyYaml),
+      fields: sheetFields,
       kind: "upsert",
     });
   }
@@ -1444,27 +1456,35 @@ export async function saveDailyEntry(
   bodyYaml: string
 ): Promise<{ itemName: string; loca: string; success: boolean }> {
   const config = loadDataProvidersConfig();
-  let result: { itemName: string; loca: string; success: boolean };
+  const fields = parseYamlFieldsForSheetSync(bodyYaml);
+  const autoFields = await computeDailyAutoFieldsForSheetSync(fields.DATE ?? "");
+  const sheetFields = { ...fields, ...autoFields };
+
   if (config.primaryBackend === "postgres") {
-    result = await saveChildTextItemGeneric(getPostgresProvider(), ["views", "daily"], itemName, bodyYaml);
-  } else if (config.primaryBackend === "mongo") {
+    return runWithGoogleSheetsTxnBuffer(async () => {
+      prepareSheetSyncFactoryInTxn("daily-entry", {
+        repoGuid: getCurrentRepoGuid(),
+        username: getCurrentUsername(),
+        fields: sheetFields,
+        kind: "upsert",
+      });
+      return saveChildTextItemGeneric(getPostgresProvider(), ["views", "daily"], itemName, bodyYaml);
+    });
+  }
+
+  let result: { itemName: string; loca: string; success: boolean };
+  if (config.primaryBackend === "mongo") {
     result = await saveChildTextItemGeneric(getMongoProvider(), ["views", "daily"], itemName, bodyYaml);
   } else {
     result = await saveDailyEntryContentProvider(itemName, bodyYaml);
   }
-  // Google Sheets follower (Story 75) — enqueued only after the primary
-  // write(s) above already succeeded, using the primary's own decided
-  // `loca`; never throws into this call (see
-  // queueDailyEntrySheetSyncIfEnabled's own doc comment).
   if (result.success) {
-    const fields = parseYamlFieldsForSheetSync(bodyYaml);
-    const autoFields = await computeDailyAutoFieldsForSheetSync(fields.DATE ?? "");
     await queueDailyEntrySheetSyncIfEnabled({
       repoGuid: getCurrentRepoGuid(),
       username: getCurrentUsername(),
       loca: result.loca,
       itemName: result.itemName,
-      fields: { ...fields, ...autoFields },
+      fields: sheetFields,
       kind: "upsert",
     });
   }
@@ -1567,28 +1587,37 @@ async function saveDailyEntryContentProvider(
  */
 export async function updateDailyEntry(loca: string, bodyYaml: string): Promise<void> {
   const config = loadDataProvidersConfig();
+  const fields = parseYamlFieldsForSheetSync(bodyYaml);
+  const autoFields = await computeDailyAutoFieldsForSheetSync(fields.DATE ?? "");
+  const sheetFields = { ...fields, ...autoFields };
+
   if (config.primaryBackend === "postgres") {
-    await updateItemBodyGeneric(getPostgresProvider(), loca, bodyYaml);
-  } else if (config.primaryBackend === "mongo") {
+    await runWithGoogleSheetsTxnBuffer(async () => {
+      prepareSheetSyncFactoryInTxn("daily-entry", {
+        repoGuid: getCurrentRepoGuid(),
+        username: getCurrentUsername(),
+        loca,
+        itemName: "",
+        fields: sheetFields,
+        kind: "upsert",
+      });
+      await updateItemBodyGeneric(getPostgresProvider(), loca, bodyYaml);
+    });
+    return;
+  }
+
+  if (config.primaryBackend === "mongo") {
     await updateItemBodyGeneric(getMongoProvider(), loca, bodyYaml);
   }
   if (config.contentProviderEnabled) {
     await updateDailyEntryContentProvider(loca, bodyYaml);
   }
-  // Google Sheets follower (Story 75) — same non-throwing enqueue as
-  // saveDailyEntry above. `itemName` is left blank: this record's row
-  // already exists in the sheet from its original saveDailyEntry sync, and
-  // the worker never overwrites CHAD_ITEM_NAME on an update (see
-  // mapper.ts's IMMUTABLE_ON_UPDATE_COLUMNS) — it's only used if the row
-  // has to be self-healed via append, a rare edge case.
-  const fields = parseYamlFieldsForSheetSync(bodyYaml);
-  const autoFields = await computeDailyAutoFieldsForSheetSync(fields.DATE ?? "");
   await queueDailyEntrySheetSyncIfEnabled({
     repoGuid: getCurrentRepoGuid(),
     username: getCurrentUsername(),
     loca,
     itemName: "",
-    fields: { ...fields, ...autoFields },
+    fields: sheetFields,
     kind: "upsert",
   });
 }
@@ -1608,14 +1637,30 @@ export async function deleteDailyEntry(loca: string): Promise<void> {
     const provider = config.primaryBackend === "postgres" ? getPostgresProvider() : getMongoProvider();
     const repoGuid = getCurrentRepoGuid();
     const address = loca ? `${repoGuid}/${loca}` : repoGuid;
+
+    if (config.primaryBackend === "postgres") {
+      await runWithGoogleSheetsTxnBuffer(async () => {
+        prepareSheetSyncFactoryInTxn("daily-entry", {
+          repoGuid,
+          username: getCurrentUsername(),
+          loca,
+          itemName: "",
+          fields: {},
+          kind: "delete",
+        });
+        const deleted = await provider.deleteItem(address);
+        if (!deleted) {
+          throw new Error(`Could not find daily entry at loca "${loca}" to delete (postgres)`);
+        }
+      });
+      return;
+    }
+
     const deleted = await provider.deleteItem(address);
     if (!deleted) {
       throw new Error(`Could not find daily entry at loca "${loca}" to delete (${config.primaryBackend})`);
     }
-    // Google Sheets follower (Story 75) — marks the row CHAD_SYNC_STATUS =
-    // DELETED in place rather than physically removing it (matches the
-    // existing CP convention of never truly deleting rows/items, avoids
-    // row-index shift hazards). Only after the real delete above succeeded.
+    // Physical row removal in Sheets (worker deleteRow by CHAD_RECORD_KEY).
     await queueDailyEntrySheetSyncIfEnabled({
       repoGuid,
       username: getCurrentUsername(),
@@ -1649,13 +1694,29 @@ export async function deleteDateEntry(loca: string): Promise<void> {
     const provider = config.primaryBackend === "postgres" ? getPostgresProvider() : getMongoProvider();
     const repoGuid = getCurrentRepoGuid();
     const address = loca ? `${repoGuid}/${loca}` : repoGuid;
+
+    if (config.primaryBackend === "postgres") {
+      await runWithGoogleSheetsTxnBuffer(async () => {
+        prepareSheetSyncFactoryInTxn("date-entry", {
+          repoGuid,
+          username: getCurrentUsername(),
+          loca,
+          itemName: "",
+          fields: {},
+          kind: "delete",
+        });
+        const deleted = await provider.deleteItem(address);
+        if (!deleted) {
+          throw new Error(`Could not find date entry at loca "${loca}" to delete (postgres)`);
+        }
+      });
+      return;
+    }
+
     const deleted = await provider.deleteItem(address);
     if (!deleted) {
       throw new Error(`Could not find date entry at loca "${loca}" to delete (${config.primaryBackend})`);
     }
-    // Google Sheets follower (Story 75/78) — marks the row CHAD_SYNC_STATUS =
-    // DELETED in place, same convention as deleteDailyEntry above. Only
-    // after the real delete above succeeded.
     await queueDateEntrySheetSyncIfEnabled({
       repoGuid,
       username: getCurrentUsername(),
@@ -1712,22 +1773,35 @@ async function updateDailyEntryContentProvider(loca: string, bodyYaml: string): 
  */
 export async function updateDateEntry(loca: string, bodyYaml: string): Promise<void> {
   const config = loadDataProvidersConfig();
+  const sheetFields = parseYamlFieldsForSheetSync(bodyYaml);
+
   if (config.primaryBackend === "postgres") {
-    await updateItemBodyGeneric(getPostgresProvider(), loca, bodyYaml);
-  } else if (config.primaryBackend === "mongo") {
+    await runWithGoogleSheetsTxnBuffer(async () => {
+      prepareSheetSyncFactoryInTxn("date-entry", {
+        repoGuid: getCurrentRepoGuid(),
+        username: getCurrentUsername(),
+        loca,
+        itemName: "",
+        fields: sheetFields,
+        kind: "upsert",
+      });
+      await updateItemBodyGeneric(getPostgresProvider(), loca, bodyYaml);
+    });
+    return;
+  }
+
+  if (config.primaryBackend === "mongo") {
     await updateItemBodyGeneric(getMongoProvider(), loca, bodyYaml);
   }
   if (config.contentProviderEnabled) {
     await updateDateEntryContentProvider(loca, bodyYaml);
   }
-  // Google Sheets follower (Story 75) — same non-throwing enqueue pattern as
-  // updateDailyEntry above.
   await queueDateEntrySheetSyncIfEnabled({
     repoGuid: getCurrentRepoGuid(),
     username: getCurrentUsername(),
     loca,
     itemName: "",
-    fields: parseYamlFieldsForSheetSync(bodyYaml),
+    fields: sheetFields,
     kind: "upsert",
   });
 }

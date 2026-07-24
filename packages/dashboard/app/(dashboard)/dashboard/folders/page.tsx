@@ -13,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ArrowLeft, ArrowRight, RefreshCw } from "lucide-react";
+import { ArrowLeft, ArrowRight, RefreshCw, Lock } from "lucide-react";
 
 /**
  * Content Provider browser, ported from
@@ -94,6 +94,28 @@ interface RepoOption {
   name: string;
 }
 
+interface ReadOnlyFolderRow {
+  address: string;
+  managedBy: string;
+  reason: string;
+}
+
+/**
+ * Finds the read-only-folder row (if any) that protects `namePath` —
+ * either an exact match or a descendant of one (e.g. `views/daily/01`
+ * under `views/daily`). Mirrors `dba`'s own `findProtectingSystemFolder`
+ * (server-side enforcement lives there; this is purely an informational
+ * banner) without importing the server-only `dba` package into a client
+ * component.
+ */
+function findProtectingReadOnlyFolder(namePath: string[], rows: ReadOnlyFolderRow[]): ReadOnlyFolderRow | null {
+  const joined = namePath.join("/");
+  for (const row of rows) {
+    if (joined === row.address || joined.startsWith(`${row.address}/`)) return row;
+  }
+  return null;
+}
+
 function relativeLoca(address: string, repoGuid: string): string {
   if (address === repoGuid) return "";
   const prefix = `${repoGuid}/`;
@@ -139,8 +161,25 @@ export default function FoldersPage() {
   const [bodySaved, setBodySaved] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [readOnlyFolders, setReadOnlyFolders] = useState<ReadOnlyFolderRow[]>([]);
 
   const currentItem = nav.index >= 0 ? nav.items[nav.index] : null;
+  // nav.items[0] is the repo root itself (never a registered system
+  // folder) — the name path system-folders.ts compares against starts
+  // from its children (e.g. ["views", "daily"]).
+  const currentNamePath = nav.items.slice(1, nav.index + 1).map((item) => item.Config.name);
+  const protectingFolder = findProtectingReadOnlyFolder(currentNamePath, readOnlyFolders);
+
+  useEffect(() => {
+    fetch("/api/settings/read-only-folders")
+      .then((res) => res.json())
+      .then((json: { success: boolean; data?: ReadOnlyFolderRow[] }) => {
+        if (json.success && json.data) setReadOnlyFolders(json.data);
+      })
+      .catch(() => {
+        // Purely informational banner — a failed fetch here must never block browsing Folders.
+      });
+  }, []);
 
   const fetchItem = useCallback(async (repoGuid: string, loca: string): Promise<{ item: CpItem; repoGuid: string } | null> => {
     setError(null);
@@ -418,6 +457,16 @@ export default function FoldersPage() {
               </div>
             </div>
 
+            {protectingFolder && (
+              <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/30 px-3 py-2 text-xs text-amber-800 dark:text-amber-400">
+                <Lock className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                <span>
+                  Managed by <strong>{protectingFolder.managedBy}</strong> — {protectingFolder.reason} Writes here are
+                  blocked from this Folders browser.
+                </span>
+              </div>
+            )}
+
             {currentItem.Config.type === "Text" && (
             <div className="space-y-2">
               <div className="flex flex-wrap gap-2">
@@ -462,10 +511,15 @@ export default function FoldersPage() {
                 <InertButton title="Wymaga cp-plugin — niedostępne w dashboardzie">Terminal</InertButton>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <Button size="sm" onClick={handleAddChild} disabled={creating}>
+                <Button
+                  size="sm"
+                  onClick={handleAddChild}
+                  disabled={creating || Boolean(protectingFolder)}
+                  title={protectingFolder ? `Managed by ${protectingFolder.managedBy} — read-only here` : undefined}
+                >
                   {creating ? "Dodawanie..." : "Add"}
                 </Button>
-                <Select value={addType} onValueChange={setAddType} disabled={creating}>
+                <Select value={addType} onValueChange={setAddType} disabled={creating || Boolean(protectingFolder)}>
                   <SelectTrigger className="w-[100px]">
                     <SelectValue />
                   </SelectTrigger>

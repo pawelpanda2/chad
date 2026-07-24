@@ -38,6 +38,52 @@ odpowiedź jest już opisana w `04_deployment-rules.md` i
 - Pełny kontrakt: `04_deployment-rules.md` (niżej w tej kolejności) i
   `deploy/ai-start.md` → `deploy/dashboard-deployment-scripts.md`.
 
+### Lokalny Postgres / Content Provider — NIE rób śmietnika (Story 89)
+
+**(dodane 2026-07-25, po realnym incydencie: lokalny volume wyglądał jak
+„skasowane dane pawel_f”, bo AI/testy wsadziły fixture'y pod produkcyjny
+GUID i/albo przełączyły dashboard na pustą lokalną bazę bez syncu z QNAP.)**
+
+- **Lokalny Postgres to lustro QNAP**, nie plac zabaw. Dane ściągasz przez
+  `bash-scripts/dashboard/03_local_mac_docker/07_sync-postgres-from-qnap.sh`
+  albo Dev Panel → Settings → **Sync local Postgres from QNAP**.
+- **Zakaz:** tworzyć / seedować drzewa `cp_items` pod GUID `pawel_f`
+  (`21d11bdc-…`) ani `kamil_s` w lokalnej bazie „żeby login działał”.
+  To łamie model Content Providera (prawdziwe itemy / historia / adresy).
+- **Dane testowe i mutacje automatyczne:** wyłącznie użytkownik **`test3`**
+  (`5a9c8b7d-…`) + `assertIsTest3Session` / `assertTest3Scoped`. Nigdy
+  `pawel_f` / `kamil_s` / `chad_admin` body poza świadomą migracją.
+- Dev Panel Settings przełącza **źródło** (local mirror vs QNAP live). To
+  nie zastępuje syncu — local bez syncu = śmietnik albo pusta baza.
+- Seed `seed-local-postgres-login.mjs` to **tylko fallback** `test3`, gdy
+  users-list jest puste (np. QNAP offline). Nie inventuj listy produkcyjnych
+  userów lokalnie.
+- **History → Google Sheets:** `GOOGLE_SHEETS_SPREADSHEET_MAP` musi dojść do
+  kontenera z cudzysłowami JSON. Compose `${VAR}` je zjada → pusty HTTP 500
+  → UI `Unexpected end of JSON input`. Regresja:
+  `pnpm test:regression:google-sheets-history`.
+
+### Tabele ↔ Google Sheets — obowiązkowy regression test (`tests/tables-sync`)
+
+**(dodane po utworzeniu `tests/tables-sync` — pakiet regresyjny dla
+Daily Tracker/Dates/Leads ↔ Google Sheets sync, folder-protection i
+outboxów.)**
+
+- Po **każdej** zmianie dotykającej: dane tabel (Daily Tracker/Dates/Leads),
+  listy w Dashboardzie, History, outboxy (`data-outbox*`,
+  `google-sheets/outbox*`), sync z Google Sheets, albo system folders
+  (`system-folders.ts`, `assertNotSystemFolderWrite`) — agent MA OBOWIĄZEK
+  uruchomić `pnpm test:tables-sync` (lokalnie z realną bazą:
+  `pnpm test:tables-sync:local`) przed zgłoszeniem taska jako DONE.
+- **Zakaz** oznaczania taska jako DONE albo deployu na TEST, jeśli ten
+  zestaw testów nie przechodzi. Failing test = sygnał **regresji danych**,
+  nie "test do naprawienia później" — zgłoś to jawnie w raporcie/checkliście
+  (`05_tasks_and_checklist.md`), nie pomijaj cicho.
+- Zobacz `tests/tables-sync/README.md` po zakres testów (mapping-schema
+  drift UI↔mapper, fizyczny delete w Sheets, kolejność
+  create→update→delete, ochrona system folders, kształt statusu w
+  History, walidacja `GOOGLE_SHEETS_SPREADSHEET_MAP`).
+
 ## Kolejność
 
 1. **Ten dokument** — jesteś tu.

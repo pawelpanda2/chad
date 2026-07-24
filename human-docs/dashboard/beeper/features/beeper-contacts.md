@@ -1,24 +1,37 @@
-# Feature: Beeper contacts — category combobox
+# Feature: Beeper contacts — Permissions
 
-## Cel
-Kategorie kontaktów (All / Business / Romantic / Friends) mają być w comboboxie,
-nie jako zakładki (Tabs).
+## Purpose
 
-## Zakres
-UI. Bez zmian w API/danych.
+Contact-level sync permissions (Story 86) control what `beeper-sync` /
+`beeper-oplog` store for each person.
 
-## Zmienione pliki
-- `app/(dashboard)/dashboard/beeper/page.tsx`
+## Toolbar (mockup)
 
-## Zmiana
-`Tabs`/`TabsTrigger` → `Select` (`SelectTrigger`/`SelectItem`). Wartość `tab`
-steruje jak wcześniej (`load(tab)` → `/api/beeper-crm/contacts?tag=`).
+Joined controls, no gaps:
 
-## Route / API
-`GET /api/beeper-crm/contacts[?tag=business|romantic|friends]` — bez zmian.
+1. **View** — Permissions (default) / All / Business / Romantic / Friends
+2. **Permission filter** (only in Permissions view) — All / Include / Exclude / Permission
+3. **Search**
 
-## Content Provider / Cache
-Nie dotyczy (dane z MongoDB przez `/api/beeper-crm`). Brak cache po stronie UI.
+Permissions view is a table: Include | Exclude | Contact — no last message,
+Inbox, or Merge suggestions on this screen.
 
-## Dalsze etapy
-- Brak.
+## Sync modes
+
+| Include | Exclude | Behavior |
+|---|---|---|
+| ✓ | | Full contact + messages |
+| | ✓ | Ignored entirely |
+| | | Metadata only (name/avatar/etc., no messages) |
+
+Flags live on Mongo `contacts` documents. Existing contacts are migrated to
+`include=true`, `exclude=false` on first Permissions load.
+
+## API
+
+- `GET /api/beeper-crm/contacts?view=permissions&permissionFilter=…`
+- `PATCH /api/beeper-crm/contacts/[id]/permissions` `{ include, exclude }`
+
+## Route
+
+`/dashboard/beeper`

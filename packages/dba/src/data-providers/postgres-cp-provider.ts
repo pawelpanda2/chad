@@ -255,6 +255,8 @@ export class PostgresCpProvider implements CpCompatibleDataProvider {
         const children = await this.queryChildren(client, command.parentAddress);
         const existingChild = children.find((c) => c.config.name === command.name);
         if (existingChild) {
+          const { discardPendingGoogleSheetsJobs } = await import("../google-sheets/txn-hook.js");
+          discardPendingGoogleSheetsJobs();
           await client.query("COMMIT");
           return { item: existingChild, alreadyExisted: true };
         }
@@ -284,9 +286,13 @@ export class PostgresCpProvider implements CpCompatibleDataProvider {
           throw error;
         }
 
+        const { flushPendingGoogleSheetsJobs } = await import("../google-sheets/txn-hook.js");
+        await flushPendingGoogleSheetsJobs(client, command.operationId, result.item);
         await client.query("COMMIT");
         return { item: result.item!, alreadyExisted: false };
       } catch (error) {
+        const { discardPendingGoogleSheetsJobs } = await import("../google-sheets/txn-hook.js");
+        discardPendingGoogleSheetsJobs();
         await client.query("ROLLBACK").catch(() => {
           /* connection may already be broken; nothing more to do */
         });

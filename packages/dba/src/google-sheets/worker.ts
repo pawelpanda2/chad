@@ -29,7 +29,7 @@ import {
   mapDailyEntryToSheetRow,
   mapDateEntryToSheetRow,
   mapLeadToSheetRow,
-  mapDeleteToSheetRow,
+  assertMappedRowCoversRequiredHeaders,
 } from "./mapper.js";
 import type { GoogleSheetsClient, GoogleSheetsTarget, SheetRecordType, SheetRowValues, SheetSyncPayload } from "./types.js";
 
@@ -121,26 +121,43 @@ export async function processGoogleSheetsJobOnce(deps: GoogleSheetsWorkerDeps): 
       await deps.client.ensureSheetExists(target);
     }
 
-    await deps.client.ensureHeaders(target, headersFor(recordType));
+    const requiredHeaders = headersFor(recordType);
+    const ensuredHeaders = await deps.client.ensureHeaders(target, requiredHeaders);
+    const missingAfterEnsure = requiredHeaders.filter((h) => !ensuredHeaders.includes(h));
+    if (missingAfterEnsure.length > 0) {
+      throw new Error(
+        `Google Sheets headers incomplete for ${recordType} on sheet "${target.sheetName}": missing ${missingAfterEnsure.join(", ")}`
+      );
+    }
 
     const now = clock.now().toISOString();
     const existingRow = await deps.client.findRowByKey(target, "CHAD_RECORD_KEY", job.payload.recordKey);
 
     if (job.kind === "delete") {
       if (existingRow !== null) {
-        const values = mapDeleteToSheetRow(job.payload, now);
-        await deps.client.updateRow(target, existingRow, values);
+        // Physical delete by CHAD_RECORD_KEY — never by a guessed row number
+        // alone (findRowByKey resolves the current index each attempt, so
+        // retries stay idempotent even after earlier rows shifted).
+        await deps.client.deleteRow(target, existingRow);
+        const stillThere = await deps.client.findRowByKey(target, "CHAD_RECORD_KEY", job.payload.recordKey);
+        if (stillThere !== null) {
+          throw new Error(
+            `delete did not remove row for recordKey=${job.payload.recordKey} (still at sheet row ${stillThere})`
+          );
+        }
       }
-      // No matching row to mark deleted (e.g. it was removed before its
-      // first sync ever ran) — nothing to do, not an error.
+      // No matching row (already deleted, or never synced) — target state
+      // already reached; treat as success, not an error.
     } else if (existingRow !== null) {
       // Update in place: never touch the set-once-at-creation columns on an
       // existing row — see mapper.ts's IMMUTABLE_ON_UPDATE_COLUMNS doc.
       const values = mapUpsertFor(recordType, job.payload, now);
+      assertMappedRowCoversRequiredHeaders(recordType, values, { allowMissingImmutable: true });
       for (const column of IMMUTABLE_ON_UPDATE_COLUMNS) delete values[column];
       await deps.client.updateRow(target, existingRow, values);
     } else {
       const values = mapUpsertFor(recordType, job.payload, now);
+      assertMappedRowCoversRequiredHeaders(recordType, values);
       await deps.client.appendRow(target, values);
     }
 

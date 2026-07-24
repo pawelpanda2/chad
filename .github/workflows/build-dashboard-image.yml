@@ -22,11 +22,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        # No `submodules: true` — packages/net-content-provider is a
-        # submodule but is excluded via .dockerignore and never referenced
-        # by packages/dashboard/Dockerfile; the dashboard image build does
-        # not need it (confirmed by reading both files before adding this
-        # workflow, per Story 70's own "don't guess" instruction).
 
       - name: Log in to GHCR
         # GITHUB_TOKEN is automatically provided by GitHub Actions and is
