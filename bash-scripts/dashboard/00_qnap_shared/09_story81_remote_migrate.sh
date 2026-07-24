@@ -5,8 +5,7 @@
 # is out of sync with the live container's init password.
 #
 # Usage (from repo root, after `pnpm --filter dba build`):
-#   bash bash-scripts/dashboard/00_qnap_shared/09_story81_remote_migrate.sh \
-#     --repoGuid=<guid> [--apply]
+#   bash .../09_story81_remote_migrate.sh (--repoGuid=<guid> | --all) [--apply]
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -16,16 +15,31 @@ load_qnap_ssh_config
 
 REPO_GUID=""
 APPLY=""
+ALL=""
 for arg in "$@"; do
   case "$arg" in
     --apply) APPLY="--apply" ;;
+    --all) ALL="--all" ;;
     --repoGuid=*) REPO_GUID="${arg#--repoGuid=}" ;;
     *) log_error "Unknown arg: $arg"; exit 1 ;;
   esac
 done
-if [ -z "$REPO_GUID" ]; then
-  log_error "Usage: $0 --repoGuid=<guid> [--apply]"
+if [ -z "$REPO_GUID" ] && [ -z "$ALL" ]; then
+  log_error "Usage: $0 (--repoGuid=<guid> | --all) [--apply]"
   exit 1
+fi
+if [ -n "$REPO_GUID" ] && [ -n "$ALL" ]; then
+  log_error "Pass either --repoGuid=... or --all, not both"
+  exit 1
+fi
+
+SCOPE_ARG=""
+if [ -n "$ALL" ]; then
+  SCOPE_ARG="--all"
+  SCOPE_LABEL="--all"
+else
+  SCOPE_ARG="--repoGuid='$REPO_GUID'"
+  SCOPE_LABEL="repoGuid=$REPO_GUID"
 fi
 
 BUNDLE="$REPO_ROOT/.runtime/story81-migrate-bundle"
@@ -73,9 +87,9 @@ REMOTE_CMD="cd '$REMOTE_DIR/story81-migrate-bundle' && \
     -v '$REMOTE_DIR/story81-migrate-bundle:/work' -w /work/packages/dba \
     -e MONGODB_URI -e POSTGRES_URI \
     node:22-bookworm-slim \
-    node scripts/migrate-mongo-to-postgres.mjs --repoGuid='$REPO_GUID' $APPLY"
+    node scripts/migrate-mongo-to-postgres.mjs $SCOPE_ARG $APPLY"
 
-log_info "Running migrate-mongo-to-postgres on QNAP (repoGuid=$REPO_GUID, apply=${APPLY:-dry-run})..."
+log_info "Running migrate-mongo-to-postgres on QNAP ($SCOPE_LABEL, apply=${APPLY:-dry-run})..."
 run_remote "Story81 remote migrate" "$REMOTE_CMD"
 
 rm -f "$TAR"

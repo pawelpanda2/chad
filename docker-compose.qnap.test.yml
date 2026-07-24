@@ -3,16 +3,11 @@
 # Story 81 (2026-07-24): TEST is cut over to PostgreSQL as primary — the
 # ONLY environment cut over so far (PROD stays on Mongo, see
 # docker-compose.qnap.prod.yml, deliberately untouched by this Story).
-# QNAP's `chad-postgres` (docker-compose.qnap.shared.yml) currently holds
-# ONLY test3's migrated data — DBA_POSTGRES_REPO_ALLOWLIST below rejects
-# any write for a different repoGuid instead of silently creating a
-# divergent island of data (see packages/dba/src/data-providers/
-# repo-allowlist-guard.ts, backlog/stories/81/). chad_admin
-# (0fc7da8d-3466-4964-a24c-dfc0d0fef87c) is also on the allowlist —
-# required for login/admin writes; reads are never allowlist-gated.
+# QNAP's `chad-postgres` holds ALL CHAD cp_items repos copied from Mongo
+# (781 items / 4 repoGuids). DBA_MONGO_ENABLED=false on TEST — CHAD reads
+# Postgres only. Allowlist is empty (all repos migrated). Beeper still
+# uses beeper-mongodb via BEEPER_MONGODB_URI (unaffected).
 #
-# TEST is otherwise still an alternative UI onto the SAME live Mongo data
-# as PROD for Beeper (BEEPER_MONGODB_URI below, unaffected by this Story).
 # Never starts/stops/rebuilds shared services itself — see
 # bash-scripts/dashboard/04_qnap_test/03_re-start.sh, which refuses to
 # start unless shared services are already up and healthy.
@@ -75,17 +70,13 @@ services:
       # exact same shared env var name; a plain default-value read here
       # would silently apply to PROD too on its next restart/redeploy. See
       # backlog/stories/81/02_plan.md.
-      # EMERGENCY ROLLBACK 2026-07-24 (Folders): TEST on postgres-primary
-      # with only test3+chad_admin migrated → every other repo (e.g.
-      # 21d11bdc-… Folders tab) returns "Item not found" because
-      # getItemByAddress reads primary only and DBA_MONGO_ENABLED=false.
-      # Folders/item-ops wiring and address format are fine — data for
-      # non-migrated repos still lives only in Mongo. Revert primary to
-      # mongo until every real repo used on TEST is migrated. Postgres
-      # stays up with migrated test3+chad_admin data intact.
-      - DBA_MONGO_ENABLED=true
+      # Story 81 — QNAP TEST on PostgreSQL primary. ALL cp_items repos are
+      # migrated to chad-postgres (not just test3). Mongo stays available as
+      # the shared container for Beeper / PROD, but TEST does not use it as
+      # a CHAD primary. Folders/Daily/etc. all read Postgres via dba.
+      - DBA_MONGO_ENABLED=false
       - DBA_POSTGRES_ENABLED=true
-      - DBA_PRIMARY_BACKEND=mongo
+      - DBA_PRIMARY_BACKEND=postgres
       - DBA_CONTENT_PROVIDER_ENABLED=${DBA_CONTENT_PROVIDER_ENABLED:-false}
       # Story 81 — data-sync outbox worker, wired into this process
       # (data-outbox-bootstrap.ts) for the first time. Stays inert here
@@ -99,11 +90,10 @@ services:
       # file never references these var names, so their presence has zero
       # effect on PROD's interpolation (unlike DBA_PRIMARY_BACKEND above).
       - POSTGRES_URI=postgres://${POSTGRES_USER:-chad}:${POSTGRES_PASSWORD}@chad-postgres:5432/${POSTGRES_DB:-chad}
-      # Transitional safety net (Story 81) — chad-postgres currently holds
-      # only test3's data; reject any write for a different repoGuid
-      # instead of silently creating a divergent island of data. Remove
-      # once every real repo has been migrated to Postgres.
-      - DBA_POSTGRES_REPO_ALLOWLIST=5a9c8b7d-6e5f-4a3b-2c1d-0e9f8a7b6c5d,0fc7da8d-3466-4964-a24c-dfc0d0fef87c
+      # Allowlist unset once every CHAD repo on TEST is in Postgres (Story 81
+      # full cp_items copy). Empty = no write guard. Was previously limited
+      # to test3+chad_admin — that broke Folders for real user repos.
+      - DBA_POSTGRES_REPO_ALLOWLIST=
       # Deliberately "test", never "prod" — even though TEST shares the
       # exact same chad-mongodb data as PROD (this file's own header
       # comment), the Google Sheets sync worker
