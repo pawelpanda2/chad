@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, type MouseEvent } from "react";
+import { useEffect, useState, useCallback, type MouseEvent as ReactMouseEvent } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -421,12 +421,12 @@ function HistoryListContent({
     router.push(`/dashboard/history/entry/${id}`);
   };
 
-  const onNameColResizeStart = (e: MouseEvent) => {
+  const onNameColResizeStart = (e: ReactMouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     const startX = e.clientX;
     const startW = nameColWidth;
-    const onMove = (ev: MouseEvent) => {
+    const onMove = (ev: globalThis.MouseEvent) => {
       setNameColWidth(Math.max(48, Math.min(480, startW + (ev.clientX - startX))));
     };
     const onUp = () => {
