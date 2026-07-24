@@ -46,6 +46,7 @@ export * from './data-outbox-worker.js';
 export * from './data-outbox-bootstrap.js';
 export * from './data-sync-diagnostics.js';
 export * from './item-ops.js';
+export * from './folders.js';
 export * from './admin-users.js';
 export * from './cp-history.js';
 // Named (not `export *`) — cp-history/mutate.ts's own CpHistoryActor/
