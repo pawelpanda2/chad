@@ -1,6 +1,6 @@
 # Story 84 — Message Creator GUI — Plan
 
-Status: **PLAN ONLY — awaiting user acceptance. No implementation in this session.**
+Status: **ACCEPTED — implemented (Story 84). Mentor prompts remain a follow-up Story.**
 
 ## 1. Current state audit (reuse only)
 
