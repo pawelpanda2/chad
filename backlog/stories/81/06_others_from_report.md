@@ -22,7 +22,9 @@
   inside `PostgresCpProvider` (new in this Story) is simpler and more
   robust than trying to enforce this at the network/infra level, and it's
   naturally a no-op once (in a future Story) every real repo has been
-  migrated and the env var is simply unset.
+  migrated and the env var is simply unset. As of the chad_admin fix,
+  allowlist holds **test3 + chad_admin** — login reads are never gated;
+  only writes are.
 
 ## Problems encountered
 
@@ -30,6 +32,14 @@
   neither TEST nor PROD had any of the code this Story's input assumed
   was already deployed. Confirmed with the user before proceeding;
   documented in `01_input.md`'s Input 2 and `02_plan.md`.
+- **Login lockout on first TEST Postgres cutover (2026-07-24):** TEST was
+  flipped to `DBA_PRIMARY_BACKEND=postgres` with only test3 migrated.
+  Login reads `chad_admin/users/users-list` through the primary backend —
+  chad_admin was still Mongo-only, so users-list returned null → login
+  failed and `resolveCurrentUser()` returned null on API saves ("not
+  authenticated"). Emergency rollback to Mongo (commit `542c31f`). Fixed by
+  migrating chad_admin (legacy baseline + Mongo→Postgres) and re-cutting
+  TEST with both repoGuids on the allowlist.
 - **A real bug in Story 79's `ensureCpHistoryIndexes()`** was only
   discoverable against QNAP's real, years-accumulated Mongo data — a plain
   unique index on `{sourceId,version}` collided with pre-Story-79 legacy
@@ -70,3 +80,7 @@
   PROD stays on pre-Story-79 code) — removing it is contingent on PROD's
   own eventual Story 79+ upgrade, out of this Story's scope (PROD is
   explicitly untouched here).
+- Sync local Mac `.env.qnap` `POSTGRES_PASSWORD` with the live QNAP
+  container init password — host-side scripts over Tailscale port 12042
+  currently fail auth; use `09_story81_remote_migrate.sh` (docker on QNAP
+  internal network) until fixed.
