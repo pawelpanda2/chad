@@ -89,16 +89,16 @@ layout różnicuje desktop i mobile.
 - **Theme toggle**: przeniesiony do nagłówka `Sidebar` (bo topbar jest ukryty
   app-wide), więc przełącznik motywu pozostaje dostępny.
 - **Główna treść**: `<main className="min-h-0 flex-1 overflow-y-auto p-0.5
-  md:pr-[150px]">`. Padding ~2px, żeby ramka niemal idealnie wypełniała
+  xl:pr-[150px]">`. Padding ~2px, żeby ramka niemal idealnie wypełniała
   ekran. `overflow-y-auto` (nie `hidden`) jest bezpieczne: powłoki
   wypełniają `main` dokładnie (`h-full`), więc na stronach standardowych
   nie powstaje scroll strony, a strony jeszcze niezmigrowane nie są
-  przycinane. **`md:pr-[150px]` (Story 62, 2026-07-16 — patrz uwaga
-  niżej):** dodatkowy pusty pas ~150px po prawej stronie, tylko na
-  desktopie (`md:` = od 768px, ten sam próg co `DESKTOP_QUERY` w
-  `app/(dashboard)/layout.tsx`) — nigdy na telefonie. Jeden wspólny punkt
-  zmiany dla wszystkich widoków (zamiast kopiowania paddingu do każdej
-  strony).
+  przycinane. **`xl:pr-[150px]` (Story 62 pane; breakpoint podniesiony
+  z `md`/768px do `xl`/1280px, 2026-07-24):** dodatkowy pusty pas ~150px
+  po prawej **tylko na szerokim desktopie** (≥1280px). Przy węższym oknie
+  (telefon, tablet, pół ekranu Maca) pas znika i ramka bierze pełną
+  szerokość. Sidebar nadal używa `DESKTOP_QUERY` / `md` (768px) —
+  niezależny próg. Jeden wspólny punkt zmiany dla wszystkich widoków.
   **Uwaga o historii tej wartości:** Story 56 (2026-07-14) opisał i
   oznaczył jako DONE wersję `md:pr-[100px]`, ale w rzeczywistym kodzie jej
   nigdy nie było (`git log -S"pr-[100px]"` na tym pliku nie ma ani jednego

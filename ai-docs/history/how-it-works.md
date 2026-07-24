@@ -1,25 +1,36 @@
 # History (cp_history) — how it works
 
-Status: rewritten 2026-07-23, Story 80 — **PostgreSQL is now CHAD's source
-of truth** (`cp_items`/`cp_history`/`cp_outbox_data_sync`/
+Status: updated 2026-07-24, Story 81 — **PostgreSQL is CHAD's source of
+truth** (`cp_items`/`cp_history`/`cp_outbox_data_sync`/
 `cp_outbox_google_sheets_sync`); MongoDB is retired for CHAD and kept only
 for Beeper CRM (`beeper_<repoGuid>` databases, entirely separate — see
 `documentation/beeper/architecture.md`). Story 79's MongoDB-transaction
-mechanism (below, kept as historical record) is **superseded** by this
-Story, the same way Story 79 itself superseded Story 74/78's Change-Stream
-`history-worker`. Read `backlog/stories/80/` for the full rationale.
+mechanism (below, kept as historical record) is **superseded**. Read
+`backlog/stories/80/` and `backlog/stories/81/` for the full rationale.
 
-**Deployment status (do not assume more than this says):** local dev
-(`docker-compose.local.yml`) defaults to PostgreSQL as primary
-(`DBA_PRIMARY_BACKEND=postgres`). QNAP TEST and PROD have **not** cut over
-as of Story 80 — both still run on the Story 79 MongoDB mechanism described
-in the second half of this file, reading/writing the same shared
-`chad-mongodb`. A Postgres container exists on QNAP (`docker-compose.qnap.
-shared.yml`, shared between TEST/PROD, holding the same data once cut
-over) but neither environment's `DBA_PRIMARY_BACKEND` has been flipped —
-see `backlog/stories/80/05_tasks_and_checklist.md` for why (a partial
-TEST-only cutover would split TEST and PROD into two diverging sources of
-truth, and flipping PROD is a PROD deploy, out of that Story's scope).
+**Deployment status (do not assume more than this says):**
+
+```
+LOCAL:      PostgreSQL (DBA_PRIMARY_BACKEND=postgres)
+QNAP TEST:  PostgreSQL (DBA_PRIMARY_BACKEND=postgres) — test3 +
+            chad_admin (0fc7da8d-3466-4964-a24c-dfc0d0fef87c) in
+            chad-postgres; DBA_POSTGRES_REPO_ALLOWLIST = both GUIDs
+QNAP PROD:  MongoDB (DBA_PRIMARY_BACKEND=mongo) — not cut over
+Beeper:     MongoDB (beeper-mongodb), unaffected, everywhere
+```
+
+**Login incident (Story 81, 2026-07-24):** the first TEST Postgres cutover
+included only test3 in Postgres. Login reads `chad_admin/users/users-list`
+via `getUsersListBody()` → primary backend → Postgres, but chad_admin was
+not migrated — users-list returned null, login failed, and
+`resolveCurrentUser()` returned null on save ("not authenticated"). Fix:
+legacy baseline history for chad_admin in Mongo, migrate chad_admin to
+Postgres, add both repoGuids to `DBA_POSTGRES_REPO_ALLOWLIST`, re-cut TEST
+over (PROD untouched).
+
+QNAP TEST and PROD do NOT share `DBA_PRIMARY_BACKEND` via `.env.qnap` —
+TEST's cutover values are hardcoded literals in
+`docker-compose.qnap.test.yml` (see `backlog/stories/81/02_plan.md`).
 
 ## Why this changed (Story 80)
 

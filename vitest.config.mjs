@@ -16,6 +16,8 @@ export default defineConfig({
       "packages/dba/src/data-outbox-postgres.test.ts",
       // Story 81 — TEST-restricted-to-test3 repo allowlist guard (unit only).
       "packages/dba/src/data-providers/repo-allowlist-guard.test.ts",
+      // Story 81 — leads.ts business functions against a Postgres primary.
+      "packages/dba/src/leads-postgres.test.ts",
       // Story 82 — Folders write path (create child / update Text body):
       // pure, fake-ops-based, no real DB needed.
       "packages/dba/src/folders.test.ts",

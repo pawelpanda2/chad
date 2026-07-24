@@ -72,11 +72,13 @@ export default function DashboardLayout({
 
 				{/* Content region — the shared page shells fill this exactly, so the
 				    page never scrolls; scroll lives inside the frames. Padding is
-				    kept to ~2px so the frame nearly fills the screen. `md:pr-[150px]`
-				    (Story 62) reserves an empty strip on the right edge, desktop
-				    only (same `md:` / 768px threshold as DESKTOP_QUERY above) —
-				    absent on mobile, where the page uses the full width. */}
-				<main className="min-h-0 flex-1 overflow-y-auto p-0.5 md:pr-[150px]">
+				    kept to ~2px so the frame nearly fills the screen. `xl:pr-[150px]`
+				    (Story 62 pane; breakpoint raised from `md`/768px) reserves an
+				    empty strip on the right only on wide desktops (≥1280px). At
+				    narrower widths — phone, tablet, or half-screen Mac browser —
+				    the frame uses the full window width. Sidebar open/close still
+				    uses DESKTOP_QUERY (`md`/768px) above. */}
+				<main className="min-h-0 flex-1 overflow-y-auto p-0.5 xl:pr-[150px]">
 					<Suspense fallback={null}>
 						<DashboardHistoryProvider>{children}</DashboardHistoryProvider>
 					</Suspense>

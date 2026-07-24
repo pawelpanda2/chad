@@ -8,7 +8,8 @@
 import { invokeContentProvider } from "./client.js";
 import { getCurrentRepoGuid, getCurrentUsername } from "./repo-context.js";
 import { loadDataProvidersConfig } from "./data-providers/config.js";
-import { getMongoProvider } from "./data-router-instance.js";
+import { getMongoProvider, getPostgresProvider } from "./data-router-instance.js";
+import type { CpCompatibleDataProvider } from "./data-providers/types.js";
 import { buildCreateChildItemCommand, buildPutItemCommand } from "./data-commands.js";
 import { addressToRepoAndLoca, repoAndLocaToAddress } from "./cp-model.js";
 import { systemClock } from "./data-clock.js";
@@ -957,24 +958,28 @@ export interface DailyEntryItem {
  * @param parentNames - logical-name path to the folder, e.g. ["views", "dates"]
  */
 /**
- * Mongo-backed equivalent of `getAllChildTextItems` below.
+ * Mongo/Postgres-backed equivalent of `getAllChildTextItems` below.
  *
  * Deliberately simple, per explicit direction after an initial pass built
  * this through `DbaDataRouter` (follower outbox, primary/follower
  * resolution, etc.): no router, no provider-selection abstraction here —
- * this calls `MongoCpProvider` directly. The public functions below
- * decide Mongo vs. Content Provider with a plain `if (config.mongoEnabled)`
- * / `if (config.contentProviderEnabled)` pair, nothing more.
+ * this calls whichever `CpCompatibleDataProvider` the caller passes in
+ * directly (Story 81: parameterized over the provider instead of
+ * hardcoding `MongoCpProvider`, so the same function serves both Mongo and
+ * Postgres — both implement the exact same interface). The public
+ * functions below decide Mongo vs. Postgres vs. Content Provider with a
+ * plain `if (config.mongoEnabled)` / `if (config.postgresEnabled)` /
+ * `if (config.contentProviderEnabled)` triple, nothing more.
  */
-async function getAllChildTextItemsMongo(
+async function getAllChildTextItemsGeneric(
+  provider: CpCompatibleDataProvider,
   parentNames: string[]
 ): Promise<Array<{ itemName: string; loca: string; body?: string }>> {
   const repoGuid = getCurrentRepoGuid();
-  const mongo = getMongoProvider();
-  const folder = await mongo.getByNames({ repoGuid, names: parentNames });
+  const folder = await provider.getByNames({ repoGuid, names: parentNames });
   if (!folder) return [];
 
-  const children = await mongo.getChildItems(folder.config.address);
+  const children = await provider.getChildren(folder.config.address);
   return children.map((item) => ({
     itemName: item.config.name,
     loca: addressToRepoAndLoca(item.config.address).loca,
@@ -983,13 +988,12 @@ async function getAllChildTextItemsMongo(
 }
 
 /**
- * Mongo-backed find-or-create of a nested folder chain under the repo
- * root (e.g. ["views", "daily"]) — the Mongo equivalent of the CP
+ * Find-or-create of a nested folder chain under the repo root (e.g.
+ * ["views", "daily"]) — the Mongo/Postgres equivalent of the CP
  * PostParentItem chain in `saveDailyEntry`/`saveDateEntry` below.
  */
-async function findOrCreateFolderChainMongo(parentNames: string[]): Promise<CpItem> {
+async function findOrCreateFolderChainGeneric(provider: CpCompatibleDataProvider, parentNames: string[]): Promise<CpItem> {
   const repoGuid = getCurrentRepoGuid();
-  const mongo = getMongoProvider();
 
   let parent: CpItem = {
     _id: repoGuid,
@@ -998,7 +1002,7 @@ async function findOrCreateFolderChainMongo(parentNames: string[]): Promise<CpIt
   };
   // If the repo root itself is already a real migrated item, use it as
   // the actual parent record instead of this synthetic stand-in.
-  const realRoot = await mongo.getItem({ address: repoGuid });
+  const realRoot = await provider.getItem({ address: repoGuid });
   if (realRoot) parent = realRoot;
 
   for (const name of parentNames) {
@@ -1006,29 +1010,29 @@ async function findOrCreateFolderChainMongo(parentNames: string[]): Promise<CpIt
       { parentItemId: parent._id, parentAddress: parent.config.address, name, type: "Folder" },
       systemClock
     );
-    const result = await mongo.executeWrite(command);
+    const result = await provider.executeWrite(command);
     parent = result.item;
   }
   return parent;
 }
 
 /**
- * Mongo-backed equivalent of the "ensure folder chain, then create the
- * text item, then set its body" flow in `saveDailyEntry`/`saveDateEntry`.
+ * Ensure-folder-chain-then-create-text-item-then-set-body flow used by
+ * `saveDailyEntry`/`saveDateEntry`.
  */
-async function saveChildTextItemMongo(
+async function saveChildTextItemGeneric(
+  provider: CpCompatibleDataProvider,
   parentNames: string[],
   itemName: string,
   bodyYaml: string
 ): Promise<{ itemName: string; loca: string; success: boolean }> {
-  const mongo = getMongoProvider();
-  const folder = await findOrCreateFolderChainMongo(parentNames);
+  const folder = await findOrCreateFolderChainGeneric(provider, parentNames);
 
   const command = buildCreateChildItemCommand(
     { parentItemId: folder._id, parentAddress: folder.config.address, name: itemName, type: "Text", body: bodyYaml },
     systemClock
   );
-  const result = await mongo.executeWrite(command);
+  const result = await provider.executeWrite(command);
 
   return {
     itemName: result.item.config.name,
@@ -1038,20 +1042,19 @@ async function saveChildTextItemMongo(
 }
 
 /**
- * Mongo-backed equivalent of `updateDailyEntry`/`updateDateEntry`'s
- * GetItem-then-Put shape: overwrites an existing item's body in place,
- * identified by its real `loca` (never by re-deriving from a name/date).
+ * `updateDailyEntry`/`updateDateEntry`'s GetItem-then-Put shape: overwrites
+ * an existing item's body in place, identified by its real `loca` (never
+ * by re-deriving from a name/date).
  */
-async function updateItemBodyMongo(loca: string, bodyYaml: string): Promise<void> {
+async function updateItemBodyGeneric(provider: CpCompatibleDataProvider, loca: string, bodyYaml: string): Promise<void> {
   const repoGuid = getCurrentRepoGuid();
   const address = loca ? `${repoGuid}/${loca}` : repoGuid;
-  const mongo = getMongoProvider();
-  const existing = await mongo.getItem({ address });
+  const existing = await provider.getItem({ address });
   if (!existing) {
-    throw new Error(`Could not find item at loca "${loca}" to update (Mongo)`);
+    throw new Error(`Could not find item at loca "${loca}" to update`);
   }
   const command = buildPutItemCommand({ ...existing, body: bodyYaml }, systemClock);
-  await mongo.executeWrite(command);
+  await provider.executeWrite(command);
 }
 
 async function getAllChildTextItems(
@@ -1147,14 +1150,13 @@ async function getAllChildTextItems(
  */
 export async function getAllDateEntries(): Promise<DateEntryItem[]> {
   const config = loadDataProvidersConfig();
-  let result: DateEntryItem[] = [];
-  if (config.mongoEnabled) {
-    result = await getAllChildTextItemsMongo(["views", "dates"]);
+  if (config.primaryBackend === "postgres") {
+    return getAllChildTextItemsGeneric(getPostgresProvider(), ["views", "dates"]);
   }
-  if (config.contentProviderEnabled) {
-    result = await getAllChildTextItems(["views", "dates"]);
+  if (config.primaryBackend === "mongo") {
+    return getAllChildTextItemsGeneric(getMongoProvider(), ["views", "dates"]);
   }
-  return result;
+  return getAllChildTextItems(["views", "dates"]);
 }
 
 /**
@@ -1173,14 +1175,13 @@ export async function getAllDateEntries(): Promise<DateEntryItem[]> {
  */
 export async function getAllDailyEntries(): Promise<DailyEntryItem[]> {
   const config = loadDataProvidersConfig();
-  let result: DailyEntryItem[] = [];
-  if (config.mongoEnabled) {
-    result = await getAllChildTextItemsMongo(["views", "daily"]);
+  if (config.primaryBackend === "postgres") {
+    return getAllChildTextItemsGeneric(getPostgresProvider(), ["views", "daily"]);
   }
-  if (config.contentProviderEnabled) {
-    result = await getAllChildTextItems(["views", "daily"]);
+  if (config.primaryBackend === "mongo") {
+    return getAllChildTextItemsGeneric(getMongoProvider(), ["views", "daily"]);
   }
-  return result;
+  return getAllChildTextItems(["views", "daily"]);
 }
 
 /**
@@ -1201,11 +1202,12 @@ export async function saveDateEntry(
   bodyYaml: string
 ): Promise<{ itemName: string; loca: string; success: boolean }> {
   const config = loadDataProvidersConfig();
-  let result: { itemName: string; loca: string; success: boolean } = { itemName, loca: "", success: false };
-  if (config.mongoEnabled) {
-    result = await saveDateEntryMongo(itemName, bodyYaml);
-  }
-  if (config.contentProviderEnabled) {
+  let result: { itemName: string; loca: string; success: boolean };
+  if (config.primaryBackend === "postgres") {
+    result = await saveChildTextItemGeneric(getPostgresProvider(), ["views", "dates"], itemName, bodyYaml);
+  } else if (config.primaryBackend === "mongo") {
+    result = await saveChildTextItemGeneric(getMongoProvider(), ["views", "dates"], itemName, bodyYaml);
+  } else {
     result = await saveDateEntryContentProvider(itemName, bodyYaml);
   }
   // Google Sheets follower (Story 75) — same non-throwing enqueue pattern as
@@ -1221,13 +1223,6 @@ export async function saveDateEntry(
     });
   }
   return result;
-}
-
-async function saveDateEntryMongo(
-  itemName: string,
-  bodyYaml: string
-): Promise<{ itemName: string; loca: string; success: boolean }> {
-  return saveChildTextItemMongo(["views", "dates"], itemName, bodyYaml);
 }
 
 async function saveDateEntryContentProvider(
@@ -1425,11 +1420,12 @@ export async function saveDailyEntry(
   bodyYaml: string
 ): Promise<{ itemName: string; loca: string; success: boolean }> {
   const config = loadDataProvidersConfig();
-  let result: { itemName: string; loca: string; success: boolean } = { itemName, loca: "", success: false };
-  if (config.mongoEnabled) {
-    result = await saveDailyEntryMongo(itemName, bodyYaml);
-  }
-  if (config.contentProviderEnabled) {
+  let result: { itemName: string; loca: string; success: boolean };
+  if (config.primaryBackend === "postgres") {
+    result = await saveChildTextItemGeneric(getPostgresProvider(), ["views", "daily"], itemName, bodyYaml);
+  } else if (config.primaryBackend === "mongo") {
+    result = await saveChildTextItemGeneric(getMongoProvider(), ["views", "daily"], itemName, bodyYaml);
+  } else {
     result = await saveDailyEntryContentProvider(itemName, bodyYaml);
   }
   // Google Sheets follower (Story 75) — enqueued only after the primary
@@ -1449,13 +1445,6 @@ export async function saveDailyEntry(
     });
   }
   return result;
-}
-
-async function saveDailyEntryMongo(
-  itemName: string,
-  bodyYaml: string
-): Promise<{ itemName: string; loca: string; success: boolean }> {
-  return saveChildTextItemMongo(["views", "daily"], itemName, bodyYaml);
 }
 
 async function saveDailyEntryContentProvider(
@@ -1554,8 +1543,10 @@ async function saveDailyEntryContentProvider(
  */
 export async function updateDailyEntry(loca: string, bodyYaml: string): Promise<void> {
   const config = loadDataProvidersConfig();
-  if (config.mongoEnabled) {
-    await updateItemBodyMongo(loca, bodyYaml);
+  if (config.primaryBackend === "postgres") {
+    await updateItemBodyGeneric(getPostgresProvider(), loca, bodyYaml);
+  } else if (config.primaryBackend === "mongo") {
+    await updateItemBodyGeneric(getMongoProvider(), loca, bodyYaml);
   }
   if (config.contentProviderEnabled) {
     await updateDailyEntryContentProvider(loca, bodyYaml);
@@ -1580,28 +1571,27 @@ export async function updateDailyEntry(loca: string, bodyYaml: string): Promise<
 
 /**
  * Permanently removes a Daily Entry, identified by its real `loca`. Real
- * deletion is only possible on the Mongo backend — the .NET Content
+ * deletion is only possible on Mongo/Postgres — the .NET Content
  * Provider's own `Delete` is a permanent no-op stub (confirmed dead code
  * there), so this throws rather than silently pretending to succeed when
- * `contentProviderEnabled` and Mongo is not. Callers on that backend must
- * keep using the existing "blank the fields in place" workaround
- * (`updateDailyEntry` with blanked field values) instead.
+ * neither Mongo nor Postgres is the primary backend. Callers on that
+ * backend must keep using the existing "blank the fields in place"
+ * workaround (`updateDailyEntry` with blanked field values) instead.
  */
 export async function deleteDailyEntry(loca: string): Promise<void> {
   const config = loadDataProvidersConfig();
-  if (config.mongoEnabled) {
+  if (config.primaryBackend === "postgres" || config.primaryBackend === "mongo") {
+    const provider = config.primaryBackend === "postgres" ? getPostgresProvider() : getMongoProvider();
     const repoGuid = getCurrentRepoGuid();
     const address = loca ? `${repoGuid}/${loca}` : repoGuid;
-    const mongo = getMongoProvider();
-    const deleted = await mongo.deleteItem(address);
+    const deleted = await provider.deleteItem(address);
     if (!deleted) {
-      throw new Error(`Could not find daily entry at loca "${loca}" to delete (Mongo)`);
+      throw new Error(`Could not find daily entry at loca "${loca}" to delete (${config.primaryBackend})`);
     }
     // Google Sheets follower (Story 75) — marks the row CHAD_SYNC_STATUS =
     // DELETED in place rather than physically removing it (matches the
     // existing CP convention of never truly deleting rows/items, avoids
-    // row-index shift hazards). Only after the real Mongo delete above
-    // succeeded.
+    // row-index shift hazards). Only after the real delete above succeeded.
     await queueDailyEntrySheetSyncIfEnabled({
       repoGuid,
       username: getCurrentUsername(),
@@ -1613,7 +1603,7 @@ export async function deleteDailyEntry(loca: string): Promise<void> {
     return;
   }
   throw new Error(
-    "Daily entry deletion requires the Mongo backend — the Content Provider's own Delete is a non-functional stub."
+    "Daily entry deletion requires the Mongo or Postgres backend — the Content Provider's own Delete is a non-functional stub."
   );
 }
 
@@ -1631,17 +1621,17 @@ export async function deleteDailyEntry(loca: string): Promise<void> {
  */
 export async function deleteDateEntry(loca: string): Promise<void> {
   const config = loadDataProvidersConfig();
-  if (config.mongoEnabled) {
+  if (config.primaryBackend === "postgres" || config.primaryBackend === "mongo") {
+    const provider = config.primaryBackend === "postgres" ? getPostgresProvider() : getMongoProvider();
     const repoGuid = getCurrentRepoGuid();
     const address = loca ? `${repoGuid}/${loca}` : repoGuid;
-    const mongo = getMongoProvider();
-    const deleted = await mongo.deleteItem(address);
+    const deleted = await provider.deleteItem(address);
     if (!deleted) {
-      throw new Error(`Could not find date entry at loca "${loca}" to delete (Mongo)`);
+      throw new Error(`Could not find date entry at loca "${loca}" to delete (${config.primaryBackend})`);
     }
     // Google Sheets follower (Story 75/78) — marks the row CHAD_SYNC_STATUS =
     // DELETED in place, same convention as deleteDailyEntry above. Only
-    // after the real Mongo delete above succeeded.
+    // after the real delete above succeeded.
     await queueDateEntrySheetSyncIfEnabled({
       repoGuid,
       username: getCurrentUsername(),
@@ -1653,7 +1643,7 @@ export async function deleteDateEntry(loca: string): Promise<void> {
     return;
   }
   throw new Error(
-    "Date entry deletion requires the Mongo backend — the Content Provider's own Delete is a non-functional stub."
+    "Date entry deletion requires the Mongo or Postgres backend — the Content Provider's own Delete is a non-functional stub."
   );
 }
 
@@ -1698,8 +1688,10 @@ async function updateDailyEntryContentProvider(loca: string, bodyYaml: string): 
  */
 export async function updateDateEntry(loca: string, bodyYaml: string): Promise<void> {
   const config = loadDataProvidersConfig();
-  if (config.mongoEnabled) {
-    await updateItemBodyMongo(loca, bodyYaml);
+  if (config.primaryBackend === "postgres") {
+    await updateItemBodyGeneric(getPostgresProvider(), loca, bodyYaml);
+  } else if (config.primaryBackend === "mongo") {
+    await updateItemBodyGeneric(getMongoProvider(), loca, bodyYaml);
   }
   if (config.contentProviderEnabled) {
     await updateDateEntryContentProvider(loca, bodyYaml);

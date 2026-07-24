@@ -1,6 +1,6 @@
 packages:
   - 'packages/*'
-  # content-provider is a group of separate packages (core/entry/files/mongo/
+  # content-provider is a group of separate packages (common/entry/files/mongo/postgre/
   # net-adapter), not one package itself — glob one level deeper for it.
   # Does NOT match packages/net-content-provider (no root package.json
   # there) or packages/cp-gui, packages/cp-plugin (those are packages/* already).
