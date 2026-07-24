@@ -1,8 +1,8 @@
 {
-  "name": "cp-mongo",
+  "name": "cp-postgre",
   "version": "0.0.0",
   "private": true,
-  "description": "MongoDB storage implementation of cp-core's ContentProviderStorage (optional backend, kept for the future). GetItem works; other ops are Stage 2 skeleton. Wired into cp-entry via CP_DEFAULT_BACKEND=mongo.",
+  "description": "PostgreSQL storage implementation of cp-core's ContentProviderStorage. Reads CHAD's cp_items table (Story 80 schema). Optional backend selectable via cp-entry.",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -12,10 +12,11 @@
   },
   "dependencies": {
     "cp-core": "workspace:*",
-    "mongodb": "^6.5.0"
+    "pg": "^8.13.1"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
+    "@types/pg": "^8.11.10",
     "typescript": "^5.3.3"
   }
 }

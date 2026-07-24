@@ -1,7 +1,8 @@
 /**
- * cp-mongo — Stage 2 skeleton. See README.md.
+ * cp-mongo — optional MongoDB backend for Content Provider.
+ * Still selectable via cp-entry / CP_DEFAULT_BACKEND=mongo.
  */
 
-export { mongoStorage } from "./storage.js";
-export * from "./document.js";
+export { mongoStorage } from "./provider/storage.js";
+export * from "./models/document.js";
 export * from "./client.js";

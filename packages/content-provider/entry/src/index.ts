@@ -1,33 +1,41 @@
 /**
  * cp-entry — the ONLY package dashboard/cp-gui/API should ever import for
- * Content Provider data. Never import cp-net-adapter/cp-files/cp-mongo
- * directly from outside this package group.
+ * Content Provider data. Never import storage packages directly from outside.
  *
- * Routes repo GUID -> backend (see repo-storage-config.ts) -> delegates to
- * that backend's ContentProviderStorage implementation -> returns the
- * unified CpItem model. cp-net-adapter and cp-files (read-only, Stage 2)
- * both exist now; cp-mongo still throws "not implemented" until its own
- * stage. REPO_BACKEND_OVERRIDES defaults every repo to net-adapter, so
- * this wiring doesn't change behavior for any existing consumer.
+ * Routes repo GUID -> backend (repo-storage-config) -> ContentProviderStorage
+ * implementation -> unified CpItem. Backend choice is config-only; business
+ * callers always use `entry` / `createStorageForBackend`.
  */
 
 import type { ContentProviderStorage, CpItemType } from "cp-core";
 import { netAdapterStorage } from "cp-net-adapter";
 import { filesStorage } from "cp-files";
-import { getBackendKindForRepo } from "./repo-storage-config.js";
+import { mongoStorage } from "cp-mongo";
+import { postgreStorage } from "cp-postgre";
+import {
+  getBackendKindForRepo,
+  type CpBackendKind,
+} from "./repo-storage-config.js";
 
-function getStorageForRepo(repoGuid: string): ContentProviderStorage {
-  const kind = getBackendKindForRepo(repoGuid);
+/**
+ * Factory: pick a storage implementation by kind. Used by the router and by
+ * tests proving both mongo and postgre implement the same contract.
+ */
+export function createStorageForBackend(kind: CpBackendKind): ContentProviderStorage {
   switch (kind) {
     case "net-adapter":
       return netAdapterStorage;
     case "files":
       return filesStorage;
     case "mongo":
-      throw new Error(
-        "cp-mongo backend is not implemented yet (planned for Stage 2)."
-      );
+      return mongoStorage;
+    case "postgre":
+      return postgreStorage;
   }
+}
+
+function getStorageForRepo(repoGuid: string): ContentProviderStorage {
+  return createStorageForBackend(getBackendKindForRepo(repoGuid));
 }
 
 export const entry: ContentProviderStorage = {
@@ -51,5 +59,5 @@ export const entry: ContentProviderStorage = {
   },
 };
 
-export { getBackendKindForRepo } from "./repo-storage-config.js";
+export { getBackendKindForRepo, getDefaultBackendKind } from "./repo-storage-config.js";
 export type { CpBackendKind } from "./repo-storage-config.js";
