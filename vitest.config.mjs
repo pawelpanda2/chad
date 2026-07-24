@@ -14,6 +14,8 @@ export default defineConfig({
       // Story 80 — Postgres-backed provider/outbox tests.
       "packages/dba/src/data-providers/postgres-cp-provider.test.ts",
       "packages/dba/src/data-outbox-postgres.test.ts",
+      // Story 81 — TEST-restricted-to-test3 repo allowlist guard (unit only).
+      "packages/dba/src/data-providers/repo-allowlist-guard.test.ts",
       "test/**/*.test.{ts,mjs}",
     ],
     exclude: ["**/node_modules/**", "**/dist/**"],
