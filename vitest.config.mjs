@@ -11,6 +11,9 @@ export default defineConfig({
     include: [
       "packages/dba/src/cp-history/**/*.test.ts",
       "packages/dba/src/testing/**/*.test.ts",
+      // Story 80 — Postgres-backed provider/outbox tests.
+      "packages/dba/src/data-providers/postgres-cp-provider.test.ts",
+      "packages/dba/src/data-outbox-postgres.test.ts",
       "test/**/*.test.{ts,mjs}",
     ],
     exclude: ["**/node_modules/**", "**/dist/**"],

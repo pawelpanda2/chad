@@ -66,6 +66,7 @@ function baseConfig(overrides: Partial<DbaDataProvidersConfig> = {}): DbaDataPro
   return {
     mongoEnabled: true,
     contentProviderEnabled: true,
+    postgresEnabled: false,
     primaryBackend: "mongo",
     followerWritesEnabled: true,
     followerWritesAsync: true,

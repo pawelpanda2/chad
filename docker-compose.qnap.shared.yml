@@ -79,6 +79,19 @@
 # service below (see git history for the removed block: image, build
 # context packages/net-content-provider, CP_REPOS_HOST_PATH/_2 volume
 # mounts, appsettings.json bind mount).
+#
+# postgres (Story 80, added 2026-07-23): CHAD's own PostgreSQL datastore
+# (cp_items/cp_history/cp_outbox_*), the eventual replacement primary for
+# chad-mongodb. Added here — the SHARED compose file — rather than to
+# either docker-compose.qnap.test.yml or .prod.yml, per the user's explicit
+# direction mid-Story: this Postgres instance is meant to hold ONE shared
+# set of data for both TEST and PROD, exactly like chad-mongodb today, not
+# a TEST-only sandbox. Neither TEST's nor PROD's dashboard has its
+# DBA_PRIMARY_BACKEND flipped to "postgres" yet — this only adds the
+# container so a future cutover Story can migrate real data into it and
+# flip both environments together (a TEST-only flip would split TEST/PROD
+# into two diverging sources of truth; flipping PROD is a PROD deploy —
+# both out of scope here). See backlog/stories/80/ for the full rationale.
 services:
   # Idempotent — if the keyfile already exists on the persistent volume,
   # leaves it untouched (never rotates a key under a running replica set,
@@ -250,6 +263,39 @@ services:
           "--authenticationDatabase",
           "admin",
         ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  # PostgreSQL 17 — see the file-header comment above for why this lives
+  # here (shared) and not in docker-compose.qnap.{test,prod}.yml. Separate
+  # credentials from both Mongo instances (least privilege), own persistent
+  # bind mount, never touches chad-mongodb/beeper-mongodb's data/volumes.
+  postgres:
+    image: postgres:17
+    container_name: chad-postgres
+    restart: unless-stopped
+    # Host port 12042 published over Tailscale — next free diagnostic slot
+    # past chad-mongodb's 12040 and beeper-mongodb's 12041 (same QNAP port
+    # convention: 12020-29 TEST, 12030-39 PROD, 12040+ shared-service
+    # diagnostic ports), not a random pick.
+    ports:
+      - "12042:5432"
+    environment:
+      POSTGRES_USER: "${POSTGRES_USER:-chad}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
+      POSTGRES_DB: "${POSTGRES_DB:-chad}"
+    volumes:
+      - "${QNAP_CONTAINER_DATA_PATH:-/share/ContainerData}/chad-shared/postgres/db:/var/lib/postgresql/data"
+      - "${QNAP_CONTAINER_DATA_PATH:-/share/ContainerData}/chad-shared/postgres/backups:/backups"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-chad} -d ${POSTGRES_DB:-chad}"]
       interval: 10s
       timeout: 5s
       retries: 10

@@ -20,10 +20,14 @@
     "test:unit": "vitest run packages/dba/src/cp-history/hash.test.ts packages/dba/src/cp-history/diff.test.ts packages/dba/src/testing/test3-guard.test.ts",
     "test:integration:local-mongo": "vitest run packages/dba/src/cp-history/mutate.test.ts && pnpm --filter dba build && cd packages/dba && MONGODB_URI=\"mongodb://localhost:27017/chad_test_story79_ci?directConnection=true\" node dist/cp-history.test.js && MONGODB_URI=\"mongodb://localhost:27017/chad_test_story79_ci?directConnection=true\" node dist/google-sheets/config.test.js",
     "test:cp-history:integrity": "pnpm --filter dba build && node packages/dba/scripts/cp-history-integrity-check.mjs",
+    "postgres:up": "docker compose -f docker-compose.local.yml up -d postgres",
+    "postgres:migrate": "pnpm --filter dba build && node packages/dba/scripts/apply-postgres-migrations.mjs",
+    "test:integration:local-postgres": "pnpm --filter dba build && vitest run packages/dba/src/cp-history/mutate-postgres.test.ts packages/dba/src/data-providers/postgres-cp-provider.test.ts packages/dba/src/data-outbox-postgres.test.ts",
+    "test:cp-postgres-integrity": "pnpm --filter dba build && node packages/dba/scripts/cp-postgres-integrity-check.mjs",
     "test:provision-test3": "pnpm --filter dba build && node test/support/provision-test3.mjs",
     "test:integration:daily-dates": "pnpm test:provision-test3 && vitest run test/integration/qnap-test3-daily-dates.test.mjs",
     "test:e2e:daily-dates": "playwright test --config=test/e2e/playwright.config.mjs",
-    "test:regression:daily-dates": "pnpm test:unit && pnpm test:integration:local-mongo && pnpm test:integration:daily-dates && pnpm test:e2e:daily-dates"
+    "test:regression:daily-dates": "pnpm test:unit && pnpm test:integration:local-mongo && pnpm test:integration:local-postgres && pnpm test:integration:daily-dates && pnpm test:e2e:daily-dates"
   },
   "dependencies": {
     "mongodb": "^7.1.1"
