@@ -64,21 +64,18 @@ services:
       # documentation/beeper/architecture.md). Own credentials, not
       # MONGO_ROOT_USERNAME/PASSWORD — least privilege.
       - BEEPER_MONGODB_URI=mongodb://${BEEPER_MONGO_ROOT_USERNAME}:${BEEPER_MONGO_ROOT_PASSWORD}@beeper-mongodb:27017?authSource=admin
-      # Story 81 — QNAP TEST cutover to PostgreSQL. TEMPORARILY ROLLED BACK
-      # to mongo primary: leads.ts's business functions (saveDateEntry etc.)
-      # turned out to only branch on mongoEnabled/contentProviderEnabled,
-      # with no postgresEnabled case — real Daily/Dates read/write would
-      # silently no-op on Postgres until that's fixed (see
-      # backlog/stories/81/05_tasks_and_checklist.md, Task 8). Re-enable
-      # once leads.ts is fixed and re-verified. Deliberately HARDCODED
-      # literal values, NOT ${DBA_PRIMARY_BACKEND:-mongo} reading the
-      # shared .env.qnap — docker-compose.qnap.prod.yml reads that exact
-      # same shared env var name; a plain default-value read here would
-      # silently apply to PROD too on its next restart/redeploy. See
+      # Story 81 — QNAP TEST cutover to PostgreSQL. Re-applied after fixing
+      # leads.ts (it had no postgresEnabled/primaryBackend==="postgres"
+      # branch at all — see backlog/stories/81/05_tasks_and_checklist.md,
+      # Task 8, for the full incident/fix/re-verification). Deliberately
+      # HARDCODED literal values, NOT ${DBA_PRIMARY_BACKEND:-mongo} reading
+      # the shared .env.qnap — docker-compose.qnap.prod.yml reads that
+      # exact same shared env var name; a plain default-value read here
+      # would silently apply to PROD too on its next restart/redeploy. See
       # backlog/stories/81/02_plan.md.
-      - DBA_MONGO_ENABLED=true
+      - DBA_MONGO_ENABLED=false
       - DBA_POSTGRES_ENABLED=true
-      - DBA_PRIMARY_BACKEND=mongo
+      - DBA_PRIMARY_BACKEND=postgres
       - DBA_CONTENT_PROVIDER_ENABLED=${DBA_CONTENT_PROVIDER_ENABLED:-false}
       # Story 81 — data-sync outbox worker, wired into this process
       # (data-outbox-bootstrap.ts) for the first time. Stays inert here
