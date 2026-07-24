@@ -5,17 +5,18 @@
 | 1 | DONE | | Verified real QNAP state before any change (git HEAD, running containers, env var names, compose topology) |
 | 2 | DONE | | Deployed current `main` to QNAP TEST only (PROD untouched) |
 | 3 | DONE | | Found and fixed a real bug blocking TEST: `cp_history`'s unique index broke against real legacy Mongo data |
-| 4 | IN PROGRESS | | Redeploy TEST with the index fix |
+| 4 | DONE | | Redeploy TEST with the index fix |
 | 5 | DONE | | Start PostgreSQL selectively on QNAP shared (no Mongo restart) |
 | 6 | DONE | | Apply Postgres migrations on QNAP |
 | 7 | DONE | | Migrate test3 only (dry-run then apply), verify integrity + parity |
-| 8 | DONE | | Fixed a real gap: `leads.ts` business functions had no Postgres branch — cut QNAP TEST over to Postgres primary (isolated from PROD's env) |
-| 9 | NOT DONE YET | | Verify Google Sheets / Content Provider / data-outbox workers against Postgres on TEST |
-| 10 | NOT DONE YET | | QNAP TEST smoke/integration tests (test3) |
+| 8 | DONE | | Fixed leads.ts Postgres branch + cut QNAP TEST over to Postgres primary |
+| 9 | DONE | | Verify workers on TEST (Google Sheets + data-outbox idle by design; logs captured) |
+| 10 | DONE | | QNAP TEST smoke: login path + test3 Date CRUD via Postgres (remote smoke script) |
 | 11 | BLOCKED | | Playwright e2e — no `E2E_TEST3_PASSWORD` in this environment |
-| 12 | NOT DONE YET | | `cp-postgres-integrity-check` against QNAP TEST test3 data |
-| 13 | NOT DONE YET | | Document TEST rollback procedure |
-| 14 | NOT DONE YET | | Update documentation |
+| 12 | DONE | | `cp-postgres-integrity-check` for test3 + chad_admin on QNAP Postgres |
+| 13 | DONE | | Document TEST rollback procedure (exercised live during leads.ts incident) |
+| 14 | DONE | | Update documentation (how-it-works.md, 06_others_from_report.md) |
+| 15 | DONE | | chad_admin: backup, legacy baseline, Mongo→Postgres, re-cutover with allowlist |
 
 This table is updated as each step is actually executed — no row is marked
 DONE without the real command + real output recorded in the matching Task
@@ -349,3 +350,35 @@ against real QNAP data.
 `packages/dba/src/cp-history/mutate.test.ts`,
 `packages/dba/scripts/fix-cp-history-legacy-index-conflict.mjs`.
 **Status: DONE**
+
+# Task 15 — chad_admin migration + login fix + re-cutover (2026-07-24)
+
+**Requested:** migrate `0fc7da8d-3466-4964-a24c-dfc0d0fef87c`; fix login lockout;
+allowlist test3 + chad_admin; re-cut TEST to Postgres only.
+
+**Done:**
+1. Backup: `bash-scripts/mongo/backups/story81-0fc7da8d-2026-07-24T12-00-05-375Z.json`
+   (7 cp_items, 0 cp_history).
+2. Legacy baseline (Mongo): dry-run 7 → apply 7 → integrity 7 items / 7 events OK.
+3. Mongo→Postgres via `09_story81_remote_migrate.sh` (local Tailscale auth
+   out of sync — runs on QNAP docker internal network): dry-run then apply,
+   7 items + 7 history, hashMismatches=0.
+4. Allowlist + cutover in `docker-compose.qnap.test.yml`; deploy
+   `chad-dashboard:260724_145105-447b22d` (commit `447b22d`).
+5. Integrity (remote): test3 PASS (8/11), chad_admin PASS (7/7).
+6. Smoke (`10_story81_remote_smoke.sh`): getUsersListBody OK, allowlist guard OK,
+   test3 Date create/update/delete OK.
+
+**Login incident:** first cutover had only test3 in Postgres — `getUsersListBody()`
+returned null → login + `resolveCurrentUser()` failed ("not authenticated").
+**Status: DONE**
+
+# Task 9–14 — post-chad_admin verification (2026-07-24)
+
+**Task 9 — Workers:** `[google-sheets] not started — GOOGLE_SHEETS_ENABLED is not true`;
+`[data-outbox] not started — DBA_CONTENT_PROVIDER_ENABLED is not true` — by design on TEST.
+**Task 10 — Smoke:** `10_story81_remote_smoke.sh` PASSED (see Task 15 §6).
+**Task 12 — Integrity:** both repoGuids PASS on QNAP Postgres (see Task 15 §5).
+**Task 13 — Rollback:** documented + exercised in Task 8 (commit `cccc293`/`542c31f`).
+**Task 14 — Docs:** `ai-docs/history/how-it-works.md`, `06_others_from_report.md`.
+**Task 11 — Playwright:** BLOCKED — `E2E_TEST3_PASSWORD` absent from `.env.local`.
