@@ -1,6 +1,6 @@
 # Story 85 — Plan
 
-Status: **IN PROGRESS**
+Status: **DONE — implemented locally (image `260725_005647`). No TEST/PROD deploy in this Story.**
 
 ## Goal
 
