@@ -93,7 +93,7 @@ importers:
     dependencies:
       cp-core:
         specifier: workspace:*
-        version: link:../core
+        version: link:../common
       cp-entry:
         specifier: workspace:*
         version: link:../entry
@@ -108,7 +108,7 @@ importers:
         specifier: ^5.3.3
         version: 5.8.3
 
-  packages/content-provider/core:
+  packages/content-provider/common:
     devDependencies:
       '@types/node':
         specifier: ^20.11.0
@@ -121,13 +121,19 @@ importers:
     dependencies:
       cp-core:
         specifier: workspace:*
-        version: link:../core
+        version: link:../common
       cp-files:
         specifier: workspace:*
         version: link:../files
+      cp-mongo:
+        specifier: workspace:*
+        version: link:../mongo
       cp-net-adapter:
         specifier: workspace:*
         version: link:../net-adapter
+      cp-postgre:
+        specifier: workspace:*
+        version: link:../postgre
     devDependencies:
       '@types/node':
         specifier: ^20.11.0
@@ -140,7 +146,7 @@ importers:
     dependencies:
       cp-core:
         specifier: workspace:*
-        version: link:../core
+        version: link:../common
       yaml:
         specifier: ^2.4.0
         version: 2.9.0
@@ -156,7 +162,7 @@ importers:
     dependencies:
       cp-core:
         specifier: workspace:*
-        version: link:../core
+        version: link:../common
       mongodb:
         specifier: ^6.5.0
         version: 6.21.0
@@ -172,7 +178,7 @@ importers:
     dependencies:
       cp-core:
         specifier: workspace:*
-        version: link:../core
+        version: link:../common
       dotenv:
         specifier: ^16.4.5
         version: 16.6.1
@@ -184,11 +190,30 @@ importers:
         specifier: ^5.3.3
         version: 5.8.3
 
+  packages/content-provider/postgre:
+    dependencies:
+      cp-core:
+        specifier: workspace:*
+        version: link:../common
+      pg:
+        specifier: ^8.13.1
+        version: 8.22.0
+    devDependencies:
+      '@types/node':
+        specifier: ^20.11.0
+        version: 20.19.43
+      '@types/pg':
+        specifier: ^8.11.10
+        version: 8.20.0
+      typescript:
+        specifier: ^5.3.3
+        version: 5.8.3
+
   packages/cp-gui:
     dependencies:
       cp-core:
         specifier: workspace:*
-        version: link:../content-provider/core
+        version: link:../content-provider/common
       react:
         specifier: ^19.0.0
         version: 19.2.7
@@ -5588,7 +5613,7 @@ snapshots:
       '@typescript-eslint/parser': 8.63.0(eslint@9.39.4(jiti@2.7.0))(typescript@5.8.3)
       eslint: 9.39.4(jiti@2.7.0)
       eslint-import-resolver-node: 0.3.10
-      eslint-import-resolver-typescript: 3.10.1(eslint-plugin-import@2.32.0)(eslint@9.39.4(jiti@2.7.0))
+      eslint-import-resolver-typescript: 3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.63.0(eslint@9.39.4(jiti@2.7.0))(typescript@5.8.3))(eslint@9.39.4(jiti@2.7.0)))(eslint@9.39.4(jiti@2.7.0))
       eslint-plugin-import: 2.32.0(@typescript-eslint/parser@8.63.0(eslint@9.39.4(jiti@2.7.0))(typescript@5.8.3))(eslint-import-resolver-typescript@3.10.1)(eslint@9.39.4(jiti@2.7.0))
       eslint-plugin-jsx-a11y: 6.10.2(eslint@9.39.4(jiti@2.7.0))
       eslint-plugin-react: 7.37.5(eslint@9.39.4(jiti@2.7.0))
@@ -5608,7 +5633,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0)(eslint@9.39.4(jiti@2.7.0)):
+  eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.63.0(eslint@9.39.4(jiti@2.7.0))(typescript@5.8.3))(eslint@9.39.4(jiti@2.7.0)))(eslint@9.39.4(jiti@2.7.0)):
     dependencies:
       '@nolyfill/is-core-module': 1.0.39
       debug: 4.4.3
@@ -5623,14 +5648,14 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  eslint-module-utils@2.14.0(@typescript-eslint/parser@8.63.0(eslint@9.39.4(jiti@2.7.0))(typescript@5.8.3))(eslint-import-resolver-node@0.3.10)(eslint-import-resolver-typescript@3.10.1)(eslint@9.39.4(jiti@2.7.0)):
+  eslint-module-utils@2.14.0(@typescript-eslint/parser@8.63.0(eslint@9.39.4(jiti@2.7.0))(typescript@5.8.3))(eslint-import-resolver-node@0.3.10)(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.63.0(eslint@9.39.4(jiti@2.7.0))(typescript@5.8.3))(eslint@9.39.4(jiti@2.7.0)))(eslint@9.39.4(jiti@2.7.0)))(eslint@9.39.4(jiti@2.7.0)):
     dependencies:
       debug: 3.2.7
     optionalDependencies:
       '@typescript-eslint/parser': 8.63.0(eslint@9.39.4(jiti@2.7.0))(typescript@5.8.3)
       eslint: 9.39.4(jiti@2.7.0)
       eslint-import-resolver-node: 0.3.10
-      eslint-import-resolver-typescript: 3.10.1(eslint-plugin-import@2.32.0)(eslint@9.39.4(jiti@2.7.0))
+      eslint-import-resolver-typescript: 3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.63.0(eslint@9.39.4(jiti@2.7.0))(typescript@5.8.3))(eslint@9.39.4(jiti@2.7.0)))(eslint@9.39.4(jiti@2.7.0))
     transitivePeerDependencies:
       - supports-color
 
@@ -5645,7 +5670,7 @@ snapshots:
       doctrine: 2.1.0
       eslint: 9.39.4(jiti@2.7.0)
       eslint-import-resolver-node: 0.3.10
-      eslint-module-utils: 2.14.0(@typescript-eslint/parser@8.63.0(eslint@9.39.4(jiti@2.7.0))(typescript@5.8.3))(eslint-import-resolver-node@0.3.10)(eslint-import-resolver-typescript@3.10.1)(eslint@9.39.4(jiti@2.7.0))
+      eslint-module-utils: 2.14.0(@typescript-eslint/parser@8.63.0(eslint@9.39.4(jiti@2.7.0))(typescript@5.8.3))(eslint-import-resolver-node@0.3.10)(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.63.0(eslint@9.39.4(jiti@2.7.0))(typescript@5.8.3))(eslint@9.39.4(jiti@2.7.0)))(eslint@9.39.4(jiti@2.7.0)))(eslint@9.39.4(jiti@2.7.0))
       hasown: 2.0.4
       is-core-module: 2.16.2
       is-glob: 4.0.3

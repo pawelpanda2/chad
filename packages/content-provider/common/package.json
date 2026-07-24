@@ -2,7 +2,7 @@
   "name": "cp-core",
   "version": "0.0.0",
   "private": true,
-  "description": "Content Provider compatibility models/interfaces/method names only — no storage selection logic. Consumed by cp-entry, cp-files, cp-mongo, cp-net-adapter.",
+  "description": "Shared Content Provider contracts (lives in packages/content-provider/common/). Models/interfaces/method names only — no storage selection. Consumed by cp-entry, cp-files, cp-mongo, cp-postgre, cp-net-adapter.",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

@@ -1,6 +1,6 @@
 /**
  * Compatible method names and the unified item model — the contract every
- * storage implementation (cp-files, cp-mongo, cp-net-adapter) must satisfy,
+ * storage implementation (cp-files, cp-mongo, cp-postgre, cp-net-adapter) must satisfy,
  * and the only thing cp-core knows about. cp-core does not select an
  * implementation — that's cp-entry's job.
  *

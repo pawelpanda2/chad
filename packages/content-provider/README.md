@@ -1,23 +1,37 @@
-# packages/content-provider — new TypeScript/Node Content Provider (Stage 1)
+# packages/content-provider — TypeScript/Node Content Provider
 
-Not one package — a group of separate pnpm packages (see `pnpm-workspace.yaml`: `packages/content-provider/*`). Gradual, staged replacement for [`packages/net-content-provider`](../net-content-provider) (currently running .NET/Blazor implementation, stays authoritative until fully replaced).
+Group of separate pnpm packages (`pnpm-workspace.yaml`: `packages/content-provider/*`). Gradual replacement for [`packages/net-content-provider`](../net-content-provider).
 
-| Package | Role | Stage |
-|---|---|---|
-| `cp-core` | Models, interfaces, compatible method names (`GetItem`, `GetByNames`, `GetManyByName`, `FindRecursively`, `Put`, `PostParentItem`). Never selects a storage implementation. | 1 |
-| `cp-entry` | **The only package dashboard/cp-gui/API should ever import.** Routes repo GUID → storage backend → unified `CpItem`. | 1 |
-| `cp-net-adapter` | Implements `cp-core`'s contract by calling the real, running .NET Content Provider over HTTP `/invoke`. Read-only in Stage 1. | 1 |
-| `cp-files` | Filesystem/Dropbox storage implementation. | 2 |
-| `cp-mongo` | MongoDB storage implementation. | 2 |
+## Layout (backends separated)
 
-```txt
-cp-entry
-   │
-   ├─► cp-net-adapter  (Stage 1, only one that exists)
-   ├─► cp-files         (Stage 2)
-   └─► cp-mongo          (Stage 2)
+```text
+packages/content-provider/
+├── common/          # cp-core — shared interfaces, contracts, types (DB-independent)
+├── entry/           # cp-entry — router/factory; only package callers should import
+├── mongo/           # cp-mongo — Mongo-specific provider / repositories / models
+├── postgre/         # cp-postgre — PostgreSQL-specific (folder name exactly "postgre")
+├── files/           # cp-files — filesystem/Dropbox
+├── net-adapter/     # cp-net-adapter — live .NET /invoke
+└── api/             # HTTP façade over cp-entry
 ```
 
-Write operations (`Put`, `PostParentItem`) are Stage 3 — implemented in `cp-net-adapter` already (the `/invoke` shape is simple and already documented) but not exercised or relied on until then.
+Mongo is **not** removed — it remains an optional backend. PostgreSQL is selected via config only; business code always talks to `cp-entry`.
 
-Compatibility requirement: for the same item, `cp-net-adapter` and (later) `cp-files` must return identical `Body`/`Config`/`Address`/legacy-`Settings`/`id`/`name`/`type`/`created` — an adapter isn't considered compatible until that's verified.
+| Package | Folder | Role |
+|---|---|---|
+| `cp-core` | `common/` | Models + `ContentProviderStorage` contract. Never selects a backend. |
+| `cp-entry` | `entry/` | Router/factory: `CP_DEFAULT_BACKEND` / per-repo overrides → storage. |
+| `cp-mongo` | `mongo/` | MongoDB backend (optional, kept for the future). |
+| `cp-postgre` | `postgre/` | PostgreSQL backend (`cp_items`). |
+| `cp-files` | `files/` | Filesystem storage. |
+| `cp-net-adapter` | `net-adapter/` | .NET HTTP adapter (default Stage 1). |
+
+## Backend selection (config only)
+
+```bash
+CP_DEFAULT_BACKEND=postgre          # or mongo | files | net-adapter
+CP_REPO_BACKEND_OVERRIDES=guid:mongo,other:postgre
+# or JSON: CP_REPO_BACKEND_OVERRIDES={"guid":"mongo"}
+```
+
+Callers use `entry` from `cp-entry` — switching backend does not change business code.

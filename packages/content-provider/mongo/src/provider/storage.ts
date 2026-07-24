@@ -1,17 +1,12 @@
 /**
- * cp-mongo — Stage 2 SKELETON ONLY. `GetItem` is real (a plain findOne
- * keyed by repoId+loca, proving the document model in document.ts is
- * actually queryable) — everything else deliberately throws, since
- * GetByNames/GetManyByName/FindRecursively need index/design decisions
- * (e.g. does "search by name" need a dedicated index? does
- * FindRecursively need a text index on `body`?) not yet made. Not wired
- * into cp-entry's routing yet — see packages/content-provider/entry.
+ * Mongo ContentProviderStorage — implements the shared cp-core contract.
+ * GetItem is real; remaining methods throw until index/design decisions land.
  */
 
 import type { ContentProviderStorage, CpItem, CpConfig, CpItemType } from "cp-core";
 import { ContentProviderError } from "cp-core";
-import { getDb, getCollectionName } from "./client.js";
-import type { CpMongoDocument } from "./document.js";
+import type { CpMongoDocument } from "../models/document.js";
+import { findByRepoAndLoca } from "../repositories/items-repository.js";
 
 function toCpItem(doc: CpMongoDocument): CpItem {
   const config: CpConfig = {
@@ -31,15 +26,13 @@ function toCpItem(doc: CpMongoDocument): CpItem {
 
 function notImplemented(operation: string): never {
   throw new ContentProviderError(
-    `cp-mongo.${operation} is not implemented — this package is a Stage 2 skeleton (document model + connection helper only, see README.md).`
+    `cp-mongo.${operation} is not implemented — this package is a Stage 2 skeleton (document model + GetItem only, see README.md).`
   );
 }
 
 export const mongoStorage: ContentProviderStorage = {
   async GetItem(repoGuid, loca) {
-    const db = await getDb();
-    const collection = db.collection<CpMongoDocument>(getCollectionName());
-    const doc = await collection.findOne({ repoId: repoGuid, loca: loca ?? "" });
+    const doc = await findByRepoAndLoca(repoGuid, loca);
     if (!doc) {
       throw new ContentProviderError(`No cp-mongo document for repoId="${repoGuid}" loca="${loca}"`);
     }
