@@ -27,8 +27,8 @@ test.describe("QNAP TEST — test3 History table + details route", () => {
 
     // Columns, in order.
     await expect(table.getByRole("columnheader").nth(0)).toHaveText("Date");
-    await expect(table.getByRole("columnheader").nth(1)).toHaveText("Operation");
-    await expect(table.getByRole("columnheader").nth(2)).toHaveText("Item");
+    await expect(table.getByRole("columnheader").nth(1)).toHaveText("Op");
+    await expect(table.getByRole("columnheader").nth(2)).toHaveText("loca");
 
     // No pagination remnants anywhere on the page.
     await expect(page.getByRole("button", { name: "Previous" })).toHaveCount(0);
@@ -58,7 +58,7 @@ test.describe("QNAP TEST — test3 History table + details route", () => {
     const insertCount = await insertRows.count();
     if (insertCount > 0) {
       for (let i = 0; i < insertCount; i++) {
-        await expect(insertRows.nth(i)).toContainText(/Created/);
+        await expect(insertRows.nth(i).locator("td").nth(1)).toHaveText("C");
       }
     }
 
@@ -68,14 +68,14 @@ test.describe("QNAP TEST — test3 History table + details route", () => {
     const deleteCount = await deleteRows.count();
     if (deleteCount > 0) {
       for (let i = 0; i < deleteCount; i++) {
-        await expect(deleteRows.nth(i)).toContainText(/Deleted/);
+        await expect(deleteRows.nth(i).locator("td").nth(1)).toHaveText("D");
       }
     }
 
     await filter.selectOption("");
   });
 
-  test("Item column shows the config name, not the raw address, and clicking a row opens a separate details route with Back returning to the table", async ({ page }) => {
+  test("loca column shows path (no repoGuid) + name on two lines, and clicking a row opens details", async ({ page }) => {
     await page.goto("/dashboard/history?view=items");
     const table = page.getByTestId("history-table");
     await expect(table).toBeVisible();
@@ -83,11 +83,13 @@ test.describe("QNAP TEST — test3 History table + details route", () => {
     const firstRow = page.getByTestId("history-row").first();
     await expect(firstRow).toBeVisible();
 
-    const itemCellText = (await firstRow.locator("td").nth(2).textContent())?.trim() ?? "";
-    expect(itemCellText.length).toBeGreaterThan(0);
-    // The full repoGuid/address string is long and slash-separated —
-    // the Item column must show the short natural name, not that.
-    expect(itemCellText).not.toContain("/");
+    const locaCell = firstRow.locator("td").nth(2);
+    const locaCellText = (await locaCell.textContent())?.trim() ?? "";
+    expect(locaCellText.length).toBeGreaterThan(0);
+    // Must not show the full repoGuid (UUID) in the loca path line.
+    expect(locaCellText).not.toMatch(
+      /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
+    );
 
     await firstRow.click();
     await expect(page).toHaveURL(/\/dashboard\/history\/entry\/.+/);
@@ -106,7 +108,7 @@ test.describe("QNAP TEST — test3 History table + details route", () => {
     await expect(page.getByTestId("history-table")).toBeVisible();
   });
 
-  test("mobile viewport: the table's own container scrolls horizontally, the page itself never does", async ({ page }) => {
+  test("mobile viewport: the page body never scrolls horizontally (frame owns overflow)", async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 700 });
     await page.goto("/dashboard/history?view=items");
     await expect(page.getByTestId("history-table")).toBeVisible();
