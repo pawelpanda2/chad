@@ -16,6 +16,7 @@ const ENV_KEYS = [
   "GOOGLE_SHEETS_SPREADSHEET_MAP",
   "GOOGLE_SHEETS_DAILY_TRACKER_SHEET_NAME",
   "GOOGLE_SHEETS_DATE_ENTRIES_SHEET_NAME",
+  "GOOGLE_SHEETS_LEADS_SHEET_NAME",
   "GOOGLE_SERVICE_ACCOUNT_EMAIL",
   "GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY",
 ] as const;
@@ -31,6 +32,7 @@ function setFullValidEnv() {
   process.env.GOOGLE_SHEETS_SPREADSHEET_MAP = '{"pawel_f":"sheet-pawel-123","kamil_s":"sheet-kamil-456"}';
   process.env.GOOGLE_SHEETS_DAILY_TRACKER_SHEET_NAME = "daily-tracker-local";
   process.env.GOOGLE_SHEETS_DATE_ENTRIES_SHEET_NAME = "dates-local";
+  process.env.GOOGLE_SHEETS_LEADS_SHEET_NAME = "leads-local";
   process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL = "svc@example.iam.gserviceaccount.com";
   process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY = FAKE_PRIVATE_KEY;
 }
@@ -83,6 +85,7 @@ function runTests() {
     assertEquals(config.spreadsheetMap, { pawel_f: "sheet-pawel-123", kamil_s: "sheet-kamil-456" });
     assertEquals(config.dailyTrackerSheetName, "daily-tracker-local");
     assertEquals(config.dateEntriesSheetName, "dates-local");
+    assertEquals(config.leadsSheetName, "leads-local");
     assertEquals(config.serviceAccountEmail, "svc@example.iam.gserviceaccount.com");
     // \n sequences un-escaped to real newlines:
     assert(config.serviceAccountPrivateKey.includes("\n"), "private key should contain real newlines");
@@ -174,6 +177,19 @@ function runTests() {
     } catch (e) {
       threw = true;
       assert(String(e).includes("GOOGLE_SHEETS_DATE_ENTRIES_SHEET_NAME"), "error should name the missing var");
+    }
+    assert(threw, "should have thrown");
+  });
+
+  test("enabled but missing GOOGLE_SHEETS_LEADS_SHEET_NAME throws naming exactly that var", () => {
+    setFullValidEnv();
+    delete process.env.GOOGLE_SHEETS_LEADS_SHEET_NAME;
+    let threw = false;
+    try {
+      loadGoogleSheetsConfig();
+    } catch (e) {
+      threw = true;
+      assert(String(e).includes("GOOGLE_SHEETS_LEADS_SHEET_NAME"), "error should name the missing var");
     }
     assert(threw, "should have thrown");
   });

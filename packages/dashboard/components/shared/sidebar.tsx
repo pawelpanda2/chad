@@ -12,41 +12,55 @@ import {
 	ClipboardList,
 	ChevronLeft,
 	ChevronRight,
-	Calendar,
 	MessageSquare,
 	FolderKanban,
 	LogOut,
-	ListTodo,
-	FileText,
 	Table,
-	Contact,
 	History,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-const sidebarGroups = [
+/** Expanded rail width — must match `layout.tsx` panel + menu-handle offset. */
+export const SIDEBAR_EXPANDED_WIDTH_CLASS = "w-40";
+export const SIDEBAR_EXPANDED_LEFT_CLASS = "left-40";
+
+type SidebarItem = {
+	title: string;
+	href: string;
+	icon: typeof LayoutDashboard;
+	badge: string | null;
+	activePrefixes?: string[];
+};
+
+const sidebarGroups: Array<{ title: string; items: SidebarItem[] }> = [
 	{
-		title: "ACTIONS",
+		title: "PAGES",
 		items: [
 			{ title: "Forms", href: "/dashboard/forms", icon: ClipboardList, badge: null },
 			{ title: "Views", href: "/dashboard/views", icon: Table, badge: null },
-		],
-	},
-	{
-		title: "MESSAGES / LEADS",
-		items: [
-			{ title: "Statuses", href: "/dashboard/statuses", icon: FileText, badge: null },
-			{ title: "Msg Todo", href: "/dashboard/todo-msg", icon: ListTodo, badge: null },
-			{ title: "Msg Planner", href: "/dashboard/msg-planner", icon: Calendar, badge: null },
-			{ title: "Beeper", href: "/dashboard/beeper", icon: Contact, badge: null },
-			{ title: "Folders", href: "/dashboard/folders", icon: FolderKanban, badge: null },
-			{ title: "Messages", href: "/dashboard/messages", icon: MessageSquare, badge: null },
+			{
+				title: "Msg Auto",
+				href: "/dashboard/msg-automation",
+				icon: MessageSquare,
+				badge: null,
+				// Child pages keep their own routes; highlight this hub while on any of them.
+				activePrefixes: [
+					"/dashboard/msg-automation",
+					"/dashboard/statuses",
+					"/dashboard/todo-msg",
+					"/dashboard/msg-planner",
+					"/dashboard/beeper",
+					"/dashboard/messages",
+					"/dashboard/leads/message-creator",
+				],
+			},
 		],
 	},
 	{
 		title: "Others",
 		items: [
 			{ title: "History", href: "/dashboard/history", icon: History, badge: null },
+			{ title: "Folders", href: "/dashboard/folders", icon: FolderKanban, badge: null },
 			{ title: "Settings", href: "/dashboard/settings", icon: Settings, badge: null },
 		],
 	},
@@ -114,17 +128,17 @@ export function Sidebar({ onMobileClose, mobile = false }: SidebarProps) {
 		<div
 			className={cn(
 				"flex h-full flex-col border-r bg-card shadow-sm transition-all duration-300",
-				mobile ? "w-full" : collapsed ? "w-16" : "w-72",
+				mobile ? "w-full" : collapsed ? "w-16" : SIDEBAR_EXPANDED_WIDTH_CLASS,
 			)}
 		>
 			{/* Logo */}
-			<div className="flex h-16 items-center border-b px-6 justify-between">
+			<div className="flex h-16 items-center border-b px-3 justify-between gap-1">
 				{!collapsed && (
-					<Link href="/dashboard" className="flex items-center gap-3 group">
-						<div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
+					<Link href="/dashboard" className="flex min-w-0 flex-1 items-center gap-2 group">
+						<div className="w-8 h-8 shrink-0 rounded-lg bg-primary flex items-center justify-center">
 							<LayoutDashboard className="w-4 h-4 text-primary-foreground" />
 						</div>
-						<span className="text-xl font-bold group-hover:text-primary transition-colors">
+						<span className="min-w-0 flex-1 truncate text-xl font-bold group-hover:text-primary transition-colors">
 							{brandLabel}
 						</span>
 					</Link>
@@ -138,7 +152,7 @@ export function Sidebar({ onMobileClose, mobile = false }: SidebarProps) {
 					<Button
 						variant="ghost"
 						size="icon"
-						className="h-8 w-8 hover:bg-muted"
+						className="h-8 w-8 shrink-0 hover:bg-muted"
 						onClick={() => setIsCollapsed(!isCollapsed)}
 					>
 						{isCollapsed ? (
@@ -151,7 +165,7 @@ export function Sidebar({ onMobileClose, mobile = false }: SidebarProps) {
 			</div>
 
 			{/* Navigation Groups */}
-			<nav className="flex-1 overflow-y-auto p-6">
+			<nav className="flex-1 overflow-y-auto p-3">
 				<div className="space-y-8">
 				{sidebarGroups.map((group) => (
 					<div key={group.title} className="space-y-3">
@@ -165,7 +179,11 @@ export function Sidebar({ onMobileClose, mobile = false }: SidebarProps) {
 						{/* Group Items */}
 						<div className="space-y-2">
 							{group.items.map((item) => {
-								const isActive = pathname === item.href;
+								const isActive = item.activePrefixes
+									? item.activePrefixes.some(
+											(prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+										)
+									: pathname === item.href || pathname.startsWith(`${item.href}/`);
 								const Icon = item.icon;
 
 								return (
@@ -174,7 +192,7 @@ export function Sidebar({ onMobileClose, mobile = false }: SidebarProps) {
 										href={item.href}
 										onClick={handleLinkClick}
 										className={cn(
-											"group flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition-all duration-200 hover:bg-muted",
+											"group flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition-all duration-200 hover:bg-muted",
 											isActive
 												? "bg-primary text-primary-foreground shadow-md hover:bg-primary/90"
 												: "text-muted-foreground hover:text-foreground",
@@ -184,13 +202,13 @@ export function Sidebar({ onMobileClose, mobile = false }: SidebarProps) {
 									>
 										<Icon
 											className={cn(
-												"transition-all duration-200",
+												"shrink-0 transition-all duration-200",
 												collapsed ? "h-5 w-5" : "h-4 w-4",
 												isActive && !collapsed && "text-primary-foreground",
 											)}
 										/>
 										{!collapsed && (
-											<span className="group-hover:translate-x-0.5 transition-transform duration-200">
+											<span className="min-w-0 flex-1 truncate group-hover:translate-x-0.5 transition-transform duration-200">
 												{item.title}
 											</span>
 										)}
@@ -215,11 +233,11 @@ export function Sidebar({ onMobileClose, mobile = false }: SidebarProps) {
 					>
 						<LogOut
 							className={cn(
-								"transition-all duration-200",
+								"shrink-0 transition-all duration-200",
 								collapsed ? "h-5 w-5" : "h-4 w-4",
 							)}
 						/>
-						{!collapsed && <span>Wyloguj</span>}
+						{!collapsed && <span className="min-w-0 flex-1 truncate text-left">Wyloguj</span>}
 					</button>
 				</div>
 			</nav>

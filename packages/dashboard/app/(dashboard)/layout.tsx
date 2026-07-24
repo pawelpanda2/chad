@@ -1,7 +1,7 @@
 "use client";
 import { Suspense, useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { Sidebar } from "@/components/shared/sidebar";
+import { Sidebar, SIDEBAR_EXPANDED_WIDTH_CLASS, SIDEBAR_EXPANDED_LEFT_CLASS } from "@/components/shared/sidebar";
 import { Topbar } from "@/components/shared/topbar";
 import { DashboardHistoryProvider } from "@/components/shared/dashboard-history-provider";
 import { cn } from "@/lib/utils";
@@ -43,14 +43,14 @@ export default function DashboardLayout({
 		<div className="relative flex h-[100dvh] overflow-hidden bg-background">
 			{/* Sidebar — inline panel that PUSHES the content aside. No overlay,
 			    no dimming; the main content simply shifts to make room and stays
-			    fully interactive. */}
+			    fully interactive. Width comes from SIDEBAR_EXPANDED_* (sidebar.tsx). */}
 			<div
 				className={cn(
 					"h-full shrink-0 overflow-hidden transition-[width] duration-300 ease-in-out",
-					menuOpen ? "w-72" : "w-0",
+					menuOpen ? SIDEBAR_EXPANDED_WIDTH_CLASS : "w-0",
 				)}
 			>
-				<div className="h-full w-72">
+				<div className={cn("h-full", SIDEBAR_EXPANDED_WIDTH_CLASS)}>
 					<Sidebar mobile onMobileClose={handleNavigate} />
 				</div>
 			</div>
@@ -98,7 +98,7 @@ export default function DashboardLayout({
 				aria-label={menuOpen ? "Zamknij menu" : "Otwórz menu"}
 				className={cn(
 					"fixed top-1 z-40 flex h-9 w-12 items-center justify-center rounded-md border bg-card/95 text-muted-foreground shadow-md backdrop-blur transition-[left] duration-300 ease-in-out hover:text-foreground",
-					menuOpen ? "left-72" : "left-1",
+					menuOpen ? SIDEBAR_EXPANDED_LEFT_CLASS : "left-1",
 				)}
 			>
 				{menuOpen ? (

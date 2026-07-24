@@ -102,6 +102,14 @@ export async function queueDateEntrySheetSyncIfEnabled(
   return queueSheetSyncIfEnabled("date-entry", input, onEnqueueError);
 }
 
+/** Enqueues a Google Sheets sync job for one Lead write, if the integration is enabled. */
+export async function queueLeadSheetSyncIfEnabled(
+  input: QueueSheetSyncInput,
+  onEnqueueError: (error: unknown) => void = defaultOnEnqueueError
+): Promise<void> {
+  return queueSheetSyncIfEnabled("lead", input, onEnqueueError);
+}
+
 function defaultOnEnqueueError(error: unknown): void {
   console.error("[google-sheets] Failed to enqueue sheet sync job:", error);
 }

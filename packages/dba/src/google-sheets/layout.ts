@@ -16,9 +16,9 @@
  *
  * Deliberately separate from `worker.ts`'s per-record sync path (own
  * requirement: "nie resetuj całej zakładki przy każdym zapisie") —
- * `ensureDailyTrackerLayout`/`ensureDatesLayout` are called once per target
- * at process/worker startup (`bootstrap.ts`), gated by
- * `CHAD_SHEET_LAYOUT_VERSION` sheet-scoped developer metadata so a normal
+ * `ensureDailyTrackerLayout`/`ensureDatesLayout`/`ensureLeadsLayout` are
+ * called once per target at process/worker startup (`bootstrap.ts`), gated
+ * by `CHAD_SHEET_LAYOUT_VERSION` sheet-scoped developer metadata so a normal
  * restart is a cheap no-op (one read, no `batchUpdate` at all) unless
  * `LAYOUT_VERSION` was actually bumped. `processGoogleSheetsJobOnce` never
  * calls anything in this file.
@@ -37,8 +37,10 @@ import type { GoogleSheetsClient, GoogleSheetsTarget } from "./types.js";
 import {
   DAILY_ENTRY_DOMAIN_COLUMNS,
   DATE_ENTRY_DOMAIN_COLUMNS,
+  LEAD_DOMAIN_COLUMNS,
   DAILY_TRACKER_HEADER_ROW_COUNT,
   DATE_ENTRIES_HEADER_ROW_COUNT,
+  LEADS_HEADER_ROW_COUNT,
   TECHNICAL_COLUMNS,
   type SheetColumnGroup,
   type SheetColumnSpec,
@@ -583,6 +585,45 @@ export async function ensureDatesLayout(client: GoogleSheetsClient, target: Goog
   const sheetId = await client.getSheetId(target);
   const domainColumns = DATE_ENTRY_DOMAIN_COLUMNS;
   const headerRowCount = DATE_ENTRIES_HEADER_ROW_COUNT;
+
+  const requests: Record<string, unknown>[] = [
+    ...applyHeaderFormatting(sheetId, domainColumns, headerRowCount),
+    ...autoResizeColumns(sheetId, domainColumns),
+    ...applyRowHeights(sheetId, headerRowCount),
+    ...applyNumberFormats(sheetId, domainColumns, headerRowCount),
+    ...clearDataValidation(sheetId, domainColumns, headerRowCount),
+    ...resetFrozenRowsAndColumns(sheetId),
+    ...hideTechnicalColumns(sheetId, domainColumns),
+    ...clearBasicFilter(sheetId),
+    await upsertVersionMetadataRequest(client, target, sheetId, currentVersion),
+  ];
+
+  await client.batchUpdate(target.spreadsheetId, requests);
+  return true;
+}
+
+/**
+ * Lays out the "leads" tab (same single-row header pattern as "dates").
+ * Creates the tab first when missing — leads was never part of the original
+ * Story 75 sheet bootstrap, so existing user spreadsheets typically have no
+ * `leads` tab yet. No-ops if `CHAD_SHEET_LAYOUT_VERSION` already matches.
+ */
+export async function ensureLeadsLayout(client: GoogleSheetsClient, target: GoogleSheetsTarget): Promise<boolean> {
+  await client.ensureSheetExists(target);
+
+  const currentVersion = await client.getSheetDeveloperMetadata(target, LAYOUT_VERSION_METADATA_KEY);
+  if (currentVersion === LAYOUT_VERSION) return false;
+
+  // Write column headers on first layout (empty new tab) — same labels the
+  // worker would write on the first sync job, so the tab is usable immediately.
+  await client.ensureHeaders(target, [
+    ...LEAD_DOMAIN_COLUMNS.map((c) => c.label),
+    ...TECHNICAL_COLUMNS,
+  ]);
+
+  const sheetId = await client.getSheetId(target);
+  const domainColumns = LEAD_DOMAIN_COLUMNS;
+  const headerRowCount = target.headerRowCount ?? LEADS_HEADER_ROW_COUNT;
 
   const requests: Record<string, unknown>[] = [
     ...applyHeaderFormatting(sheetId, domainColumns, headerRowCount),

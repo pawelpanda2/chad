@@ -27,29 +27,57 @@ MONGODB_PORT=27017
 
 export DASHBOARD_PORT MONGODB_PORT
 
-# DBA_MONGO_MODE — single switch for which Mongo the LOCAL dashboard
+# DBA_MONGO_MODE — single switch for which datastore the LOCAL dashboard
 # container talks to, read from .env.local (default: "local").
-#   local (default): unchanged — MONGODB_URI/BEEPER_MONGODB_URI come
-#     straight from .env.local (the local chad-mongodb-local-mac-docker
-#     container started by this same stack).
-#   qnap: this script overrides both env vars here, exported into the
+#   local (default): unchanged — MONGODB_URI/BEEPER_MONGODB_URI/POSTGRES_URI
+#     come straight from .env.local (sibling containers in this stack).
+#   qnap: this script overrides those env vars here, exported into the
 #     shell BEFORE `docker compose up` runs — Compose gives shell-exported
 #     vars priority over the same names in --env-file, so this wins
-#     without editing .env.local. Points at QNAP's chad-mongodb over
-#     Tailscale (100.117.139.83:12040, published in
-#     docker-compose.qnap.shared.yml — see that file's header comment),
-#     same credentials as local (MONGO_ROOT_USERNAME/PASSWORD, "change_me"
-#     on both sides). The local chad-mongodb-local-mac-docker container
-#     still starts (this stack always runs both services) but simply goes
-#     unused in this mode.
+#     without editing .env.local.
+#       • Mongo (Beeper + any leftover mongo path): QNAP chad-mongodb over
+#         Tailscale (100.117.139.83:12040).
+#       • Postgres (Story 80/81 primary for cp_items — login users-list,
+#         Folders, History): QNAP chad-postgres over Tailscale
+#         (100.117.139.83:12042). Without this override, DBA_PRIMARY_BACKEND=
+#         postgres would hit the empty local volume and login fails with
+#         "User not found" / empty users-list.
+#     Local sibling mongo/postgres containers still start but go unused.
 DBA_MONGO_MODE="$(read_env_var "$ENV_FILE" DBA_MONGO_MODE)"
 DBA_MONGO_MODE="${DBA_MONGO_MODE:-local}"
 
 if [ "$DBA_MONGO_MODE" = "qnap" ]; then
   QNAP_TAILSCALE_HOST="100.117.139.83"
   QNAP_MONGO_PORT="12040"
+  QNAP_POSTGRES_PORT="12042"
   MONGO_ROOT_USERNAME="$(read_env_var "$ENV_FILE" MONGO_ROOT_USERNAME)"
   MONGO_ROOT_PASSWORD="$(read_env_var "$ENV_FILE" MONGO_ROOT_PASSWORD)"
+  # QNAP Postgres password often drifts from the local volume password in
+  # .env.local (local init vs chad-postgres on NAS). Prefer, in order:
+  #   1) POSTGRES_QNAP_PASSWORD from .env.local
+  #   2) POSTGRES_* from .env.qnap (gitignored; synced from chad-postgres)
+  #   3) POSTGRES_PASSWORD from .env.local
+  QNAP_ENV_FILE="$REPO_ROOT/.env.qnap"
+  POSTGRES_USER="$(read_env_var "$ENV_FILE" POSTGRES_USER)"
+  POSTGRES_PASSWORD="$(read_env_var "$ENV_FILE" POSTGRES_PASSWORD)"
+  POSTGRES_DB="$(read_env_var "$ENV_FILE" POSTGRES_DB)"
+  POSTGRES_QNAP_PASSWORD="$(read_env_var "$ENV_FILE" POSTGRES_QNAP_PASSWORD)"
+  if [ -n "$POSTGRES_QNAP_PASSWORD" ]; then
+    POSTGRES_PASSWORD="$POSTGRES_QNAP_PASSWORD"
+  elif [ -f "$QNAP_ENV_FILE" ]; then
+    QNAP_PG_USER="$(read_env_var "$QNAP_ENV_FILE" POSTGRES_USER)"
+    QNAP_PG_PASSWORD="$(read_env_var "$QNAP_ENV_FILE" POSTGRES_PASSWORD)"
+    QNAP_PG_DB="$(read_env_var "$QNAP_ENV_FILE" POSTGRES_DB)"
+    [ -n "$QNAP_PG_USER" ] && POSTGRES_USER="$QNAP_PG_USER"
+    [ -n "$QNAP_PG_PASSWORD" ] && POSTGRES_PASSWORD="$QNAP_PG_PASSWORD"
+    [ -n "$QNAP_PG_DB" ] && POSTGRES_DB="$QNAP_PG_DB"
+  fi
+  POSTGRES_USER="${POSTGRES_USER:-chad}"
+  POSTGRES_DB="${POSTGRES_DB:-chad}"
+  if [ -z "$POSTGRES_PASSWORD" ]; then
+    log_error "POSTGRES password missing — set POSTGRES_QNAP_PASSWORD in $ENV_FILE (preferred) or POSTGRES_PASSWORD in $QNAP_ENV_FILE for DBA_MONGO_MODE=qnap."
+    exit 1
+  fi
   # directConnection=true is required here (found 2026-07-22, real failure:
   # the dashboard's background Google Sheets worker's continuous polling
   # loop failed with "getaddrinfo ENOTFOUND chad-mongodb" a few ticks after
@@ -66,8 +94,9 @@ if [ "$DBA_MONGO_MODE" = "qnap" ]; then
   # packages/dba/src/mongo.ts always calls client.db(`beeper_<repoGuid>`)
   # explicitly, so this is a server URI only.
   BEEPER_MONGODB_URI="mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@${QNAP_TAILSCALE_HOST}:${QNAP_MONGO_PORT}?authSource=admin&directConnection=true"
-  export MONGODB_URI BEEPER_MONGODB_URI
-  log_info "DBA_MONGO_MODE=qnap — local dashboard will use QNAP's Mongo over Tailscale (${QNAP_TAILSCALE_HOST}:${QNAP_MONGO_PORT})."
+  POSTGRES_URI="postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${QNAP_TAILSCALE_HOST}:${QNAP_POSTGRES_PORT}/${POSTGRES_DB}"
+  export MONGODB_URI BEEPER_MONGODB_URI POSTGRES_URI
+  log_info "DBA_MONGO_MODE=qnap — local dashboard will use QNAP Mongo (:${QNAP_MONGO_PORT}) + Postgres (:${QNAP_POSTGRES_PORT}) over Tailscale (${QNAP_TAILSCALE_HOST})."
 elif [ "$DBA_MONGO_MODE" = "local" ]; then
   # Safety guard (2026-07-22, real incident): GOOGLE_SHEETS_ENABLED in
   # .env.local is a single flag with no awareness of DBA_MONGO_MODE — left

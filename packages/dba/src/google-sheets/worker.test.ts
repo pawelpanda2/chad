@@ -15,7 +15,11 @@ import { FakeGoogleSheetsClient } from "./fake-client.js";
 import { createTestClock } from "../data-clock.js";
 import type { SheetRecordType, SheetSyncPayload } from "./types.js";
 
-const SHEET_NAMES = { "daily-entry": "daily-tracker-test", "date-entry": "dates-test" };
+const SHEET_NAMES = {
+  "daily-entry": "daily-tracker-test",
+  "date-entry": "dates-test",
+  lead: "leads-test",
+};
 const SPREADSHEET_A = "test-spreadsheet-A";
 const SPREADSHEET_B = "test-spreadsheet-B";
 const DAILY_TARGET = { spreadsheetId: SPREADSHEET_A, sheetName: "daily-tracker-test" };

@@ -111,6 +111,8 @@ services:
       # packages/dba/src/google-sheets/config.ts.
       - GOOGLE_SHEETS_SPREADSHEET_MAP=${GOOGLE_SHEETS_SPREADSHEET_MAP:-}
       - GOOGLE_SERVICE_ACCOUNT_EMAIL=${GOOGLE_SERVICE_ACCOUNT_EMAIL:-}
+      # Decrypt per-repo `secrets` Text (History -> Google Sheets viewer card).
+      - SECRETS_ENCRYPTION_KEY=${SECRETS_ENCRYPTION_KEY:-}
     volumes:
       - chad-dashboard-test-data:/app/data
     logging:

@@ -65,7 +65,7 @@ export default function BeeperContactsPage() {
 	const filtered = contacts.filter((c) => c.displayName.toLowerCase().includes(query.toLowerCase()));
 
 	return (
-		<DashboardPageShell title="Beeper">
+		<DashboardPageShell title="Beeper" upLevel={{ href: "/dashboard/msg-automation" }}>
 			{/*
 				Standard header (line 1, above the frame) is reserved for the menu
 				handle, Back/Forw and a short page name only — see

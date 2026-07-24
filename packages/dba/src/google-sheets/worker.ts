@@ -21,17 +21,22 @@ import {
 import {
   DAILY_TRACKER_SHEET_HEADERS,
   DATE_ENTRIES_SHEET_HEADERS,
+  LEADS_SHEET_HEADERS,
   DAILY_TRACKER_HEADER_ROW_COUNT,
   DATE_ENTRIES_HEADER_ROW_COUNT,
+  LEADS_HEADER_ROW_COUNT,
   IMMUTABLE_ON_UPDATE_COLUMNS,
   mapDailyEntryToSheetRow,
   mapDateEntryToSheetRow,
+  mapLeadToSheetRow,
   mapDeleteToSheetRow,
 } from "./mapper.js";
 import type { GoogleSheetsClient, GoogleSheetsTarget, SheetRecordType, SheetRowValues, SheetSyncPayload } from "./types.js";
 
 function headerRowCountFor(recordType: SheetRecordType): number {
-  return recordType === "daily-entry" ? DAILY_TRACKER_HEADER_ROW_COUNT : DATE_ENTRIES_HEADER_ROW_COUNT;
+  if (recordType === "daily-entry") return DAILY_TRACKER_HEADER_ROW_COUNT;
+  if (recordType === "lead") return LEADS_HEADER_ROW_COUNT;
+  return DATE_ENTRIES_HEADER_ROW_COUNT;
 }
 
 export interface GoogleSheetsWorkerDeps {
@@ -78,11 +83,15 @@ function targetFor(deps: GoogleSheetsWorkerDeps, payload: SheetSyncPayload): Goo
 }
 
 function headersFor(recordType: SheetRecordType): string[] {
-  return recordType === "daily-entry" ? DAILY_TRACKER_SHEET_HEADERS : DATE_ENTRIES_SHEET_HEADERS;
+  if (recordType === "daily-entry") return DAILY_TRACKER_SHEET_HEADERS;
+  if (recordType === "lead") return LEADS_SHEET_HEADERS;
+  return DATE_ENTRIES_SHEET_HEADERS;
 }
 
 function mapUpsertFor(recordType: SheetRecordType, payload: SheetSyncPayload, now: string): SheetRowValues {
-  return recordType === "daily-entry" ? mapDailyEntryToSheetRow(payload, now) : mapDateEntryToSheetRow(payload, now);
+  if (recordType === "daily-entry") return mapDailyEntryToSheetRow(payload, now);
+  if (recordType === "lead") return mapLeadToSheetRow(payload, now);
+  return mapDateEntryToSheetRow(payload, now);
 }
 
 /**
@@ -104,6 +113,12 @@ export async function processGoogleSheetsJobOnce(deps: GoogleSheetsWorkerDeps): 
         `Google Sheets job ${job._id} (recordKey=${job.payload.recordKey}) has no spreadsheetId on its payload — ` +
           "cannot route it to any user's spreadsheet."
       );
+    }
+
+    // Leads tab is auto-created when missing (existing user sheets only had
+    // daily/dates). Daily/dates still require the tab to already exist.
+    if (recordType === "lead") {
+      await deps.client.ensureSheetExists(target);
     }
 
     await deps.client.ensureHeaders(target, headersFor(recordType));

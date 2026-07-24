@@ -264,6 +264,7 @@ export default function MsgPlannerPage() {
     <DashboardPageShell
       scroll={false}
       contentClassName={FRAME_SECTION_GAP_CLASS}
+      upLevel={{ href: "/dashboard/msg-automation" }}
       title="Msg Planner"
     >
       {/* Page-specific controls live inside the main frame (Story 62 Round 3). */}

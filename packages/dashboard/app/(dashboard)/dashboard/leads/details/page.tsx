@@ -392,6 +392,18 @@ function LeadDetailsPageContent() {
             <Button
               variant="outline"
               size="sm"
+              asChild
+              className="h-7 gap-1 px-2"
+            >
+              <Link
+                href={`/dashboard/leads/message-creator?leadName=${encodeURIComponent(details.leadName)}&leadLoca=${encodeURIComponent(details.loca)}`}
+              >
+                Open Message Creator
+              </Link>
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
               onClick={handleCreateWorkout}
               disabled={creatingWorkout}
               className="h-7 gap-1 px-2"

@@ -20,6 +20,7 @@ const ENV_KEYS = [
   "GOOGLE_SHEETS_SPREADSHEET_MAP",
   "GOOGLE_SHEETS_DAILY_TRACKER_SHEET_NAME",
   "GOOGLE_SHEETS_DATE_ENTRIES_SHEET_NAME",
+  "GOOGLE_SHEETS_LEADS_SHEET_NAME",
   "GOOGLE_SERVICE_ACCOUNT_EMAIL",
   "GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY",
   "CHAD_ENVIRONMENT",
@@ -45,6 +46,7 @@ function setFullValidEnv() {
   process.env.GOOGLE_SHEETS_SPREADSHEET_MAP = '{"pawel_f":"sheet-pawel-123","kamil_s":"sheet-kamil-456"}';
   process.env.GOOGLE_SHEETS_DAILY_TRACKER_SHEET_NAME = "daily-tracker-local";
   process.env.GOOGLE_SHEETS_DATE_ENTRIES_SHEET_NAME = "dates-local";
+  process.env.GOOGLE_SHEETS_LEADS_SHEET_NAME = "leads-local";
   process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL = "svc@example.iam.gserviceaccount.com";
   process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY = "-----BEGIN PRIVATE KEY-----\\nfake\\n-----END PRIVATE KEY-----\\n";
   // Satisfies production-guard.ts's checks — see comment above.
