@@ -30,6 +30,7 @@
 import { ObjectId } from "mongodb";
 import { getBeeperMongoDb } from "./mongo.js";
 import { getCurrentRepoGuid } from "./repo-context.js";
+import { ensureLeadBeeperLinksIndexes } from "./lead-beeper-links.js";
 
 // ── Collections ────────────────────────────────────────────────────────────
 
@@ -91,6 +92,8 @@ export async function ensureBeeperIndexes(repoGuid: string): Promise<void> {
     messages.createIndex({ channelID: 1, timestamp: 1, isSelf: 1 }),
     timelineEvents.createIndex({ contactID: 1, timestamp: 1 }),
   ]);
+
+  await ensureLeadBeeperLinksIndexes(repoGuid);
 }
 
 // ── Types ──────────────────────────────────────────────────────────────────
