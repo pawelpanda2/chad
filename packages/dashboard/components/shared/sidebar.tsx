@@ -53,6 +53,8 @@ const sidebarGroups: Array<{ title: string; items: SidebarItem[] }> = [
 					"/dashboard/messages",
 					"/dashboard/leads/message-creator",
 				],
+				// "/dashboard/msg-automation" prefix (above) already covers
+				// "/dashboard/msg-automation/ai-prompts" and its child routes.
 			},
 		],
 	},

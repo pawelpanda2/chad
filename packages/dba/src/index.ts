@@ -21,6 +21,8 @@ export * from './secrets-crypto.js';
 export * from './beeper-crm.js';
 export * from './path-resolver.js';
 export * from './ai-answer.js';
+export * from './ai-prompts.js';
+export * from './ai-prompts-openai.js';
 export * from './message-creator.js';
 export * from './statuses-dashboard.js';
 export * from './headers-parser.js';

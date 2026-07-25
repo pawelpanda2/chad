@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { EditorPageShell } from "@/components/shared/editor-page-shell";
 import { NavGroup } from "@/components/shared/nav-group";
@@ -80,6 +81,8 @@ interface Bootstrap {
   };
   allRuns: AnalysisRun[];
   messageRunCounts: Record<string, Record<string, number>>;
+  /** Story 88 — the published AI Prompts registry entry "Send new" will actually run, or null. */
+  resolvedPrompt: { id: string; slug: string; name: string; publishedVersion?: number } | null;
 }
 
 interface PromptOption {
@@ -988,6 +991,19 @@ function MessageCreatorPageContent() {
               >
                 {aiBusy ? "Sending…" : "Send new"}
               </Button>
+              {bootstrap?.resolvedPrompt ? (
+                <p className="mb-1 truncate text-[11px] text-muted-foreground" title={bootstrap.resolvedPrompt.name}>
+                  Prompt: {bootstrap.resolvedPrompt.name}
+                  {bootstrap.resolvedPrompt.publishedVersion ? ` (v${bootstrap.resolvedPrompt.publishedVersion})` : ""}
+                </p>
+              ) : (
+                <p className="mb-1 text-[11px] text-muted-foreground">
+                  Prompt not configured —{" "}
+                  <Link href="/dashboard/msg-automation/ai-prompts/new" className="underline hover:text-foreground">
+                    create one
+                  </Link>
+                </p>
+              )}
               {displayRuns.map((run) => {
                 const versionLabel =
                   promptVersions.find((v) => v.id === run.promptVersionId)?.displayName ??

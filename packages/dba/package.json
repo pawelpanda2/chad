@@ -24,6 +24,7 @@
     "dotenv": "^16.4.5",
     "js-yaml": "^4.2.0",
     "mongodb": "^7.1.1",
+    "openai": "^6.43.0",
     "pg": "^8.13.1"
   },
   "devDependencies": {

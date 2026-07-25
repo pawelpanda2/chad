@@ -26,6 +26,8 @@ import {
 } from "./item-ops.js";
 import { getCurrentRepoGuid } from "./repo-context.js";
 import { getLeadMsgWorkoutsByLoca } from "./leads.js";
+import { findPublishedAiPrompt, type AiPromptActionType } from "./ai-prompts.js";
+import { executeAiPrompt } from "./ai-prompts-openai.js";
 import {
   buildMessagePromptVersionOptions,
   parseWhatsAppMessages,
@@ -202,6 +204,13 @@ export interface MessageCreatorBootstrap {
   /** messageId → promptVersionId → count */
   messageRunCounts: MessageRunCounts;
   relatedWorkouts: Array<{ logicalName: string; loca: string }>;
+  /**
+   * Story 88 — the published AI Prompts registry entry (msg-auto / ai
+   * prompts) that "Send new" will actually execute for this lead's default
+   * school + `full-analysis` (the only operation the Creator UI currently
+   * triggers). `null` means genuinely unconfigured — never invented.
+   */
+  resolvedPrompt: { id: string; slug: string; name: string; publishedVersion?: number } | null;
 }
 
 export interface SaveAnalysisRunInput {
@@ -282,6 +291,15 @@ const ANALYSIS_OPS: MessageCreatorOperation[] = [
 export function isMessageCreatorOperation(value: string): value is MessageCreatorOperation {
   return (ANALYSIS_OPS as string[]).includes(value);
 }
+
+/** Story 88 — maps Message Creator's own operation names to the provider-neutral AI Prompts registry's `actionType`. */
+export const OPERATION_TO_AI_PROMPT_ACTION_TYPE: Record<MessageCreatorOperation, AiPromptActionType> = {
+  health: "conversation-health",
+  capital: "capital",
+  "next-message": "next-message",
+  improve: "improve",
+  "full-analysis": "full-analysis",
+};
 
 /**
  * Builds next analysis item name: `YY-MM-DD; schoolId; operation`,
@@ -707,6 +725,57 @@ export async function runMessageCreatorAiAction(
 
   const operation: MessageCreatorOperation = input.operation ?? "full-analysis";
 
+  // Story 88 — resolve a published prompt from the msg-auto / ai prompts
+  // registry before falling back to the legacy school.promptRef boundary
+  // below. Only `status: "published"` prompts are ever resolved (never a
+  // draft) — see ai-prompts.ts's findPublishedAiPrompt.
+  const registryPrompt = await findPublishedAiPrompt({
+    actionType: OPERATION_TO_AI_PROMPT_ACTION_TYPE[operation],
+    schoolId,
+  });
+
+  if (registryPrompt) {
+    const execution = await executeAiPrompt(registryPrompt, {
+      lead_name: input.leadName,
+      school_name: school.fullName,
+      conversation: conversation.body ?? "",
+      user_input: input.userInput ?? "",
+    });
+
+    if (execution.status === "complete") {
+      const run = await saveAnalysisRun({
+        leadName: input.leadName,
+        leadLoca: input.leadLoca,
+        schoolId,
+        operation,
+        conversationHash: conversation.hash,
+        conversationChannel: conversation.channel,
+        userInput: input.userInput,
+        status: "complete",
+        payload: {
+          rawOutput: execution.outputText ?? null,
+          promptSlug: registryPrompt.slug,
+          promptVersion: registryPrompt.publishedVersion ?? null,
+        },
+        targetMessageId: input.targetMessageId ?? null,
+        promptVersionId: input.promptVersionId ?? promptVersion?.id ?? null,
+        modelId: input.modelId ?? null,
+        proposalText: execution.outputText ?? null,
+      });
+      return {
+        status: "COMPLETE",
+        run,
+        freshness: "current",
+        payload: { rawOutput: execution.outputText ?? null },
+      };
+    }
+
+    // A published prompt exists but couldn't actually run (missing API key,
+    // provider not implemented, or a real provider error) — this is a
+    // genuine ERROR, distinct from "no prompt configured at all" below.
+    return { status: "ERROR", message: execution.error ?? "AI execution failed" };
+  }
+
   if (!school.promptRef?.preparedPromptId) {
     // Persist a not-configured marker only when force=true — default just reports status
     // so opening tabs never writes junk. Explicit Analyze / Try Again may pass force.
@@ -773,6 +842,19 @@ export async function getMessageCreatorBootstrap(
   const analysis = pickLatestAnalysisRuns(allRuns);
   const messageRunCounts = computeMessageRunCounts(allRuns);
 
+  const registryPrompt = await findPublishedAiPrompt({
+    actionType: OPERATION_TO_AI_PROMPT_ACTION_TYPE["full-analysis"],
+    schoolId: schools[0]?.id,
+  });
+  const resolvedPrompt = registryPrompt
+    ? {
+        id: registryPrompt.id,
+        slug: registryPrompt.slug,
+        name: registryPrompt.name,
+        publishedVersion: registryPrompt.publishedVersion,
+      }
+    : null;
+
   return {
     leadName,
     leadLoca,
@@ -795,6 +877,7 @@ export async function getMessageCreatorBootstrap(
     analysis,
     allRuns,
     messageRunCounts,
+    resolvedPrompt,
     relatedWorkouts: (workoutsResult.workouts ?? [])
       .filter((w) => {
         if (w.logicalName === "my proposals") return false;
