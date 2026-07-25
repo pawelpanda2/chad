@@ -47,6 +47,10 @@ Message IDs: deterministic FNV-1a over `timestamp|sender|raw` (see Story 85).
 - `POST /api/leads/message-creator/ai` — Send new / school ops (`promptVersionId`,
   `targetMessageId`, `modelId`)
 
-AI returns `PROMPT_NOT_CONFIGURED` / UI **Not configured** until mentor prompts
-are wired. No fake scores. No AI on mount. Beeper Send on proposals is disabled
-until outbound send exists.
+AI returns `PROMPT_NOT_CONFIGURED` / UI **Not configured** until a matching
+prompt is published in **Msg Auto → AI Prompts** (Story 88 — see
+`../../msg-automation/features/ai-prompts.md`). Bootstrap's `resolvedPrompt`
+field shows which published prompt (if any) "Send new" will run; the small
+readout next to that button reads it directly — no prompt id is ever
+hardcoded in this page. No fake scores. No AI on mount. Beeper Send on
+proposals is disabled until outbound send exists.

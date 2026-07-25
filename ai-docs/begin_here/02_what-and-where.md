@@ -116,12 +116,15 @@ wszystkie zakładki.
 
 **Lokalizacja:** `documentation/dashboard/<zakładka>/{features,bugs}/`
 
-**Podkatalogi (potwierdzone, 2026-07-13):** `common/` (layout, edytor, panel
-dev, ssl/domeny, izolacja danych użytkownika), `statuses/`, `msg-todo/`
-(wraz z `documentation/features/todo-msg-*.md` — patrz niżej, częściowo
-zdublowane), `msg-planner/`, `leads/`, `forms/`, `views/`, `settings/`,
-`users/`, `beeper/` (UI zakładki Beeper w dashboardzie — **nie** to samo co
-kategoria "Beeper" niżej, która opisuje sync/integrację).
+**Podkatalogi (potwierdzone, 2026-07-13; `msg-automation/` dodane w Story 88,
+2026-07-25):** `common/` (layout, edytor, panel dev, ssl/domeny, izolacja
+danych użytkownika), `statuses/`, `msg-todo/` (wraz z
+`documentation/features/todo-msg-*.md` — patrz niżej, częściowo
+zdublowane), `msg-planner/`, `msg-automation/` (Msg Auto hub — obecnie
+`features/ai-prompts.md`, provider-neutralny rejestr promptów AI używany
+przez Message Creator), `leads/`, `forms/`, `views/`, `settings/`, `users/`,
+`beeper/` (UI zakładki Beeper w dashboardzie — **nie** to samo co kategoria
+"Beeper" niżej, która opisuje sync/integrację).
 
 **Najważniejsze dokumenty:**
 - `common/features/responsive-layout-standard.md` — jedyny obowiązujący

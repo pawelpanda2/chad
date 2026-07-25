@@ -21,6 +21,10 @@ export default defineConfig({
       // Story 82 — Folders write path (create child / update Text body):
       // pure, fake-ops-based, no real DB needed.
       "packages/dba/src/folders.test.ts",
+      // Story 88 — AI Prompts registry (CRUD, validation, corrupt-JSON
+      // guard, draft/published filtering, version increment): pure,
+      // fake-ops-based, no real DB needed.
+      "packages/dba/src/ai-prompts.test.ts",
       "test/**/*.test.{ts,mjs}",
     ],
     exclude: ["**/node_modules/**", "**/dist/**"],
