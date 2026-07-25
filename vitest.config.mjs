@@ -25,6 +25,8 @@ export default defineConfig({
       // guard, draft/published filtering, version increment): pure,
       // fake-ops-based, no real DB needed.
       "packages/dba/src/ai-prompts.test.ts",
+      // Story 90 — Lead ↔ Beeper Links (phone match / save validation).
+      "packages/dba/src/lead-beeper-links.test.ts",
       "test/**/*.test.{ts,mjs}",
     ],
     exclude: ["**/node_modules/**", "**/dist/**"],
