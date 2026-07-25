@@ -12,6 +12,38 @@
 | 8 | DONE |  | Message Creator shows the resolved published prompt (or "Prompt not configured") next to Send new, and executes it via OpenAI when configured |
 | 9 | DONE |  | Per-user isolation — prompts are scoped to the logged-in user's own repo, never a caller-supplied id |
 
+## Live TEST verification (post-deploy, 2026-07-25)
+
+After deploying commit `399bd9d` to QNAP TEST (image `chad-dashboard:260725_020829`),
+the following was verified with real `curl` requests against
+`http://100.117.139.83:12020` (real login sessions, real Content Provider,
+no mocks) — upgrading Tasks 1–4, 6, 8 (isolation half), 9 above from
+"build-verified only" to "live-verified":
+
+- `GET /dashboard/msg-automation`, `/dashboard/msg-automation/ai-prompts`,
+  `/dashboard/msg-automation/ai-prompts/new`, and
+  `/dashboard/msg-automation/ai-prompts/[id]` all return `200` for a logged-in
+  `pawel_f` session (all `307` to login when unauthenticated).
+- `POST /api/msg-automation/ai-prompts` created a real prompt in
+  `msg-auto / ai prompts` on `pawel_f`'s repo (`status: "draft"`, `version: 1`).
+- `GET` (list + one), `PATCH` (rename), `PATCH {"action":"publish"}`
+  (→ `status: "published"`, `version: 2`, `publishedSnapshot` frozen with
+  the renamed content) all worked against the real, running registry.
+- `PATCH {"name":"   "}` correctly rejected with `400 {"code":"VALIDATION"}`.
+- Logging in as `kamil_s` and calling `GET /api/msg-automation/ai-prompts`
+  returned `[]` — `pawel_f`'s prompt is fully invisible to a different real
+  user (isolation confirmed live, not just structurally).
+- The smoke-test prompt was archived afterward (`PATCH {"action":"archive"}`)
+  rather than left as live clutter — Content Provider has no working Delete
+  (see `human-docs`'s Content Provider docs), so archiving is the correct,
+  existing cleanup mechanism, consistent with how the rest of the app
+  already handles this constraint.
+
+Not covered by this pass: an actual real-browser click-through (mouse
+clicks, form fills) and a live OpenAI execution (`Send new` against a
+published `next-message`/`full-analysis` prompt with a real `OPENAI_API_KEY`
+configured on the TEST container) — see `06_others_from_report.md`.
+
 # Task 1 — Msg Auto shows AI PROMPTS after CREATOR
 
 **Requested:** A new tile/button "AI Prompts" directly after "Creator" in the Msg Auto hub grid.
