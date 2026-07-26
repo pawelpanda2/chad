@@ -120,9 +120,11 @@ ensure_docker_network() {
 # Content Provider (chad-content-provider-api) is no longer part of this
 # check — it's been removed from deployment (Mongo is the only active
 # runtime backend now; DBA_CONTENT_PROVIDER_ENABLED=false everywhere). The
-# .NET adapter code (`NetFileCpProvider`) and the `net-content-provider`
-# submodule are untouched — this is a deployment-only change, reversible by
-# re-adding the service to docker-compose.qnap.shared.yml.
+# .NET adapter code (`NetFileCpProvider`) is untouched — this is a
+# deployment-only change, reversible by re-adding the service to
+# docker-compose.qnap.shared.yml. The `net-content-provider` submodule
+# itself was removed from this monorepo (legacy Content Provider fully
+# migrated) — see git history if you need its old .NET source.
 require_shared_services_healthy() {
   if ! docker network inspect chad-shared >/dev/null 2>&1; then
     log_error "Docker network 'chad-shared' does not exist."
@@ -669,12 +671,13 @@ git_deploy_preflight() {
   log_info "Repo: $REPO_ROOT"
   log_info "Branch: $branch (upstream: $upstream)"
 
-  # --ignore-submodules: a submodule pointer (packages/net-content-provider)
-  # regularly shows as " M packages/net-content-provider" under plain `git
-  # status --porcelain` purely because its checked-out commit differs from
-  # what the parent repo's index recorded — with zero real uncommitted work
-  # in either repo. Without this flag, every deploy hit the "uncommitted
-  # changes" prompt for a non-issue.
+  # --ignore-submodules: kept defensively. Previously, the
+  # `packages/net-content-provider` submodule pointer regularly showed as
+  # " M packages/net-content-provider" under plain `git status --porcelain`
+  # purely because its checked-out commit differed from what the parent
+  # repo's index recorded — with zero real uncommitted work in either repo.
+  # That submodule has since been removed, but the flag stays in case a
+  # submodule is added again in the future.
   if [ -n "$(git -C "$REPO_ROOT" status --porcelain --ignore-submodules)" ]; then
     echo ""
     git -C "$REPO_ROOT" status --short --ignore-submodules

@@ -13,10 +13,12 @@
 # is the only active runtime backend now (DBA_CONTENT_PROVIDER_ENABLED=false,
 # DBA_PRIMARY_BACKEND=mongo). Its appsettings-generation helper
 # (write_content_provider_appsettings) and CONTENT_PROVIDER_API_PORT were
-# removed from here along with it; the .NET adapter code and
-# `net-content-provider` submodule are untouched — this is a
-# deployment-only change, reversible by re-adding the service to
-# docker-compose.qnap.shared.yml (see that file's header comment).
+# removed from here along with it; the .NET adapter code is untouched —
+# this is a deployment-only change, reversible by re-adding the service to
+# docker-compose.qnap.shared.yml (see that file's header comment). The
+# `net-content-provider` submodule itself was removed from this monorepo
+# (legacy Content Provider fully migrated) — see git history if you need
+# its old .NET source.
 
 COMPOSE_PROJECT_NAME="chad-shared"
 ENV_NAME="shared"

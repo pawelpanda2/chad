@@ -15,8 +15,10 @@
 # Content Provider (content-provider-api) removed from this stack — see
 # docker-compose.local.yml's header comment. Its appsettings-generation
 # helper (write_content_provider_appsettings) and CONTENT_PROVIDER_API_PORT
-# were removed from here along with it; the .NET adapter code and
-# `net-content-provider` submodule are untouched.
+# were removed from here along with it; the .NET adapter code is untouched.
+# The `net-content-provider` submodule itself was removed from this
+# monorepo (legacy Content Provider fully migrated) — see git history if
+# you need its old .NET source.
 
 COMPOSE_PROJECT_NAME="chad-local"
 COMPOSE_FILE="$REPO_ROOT/docker-compose.local.yml"

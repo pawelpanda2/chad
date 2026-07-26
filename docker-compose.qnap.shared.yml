@@ -74,11 +74,13 @@
 # Content Provider (content-provider-api) removed from this stack — Mongo
 # is the only active runtime backend now (DBA_CONTENT_PROVIDER_ENABLED=false,
 # DBA_PRIMARY_BACKEND=mongo, same as local-mac-docker). The .NET adapter
-# code (`NetFileCpProvider`) and the `net-content-provider` submodule are
-# untouched; this is a deployment-only change, reversible by re-adding the
-# service below (see git history for the removed block: image, build
-# context packages/net-content-provider, CP_REPOS_HOST_PATH/_2 volume
-# mounts, appsettings.json bind mount).
+# code (`NetFileCpProvider`) is untouched; this is a deployment-only change,
+# reversible by re-adding the service below (see git history for the
+# removed block: image, build context packages/net-content-provider,
+# CP_REPOS_HOST_PATH/_2 volume mounts, appsettings.json bind mount). The
+# `net-content-provider` submodule itself was removed from this monorepo
+# (legacy Content Provider fully migrated) — see git history if you need
+# its old .NET source.
 #
 # postgres (Story 80, added 2026-07-23): CHAD's own PostgreSQL datastore
 # (cp_items/cp_history/cp_outbox_*), the eventual replacement primary for
