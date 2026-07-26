@@ -13,7 +13,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { listDateEntriesHistory } from 'dba';
+import { listDateEntriesHistory, enrichHistoryListWithPages } from 'dba';
 import { getCurrentUserFromCookies } from '@/lib/session';
 
 /**
@@ -70,7 +70,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      data: result,
+      data: await enrichHistoryListWithPages(user.repoGuid, result),
     });
   } catch (error) {
     console.error('[dashboard] listDateEntriesHistory failed:', error);

@@ -31,6 +31,8 @@ export interface HistoryItem {
   version: number;
   operationType: string;
   changedAt: string;
+  /** Page folder name resolved by id + current loca (e.g. `dates`). */
+  pageName?: string | null;
   actor: {
     username: string;
     repoGuid: string;
@@ -189,6 +191,12 @@ function GoogleSheetsViewContent() {
     spreadsheetError?: string | null;
     serviceAccountEmail?: string | null;
     viewerAccount?: { email: string; hasPassword: boolean } | null;
+    syncStatus?: {
+      kind: "ok" | "failed" | "pending" | "none";
+      label: string;
+      lastSyncedAt: string | null;
+      lastError: string | null;
+    };
   } | null>(null);
   const [revealedPassword, setRevealedPassword] = useState<string | null>(null);
   const [revealDialogOpen, setRevealDialogOpen] = useState(false);
@@ -198,8 +206,17 @@ function GoogleSheetsViewContent() {
 
   useEffect(() => {
     fetch("/api/google-sheets/info")
-      .then((res) => res.json())
-      .then((json: { success: boolean; data?: typeof data; error?: string }) => {
+      .then(async (res) => {
+        const text = await res.text();
+        if (!text) {
+          throw new Error(`Empty response from /api/google-sheets/info (HTTP ${res.status})`);
+        }
+        let json: { success: boolean; data?: typeof data; error?: string };
+        try {
+          json = JSON.parse(text) as { success: boolean; data?: typeof data; error?: string };
+        } catch {
+          throw new Error(`Invalid JSON from /api/google-sheets/info (HTTP ${res.status})`);
+        }
         if (!json.success || !json.data) throw new Error(json.error || "Failed to load Google Sheets info");
         setData(json.data);
       })
@@ -252,13 +269,6 @@ function GoogleSheetsViewContent() {
 
       {!isLoading && data && data.infoConfigured && (
         <>
-          {!data.syncWritesEnabled && (
-            <div className="text-xs text-amber-700 bg-amber-50 dark:bg-amber-950/30 rounded-md px-3 py-2">
-              Sync writes are disabled on this environment — this page shows
-              your spreadsheet link/info only; saves here do not sync to
-              Google.
-            </div>
-          )}
           <Card className="gap-0 py-0">
             <CardContent className="px-[14px] py-[12px]">
               <div className="flex items-start gap-3">
@@ -283,6 +293,21 @@ function GoogleSheetsViewContent() {
                     <div className="text-sm text-amber-700 mt-0.5">
                       {data.spreadsheetError || "No spreadsheet configured for your account."}
                     </div>
+                  )}
+                  {data.syncStatus && (
+                    <p
+                      data-testid="google-sheets-sync-status"
+                      className={cn(
+                        "text-xs mt-1",
+                        data.syncStatus.kind === "ok" && "text-green-700 dark:text-green-500",
+                        data.syncStatus.kind === "failed" && "text-red-700 dark:text-red-500",
+                        data.syncStatus.kind === "pending" && "text-amber-700 dark:text-amber-500",
+                        data.syncStatus.kind === "none" && "text-muted-foreground"
+                      )}
+                      title={data.syncStatus.lastError ?? data.syncStatus.lastSyncedAt ?? undefined}
+                    >
+                      status = {data.syncStatus.label}
+                    </p>
                   )}
                 </div>
               </div>
@@ -576,6 +601,7 @@ function HistoryListContent({
               <col className="w-[9.5rem]" />
               <col className="w-6" />
               <col style={{ width: nameColWidth }} />
+              <col className="w-[5.5rem]" />
               <col />
             </colgroup>
             <thead className="bg-muted">
@@ -599,12 +625,19 @@ function HistoryListContent({
                     className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-primary/40"
                   />
                 </th>
+                <th
+                  className="border p-1 text-left font-medium text-muted-foreground whitespace-nowrap"
+                  title="Page folder (by id + current loca; e.g. dates)"
+                >
+                  page
+                </th>
                 <th className="border p-1 text-left font-medium text-muted-foreground">loca</th>
               </tr>
             </thead>
             <tbody>
               {items.map((item) => {
                 const locaPath = locaPathFromAddress(item.address);
+                const pageName = item.pageName?.trim() || null;
                 return (
                   <tr
                     key={item.id}
@@ -626,6 +659,13 @@ function HistoryListContent({
                     </td>
                     <td className="border p-1 text-xs font-medium truncate" title={item.itemName}>
                       {item.itemName}
+                    </td>
+                    <td
+                      className="border p-1 text-xs text-muted-foreground truncate"
+                      title={pageName ?? undefined}
+                      data-testid="history-page-cell"
+                    >
+                      {pageName || "—"}
                     </td>
                     <td className="border p-1 text-xs font-mono text-muted-foreground truncate">
                       {locaPath || "—"}

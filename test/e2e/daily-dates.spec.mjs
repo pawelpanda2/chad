@@ -133,7 +133,11 @@ test.describe("QNAP TEST — History -> Google Sheets info page (Story 78 split)
     // spec file's control.
     if (json.data.infoConfigured) {
       await expect(page.getByText(/sync is not enabled on this environment/i)).toHaveCount(0);
+      await expect(page.getByText(/Sync writes are disabled/i)).toHaveCount(0);
+      await expect(page.getByTestId("google-sheets-sync-status")).toBeVisible();
       expect(json.data.chadUsername).toBe("test3");
+      expect(json.data.syncStatus).toBeTruthy();
+      expect(json.data.syncStatus.label).toBeTruthy();
     }
   });
 });

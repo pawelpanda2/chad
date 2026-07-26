@@ -27,6 +27,15 @@
     "test:provision-test3": "pnpm --filter dba build && node test/support/provision-test3.mjs",
     "test:integration:daily-dates": "pnpm test:provision-test3 && vitest run test/integration/qnap-test3-daily-dates.test.mjs",
     "test:e2e:daily-dates": "playwright test --config=test/e2e/playwright.config.mjs",
+    "test:e2e:local-login": "playwright test --config=test/e2e/playwright.local-login.config.mjs",
+    "test:integration:local-login": "vitest run test/integration/local-login-api.test.mjs",
+    "test:regression:local-login": "pnpm test:integration:local-login && pnpm test:e2e:local-login",
+    "test:unit:google-sheets-config": "pnpm --filter dba build && node packages/dba/dist/google-sheets/config.test.js",
+    "test:integration:local-google-sheets-info": "vitest run test/integration/local-google-sheets-info.test.mjs",
+    "test:e2e:local-google-sheets-history": "playwright test --config=test/e2e/playwright.local-google-sheets.config.mjs",
+    "test:regression:google-sheets-history": "pnpm test:unit:google-sheets-config && pnpm test:integration:local-google-sheets-info && pnpm test:e2e:local-google-sheets-history",
+    "test:e2e:local-dev-panel-settings": "playwright test --config=test/e2e/playwright.local-dev-panel.config.mjs",
+    "test:regression:dev-panel-settings": "pnpm test:e2e:local-dev-panel-settings",
     "test:regression:daily-dates": "pnpm test:unit && pnpm test:integration:local-mongo && pnpm test:integration:local-postgres && pnpm test:integration:daily-dates && pnpm test:e2e:daily-dates"
   },
   "dependencies": {

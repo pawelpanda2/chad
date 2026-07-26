@@ -8,6 +8,7 @@ type DbSource = 'local' | 'qnap';
 interface SourceState {
   current: DbSource;
   target: { source: DbSource; hostPort: string; error?: string };
+  probe?: { ok: boolean; itemCount?: number; error?: string };
 }
 
 interface DbSourceState {
@@ -15,18 +16,66 @@ interface DbSourceState {
   mongo: SourceState;
 }
 
-/** Settings tab: independent local/QNAP switches for Postgres + Mongo — see /api/dev-settings/db-source. */
+function SourceToggle({
+  id,
+  value,
+  disabled,
+  onChange,
+  localLabel,
+  serverLabel,
+}: {
+  id: string;
+  value: DbSource;
+  disabled: boolean;
+  onChange: (next: DbSource) => void;
+  localLabel: string;
+  serverLabel: string;
+}) {
+  return (
+    <div
+      id={id}
+      role="group"
+      aria-label={id}
+      style={{ display: 'inline-flex', gap: '4px', flexWrap: 'wrap' }}
+    >
+      <button
+        type="button"
+        className={`dev-btn ${value === 'local' ? 'dev-btn-source-active' : ''}`}
+        disabled={disabled}
+        aria-pressed={value === 'local'}
+        data-testid={`${id}-local`}
+        onClick={() => onChange('local')}
+      >
+        {localLabel}
+      </button>
+      <button
+        type="button"
+        className={`dev-btn ${value === 'qnap' ? 'dev-btn-source-active' : ''}`}
+        disabled={disabled}
+        aria-pressed={value === 'qnap'}
+        data-testid={`${id}-qnap`}
+        onClick={() => onChange('qnap')}
+      >
+        {serverLabel}
+      </button>
+    </div>
+  );
+}
+
+/** Settings tab: Local vs Server (QNAP) for Postgres + Beeper Mongo. */
 function DevPanelSettingsTab() {
   const [state, setState] = useState<DbSourceState | null>(null);
   const [loading, setLoading] = useState(true);
   const [switching, setSwitching] = useState<'postgres' | 'mongo' | null>(null);
+  const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [syncResult, setSyncResult] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/dev-settings/db-source');
+      const res = await fetch('/api/dev-settings/db-source', { credentials: 'include' });
       const data = await res.json();
       if (!res.ok) {
         setError(data.error ?? `Request failed (${res.status})`);
@@ -45,82 +94,148 @@ function DevPanelSettingsTab() {
   }, [load]);
 
   async function handleChange(kind: 'postgres' | 'mongo', source: DbSource) {
+    if (!state || state[kind].current === source) return;
+
+    // Optimistic UI — controlled <select> used to snap back to the old value
+    // for the whole probe round-trip, which looked like "combobox broken".
+    const previous = state;
+    setState({
+      ...state,
+      [kind]: {
+        ...state[kind],
+        current: source,
+        target: { ...state[kind].target, source, hostPort: '…' },
+        probe: undefined,
+      },
+    });
     setSwitching(kind);
     setError(null);
+    setSyncResult(null);
+
     try {
       const res = await fetch('/api/dev-settings/db-source', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ [kind]: source }),
       });
       const data = await res.json();
       if (!res.ok) {
         setError(data.error ?? `Request failed (${res.status})`);
+        if (data.postgres || data.mongo) setState(data);
+        else setState(previous);
         return;
       }
       setState(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to reach server');
+      setState(previous);
     } finally {
       setSwitching(null);
     }
   }
 
+  async function handleSyncFromQnap() {
+    setSyncing(true);
+    setError(null);
+    setSyncResult(null);
+    try {
+      const res = await fetch('/api/dev-settings/sync-local-postgres', {
+        method: 'POST',
+        credentials: 'include',
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        setError(data.error ?? `Sync failed (${res.status})`);
+        return;
+      }
+      setSyncResult(
+        `Synced ${data.itemsCopied} items + ${data.historyCopied} history rows\n` +
+          `${data.sourceHostPort} → ${data.destHostPort}\n` +
+          `at ${data.syncedAt}`
+      );
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Sync failed');
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  const busy = switching !== null || syncing;
+  const postgresValue = state?.postgres.current ?? 'local';
+  const mongoValue = state?.mongo.current ?? 'local';
+
   return (
     <div className="dev-tab-section">
       <div className="dev-section-title">⚙️ Settings</div>
 
+      <p style={{ fontSize: '12px', opacity: 0.85, marginBottom: '12px' }}>
+        Postgres = Folders / History / login. Mongo = Beeper CRM.
+        Local = mirror volume; Server = QNAP over Tailscale.
+      </p>
+
       <div style={{ marginBottom: '16px' }}>
-        <label htmlFor="dev-panel-postgres-source" style={{ display: 'block', marginBottom: '4px', fontWeight: 600 }}>
-          Postgres (CHAD — Folders / History / login)
-        </label>
-        <select
+        <div style={{ marginBottom: '4px', fontWeight: 600 }}>Postgres (CHAD)</div>
+        <SourceToggle
           id="dev-panel-postgres-source"
-          value={state?.postgres.current ?? 'local'}
-          disabled={loading || switching !== null || !state}
-          onChange={(e) => handleChange('postgres', e.target.value as DbSource)}
-          className="dev-btn"
-          style={{ minWidth: '260px' }}
-        >
-          <option value="local">Local Postgres (docker :5433)</option>
-          <option value="qnap">QNAP Postgres (server :12042)</option>
-        </select>
-        {switching === 'postgres' && <span style={{ marginLeft: '8px' }}>Przełączanie...</span>}
+          value={postgresValue}
+          disabled={loading || !state || busy}
+          onChange={(next) => handleChange('postgres', next)}
+          localLabel="Local"
+          serverLabel="Server (QNAP)"
+        />
+        {switching === 'postgres' && <span style={{ marginLeft: '8px' }}>Przełączanie…</span>}
         {!loading && state && (
-          <pre className="dev-log-pre" style={{ marginTop: '6px' }}>
-            {state.postgres.current === 'qnap' ? 'QNAP Postgres' : 'Local Postgres'}
+          <pre className="dev-log-pre" style={{ marginTop: '6px' }} data-testid="dev-panel-postgres-status">
+            {state.postgres.current === 'qnap' ? 'Server Postgres (QNAP)' : 'Local Postgres (mirror)'}
             {'\n'}host:port = {state.postgres.target.hostPort}
-            {state.postgres.target.error ? `\n(błąd: ${state.postgres.target.error})` : ''}
+            {state.postgres.target.error ? `\n(błąd URI: ${state.postgres.target.error})` : ''}
+            {state.postgres.probe
+              ? state.postgres.probe.ok
+                ? `\nprobe OK — cp_items=${state.postgres.probe.itemCount}`
+                : `\nprobe FAIL — ${state.postgres.probe.error}`
+              : ''}
+          </pre>
+        )}
+        <div style={{ marginTop: '8px' }}>
+          <button
+            type="button"
+            className="dev-btn"
+            disabled={loading || busy}
+            onClick={handleSyncFromQnap}
+          >
+            {syncing ? 'Syncing QNAP → local…' : 'Sync local Postgres from QNAP'}
+          </button>
+        </div>
+        {syncResult && (
+          <pre className="dev-log-pre" style={{ marginTop: '6px' }}>
+            {syncResult}
           </pre>
         )}
       </div>
 
       <div style={{ marginBottom: '12px' }}>
-        <label htmlFor="dev-panel-mongo-source" style={{ display: 'block', marginBottom: '4px', fontWeight: 600 }}>
-          Mongo (Beeper)
-        </label>
-        <select
+        <div style={{ marginBottom: '4px', fontWeight: 600 }}>Mongo (Beeper)</div>
+        <SourceToggle
           id="dev-panel-mongo-source"
-          value={state?.mongo.current ?? 'local'}
-          disabled={loading || switching !== null || !state}
-          onChange={(e) => handleChange('mongo', e.target.value as DbSource)}
-          className="dev-btn"
-          style={{ minWidth: '260px' }}
-        >
-          <option value="local">Local Mongo</option>
-          <option value="qnap">QNAP Mongo (server :12040)</option>
-        </select>
-        {switching === 'mongo' && <span style={{ marginLeft: '8px' }}>Przełączanie...</span>}
+          value={mongoValue}
+          disabled={loading || !state || busy}
+          onChange={(next) => handleChange('mongo', next)}
+          localLabel="Local"
+          serverLabel="Server (QNAP)"
+        />
+        {switching === 'mongo' && <span style={{ marginLeft: '8px' }}>Przełączanie…</span>}
         {!loading && state && (
-          <pre className="dev-log-pre" style={{ marginTop: '6px' }}>
-            {state.mongo.current === 'qnap' ? 'QNAP Mongo' : 'Local Mongo'}
+          <pre className="dev-log-pre" style={{ marginTop: '6px' }} data-testid="dev-panel-mongo-status">
+            {state.mongo.current === 'qnap' ? 'Server Mongo (QNAP)' : 'Local Mongo'}
             {'\n'}host:port = {state.mongo.target.hostPort}
             {state.mongo.target.error ? `\n(błąd: ${state.mongo.target.error})` : ''}
           </pre>
         )}
       </div>
 
-      {loading && <div className="dev-no-logs">Ładowanie...</div>}
+      {loading && <div className="dev-no-logs">Ładowanie…</div>}
 
       {error && (
         <div className="dev-request-detail dev-request-error">
@@ -130,10 +245,8 @@ function DevPanelSettingsTab() {
       )}
 
       <div className="dev-no-logs" style={{ marginTop: '12px' }}>
-        Działa lokalnie (`CHAD_ENVIRONMENT=local` / local-mac-docker oraz bare `next dev`).
-        Zablokowane na QNAP TEST/PROD. Każdy combobox działa niezależnie; zmiana dotyczy całego
-        procesu serwera. QNAP Postgres może wymagać `POSTGRES_QNAP_PASSWORD` w `.env.local` gdy
-        hasło różni się od lokalnego volume.
+        Local only. Preference: `/app/data/dev-db-source.json`. After switching,
+        next API calls use the new DB (no full page reload required).
       </div>
     </div>
   );

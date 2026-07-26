@@ -1,5 +1,14 @@
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
+import {
+  QNAP_TAILSCALE_HOST,
+  QNAP_MONGO_PORT,
+  QNAP_POSTGRES_PORT,
+  LOCAL_POSTGRES_HOST_PORT,
+} from "./dev-db-hosts.js";
+
 /**
- * Runtime-switchable data sources for local development (Story 83 + Story 81).
+ * Runtime-switchable data sources for local development (Story 83 + Story 81 + Story 89).
  *
  * Originally only Mongo (local vs QNAP-over-Tailscale). After Story 80/81 the
  * primary CHAD datastore is PostgreSQL — the Dev Panel Settings tab now
@@ -7,32 +16,58 @@
  *
  * Deliberately global (module-level), not per-request: there is one connection
  * pool per process, so "which DB" is a process-wide fact. Safe ONLY because
- * setters refuse to run outside local `next dev` (`NODE_ENV !== "production"`).
+ * setters refuse to run outside local (`CHAD_ENVIRONMENT=local` or bare next
+ * dev). Preference can persist under DEV_DB_SOURCE_PREF_PATH (default
+ * `/app/data/dev-db-source.json` in local Docker).
  */
 
 export type DbSource = "local" | "qnap";
 /** @deprecated Prefer `DbSource` — kept for existing callers. */
 export type MongoSource = DbSource;
 
-const QNAP_TAILSCALE_HOST = "100.117.139.83";
-const QNAP_MONGO_PORT = "12040";
-const QNAP_POSTGRES_PORT = "12042";
-/** Host-published port of `chad-postgres-local-mac-docker` (see docker-compose.local.yml). */
-const LOCAL_POSTGRES_PORT = "5433";
+function prefPath(): string {
+  return process.env.DEV_DB_SOURCE_PREF_PATH || "/app/data/dev-db-source.json";
+}
+
+function loadPersistedSources(): { postgres?: DbSource; mongo?: DbSource } | null {
+  try {
+    const path = prefPath();
+    if (!existsSync(path)) return null;
+    const raw = JSON.parse(readFileSync(path, "utf8")) as { postgres?: unknown; mongo?: unknown };
+    const out: { postgres?: DbSource; mongo?: DbSource } = {};
+    if (raw.postgres === "local" || raw.postgres === "qnap") out.postgres = raw.postgres;
+    if (raw.mongo === "local" || raw.mongo === "qnap") out.mongo = raw.mongo;
+    return out;
+  } catch {
+    return null;
+  }
+}
+
+function persistSources(postgres: DbSource, mongo: DbSource): void {
+  try {
+    const path = prefPath();
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, JSON.stringify({ postgres, mongo, updatedAt: new Date().toISOString() }, null, 2));
+  } catch {
+    // Preference is best-effort — volume may be missing on bare next dev.
+  }
+}
 
 function isQnapPostgresUri(uri: string): boolean {
   return uri.includes(QNAP_TAILSCALE_HOST) || uri.includes(`:${QNAP_POSTGRES_PORT}`);
 }
 
 function defaultMongoSource(): DbSource {
+  const persisted = loadPersistedSources();
+  if (persisted?.mongo) return persisted.mongo;
   return process.env.DBA_MONGO_MODE === "qnap" ? "qnap" : "local";
 }
 
 function defaultPostgresSource(): DbSource {
+  const persisted = loadPersistedSources();
+  if (persisted?.postgres) return persisted.postgres;
   const uri = process.env.POSTGRES_URI ?? "";
   if (uri && isQnapPostgresUri(uri)) return "qnap";
-  // Align with the shell switch that now also rewrites POSTGRES_URI in
-  // bash-scripts/dashboard/03_local_mac_docker/01_config.sh when mode=qnap.
   if (process.env.DBA_MONGO_MODE === "qnap") return "qnap";
   return "local";
 }
@@ -88,6 +123,7 @@ export function setMongoSource(source: DbSource): void {
   if (source === currentMongoSource) return;
   currentMongoSource = source;
   mongoGeneration += 1;
+  persistSources(currentPostgresSource, currentMongoSource);
 }
 
 export function setPostgresSource(source: DbSource): void {
@@ -96,6 +132,7 @@ export function setPostgresSource(source: DbSource): void {
   if (source === currentPostgresSource) return;
   currentPostgresSource = source;
   postgresGeneration += 1;
+  persistSources(currentPostgresSource, currentMongoSource);
 }
 
 function isQnapMongoUri(uri: string): boolean {
@@ -193,7 +230,7 @@ export function getEffectivePostgresUri(): string {
   const { user, pass, db } = requirePostgresCredentials(false);
   const inLocalDocker = process.env.CHAD_ENVIRONMENT === "local" && process.env.NODE_ENV === "production";
   const host = inLocalDocker ? "postgres" : "127.0.0.1";
-  const port = inLocalDocker ? "5432" : LOCAL_POSTGRES_PORT;
+  const port = inLocalDocker ? "5432" : LOCAL_POSTGRES_HOST_PORT;
   return `postgres://${user}:${pass}@${host}:${port}/${db}`;
 }
 

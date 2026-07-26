@@ -9,6 +9,7 @@
 | 5 | DONE | | Start PostgreSQL selectively on QNAP shared (no Mongo restart) |
 | 6 | DONE | | Apply Postgres migrations on QNAP |
 | 7 | DONE | | Migrate test3 only (dry-run then apply), verify integrity + parity |
+<<<<<<< Updated upstream
 | 8 | DONE | | Fixed leads.ts Postgres branch + cut QNAP TEST over to Postgres primary |
 | 9 | DONE | | Verify workers on TEST (Google Sheets + data-outbox idle by design; logs captured) |
 | 10 | DONE | | QNAP TEST smoke: login path + test3 Date CRUD via Postgres (remote smoke script) |
@@ -17,6 +18,15 @@
 | 13 | DONE | | Document TEST rollback procedure (exercised live during leads.ts incident) |
 | 14 | DONE | | Update documentation (how-it-works.md, 06_others_from_report.md) |
 | 15 | DONE | | chad_admin: backup, legacy baseline, Mongo→Postgres, re-cutover with allowlist |
+=======
+| 8 | DONE | | Fixed a real gap: `leads.ts` business functions had no Postgres branch — cut QNAP TEST over to Postgres primary (isolated from PROD's env) |
+| 9 | DONE | | Verify Google Sheets / Content Provider / data-outbox workers against Postgres on TEST |
+| 10 | DONE | | QNAP TEST smoke/integration tests (test3), DBA-function-level (real create/update/delete + history + repo-allowlist guard) |
+| 11 | BLOCKED | | Playwright e2e — no `E2E_TEST3_PASSWORD` in this environment |
+| 12 | DONE | | `cp-postgres-integrity-check` against QNAP TEST test3 data |
+| 13 | DONE | | Document TEST rollback procedure |
+| 14 | DONE | | Update documentation |
+>>>>>>> Stashed changes
 
 This table is updated as each step is actually executed — no row is marked
 DONE without the real command + real output recorded in the matching Task
@@ -351,6 +361,7 @@ against real QNAP data.
 `packages/dba/scripts/fix-cp-history-legacy-index-conflict.mjs`.
 **Status: DONE**
 
+<<<<<<< Updated upstream
 # Task 15 — chad_admin migration + login fix + re-cutover (2026-07-24)
 
 **Requested:** migrate `0fc7da8d-3466-4964-a24c-dfc0d0fef87c`; fix login lockout;
@@ -382,3 +393,147 @@ returned null → login + `resolveCurrentUser()` failed ("not authenticated").
 **Task 13 — Rollback:** documented + exercised in Task 8 (commit `cccc293`/`542c31f`).
 **Task 14 — Docs:** `ai-docs/history/how-it-works.md`, `06_others_from_report.md`.
 **Task 11 — Playwright:** BLOCKED — `E2E_TEST3_PASSWORD` absent from `.env.local`.
+=======
+# Task 4 — Redeploy TEST with the index fix
+
+**Requested:** confirm TEST works after the `mutate.ts` partial-index fix.
+**Done:** deployed commit `6da1230` to QNAP TEST via
+`08_registry_test/deploy.sh`; ran `test/support/provision-test3.mjs`
+against QNAP's real Mongo — still hit `IndexOptionsConflict` (a second,
+related legacy-index issue, see Task 3's full write-up above). Fixed via
+`fix-cp-history-legacy-index-conflict.mjs`, then re-ran
+`provision-test3.mjs` clean (no crash, correct counts).
+**Status: DONE**
+
+# Task 9 — Verify Google Sheets / Content Provider / data-outbox workers on TEST
+
+**Requested:** confirm each worker's behavior against the Postgres cutover.
+
+**Done — real container logs after the cutover redeploy:**
+```
+[google-sheets] sync worker not started — GOOGLE_SHEETS_ENABLED is not true.
+[data-outbox] worker not started — DBA_CONTENT_PROVIDER_ENABLED is not true (nothing to follow toward).
+```
+Both are **by design**, unchanged from before this Story:
+- Google Sheets: TEST only ever gets the info-only vars
+  (`GOOGLE_SHEETS_SPREADSHEET_MAP`/`GOOGLE_SERVICE_ACCOUNT_EMAIL`), never
+  `GOOGLE_SHEETS_ENABLED` — the real write-sync worker is production-guarded
+  to PROD only (`production-guard.ts`), same as before Story 81. Nothing to
+  "read from Postgres outbox" on TEST because the worker never runs there.
+- Content Provider follower: `DBA_CONTENT_PROVIDER_ENABLED=false` on TEST
+  (unchanged) — no follower configured, so the new data-sync outbox worker
+  (wired into a process for the first time this Story) correctly detects
+  "nothing to follow toward" and stays idle rather than doing wasted work.
+- Beeper: `BEEPER_MONGODB_URI` untouched throughout every change in this
+  Story — Beeper was never part of any cutover.
+
+**Files changed:** none (this task is verification of existing/already-
+committed behavior).
+**Status: DONE**
+
+# Task 10 — QNAP TEST smoke/integration tests (test3)
+
+**Requested:** login test3, HTTP 200, Daily/Dates/History work, no pool
+errors, Postgres health green; create/update/delete Daily and Date each
+produce exactly one `cp_history` event, continuous versions, correct actor,
+delete snapshot, hash-chain, Dashboard sees the data, no mutation of other
+repos.
+
+**Done (DBA-function-level — see Task 11 for why not full browser/HTTP):**
+```
+$ node test3-postgres-crud-smoke.mjs   (against QNAP's real Postgres, real test3 repoGuid)
+existing date entries (should be the 3 real ones): 3
+DATE create ok, loca= 01/01/04
+DATE update ok
+DATE delete ok
+date entries after cycle (should equal before): 3 OK
+DATE history ops: [ '1:insert:test3', '2:update:test3', '3:delete:test3' ]
+SMOKE TEST PASSED on real QNAP Postgres against test3.
+```
+Also verified the repo-allowlist guard for real:
+```
+$ node guard-check.mjs   (write attempt for a random NON-test3 repoGuid)
+OK: write correctly rejected: RepoNotAllowlistedError - QNAP TEST's PostgreSQL
+primary currently holds data for a limited set of repos only (5a9c8b7d-6e5f-4...
+```
+`chad-postgres` health: `healthy` throughout (re-checked via
+`08_postgres_status.sh`). No pool errors in any of the above runs.
+
+**Not done:** login-as-test3 through the actual browser/HTTP session layer
+and the History UI table/filters/details route — blocked by the same
+missing `E2E_TEST3_PASSWORD` as Task 11 (Playwright). The DBA-function
+tests above exercise the exact same `leads.ts`/`cp-history.ts` functions
+the Dashboard's API routes call, but not the HTTP/session/React layer on
+top. This is a disclosed gap, not a silent skip.
+**Status: DONE** (scope: DBA-layer, not full HTTP/browser)
+
+# Task 11 — Playwright e2e
+
+**Requested:** History table/filters/details/Back/isolation via Playwright;
+never mark PASS without running.
+
+**Not done.** `E2E_TEST3_PASSWORD` is not set in this environment (checked
+both `.env.local` and `.env.qnap` — absent from both), and
+`test/e2e/history-ui.spec.mjs`/`daily-dates.spec.mjs` explicitly
+`test.skip()` themselves without it, matching the same pre-existing gap
+disclosed at the end of Story 80. Did not attempt to run these (would
+either skip or fail on missing credentials, not a meaningful signal).
+**Status: NOT DONE / BLOCKED**
+
+# Task 12 — `cp-postgres-integrity-check` against QNAP TEST test3 data
+
+**Requested:** zero errors, no duplicates, continuous versions, last-event
+↔ cp_items match, delete ↔ absence, no stale locks, correct isolation;
+compare counts/events/outboxes/hashes Mongo vs Postgres.
+
+**Done, run twice** (once right after migration — Task 7 — and again after
+the smoke-test create/update/delete cycle in Task 10, to prove it stays
+green after real new mutations too):
+```
+$ node cp-postgres-integrity-check.mjs --repoGuid=5a9c...c5d
+[cp-postgres-integrity] items checked: 8, history events checked: 11
+[cp-postgres-integrity] OK — zero inconsistencies.
+```
+(11 = 8 original baseline inserts + 3 from the Task 10 smoke test's
+insert/update/delete cycle — the temporary item was created AND deleted,
+so `cp_items` count stayed at 8 while `cp_history` grew, exactly as
+expected.) `SELECT DISTINCT repo_guid FROM cp_items` — still exactly one
+row, test3's own GUID, confirmed again after the smoke test.
+**Status: DONE**
+
+# Task 13 — Rollback procedure for TEST
+
+**Requested:** documented, tested procedure to move TEST back to Mongo.
+
+**Done — actually exercised for real during this Story** (Task 8's
+incident), not just written down:
+1. Edit `docker-compose.qnap.test.yml`: `DBA_MONGO_ENABLED=true`,
+   `DBA_PRIMARY_BACKEND=mongo` (leave `DBA_POSTGRES_ENABLED=true` —
+   harmless, just means Postgres stays registered but not primary).
+2. Commit + push.
+3. `bash bash-scripts/dashboard/06_qnap_test_ssh/03_re-start.sh` (or the
+   equivalent `run_remote_script "04_qnap_test" "03_re-start.sh"`) — pulls
+   the reverted compose file and restarts TEST only. No new image build
+   needed if no application code changed (compose-only revert); a new
+   GHCR build+push+deploy is needed if application code also needs
+   reverting (not the case for a config-only rollback).
+4. Smoke test: `curl .../login` → 200; `provision-test3.mjs` or the
+   DBA-function smoke script against Mongo → real data, no crash.
+5. Postgres itself is left running and untouched — `chad-postgres` and its
+   migrated test3 data stay available for analysis/retry, never dropped.
+
+This exact sequence was used live in this Story (commit `cccc293`,
+Task 8) to revert TEST within minutes of discovering the `leads.ts` gap,
+and again would be the path back if a future regression is found.
+
+**Status: DONE**
+
+# Task 14 — Documentation
+
+See the final commit of this Story — `ai-docs/history/how-it-works.md`
+updated to reflect QNAP TEST's real Postgres cutover (previously said "not
+cut over as of Story 80"); Story 80's own checklist not rewritten (Story
+docs are never edited retroactively to rewrite history — this Story's own
+`06_others_from_report.md` cross-references it instead).
+**Status: DONE**
+>>>>>>> Stashed changes
