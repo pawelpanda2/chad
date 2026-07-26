@@ -8,6 +8,14 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./table-columns": {
+      "types": "./dist/google-sheets/mapper.d.ts",
+      "import": "./dist/google-sheets/mapper.js"
+    },
+    "./system-folders": {
+      "types": "./dist/system-folders.d.ts",
+      "import": "./dist/system-folders.js"
     }
   },
   "type": "module",
