@@ -16,7 +16,7 @@
  */
 
 import { loadGoogleSheetsConfig, type GoogleSheetsConfig } from "./config.js";
-import { checkGoogleSheetsProductionGuard } from "./production-guard.js";
+import { checkGoogleSheetsProductionGuard, checkGoogleSheetsWriteAllowed } from "./production-guard.js";
 import { GoogleSheetsApiClient } from "./sheets-api-client.js";
 import { runGoogleSheetsSyncWorker } from "./worker.js";
 import { ensureDailyTrackerLayout, ensureDatesLayout, ensureLeadsLayout } from "./layout.js";
@@ -28,15 +28,17 @@ let started = false;
 /**
  * Lays out (or confirms already-laid-out, via `CHAD_SHEET_LAYOUT_VERSION`)
  * every configured user's own "daily"/"dates"/"leads" tabs — once per user, at
- * worker startup, deliberately separate from the per-record sync loop
- * (`layout.ts`'s own header comment). Fire-and-forget from the caller's
- * point of view (never awaited by `startGoogleSheetsSyncWorkerIfEnabled`,
- * see below) — a slow/failing Sheets API call here must never delay
- * Dashboard startup or block the sync loop from starting; each user's
- * layout is independent, so one user's failure never stops another's.
+ * worker startup. On non-prod environments only allowlisted write users
+ * (default test3) get layout mutations, so pawel_f/kamil_s sheets stay
+ * untouched during TEST regression.
  */
 async function ensureLayoutsForAllUsers(client: GoogleSheetsClient, config: GoogleSheetsConfig): Promise<void> {
   for (const [username, spreadsheetId] of Object.entries(config.spreadsheetMap)) {
+    const writeOk = checkGoogleSheetsWriteAllowed(username);
+    if (!writeOk.allowed) {
+      console.log(`[google-sheets] layout skipped for username=${username} (${writeOk.reason})`);
+      continue;
+    }
     try {
       const changedDaily = await ensureDailyTrackerLayout(client, {
         spreadsheetId,
