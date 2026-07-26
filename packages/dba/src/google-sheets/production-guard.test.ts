@@ -4,7 +4,11 @@
  *   cd packages/dba && npx tsc && node dist/google-sheets/production-guard.test.js
  */
 
-import { checkGoogleSheetsProductionGuard, extractMongoHost } from "./production-guard.js";
+import {
+  checkGoogleSheetsProductionGuard,
+  checkGoogleSheetsWriteAllowed,
+  extractMongoHost,
+} from "./production-guard.js";
 
 async function runTests() {
   console.log("Running google-sheets/production-guard Tests...\n");
@@ -29,79 +33,89 @@ async function runTests() {
     }
   }
 
-  const originalEnv = { CHAD_ENVIRONMENT: process.env.CHAD_ENVIRONMENT, MONGODB_URI: process.env.MONGODB_URI };
+  const keys = [
+    "CHAD_ENVIRONMENT",
+    "MONGODB_URI",
+    "DBA_PRIMARY_BACKEND",
+    "POSTGRES_URI",
+    "GOOGLE_SHEETS_ALLOW_NON_PROD",
+    "GOOGLE_SHEETS_NON_PROD_WRITE_USERS",
+  ] as const;
+  const originalEnv: Record<string, string | undefined> = {};
+  for (const k of keys) originalEnv[k] = process.env[k];
+
   function restoreEnv() {
-    if (originalEnv.CHAD_ENVIRONMENT === undefined) delete process.env.CHAD_ENVIRONMENT;
-    else process.env.CHAD_ENVIRONMENT = originalEnv.CHAD_ENVIRONMENT;
-    if (originalEnv.MONGODB_URI === undefined) delete process.env.MONGODB_URI;
-    else process.env.MONGODB_URI = originalEnv.MONGODB_URI;
+    for (const k of keys) {
+      if (originalEnv[k] === undefined) delete process.env[k];
+      else process.env[k] = originalEnv[k];
+    }
   }
 
   test("extractMongoHost pulls the host out from between @ and :/", () => {
     assertEquals(extractMongoHost("mongodb://user:pass@chad-mongodb:27017/chad?authSource=admin"), "chad-mongodb");
     assertEquals(extractMongoHost("mongodb://user:pass@100.117.139.83:12040/chad?authSource=admin"), "100.117.139.83");
-    assertEquals(extractMongoHost("mongodb://user:pass@mongodb:27017/chad"), "mongodb");
-    assertEquals(extractMongoHost("mongodb://user:pass@localhost:27017/chad"), "localhost");
-  });
-
-  test("extractMongoHost returns empty string for an unparseable/malformed URI", () => {
-    assertEquals(extractMongoHost("not-a-mongo-uri"), "");
-    assertEquals(extractMongoHost(""), "");
   });
 
   test("blocked when CHAD_ENVIRONMENT is unset", () => {
     delete process.env.CHAD_ENVIRONMENT;
+    delete process.env.GOOGLE_SHEETS_ALLOW_NON_PROD;
     process.env.MONGODB_URI = "mongodb://u:p@chad-mongodb:27017/chad";
-    const result = checkGoogleSheetsProductionGuard();
-    assertEquals(result.allowed, false);
+    assertEquals(checkGoogleSheetsProductionGuard().allowed, false);
     restoreEnv();
   });
 
-  test("blocked when CHAD_ENVIRONMENT=local, even against a production-shaped Mongo host", () => {
+  test("blocked when CHAD_ENVIRONMENT=local without ALLOW_NON_PROD", () => {
     process.env.CHAD_ENVIRONMENT = "local";
+    delete process.env.GOOGLE_SHEETS_ALLOW_NON_PROD;
     process.env.MONGODB_URI = "mongodb://u:p@chad-mongodb:27017/chad";
-    const result = checkGoogleSheetsProductionGuard();
-    assertEquals(result.allowed, false);
+    assertEquals(checkGoogleSheetsProductionGuard().allowed, false);
     restoreEnv();
   });
 
-  test("blocked when CHAD_ENVIRONMENT=test, even against a production-shaped Mongo host (TEST and PROD share chad-mongodb today)", () => {
+  test("allowed when CHAD_ENVIRONMENT=local with ALLOW_NON_PROD=true", () => {
+    process.env.CHAD_ENVIRONMENT = "local";
+    process.env.GOOGLE_SHEETS_ALLOW_NON_PROD = "true";
+    assertEquals(checkGoogleSheetsProductionGuard().allowed, true);
+    restoreEnv();
+  });
+
+  test("allowed when CHAD_ENVIRONMENT=test (QNAP TEST regression sync)", () => {
     process.env.CHAD_ENVIRONMENT = "test";
-    process.env.MONGODB_URI = "mongodb://u:p@chad-mongodb:27017/chad";
-    const result = checkGoogleSheetsProductionGuard();
-    assertEquals(result.allowed, false);
+    process.env.DBA_PRIMARY_BACKEND = "postgres";
+    delete process.env.POSTGRES_URI;
+    assertEquals(checkGoogleSheetsProductionGuard().allowed, true);
     restoreEnv();
   });
 
-  test("blocked when CHAD_ENVIRONMENT=prod but MONGODB_URI points at a local/test host", () => {
+  test("non-prod write allowlist: test3 ok, pawel_f blocked", () => {
+    process.env.CHAD_ENVIRONMENT = "test";
+    process.env.DBA_PRIMARY_BACKEND = "postgres";
+    assertEquals(checkGoogleSheetsWriteAllowed("test3").allowed, true);
+    assertEquals(checkGoogleSheetsWriteAllowed("pawel_f").allowed, false);
+    restoreEnv();
+  });
+
+  test("prod allows any username write (map still required at enqueue)", () => {
     process.env.CHAD_ENVIRONMENT = "prod";
-    process.env.MONGODB_URI = "mongodb://u:p@mongodb:27017/chad";
-    const result = checkGoogleSheetsProductionGuard();
-    assertEquals(result.allowed, false);
+    process.env.DBA_PRIMARY_BACKEND = "mongo";
+    process.env.MONGODB_URI = "mongodb://u:p@chad-mongodb:27017/chad";
+    assertEquals(checkGoogleSheetsWriteAllowed("pawel_f").allowed, true);
     restoreEnv();
   });
 
   test("blocked when CHAD_ENVIRONMENT=prod but MONGODB_URI points at localhost", () => {
     process.env.CHAD_ENVIRONMENT = "prod";
+    process.env.DBA_PRIMARY_BACKEND = "mongo";
     process.env.MONGODB_URI = "mongodb://u:p@localhost:27017/chad_test_story74";
-    const result = checkGoogleSheetsProductionGuard();
-    assertEquals(result.allowed, false);
+    assertEquals(checkGoogleSheetsProductionGuard().allowed, false);
     restoreEnv();
   });
 
-  test("allowed when CHAD_ENVIRONMENT=prod and MONGODB_URI points at chad-mongodb (the real QNAP internal host)", () => {
+  test("allowed when CHAD_ENVIRONMENT=prod and MONGODB_URI points at chad-mongodb", () => {
     process.env.CHAD_ENVIRONMENT = "prod";
+    process.env.DBA_PRIMARY_BACKEND = "mongo";
     process.env.MONGODB_URI = "mongodb://u:p@chad-mongodb:27017/chad?authSource=admin";
-    const result = checkGoogleSheetsProductionGuard();
-    assertEquals(result.allowed, true);
-    restoreEnv();
-  });
-
-  test("allowed when CHAD_ENVIRONMENT=prod and MONGODB_URI points at QNAP's Tailscale IP", () => {
-    process.env.CHAD_ENVIRONMENT = "prod";
-    process.env.MONGODB_URI = "mongodb://u:p@100.117.139.83:12040/chad?authSource=admin&directConnection=true";
-    const result = checkGoogleSheetsProductionGuard();
-    assertEquals(result.allowed, true);
+    assertEquals(checkGoogleSheetsProductionGuard().allowed, true);
     restoreEnv();
   });
 

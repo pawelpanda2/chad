@@ -3,15 +3,7 @@
  * this durable outbox directly on MongoDB (now `outbox-mongo.ts`); Story 80
  * adds a PostgreSQL-backed implementation (`cp_outbox_google_sheets_sync`,
  * `outbox-postgres.ts`) and turns this module into a thin dispatcher on
- * `loadDataProvidersConfig().primaryBackend`, so `worker.ts`/`bootstrap.ts`
- * need zero changes to work against whichever backend a repo has cut over
- * to.
- *
- * PROD is unaffected by this Story (it never sets `DBA_PRIMARY_BACKEND=
- * postgres`, and the Google Sheets worker is production-guarded to only
- * ever run there) — every call here forwards to the exact same Mongo
- * implementation Story 75 already shipped whenever the primary backend
- * isn't `postgres`.
+ * `loadDataProvidersConfig().primaryBackend`.
  */
 
 import { loadDataProvidersConfig } from "../data-providers/config.js";
@@ -32,6 +24,8 @@ interface GoogleSheetsOutboxBackend {
   recoverStaleGoogleSheetsLocks(clock?: Clock): Promise<number>;
   getGoogleSheetsJob(jobId: string): Promise<GoogleSheetsSyncJob | null>;
   getLatestGoogleSheetsJobForUsername(username: string): Promise<GoogleSheetsSyncJob | null>;
+  getGoogleSheetsJobByMutationId?(mutationId: string): Promise<GoogleSheetsSyncJob | null>;
+  getLatestGoogleSheetsJobForRecordKey?(recordKey: string): Promise<GoogleSheetsSyncJob | null>;
 }
 
 function backend(): GoogleSheetsOutboxBackend {
@@ -68,7 +62,27 @@ export async function getLatestGoogleSheetsJobForUsername(
   return backend().getLatestGoogleSheetsJobForUsername(username);
 }
 
-export type GoogleSheetsUserSyncKind = "ok" | "failed" | "pending" | "none";
+export async function getGoogleSheetsJobByMutationId(
+  mutationId: string
+): Promise<GoogleSheetsSyncJob | null> {
+  const b = backend();
+  if (b.getGoogleSheetsJobByMutationId) {
+    return b.getGoogleSheetsJobByMutationId(mutationId);
+  }
+  return getGoogleSheetsJob(mutationId);
+}
+
+export async function getLatestGoogleSheetsJobForRecordKey(
+  recordKey: string
+): Promise<GoogleSheetsSyncJob | null> {
+  const b = backend();
+  if (b.getLatestGoogleSheetsJobForRecordKey) {
+    return b.getLatestGoogleSheetsJobForRecordKey(recordKey);
+  }
+  return null;
+}
+
+export type GoogleSheetsUserSyncKind = "ok" | "failed" | "pending" | "none" | "not_configured";
 
 export interface GoogleSheetsUserSyncStatus {
   kind: GoogleSheetsUserSyncKind;
@@ -76,6 +90,8 @@ export interface GoogleSheetsUserSyncStatus {
   label: string;
   lastSyncedAt: string | null;
   lastError: string | null;
+  lastAttemptAt?: string | null;
+  status?: string | null;
 }
 
 /**
@@ -110,11 +126,26 @@ export async function getGoogleSheetsUserSyncStatus(
     };
   }
 
+  return mapJobToSyncStatus(job);
+}
+
+export interface GoogleSheetsMutationSyncStatus extends GoogleSheetsUserSyncStatus {
+  spreadsheetId: string | null;
+  spreadsheetUrl: string | null;
+  sheetTab: string | null;
+  recordKey: string | null;
+  kindJob: string | null;
+  jobId: string | null;
+}
+
+function mapJobToSyncStatus(job: GoogleSheetsSyncJob): GoogleSheetsUserSyncStatus {
   if (job.status === "synced") {
     return {
       kind: "ok",
-      label: "last sync done correctly",
+      label: "synced",
+      status: "synced",
       lastSyncedAt: job.completedAt ?? job.updatedAt,
+      lastAttemptAt: job.updatedAt,
       lastError: null,
     };
   }
@@ -122,17 +153,86 @@ export async function getGoogleSheetsUserSyncStatus(
   if (job.status === "failed") {
     return {
       kind: "failed",
-      label: "sync failed",
+      label: "failed",
+      status: "failed",
       lastSyncedAt: null,
+      lastAttemptAt: job.updatedAt,
       lastError: job.lastError,
     };
   }
 
-  // pending | processing | retry
   return {
     kind: "pending",
-    label: job.status === "retry" ? "sync retrying" : "sync pending",
+    label: job.status,
+    status: job.status,
     lastSyncedAt: null,
+    lastAttemptAt: job.updatedAt,
     lastError: job.lastError,
+  };
+}
+
+/**
+ * Per-history-entry Google Sheets status: prefer mutationId join, then recordKey.
+ */
+export async function getGoogleSheetsSyncStatusForHistoryEntry(input: {
+  mutationId: string;
+  repoGuid: string;
+  address: string;
+  username?: string | null;
+  spreadsheetConfigured: boolean;
+}): Promise<GoogleSheetsMutationSyncStatus> {
+  if (!input.spreadsheetConfigured) {
+    return {
+      kind: "not_configured",
+      label: "not configured",
+      status: "not configured",
+      lastSyncedAt: null,
+      lastError: null,
+      spreadsheetId: null,
+      spreadsheetUrl: null,
+      sheetTab: null,
+      recordKey: null,
+      kindJob: null,
+      jobId: null,
+    };
+  }
+
+  const loca = input.address.startsWith(`${input.repoGuid}/`)
+    ? input.address.slice(input.repoGuid.length + 1)
+    : input.address === input.repoGuid
+      ? ""
+      : input.address;
+  const recordKey = `${input.repoGuid}:${loca}`;
+
+  const job =
+    (await getGoogleSheetsJobByMutationId(input.mutationId)) ??
+    (await getLatestGoogleSheetsJobForRecordKey(recordKey));
+
+  if (!job) {
+    return {
+      kind: "none",
+      label: "no sync yet",
+      status: "no sync yet",
+      lastSyncedAt: null,
+      lastError: null,
+      spreadsheetId: null,
+      spreadsheetUrl: null,
+      sheetTab: null,
+      recordKey,
+      kindJob: null,
+      jobId: null,
+    };
+  }
+
+  const base = mapJobToSyncStatus(job);
+  const spreadsheetId = job.payload.spreadsheetId ?? null;
+  return {
+    ...base,
+    spreadsheetId,
+    spreadsheetUrl: spreadsheetId ? `https://docs.google.com/spreadsheets/d/${spreadsheetId}/` : null,
+    sheetTab: null,
+    recordKey: job.recordKey,
+    kindJob: job.kind,
+    jobId: job._id,
   };
 }

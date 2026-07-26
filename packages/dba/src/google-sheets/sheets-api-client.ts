@@ -199,6 +199,33 @@ export class GoogleSheetsApiClient implements GoogleSheetsClient {
     });
   }
 
+  /**
+   * Physically removes one sheet row by index (deleteDimension). Used for
+   * `kind: "delete"` sync jobs so a deleted CHAD record does not linger as
+   * a soft-DELETED tombstone in the user's spreadsheet.
+   */
+  async deleteRow(target: GoogleSheetsTarget, rowNumber: number): Promise<void> {
+    const sheetId = await this.getSheetId(target);
+    const firstDataRow = (target.headerRowCount ?? 1) + 1;
+    if (rowNumber < firstDataRow) {
+      throw new Error(
+        `deleteRow: row ${rowNumber} is inside the header block (headerRowCount=${target.headerRowCount ?? 1})`
+      );
+    }
+    await this.batchUpdate(target.spreadsheetId, [
+      {
+        deleteDimension: {
+          range: {
+            sheetId,
+            dimension: "ROWS",
+            startIndex: rowNumber - 1,
+            endIndex: rowNumber,
+          },
+        },
+      },
+    ]);
+  }
+
   async getSheetId(target: GoogleSheetsTarget): Promise<number> {
     const cacheKey = `${target.spreadsheetId}::${target.sheetName}`;
     const cached = this.sheetIdCache.get(cacheKey);

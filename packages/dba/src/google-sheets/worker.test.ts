@@ -131,7 +131,7 @@ async function runTests() {
     assertEquals(after.DATE, "2026-07-21");
   });
 
-  await test("delete: marks CHAD_SYNC_STATUS=DELETED in place, row is not removed, domain data untouched", async () => {
+  await test("delete: physically removes the row by CHAD_RECORD_KEY (idempotent if already gone)", async () => {
     const client = new FakeGoogleSheetsClient();
     await enqueueGoogleSheetsSync({ operationId: "del-1a", kind: "upsert", payload: payload("04", { DATE: "2026-07-20", NUMBERS: "7" }) });
     await drainGoogleSheetsSyncOnce({ client, sheetNames: SHEET_NAMES, workerId: "w1" });
@@ -140,9 +140,7 @@ async function runTests() {
     await drainGoogleSheetsSyncOnce({ client, sheetNames: SHEET_NAMES, workerId: "w1" });
 
     const rows = client.getRows(DAILY_TARGET);
-    assertEquals(rows.length, 1, "delete must not remove the row");
-    assertEquals(rows[0].CHAD_SYNC_STATUS, "DELETED");
-    assertEquals(rows[0].NUMBERS, "7", "delete must not blank out previously-synced domain data");
+    assertEquals(rows.length, 0, "delete must physically remove the row");
   });
 
   await test("delete for a record that was never synced is a harmless no-op (nothing to mark)", async () => {

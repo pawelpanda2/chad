@@ -36,7 +36,12 @@
     "test:regression:google-sheets-history": "pnpm test:unit:google-sheets-config && pnpm test:integration:local-google-sheets-info && pnpm test:e2e:local-google-sheets-history",
     "test:e2e:local-dev-panel-settings": "playwright test --config=test/e2e/playwright.local-dev-panel.config.mjs",
     "test:regression:dev-panel-settings": "pnpm test:e2e:local-dev-panel-settings",
-    "test:regression:daily-dates": "pnpm test:unit && pnpm test:integration:local-mongo && pnpm test:integration:local-postgres && pnpm test:integration:daily-dates && pnpm test:e2e:daily-dates"
+    "test:regression:daily-dates": "pnpm test:unit && pnpm test:integration:local-mongo && pnpm test:integration:local-postgres && pnpm test:integration:daily-dates && pnpm test:e2e:daily-dates",
+    "test:tables-sync": "node tests/tables-sync/run-all.mjs",
+    "test:tables-sync:local": "CHAD_ENVIRONMENT=local GOOGLE_SHEETS_ALLOW_NON_PROD=true node tests/tables-sync/run-all.mjs",
+    "test:tables-sync:qnap-test": "CHAD_ENVIRONMENT=test node tests/tables-sync/run-all.mjs --qnap-test",
+    "tables-sync:reconcile": "pnpm --filter dba build && node packages/dba/scripts/reconcile-tables-sheets.mjs",
+    "tables-sync:validate-config": "pnpm --filter dba build && node packages/dba/scripts/validate-google-sheets-config.mjs"
   },
   "dependencies": {
     "mongodb": "^7.1.1"

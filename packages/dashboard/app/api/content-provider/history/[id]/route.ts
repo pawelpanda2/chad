@@ -2,20 +2,17 @@
  * API Endpoint: Get CP history entry details
  *
  * GET /api/content-provider/history/[id] - Get details of a specific history entry
+ * including linked Google Sheets outbox status (mutationId / recordKey).
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getCpHistoryEntry } from 'dba';
+import {
+  getCpHistoryEntry,
+  getGoogleSheetsSyncStatusForHistoryEntry,
+  loadGoogleSheetsInfoConfig,
+} from 'dba';
 import { getCurrentUserFromCookies } from '@/lib/session';
 
-/**
- * GET /api/content-provider/history/[id]
- *
- * Returns full details of a history entry, including the complete change diff.
- *
- * Repo isolation: entry address must match the caller's repoGuid — a
- * caller-supplied id cannot leak another repo's data.
- */
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -39,9 +36,28 @@ export async function GET(
       );
     }
 
+    let spreadsheetConfigured = false;
+    try {
+      const info = loadGoogleSheetsInfoConfig();
+      spreadsheetConfigured = Boolean(info.spreadsheetMap[user.username]);
+    } catch {
+      spreadsheetConfigured = false;
+    }
+
+    const googleSheets = await getGoogleSheetsSyncStatusForHistoryEntry({
+      mutationId: entry.mutationId,
+      repoGuid: user.repoGuid,
+      address: entry.address,
+      username: user.username,
+      spreadsheetConfigured,
+    });
+
     return NextResponse.json({
       success: true,
-      data: entry,
+      data: {
+        ...entry,
+        googleSheets,
+      },
     });
   } catch (error) {
     console.error('[dashboard] getCpHistoryEntry failed:', error);

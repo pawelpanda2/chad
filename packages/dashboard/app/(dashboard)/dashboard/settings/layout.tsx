@@ -80,6 +80,10 @@ const sidebarNavItems = [
 		title: "API Keys",
 		href: "/dashboard/settings/api-keys",
 	},
+	{
+		title: "Read-only folders",
+		href: "/dashboard/settings/read-only-folders",
+	},
 ];
 
 interface SettingsLayoutProps {
