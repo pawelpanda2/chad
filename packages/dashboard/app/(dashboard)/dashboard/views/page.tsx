@@ -25,7 +25,7 @@ import {
   History,
 } from "lucide-react";
 import { toast } from "sonner";
-import { DATE_ENTRY_DOMAIN_COLUMNS, DAILY_ENTRY_DOMAIN_COLUMNS, ITEM_NUMBER_COLUMN, type SheetColumnGroup } from "dba";
+import { DATE_ENTRY_DOMAIN_COLUMNS, DAILY_ENTRY_DOMAIN_COLUMNS, ITEM_NUMBER_COLUMN, type SheetColumnGroup } from "dba/table-columns";
 
 // Fields computed server-side on every read (computeDailyAutoFieldsByDate in
 // dba) — never editable, never sent back on save. Kept as a Set so the edit
