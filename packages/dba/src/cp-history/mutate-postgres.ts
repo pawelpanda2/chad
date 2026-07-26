@@ -23,6 +23,10 @@ import { withPostgresClient, setMutationContext, isUniqueViolation } from "../po
 import { formatCpTimestamp, splitAddress, type CpItem, type CpItemConfig } from "../cp-model.js";
 import type { Clock } from "../data-clock.js";
 import { systemClock } from "../data-clock.js";
+import {
+  discardPendingGoogleSheetsJobs,
+  flushPendingGoogleSheetsJobs,
+} from "../google-sheets/txn-hook.js";
 
 export type CpHistoryActorKind = "user" | "system" | "migration" | "unknown";
 export type CpHistoryOperationType = "insert" | "update" | "delete";
@@ -172,9 +176,11 @@ export async function executeCpMutationWithHistoryPostgres(
     try {
       await client.query("BEGIN");
       const result = await runCpMutation(client, mutationId, input, context, clock);
+      await flushPendingGoogleSheetsJobs(client, mutationId, result.item);
       await client.query("COMMIT");
       return result;
     } catch (error) {
+      discardPendingGoogleSheetsJobs();
       await client.query("ROLLBACK").catch(() => {
         /* connection may already be broken; nothing more to do */
       });

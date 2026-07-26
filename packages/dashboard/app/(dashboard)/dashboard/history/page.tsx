@@ -196,6 +196,8 @@ function GoogleSheetsViewContent() {
       label: string;
       lastSyncedAt: string | null;
       lastError: string | null;
+      lastAttemptAt?: string | null;
+      status?: string | null;
     };
   } | null>(null);
   const [revealedPassword, setRevealedPassword] = useState<string | null>(null);
@@ -307,6 +309,21 @@ function GoogleSheetsViewContent() {
                       title={data.syncStatus.lastError ?? data.syncStatus.lastSyncedAt ?? undefined}
                     >
                       status = {data.syncStatus.label}
+                    </p>
+                  )}
+                  {data.syncStatus?.lastAttemptAt && (
+                    <p className="text-xs mt-0.5 text-muted-foreground">
+                      last attempt: {new Date(data.syncStatus.lastAttemptAt).toLocaleString()}
+                    </p>
+                  )}
+                  {data.syncStatus?.kind === "ok" && data.syncStatus.lastSyncedAt && (
+                    <p className="text-xs mt-0.5 text-muted-foreground">
+                      synced at: {new Date(data.syncStatus.lastSyncedAt).toLocaleString()}
+                    </p>
+                  )}
+                  {data.syncStatus?.kind === "failed" && data.syncStatus.lastError && (
+                    <p className="text-xs mt-0.5 text-red-700 dark:text-red-500">
+                      last error: {data.syncStatus.lastError}
                     </p>
                   )}
                 </div>

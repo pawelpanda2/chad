@@ -86,3 +86,10 @@ export * from './google-sheets/sync.js';
 export * from './google-sheets/layout.js';
 export * from './google-sheets/bootstrap.js';
 export * from './google-sheets/production-guard.js';
+export * from './system-folders.js';
+export {
+  runWithGoogleSheetsTxnBuffer,
+  deferGoogleSheetsJob,
+  deferGoogleSheetsJobFactory,
+  flushPendingGoogleSheetsJobs,
+} from './google-sheets/txn-hook.js';

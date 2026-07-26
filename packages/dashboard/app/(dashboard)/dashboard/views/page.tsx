@@ -25,6 +25,7 @@ import {
   History,
 } from "lucide-react";
 import { toast } from "sonner";
+import { DATE_ENTRY_DOMAIN_COLUMNS, DAILY_ENTRY_DOMAIN_COLUMNS, ITEM_NUMBER_COLUMN, type SheetColumnGroup } from "dba";
 
 // Fields computed server-side on every read (computeDailyAutoFieldsByDate in
 // dba) — never editable, never sent back on save. Kept as a Set so the edit
@@ -77,42 +78,17 @@ type SortDir = "asc" | "desc";
 // matched by day.
 // ============================================================================
 
-type Group = "none" | "training" | "action" | "texting" | "results";
+// Single source of truth (no more locally-duplicated DATE_COLUMNS/
+// DAILY_COLUMNS): both column lists now come straight from dba's own
+// Google Sheets mapper — the same constants `assertUiColumnsMatchMapper`
+// (tests/tables-sync) checks this table against. `ITEM_NUMBER_COLUMN`
+// ("N") is filtered out here — it's a Sheets-only, always-visible column;
+// the Dashboard table has its own separate "n" toggle button instead (see
+// `entry.itemName` usage below).
+const DATE_COLUMNS = DATE_ENTRY_DOMAIN_COLUMNS.filter((c) => c !== ITEM_NUMBER_COLUMN);
+const DAILY_COLUMNS = DAILY_ENTRY_DOMAIN_COLUMNS.filter((c) => c !== ITEM_NUMBER_COLUMN);
 
-const DATE_COLUMNS: Array<{ key: string; label: string; group: Group }> = [
-  { key: "DATA", label: "DATA", group: "none" },
-  { key: "ŹRÓDŁO", label: "ŹRÓDŁO", group: "none" },
-  { key: "NAZWA", label: "NAZWA", group: "none" },
-  { key: "LINK", label: "LINK", group: "none" },
-  { key: "PULL", label: "PULL", group: "none" },
-  { key: "CLOSE", label: "CLOSE", group: "none" },
-  { key: "JAKOŚĆ", label: "JAKOŚĆ", group: "none" },
-];
-
-const DAILY_COLUMNS: Array<{ key: string; label: string; group: Group }> = [
-  { key: "DATE", label: "DATE", group: "none" },
-  { key: "STATE", label: "STATE", group: "training" },
-  { key: "TRAINING TIME", label: "TRAINING TIME", group: "training" },
-  { key: "VERBAL EXERCISES", label: "VERBAL EXERCISES", group: "training" },
-  { key: "INFIELD", label: "INFIELD", group: "training" },
-  { key: "THEORY", label: "THEORY", group: "training" },
-  { key: "FIELD REVIEW", label: "FIELD REVIEW", group: "training" },
-  { key: "ACTION TIME", label: "ACTION TIME", group: "action" },
-  { key: "APPROACHES", label: "APPROACHES", group: "action" },
-  { key: "LONG INTERACTIONS", label: "LONG INTERACTIONS", group: "action" },
-  { key: "NUMBERS", label: "NUMBERS", group: "action" },
-  { key: "PULLS AUTO", label: "PULLS — AUTO", group: "action" },
-  { key: "FIRST MESSAGES", label: "FIRST MESSAGES", group: "texting" },
-  { key: "RESPONSES", label: "RESPONSES", group: "texting" },
-  { key: "DATES SET UP", label: "DATES SET UP", group: "texting" },
-  { key: "DATES", label: "DATES", group: "texting" },
-  { key: "CLOSES AUTO", label: "CLOSES — AUTO", group: "results" },
-  { key: "QUALITY DP AUTO", label: "QUALITY D/P — AUTO", group: "results" },
-  { key: "QUALITY C AUTO", label: "QUALITY C — AUTO", group: "results" },
-  { key: "OUTINGS", label: "OUTINGS", group: "results" },
-];
-
-const GROUP_HEADER_CLASS: Record<Group, string> = {
+const GROUP_HEADER_CLASS: Record<SheetColumnGroup, string> = {
   none: "bg-muted",
   training: "bg-green-100 dark:bg-green-950/50",
   action: "bg-amber-100 dark:bg-amber-950/50",
@@ -120,7 +96,7 @@ const GROUP_HEADER_CLASS: Record<Group, string> = {
   results: "bg-rose-100 dark:bg-rose-950/50",
 };
 
-const CELL_CLASS: Record<Group, string> = {
+const CELL_CLASS: Record<SheetColumnGroup, string> = {
   none: "",
   training: "bg-green-50/60 dark:bg-green-950/20",
   action: "bg-amber-50/60 dark:bg-amber-950/20",

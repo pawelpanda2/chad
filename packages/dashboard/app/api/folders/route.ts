@@ -45,6 +45,8 @@ function statusForFoldersError(error: FoldersOperationError): number {
     case 'PARENT_NOT_FOLDER':
     case 'NOT_TEXT_ITEM':
       return 409;
+    case 'SYSTEM_FOLDER_READ_ONLY':
+      return 403;
     default:
       return 500;
   }

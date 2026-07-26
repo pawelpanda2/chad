@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
 import { ErrorBox } from "@/components/shared/error-box";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface HistoryConfigOp {
@@ -39,6 +39,14 @@ interface HistoryDetail {
     body: HistoryBodyHunk[] | null;
   };
   afterSnapshot: { config: Record<string, unknown>; body: string } | null;
+  googleSheets: {
+    kind: "ok" | "failed" | "pending" | "none" | "not_configured";
+    label: string;
+    lastSyncedAt: string | null;
+    lastError: string | null;
+    lastAttemptAt?: string | null;
+    spreadsheetUrl?: string | null;
+  } | null;
 }
 
 function formatDiffValue(value: unknown): string {
@@ -118,6 +126,54 @@ export default function HistoryEntryDetailsPage() {
               <span className="text-muted-foreground">Version:</span> {detail.version}
             </div>
           </div>
+
+          {detail.googleSheets && (
+            <div className="border bg-muted/10 p-3 space-y-1.5 text-sm" data-testid="history-entry-google-sheets">
+              <div className="font-medium text-sm mb-1">Google Sheets</div>
+              <div>
+                <span className="text-muted-foreground">Status:</span>{" "}
+                <span
+                  className={cn(
+                    detail.googleSheets.kind === "ok" && "text-green-700 dark:text-green-500",
+                    detail.googleSheets.kind === "failed" && "text-red-700 dark:text-red-500",
+                    detail.googleSheets.kind === "pending" && "text-amber-700 dark:text-amber-500",
+                    (detail.googleSheets.kind === "none" || detail.googleSheets.kind === "not_configured") &&
+                      "text-muted-foreground"
+                  )}
+                >
+                  {detail.googleSheets.label}
+                </span>
+              </div>
+              {detail.googleSheets.lastAttemptAt && (
+                <div>
+                  <span className="text-muted-foreground">Last attempt:</span>{" "}
+                  {new Date(detail.googleSheets.lastAttemptAt).toLocaleString()}
+                </div>
+              )}
+              {detail.googleSheets.lastSyncedAt && (
+                <div>
+                  <span className="text-muted-foreground">Synced at:</span>{" "}
+                  {new Date(detail.googleSheets.lastSyncedAt).toLocaleString()}
+                </div>
+              )}
+              {detail.googleSheets.lastError && (
+                <div className="text-red-600 dark:text-red-500">
+                  <span className="text-muted-foreground">Last error:</span> {detail.googleSheets.lastError}
+                </div>
+              )}
+              {detail.googleSheets.spreadsheetUrl && (
+                <a
+                  href={detail.googleSheets.spreadsheetUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-primary hover:underline"
+                >
+                  Open spreadsheet
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </a>
+              )}
+            </div>
+          )}
 
           {(detail.operationType === "insert" || detail.operationType === "delete") && !detail.afterSnapshot && (
             <div className="text-xs text-amber-700 bg-amber-50 dark:bg-amber-950/30 rounded-md px-3 py-2">

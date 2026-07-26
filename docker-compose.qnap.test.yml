@@ -100,17 +100,20 @@ services:
       # (packages/dba/src/google-sheets/production-guard.ts) refuses to
       # start unless CHAD_ENVIRONMENT is exactly "prod".
       - CHAD_ENVIRONMENT=test
-      # Story 78 — info-page-only vars (History -> Google Sheets link/info),
-      # deliberately NOT the full write-sync block: no GOOGLE_SHEETS_ENABLED
-      # (stays unset here, so the worker/outbox never starts — see
-      # production-guard.ts) and no GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY (not
-      # needed to show a link, never present on TEST at all). Both vars
-      # below are non-secret — a spreadsheet ID or a service-account email
-      # grants nothing without the separately-secret private key, which
-      # stays PROD-only. See loadGoogleSheetsInfoConfig() in
-      # packages/dba/src/google-sheets/config.ts.
+      # Tables-sync regression (2026-07-27): TEST may enqueue/drain Sheets
+      # jobs for allowlisted users only (default test3). PROD remains the
+      # only env without the non-prod write allowlist. Private key comes
+      # from .env.qnap — never committed.
+      - GOOGLE_SHEETS_ENABLED=${GOOGLE_SHEETS_ENABLED:-false}
       - GOOGLE_SHEETS_SPREADSHEET_MAP=${GOOGLE_SHEETS_SPREADSHEET_MAP:-}
+      - GOOGLE_SHEETS_DAILY_TRACKER_SHEET_NAME=${GOOGLE_SHEETS_DAILY_TRACKER_SHEET_NAME:-daily}
+      - GOOGLE_SHEETS_DATE_ENTRIES_SHEET_NAME=${GOOGLE_SHEETS_DATE_ENTRIES_SHEET_NAME:-dates}
+      - GOOGLE_SHEETS_LEADS_SHEET_NAME=${GOOGLE_SHEETS_LEADS_SHEET_NAME:-leads}
       - GOOGLE_SERVICE_ACCOUNT_EMAIL=${GOOGLE_SERVICE_ACCOUNT_EMAIL:-}
+      - GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY=${GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY:-}
+      - GOOGLE_SHEETS_NON_PROD_WRITE_USERS=${GOOGLE_SHEETS_NON_PROD_WRITE_USERS:-test3}
+      - GOOGLE_SHEETS_VIEWER_ACCOUNT_EMAIL=${GOOGLE_SHEETS_VIEWER_ACCOUNT_EMAIL:-}
+      - GOOGLE_SHEETS_VIEWER_ACCOUNT_PASSWORD=${GOOGLE_SHEETS_VIEWER_ACCOUNT_PASSWORD:-}
       # Decrypt per-repo `secrets` Text (History -> Google Sheets viewer card).
       - SECRETS_ENCRYPTION_KEY=${SECRETS_ENCRYPTION_KEY:-}
     volumes:

@@ -18,6 +18,12 @@ import {
   putItemBody as realPutItemBody,
 } from "./item-ops.js";
 import type { CpItem } from "./cp-model.js";
+import { splitAddress } from "./cp-model.js";
+import {
+  assertNotSystemFolderWrite,
+  SystemFolderReadOnlyError,
+  type SystemFolderManagedBy,
+} from "./system-folders.js";
 
 export type FolderChildType = "Text" | "Folder";
 
@@ -26,14 +32,21 @@ export type FoldersErrorCode =
   | "PARENT_NOT_FOUND"
   | "PARENT_NOT_FOLDER"
   | "ITEM_NOT_FOUND"
-  | "NOT_TEXT_ITEM";
+  | "NOT_TEXT_ITEM"
+  | "SYSTEM_FOLDER_READ_ONLY";
 
 export class FoldersOperationError extends Error {
-  constructor(public readonly code: FoldersErrorCode, message: string) {
+  constructor(
+    public readonly code: FoldersErrorCode,
+    message: string,
+    public readonly managedBy?: SystemFolderManagedBy
+  ) {
     super(message);
     this.name = "FoldersOperationError";
   }
 }
+
+export { SystemFolderReadOnlyError };
 
 /**
  * Injectable seam for unit tests only (`folders.test.ts`) — production call
@@ -54,6 +67,32 @@ const defaultOps: FolderChildOps = {
   createOrGetChild: realCreateOrGetChild,
   putItemBody: realPutItemBody,
 };
+
+/** Walk parent chain collecting config.name → ["views","daily",...]. */
+export async function resolveLogicalNamePath(
+  address: string,
+  ops: Pick<FolderChildOps, "getItemByAddress"> = defaultOps
+): Promise<string[]> {
+  const { repoGuid } = splitAddress(address);
+  const names: string[] = [];
+  let current = address;
+  while (current && current !== repoGuid) {
+    const item = await ops.getItemByAddress(current);
+    if (!item) break;
+    names.unshift(item.config.name);
+    const parts = current.split("/");
+    parts.pop();
+    current = parts.join("/");
+  }
+  return names;
+}
+
+function rethrowSystemFolder(err: unknown): never {
+  if (err instanceof SystemFolderReadOnlyError) {
+    throw new FoldersOperationError("SYSTEM_FOLDER_READ_ONLY", err.message, err.managedBy);
+  }
+  throw err;
+}
 
 /**
  * Trims and validates a child name: non-empty after trim, and never a path
@@ -118,6 +157,13 @@ export async function createFolderChildItem(
     );
   }
 
+  try {
+    const parentNames = await resolveLogicalNamePath(parentAddress, ops);
+    assertNotSystemFolderWrite(parentNames, "create-child");
+  } catch (err) {
+    rethrowSystemFolder(err);
+  }
+
   const existingChildren = await ops.getChildrenOf(parent.config.address);
   const alreadyExisted = existingChildren.some((child) => child.config.name === name);
 
@@ -146,6 +192,13 @@ export async function updateFolderTextBody(
       "NOT_TEXT_ITEM",
       `Item at "${address}" is not a Text item (type: "${existing.config.type}")`
     );
+  }
+
+  try {
+    const names = await resolveLogicalNamePath(address, ops);
+    assertNotSystemFolderWrite(names, "update-body");
+  } catch (err) {
+    rethrowSystemFolder(err);
   }
 
   return ops.putItemBody(address, body);

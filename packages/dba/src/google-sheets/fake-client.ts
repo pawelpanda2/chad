@@ -108,6 +108,19 @@ export class FakeGoogleSheetsClient implements GoogleSheetsClient {
     sheet.rows.unshift({ ...values });
   }
 
+  async deleteRow(target: GoogleSheetsTarget, rowNumber: number): Promise<void> {
+    this.calls.push({ method: "deleteRow", target, args: { rowNumber } });
+    this.maybeFail();
+    const sheet = this.sheet(target);
+    const firstDataRow = (target.headerRowCount ?? 1) + 1;
+    const index = rowNumber - firstDataRow;
+    if (index < 0 || index >= sheet.rows.length) {
+      // Idempotent: row already gone is success (matches worker contract).
+      return;
+    }
+    sheet.rows.splice(index, 1);
+  }
+
   async getSheetId(target: GoogleSheetsTarget): Promise<number> {
     this.calls.push({ method: "getSheetId", target, args: {} });
     this.maybeFail();

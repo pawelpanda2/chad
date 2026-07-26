@@ -72,17 +72,24 @@ export interface EnqueueGoogleSheetsSyncInput {
   payload: SheetSyncPayload;
 }
 
-export async function enqueueGoogleSheetsSync(input: EnqueueGoogleSheetsSyncInput, clock: Clock = systemClock): Promise<void> {
+/** Insert on an already-open transaction client (atomicity with cp_items/cp_history). */
+export async function enqueueGoogleSheetsSyncOnClient(
+  client: import("pg").PoolClient,
+  input: EnqueueGoogleSheetsSyncInput,
+  clock: Clock = systemClock
+): Promise<void> {
   const now = clock.now();
-  await withPostgresClient((client) =>
-    client.query(
-      `INSERT INTO cp_outbox_google_sheets_sync
-         (id, operation_id, record_key, kind, payload, status, attempts, created_at, updated_at, next_attempt_at)
-       VALUES ($1, $1, $2, $3, $4::jsonb, 'pending', 0, $5, $5, $5)
-       ON CONFLICT (id) DO NOTHING`,
-      [input.operationId, input.payload.recordKey, input.kind, JSON.stringify(input.payload), now]
-    )
+  await client.query(
+    `INSERT INTO cp_outbox_google_sheets_sync
+       (id, operation_id, record_key, kind, payload, status, attempts, created_at, updated_at, next_attempt_at)
+     VALUES ($1, $1, $2, $3, $4::jsonb, 'pending', 0, $5, $5, $5)
+     ON CONFLICT (id) DO NOTHING`,
+    [input.operationId, input.payload.recordKey, input.kind, JSON.stringify(input.payload), now]
   );
+}
+
+export async function enqueueGoogleSheetsSync(input: EnqueueGoogleSheetsSyncInput, clock: Clock = systemClock): Promise<void> {
+  await withPostgresClient((client) => enqueueGoogleSheetsSyncOnClient(client, input, clock));
 }
 
 export async function claimNextGoogleSheetsJob(workerId: string, clock: Clock = systemClock): Promise<GoogleSheetsSyncJob | null> {
@@ -178,6 +185,38 @@ export async function getLatestGoogleSheetsJobForUsername(
        ORDER BY updated_at DESC
        LIMIT 1`,
       [username]
+    );
+    return rows[0] ? rowToJob(rows[0]) : null;
+  });
+}
+
+/** Job linked to a cp_history mutation (operationId === mutationId). */
+export async function getGoogleSheetsJobByMutationId(
+  mutationId: string
+): Promise<GoogleSheetsSyncJob | null> {
+  return withPostgresClient(async (client) => {
+    const { rows } = await client.query<OutboxRow>(
+      `SELECT * FROM cp_outbox_google_sheets_sync
+       WHERE id = $1 OR operation_id = $1 OR payload->>'mutationId' = $1
+       ORDER BY updated_at DESC
+       LIMIT 1`,
+      [mutationId]
+    );
+    return rows[0] ? rowToJob(rows[0]) : null;
+  });
+}
+
+/** Latest job for a recordKey (fallback when mutationId was not snapshotted). */
+export async function getLatestGoogleSheetsJobForRecordKey(
+  recordKey: string
+): Promise<GoogleSheetsSyncJob | null> {
+  return withPostgresClient(async (client) => {
+    const { rows } = await client.query<OutboxRow>(
+      `SELECT * FROM cp_outbox_google_sheets_sync
+       WHERE record_key = $1
+       ORDER BY updated_at DESC
+       LIMIT 1`,
+      [recordKey]
     );
     return rows[0] ? rowToJob(rows[0]) : null;
   });

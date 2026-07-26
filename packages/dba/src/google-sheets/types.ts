@@ -58,6 +58,12 @@ export interface SheetSyncPayload {
    * `kind: "delete"`.
    */
   fields: Record<string, string>;
+  /**
+   * Same id as `cp_history.mutation_id` / outbox `operationId` when the
+   * job was enqueued inside the Postgres mutation transaction. Lets History
+   * join a change event to its Google Sheets sync job.
+   */
+  mutationId?: string;
 }
 
 export interface GoogleSheetsTarget {
@@ -119,6 +125,13 @@ export interface GoogleSheetsClient {
 
   /** Appends a new row at the end of the sheet with `values` in the right named columns. */
   appendRow(target: GoogleSheetsTarget, values: SheetRowValues): Promise<void>;
+
+  /**
+   * Physically deletes the 1-based sheet row. Idempotent callers should
+   * treat "row already gone" as success (worker no-ops when findRowByKey
+   * returns null before calling this).
+   */
+  deleteRow(target: GoogleSheetsTarget, rowNumber: number): Promise<void>;
 
   /**
    * Resolves a tab's numeric `sheetId` — every `batchUpdate` request that

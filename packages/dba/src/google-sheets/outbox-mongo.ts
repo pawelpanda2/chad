@@ -215,6 +215,22 @@ export async function getLatestGoogleSheetsJobForUsername(
   return col.find({ "payload.username": username }).sort({ updatedAt: -1 }).limit(1).next();
 }
 
+export async function getGoogleSheetsJobByMutationId(
+  mutationId: string
+): Promise<GoogleSheetsSyncJob | null> {
+  const col = await collection();
+  const byId = await col.findOne({ _id: mutationId });
+  if (byId) return byId;
+  return col.findOne({ "payload.mutationId": mutationId });
+}
+
+export async function getLatestGoogleSheetsJobForRecordKey(
+  recordKey: string
+): Promise<GoogleSheetsSyncJob | null> {
+  const col = await collection();
+  return col.find({ recordKey }).sort({ updatedAt: -1 }).limit(1).next();
+}
+
 function sanitizeError(error: unknown): string {
   if (error instanceof Error) return error.message;
   return String(error);
