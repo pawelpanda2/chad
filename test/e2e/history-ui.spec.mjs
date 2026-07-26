@@ -29,7 +29,8 @@ test.describe("QNAP TEST — test3 History table + details route", () => {
     await expect(table.getByRole("columnheader").nth(0)).toHaveText("date");
     await expect(table.getByRole("columnheader").nth(1)).toHaveText("o");
     await expect(table.getByRole("columnheader").nth(2)).toHaveText("name");
-    await expect(table.getByRole("columnheader").nth(3)).toHaveText("loca");
+    await expect(table.getByRole("columnheader").nth(3)).toHaveText("page");
+    await expect(table.getByRole("columnheader").nth(4)).toHaveText("loca");
 
     // No pagination remnants anywhere on the page.
     await expect(page.getByRole("button", { name: "Previous" })).toHaveCount(0);
@@ -85,8 +86,10 @@ test.describe("QNAP TEST — test3 History table + details route", () => {
     await expect(firstRow).toBeVisible();
 
     const nameText = (await firstRow.locator("td").nth(2).textContent())?.trim() ?? "";
-    const locaText = (await firstRow.locator("td").nth(3).textContent())?.trim() ?? "";
+    const pageText = (await firstRow.locator("td").nth(3).textContent())?.trim() ?? "";
+    const locaText = (await firstRow.locator("td").nth(4).textContent())?.trim() ?? "";
     expect(nameText.length).toBeGreaterThan(0);
+    expect(pageText.length).toBeGreaterThan(0);
     expect(locaText).not.toMatch(
       /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
     );

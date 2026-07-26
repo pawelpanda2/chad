@@ -11,7 +11,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { listCpHistory } from 'dba';
+import { listCpHistory, enrichHistoryListWithPages } from 'dba';
 import { getCurrentUserFromCookies } from '@/lib/session';
 
 /**
@@ -74,7 +74,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      data: result,
+      data: await enrichHistoryListWithPages(user.repoGuid, result),
     });
   } catch (error) {
     console.error('[dashboard] listCpHistory failed:', error);

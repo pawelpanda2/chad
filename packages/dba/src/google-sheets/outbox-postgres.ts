@@ -166,3 +166,19 @@ export async function getGoogleSheetsJob(jobId: string): Promise<GoogleSheetsSyn
     return rows[0] ? rowToJob(rows[0]) : null;
   });
 }
+
+/** Most recent outbox job for a CHAD username (payload.username), if any. */
+export async function getLatestGoogleSheetsJobForUsername(
+  username: string
+): Promise<GoogleSheetsSyncJob | null> {
+  return withPostgresClient(async (client) => {
+    const { rows } = await client.query<OutboxRow>(
+      `SELECT * FROM cp_outbox_google_sheets_sync
+       WHERE payload->>'username' = $1
+       ORDER BY updated_at DESC
+       LIMIT 1`,
+      [username]
+    );
+    return rows[0] ? rowToJob(rows[0]) : null;
+  });
+}

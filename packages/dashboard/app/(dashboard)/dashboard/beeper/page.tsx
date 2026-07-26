@@ -137,7 +137,7 @@ export default function BeeperContactsPage() {
 			*/}
 			<div className="mb-3.5 grid grid-cols-[88px_92px_90px_1fr] items-center gap-0 max-[900px]:grid-cols-2 max-[900px]:gap-2">
 				<select
-					className="h-10 w-[88px] rounded-l-[9px] rounded-r-none border border-border bg-white px-2 text-sm"
+					className="h-10 w-[88px] rounded-l-[9px] rounded-r-none border border-border bg-background px-2 text-sm"
 					value={view}
 					onChange={(e) => setView(e.target.value as ViewTab)}
 					aria-label="Beeper view"
@@ -151,7 +151,7 @@ export default function BeeperContactsPage() {
 
 				{isPermissions ? (
 					<select
-						className="h-10 w-[92px] rounded-none border border-l-0 border-border bg-white px-2 text-sm"
+						className="h-10 w-[92px] rounded-none border border-l-0 border-border bg-background px-2 text-sm"
 						value={permFilter}
 						onChange={(e) => setPermFilter(e.target.value as PermissionFilter)}
 						aria-label="Permission filter"
@@ -191,46 +191,55 @@ export default function BeeperContactsPage() {
 					<span>No contacts found.</span>
 				</div>
 			) : isPermissions ? (
-				<div className="rounded-[14px] border border-border bg-white p-2.5">
-					<div className="mb-2 grid min-h-[42px] grid-cols-[84px_84px_minmax(0,1fr)] items-center rounded-xl border border-border bg-[#fafafa] px-3.5 text-[13px] font-semibold">
-						<div className="text-center">Include</div>
-						<div className="text-center">Exclude</div>
-						<div className="text-left">Contact</div>
-					</div>
-					<div className="space-y-2">
-						{filtered.map((c) => (
-							<div
-								key={c._id}
-								className={cn(
-									"grid min-h-16 grid-cols-[84px_84px_minmax(0,1fr)] items-center rounded-[14px] border border-border bg-white px-3.5 hover:bg-[#f4f4f4]",
-									savingId === c._id && "opacity-70"
-								)}
-							>
-								<div className="flex items-center justify-center">
-									<input
-										type="checkbox"
-										className="h-[18px] w-[18px] cursor-pointer"
-										checked={c.include}
-										disabled={savingId === c._id}
-										onChange={(e) => onIncludeChange(c, e.target.checked)}
-										aria-label={`Include ${c.displayName}`}
-									/>
-								</div>
-								<div className="flex items-center justify-center">
-									<input
-										type="checkbox"
-										className="h-[18px] w-[18px] cursor-pointer"
-										checked={c.exclude}
-										disabled={savingId === c._id}
-										onChange={(e) => onExcludeChange(c, e.target.checked)}
-										aria-label={`Exclude ${c.displayName}`}
-									/>
-								</div>
-								<div className="min-w-0">
-									<div className="truncate text-[15px] font-semibold">{c.displayName}</div>
-								</div>
-							</div>
-						))}
+				<div className="overflow-hidden rounded-lg border bg-muted/10">
+					<div className="overflow-x-auto">
+						<table className="w-full min-w-[640px] text-left text-sm">
+							<thead>
+								<tr className="border-b bg-muted/40 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+									<th className="px-3 py-2">Name</th>
+									<th className="px-3 py-2 text-center">Include</th>
+									<th className="px-3 py-2 text-center">Exclude</th>
+									<th className="px-3 py-2">Updated</th>
+								</tr>
+							</thead>
+							<tbody className="divide-y">
+								{filtered.map((c) => (
+									<tr
+										key={c._id}
+										className={cn("hover:bg-accent", savingId === c._id && "opacity-70")}
+									>
+										<td className="px-3 py-2.5">
+											<div className="font-medium">{c.displayName}</div>
+										</td>
+										<td className="px-3 py-2.5 text-center">
+											<input
+												type="checkbox"
+												className="h-[18px] w-[18px] cursor-pointer"
+												checked={c.include}
+												disabled={savingId === c._id}
+												onChange={(e) => onIncludeChange(c, e.target.checked)}
+												aria-label={`Include ${c.displayName}`}
+											/>
+										</td>
+										<td className="px-3 py-2.5 text-center">
+											<input
+												type="checkbox"
+												className="h-[18px] w-[18px] cursor-pointer"
+												checked={c.exclude}
+												disabled={savingId === c._id}
+												onChange={(e) => onExcludeChange(c, e.target.checked)}
+												aria-label={`Exclude ${c.displayName}`}
+											/>
+										</td>
+										<td className="px-3 py-2.5 text-muted-foreground">
+											{c.lastMessage?.timestamp
+												? new Date(c.lastMessage.timestamp).toLocaleString()
+												: "—"}
+										</td>
+									</tr>
+								))}
+							</tbody>
+						</table>
 					</div>
 				</div>
 			) : (

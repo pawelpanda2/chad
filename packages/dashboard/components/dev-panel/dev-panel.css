@@ -153,6 +153,23 @@
   border-color: #007acc;
 }
 
+.dev-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.dev-btn-source-active {
+  background: #007acc;
+  border-color: #007acc;
+  color: #fff;
+  font-weight: 600;
+}
+
+.dev-btn-source-active:disabled {
+  opacity: 1;
+  cursor: default;
+}
+
 .dev-btn-close {
   background: #f44336;
   border-color: #f44336;

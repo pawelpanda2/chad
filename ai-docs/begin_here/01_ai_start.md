@@ -38,6 +38,30 @@ odpowiedź jest już opisana w `04_deployment-rules.md` i
 - Pełny kontrakt: `04_deployment-rules.md` (niżej w tej kolejności) i
   `deploy/ai-start.md` → `deploy/dashboard-deployment-scripts.md`.
 
+### Lokalny Postgres / Content Provider — NIE rób śmietnika (Story 89)
+
+**(dodane 2026-07-25, po realnym incydencie: lokalny volume wyglądał jak
+„skasowane dane pawel_f”, bo AI/testy wsadziły fixture'y pod produkcyjny
+GUID i/albo przełączyły dashboard na pustą lokalną bazę bez syncu z QNAP.)**
+
+- **Lokalny Postgres to lustro QNAP**, nie plac zabaw. Dane ściągasz przez
+  `bash-scripts/dashboard/03_local_mac_docker/07_sync-postgres-from-qnap.sh`
+  albo Dev Panel → Settings → **Sync local Postgres from QNAP**.
+- **Zakaz:** tworzyć / seedować drzewa `cp_items` pod GUID `pawel_f`
+  (`21d11bdc-…`) ani `kamil_s` w lokalnej bazie „żeby login działał”.
+  To łamie model Content Providera (prawdziwe itemy / historia / adresy).
+- **Dane testowe i mutacje automatyczne:** wyłącznie użytkownik **`test3`**
+  (`5a9c8b7d-…`) + `assertIsTest3Session` / `assertTest3Scoped`. Nigdy
+  `pawel_f` / `kamil_s` / `chad_admin` body poza świadomą migracją.
+- Dev Panel Settings przełącza **źródło** (local mirror vs QNAP live). To
+  nie zastępuje syncu — local bez syncu = śmietnik albo pusta baza.
+- Seed `seed-local-postgres-login.mjs` to **tylko fallback** `test3`, gdy
+  users-list jest puste (np. QNAP offline). Nie inventuj listy produkcyjnych
+  userów lokalnie.
+- **History → Google Sheets:** `GOOGLE_SHEETS_SPREADSHEET_MAP` musi dojść do
+  kontenera z cudzysłowami JSON. Compose `${VAR}` je zjada → pusty HTTP 500
+  → UI `Unexpected end of JSON input`. Regresja:
+  `pnpm test:regression:google-sheets-history`.
 ## Kolejność
 
 1. **Ten dokument** — jesteś tu.

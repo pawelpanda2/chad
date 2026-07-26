@@ -196,7 +196,12 @@ BEGIN
     RETURN OLD;
 
   ELSIF TG_OP = 'INSERT' THEN
-    v_version := 1;
+    -- Fresh id → 1; re-INSERT after DELETE continues from MAX(cp_history.version)+1
+    -- (see 0002_reinsert_after_delete_version.sql — same logic kept here for new DBs).
+    SELECT COALESCE(MAX(version), 0) + 1 INTO v_version
+    FROM cp_history
+    WHERE source_id = NEW.id;
+
     NEW.history_version := v_version;
     NEW.last_mutation_id := v_mutation_id;
     NEW.last_request_id := v_request_id;

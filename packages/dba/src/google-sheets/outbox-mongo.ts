@@ -207,6 +207,14 @@ export async function getGoogleSheetsJob(jobId: string): Promise<GoogleSheetsSyn
   return col.findOne({ _id: jobId });
 }
 
+/** Most recent outbox job for a CHAD username (payload.username), if any. */
+export async function getLatestGoogleSheetsJobForUsername(
+  username: string
+): Promise<GoogleSheetsSyncJob | null> {
+  const col = await collection();
+  return col.find({ "payload.username": username }).sort({ updatedAt: -1 }).limit(1).next();
+}
+
 function sanitizeError(error: unknown): string {
   if (error instanceof Error) return error.message;
   return String(error);

@@ -55,16 +55,30 @@ const REQUIRED_WHEN_ENABLED = [
  * of non-empty `{username: spreadsheetId}` pairs. Throws a specific,
  * actionable error (never a generic parse failure) so a malformed map is
  * caught at config-load time, not as a confusing per-user failure later.
+ *
+ * Also recovers from Docker Compose env-interpolation stripping double
+ * quotes (`{"a":"b"}` → `{a:b}`), which otherwise 500s History → Google
+ * Sheets with an empty body ("Unexpected end of JSON input" in the UI).
  */
 export function parseSpreadsheetMap(raw: string): Record<string, string> {
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch {
-    throw new Error(
-      "GOOGLE_SHEETS_SPREADSHEET_MAP must be valid JSON, e.g. " +
-        '\'{"pawel_f":"<spreadsheetId>","kamil_s":"<spreadsheetId>"}\'.'
-    );
+    const repaired = repairComposeStrippedJsonObject(raw.trim());
+    if (repaired) {
+      try {
+        parsed = JSON.parse(repaired);
+      } catch {
+        parsed = undefined;
+      }
+    }
+    if (parsed === undefined) {
+      throw new Error(
+        "GOOGLE_SHEETS_SPREADSHEET_MAP must be valid JSON, e.g. " +
+          '\'{"pawel_f":"<spreadsheetId>","kamil_s":"<spreadsheetId>"}\'.'
+      );
+    }
   }
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
     throw new Error(
@@ -83,6 +97,17 @@ export function parseSpreadsheetMap(raw: string): Record<string, string> {
     map[username] = spreadsheetId;
   }
   return map;
+}
+
+/**
+ * Docker Compose `${VAR}` interpolation + YAML often strips `"` from JSON
+ * env values. Turn `{pawel_f:abc,test3:xyz}` back into valid JSON.
+ */
+export function repairComposeStrippedJsonObject(raw: string): string | null {
+  if (!raw.startsWith("{") || !raw.endsWith("}")) return null;
+  if (raw.includes('"')) return null; // already has quotes — not this failure mode
+  // Quote bare identifiers used as keys or Google spreadsheet id values.
+  return raw.replace(/([A-Za-z0-9_-]+)/g, '"$1"');
 }
 
 /**

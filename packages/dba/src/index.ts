@@ -17,6 +17,7 @@ export * from './beeper.js';
 export * from './mongo.js';
 export * from './postgres.js';
 export * from './dev-db-override.js';
+export * from './sync-local-from-qnap.js';
 export * from './secrets-crypto.js';
 export * from './beeper-crm.js';
 export * from './path-resolver.js';
@@ -54,6 +55,7 @@ export * from './item-ops.js';
 export * from './folders.js';
 export * from './admin-users.js';
 export * from './cp-history.js';
+export * from './history-pages.js';
 // Named (not `export *`) — cp-history/mutate.ts's own CpHistoryActor/
 // CpHistoryDoc types intentionally differ in shape from cp-history.ts's
 // read-side types of the same name (e.g. mutate.ts's is the raw write-side

@@ -134,6 +134,41 @@ function runTests() {
     assertEquals(parseSpreadsheetMap('{"pawel_f":"abc","kamil_s":"def"}'), { pawel_f: "abc", kamil_s: "def" });
   });
 
+  test("parseSpreadsheetMap recovers Docker Compose quote-stripped map {a:b}", () => {
+    assertEquals(parseSpreadsheetMap("{pawel_f:sheetA,test3:sheetB}"), {
+      pawel_f: "sheetA",
+      test3: "sheetB",
+    });
+  });
+
+  // Story 89 regression — real Compose-stripped value shape that 500'd
+  // History → Google Sheets with an empty body ("Unexpected end of JSON input").
+  test("parseSpreadsheetMap recovers real Compose-stripped spreadsheet ids (with underscores/dashes)", () => {
+    const stripped =
+      "{pawel_f:14nFkoS1jSWoTaeeD0phoE655anLwkNiVqXOzNiqDLrA,test3:1d_u_uRa0LILtksc25ATt--jh11mZDm7ABGyjAQuTdIc,kamil_s:1dU0UjaEvbYExRV8SUpG-BJ0DjH3ZZndZwpb5XjGevMU}";
+    assertEquals(parseSpreadsheetMap(stripped), {
+      pawel_f: "14nFkoS1jSWoTaeeD0phoE655anLwkNiVqXOzNiqDLrA",
+      test3: "1d_u_uRa0LILtksc25ATt--jh11mZDm7ABGyjAQuTdIc",
+      kamil_s: "1dU0UjaEvbYExRV8SUpG-BJ0DjH3ZZndZwpb5XjGevMU",
+    });
+  });
+
+  test("enabled + Compose-stripped SPREADSHEET_MAP still loads (must not throw / empty-500 the info page)", () => {
+    setFullValidEnv();
+    process.env.GOOGLE_SHEETS_SPREADSHEET_MAP = "{pawel_f:sheet-pawel-123,kamil_s:sheet-kamil-456}";
+    const config = loadGoogleSheetsConfig();
+    assertEquals(config.enabled, true);
+    assertEquals(config.spreadsheetMap, { pawel_f: "sheet-pawel-123", kamil_s: "sheet-kamil-456" });
+  });
+
+  test("loadGoogleSheetsInfoConfig recovers Compose-stripped map (info page must show links)", () => {
+    process.env.GOOGLE_SHEETS_SPREADSHEET_MAP = "{pawel_f:sheetA,test3:sheetB}";
+    process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL = "svc@example.iam.gserviceaccount.com";
+    const info = loadGoogleSheetsInfoConfig();
+    assertEquals(info.spreadsheetMap.pawel_f, "sheetA");
+    assertEquals(info.spreadsheetMap.test3, "sheetB");
+  });
+
   test("resolveSpreadsheetIdForUser returns the mapped spreadsheet id for a known user", () => {
     setFullValidEnv();
     const config = loadGoogleSheetsConfig();

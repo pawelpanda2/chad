@@ -39,9 +39,9 @@ export DASHBOARD_PORT MONGODB_PORT
 #         Tailscale (100.117.139.83:12040).
 #       • Postgres (Story 80/81 primary for cp_items — login users-list,
 #         Folders, History): QNAP chad-postgres over Tailscale
-#         (100.117.139.83:12042). Without this override, DBA_PRIMARY_BACKEND=
-#         postgres would hit the empty local volume and login fails with
-#         "User not found" / empty users-list.
+#         (100.117.139.83:12042). Story 87: local mode seeds
+#         chad_admin/users-list via 03_re-start — qnap is no longer
+#         required just to log in locally.
 #     Local sibling mongo/postgres containers still start but go unused.
 DBA_MONGO_MODE="$(read_env_var "$ENV_FILE" DBA_MONGO_MODE)"
 DBA_MONGO_MODE="${DBA_MONGO_MODE:-local}"
@@ -52,30 +52,32 @@ if [ "$DBA_MONGO_MODE" = "qnap" ]; then
   QNAP_POSTGRES_PORT="12042"
   MONGO_ROOT_USERNAME="$(read_env_var "$ENV_FILE" MONGO_ROOT_USERNAME)"
   MONGO_ROOT_PASSWORD="$(read_env_var "$ENV_FILE" MONGO_ROOT_PASSWORD)"
-  # QNAP Postgres password often drifts from the local volume password in
-  # .env.local (local init vs chad-postgres on NAS). Prefer, in order:
-  #   1) POSTGRES_QNAP_PASSWORD from .env.local
-  #   2) POSTGRES_* from .env.qnap (gitignored; synced from chad-postgres)
-  #   3) POSTGRES_PASSWORD from .env.local
+  # Keep LOCAL volume password separate from QNAP — never overwrite
+  # POSTGRES_PASSWORD in the shell (Compose would then init/auth the sibling
+  # volume with the wrong secret and Dev Panel → Local would fail).
   QNAP_ENV_FILE="$REPO_ROOT/.env.qnap"
   POSTGRES_USER="$(read_env_var "$ENV_FILE" POSTGRES_USER)"
   POSTGRES_PASSWORD="$(read_env_var "$ENV_FILE" POSTGRES_PASSWORD)"
   POSTGRES_DB="$(read_env_var "$ENV_FILE" POSTGRES_DB)"
   POSTGRES_QNAP_PASSWORD="$(read_env_var "$ENV_FILE" POSTGRES_QNAP_PASSWORD)"
-  if [ -n "$POSTGRES_QNAP_PASSWORD" ]; then
-    POSTGRES_PASSWORD="$POSTGRES_QNAP_PASSWORD"
-  elif [ -f "$QNAP_ENV_FILE" ]; then
+  if [ -z "$POSTGRES_QNAP_PASSWORD" ] && [ -f "$QNAP_ENV_FILE" ]; then
+    POSTGRES_QNAP_PASSWORD="$(read_env_var "$QNAP_ENV_FILE" POSTGRES_PASSWORD)"
     QNAP_PG_USER="$(read_env_var "$QNAP_ENV_FILE" POSTGRES_USER)"
-    QNAP_PG_PASSWORD="$(read_env_var "$QNAP_ENV_FILE" POSTGRES_PASSWORD)"
     QNAP_PG_DB="$(read_env_var "$QNAP_ENV_FILE" POSTGRES_DB)"
     [ -n "$QNAP_PG_USER" ] && POSTGRES_USER="$QNAP_PG_USER"
-    [ -n "$QNAP_PG_PASSWORD" ] && POSTGRES_PASSWORD="$QNAP_PG_PASSWORD"
     [ -n "$QNAP_PG_DB" ] && POSTGRES_DB="$QNAP_PG_DB"
+  fi
+  if [ -z "$POSTGRES_QNAP_PASSWORD" ]; then
+    POSTGRES_QNAP_PASSWORD="$POSTGRES_PASSWORD"
   fi
   POSTGRES_USER="${POSTGRES_USER:-chad}"
   POSTGRES_DB="${POSTGRES_DB:-chad}"
   if [ -z "$POSTGRES_PASSWORD" ]; then
-    log_error "POSTGRES password missing — set POSTGRES_QNAP_PASSWORD in $ENV_FILE (preferred) or POSTGRES_PASSWORD in $QNAP_ENV_FILE for DBA_MONGO_MODE=qnap."
+    log_error "POSTGRES_PASSWORD missing in $ENV_FILE (local volume password)."
+    exit 1
+  fi
+  if [ -z "$POSTGRES_QNAP_PASSWORD" ]; then
+    log_error "POSTGRES_QNAP_PASSWORD missing — set it in $ENV_FILE (preferred) or POSTGRES_PASSWORD in $QNAP_ENV_FILE."
     exit 1
   fi
   # directConnection=true is required here (found 2026-07-22, real failure:
@@ -94,8 +96,13 @@ if [ "$DBA_MONGO_MODE" = "qnap" ]; then
   # packages/dba/src/mongo.ts always calls client.db(`beeper_<repoGuid>`)
   # explicitly, so this is a server URI only.
   BEEPER_MONGODB_URI="mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@${QNAP_TAILSCALE_HOST}:${QNAP_MONGO_PORT}?authSource=admin&directConnection=true"
-  POSTGRES_URI="postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${QNAP_TAILSCALE_HOST}:${QNAP_POSTGRES_PORT}/${POSTGRES_DB}"
+  POSTGRES_URI="postgres://${POSTGRES_USER}:${POSTGRES_QNAP_PASSWORD}@${QNAP_TAILSCALE_HOST}:${QNAP_POSTGRES_PORT}/${POSTGRES_DB}"
   export MONGODB_URI BEEPER_MONGODB_URI POSTGRES_URI
+  # Local volume password stays POSTGRES_PASSWORD (from .env.local).
+  export POSTGRES_USER POSTGRES_PASSWORD POSTGRES_DB POSTGRES_QNAP_PASSWORD
+  LOCAL_PG_PORT="$(read_env_var "$ENV_FILE" POSTGRES_PORT)"
+  LOCAL_POSTGRES_HOST_URI="postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@127.0.0.1:${LOCAL_PG_PORT:-5433}/${POSTGRES_DB}"
+  export LOCAL_POSTGRES_HOST_URI
   log_info "DBA_MONGO_MODE=qnap — local dashboard will use QNAP Mongo (:${QNAP_MONGO_PORT}) + Postgres (:${QNAP_POSTGRES_PORT}) over Tailscale (${QNAP_TAILSCALE_HOST})."
 elif [ "$DBA_MONGO_MODE" = "local" ]; then
   # Safety guard (2026-07-22, real incident): GOOGLE_SHEETS_ENABLED in
@@ -108,8 +115,35 @@ elif [ "$DBA_MONGO_MODE" = "local" ]; then
   # "local", regardless of what .env.local itself says; only DBA_MONGO_MODE=
   # qnap (production Mongo) can leave it enabled.
   export GOOGLE_SHEETS_ENABLED=false
-  log_info "DBA_MONGO_MODE=local — Google Sheets sync forced OFF (would otherwise sync local/test data into the real production spreadsheets)."
+  # Host-side URI for migrations/seed/sync scripts (port published on the Mac).
+  # Inside Compose the dashboard still uses service DNS `postgres:5432`.
+  POSTGRES_USER="$(read_env_var "$ENV_FILE" POSTGRES_USER)"
+  POSTGRES_PASSWORD="$(read_env_var "$ENV_FILE" POSTGRES_PASSWORD)"
+  POSTGRES_DB="$(read_env_var "$ENV_FILE" POSTGRES_DB)"
+  POSTGRES_PORT="$(read_env_var "$ENV_FILE" POSTGRES_PORT)"
+  POSTGRES_QNAP_PASSWORD="$(read_env_var "$ENV_FILE" POSTGRES_QNAP_PASSWORD)"
+  POSTGRES_USER="${POSTGRES_USER:-chad}"
+  POSTGRES_DB="${POSTGRES_DB:-chad}"
+  POSTGRES_PORT="${POSTGRES_PORT:-5433}"
+  if [ -z "$POSTGRES_PASSWORD" ]; then
+    log_error "POSTGRES_PASSWORD missing in $ENV_FILE (required for DBA_MONGO_MODE=local)."
+    exit 1
+  fi
+  LOCAL_POSTGRES_HOST_URI="postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@127.0.0.1:${POSTGRES_PORT}/${POSTGRES_DB}"
+  export POSTGRES_USER POSTGRES_PASSWORD POSTGRES_DB POSTGRES_PORT LOCAL_POSTGRES_HOST_URI POSTGRES_QNAP_PASSWORD
+  log_info "DBA_MONGO_MODE=local — Google Sheets sync forced OFF; local volume mirrors QNAP via 07_sync / Dev Panel."
 else
   log_error "Invalid DBA_MONGO_MODE=\"$DBA_MONGO_MODE\" in $ENV_FILE — must be \"local\" or \"qnap\"."
   exit 1
+fi
+
+# Expose mode so 03_re-start can branch.
+export DBA_MONGO_MODE
+
+# Story 89/Sheets: export the spreadsheet map from .env.local into the shell
+# so docker-compose can pass it through WITHOUT ${...} interpolation (which
+# strips JSON quotes and breaks History → Google Sheets).
+GOOGLE_SHEETS_SPREADSHEET_MAP="$(read_env_var "$ENV_FILE" GOOGLE_SHEETS_SPREADSHEET_MAP)"
+if [ -n "$GOOGLE_SHEETS_SPREADSHEET_MAP" ]; then
+  export GOOGLE_SHEETS_SPREADSHEET_MAP
 fi

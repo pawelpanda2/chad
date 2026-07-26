@@ -204,6 +204,40 @@ describe("executeCpMutationWithHistoryPostgres — delete", () => {
     });
   });
 
+  it("re-INSERT after DELETE continues version sequence (Story 87)", async () => {
+    const repo = freshRepo();
+    const itemId = randomUUID();
+    const address = `${repo}/08r`;
+    await executeCpMutationWithHistoryPostgres(
+      randomUUID(),
+      { kind: "put", itemId, config: { id: itemId, address, type: "Text", name: "n8r" }, body: "x" },
+      ctx(repo)
+    );
+    await executeCpMutationWithHistoryPostgres(randomUUID(), { kind: "delete", itemId }, ctx(repo));
+
+    const reinsert = await executeCpMutationWithHistoryPostgres(
+      randomUUID(),
+      { kind: "put", itemId, config: { id: itemId, address, type: "Text", name: "n8r" }, body: "y" },
+      ctx(repo)
+    );
+
+    expect(reinsert.historyRow.version).toBe(3);
+    expect(reinsert.historyRow.operationType).toBe("insert");
+    expect(reinsert.item?.body).toBe("y");
+
+    await withPostgresClient(async (client) => {
+      const { rows } = await client.query(
+        "SELECT version, operation_type FROM cp_history WHERE source_id = $1 ORDER BY version",
+        [itemId]
+      );
+      expect(rows.map((r) => [r.version, r.operation_type])).toEqual([
+        [1, "insert"],
+        [2, "delete"],
+        [3, "insert"],
+      ]);
+    });
+  });
+
   it("a second delete of the same item does not fabricate a duplicate event", async () => {
     const repo = freshRepo();
     const itemId = randomUUID();

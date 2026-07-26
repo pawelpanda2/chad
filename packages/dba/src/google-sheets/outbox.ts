@@ -31,6 +31,7 @@ interface GoogleSheetsOutboxBackend {
   markGoogleSheetsJobRetry(jobId: string, error: unknown, clock?: Clock): Promise<void>;
   recoverStaleGoogleSheetsLocks(clock?: Clock): Promise<number>;
   getGoogleSheetsJob(jobId: string): Promise<GoogleSheetsSyncJob | null>;
+  getLatestGoogleSheetsJobForUsername(username: string): Promise<GoogleSheetsSyncJob | null>;
 }
 
 function backend(): GoogleSheetsOutboxBackend {
@@ -59,4 +60,79 @@ export async function recoverStaleGoogleSheetsLocks(clock: Clock = systemClock):
 
 export async function getGoogleSheetsJob(jobId: string): Promise<GoogleSheetsSyncJob | null> {
   return backend().getGoogleSheetsJob(jobId);
+}
+
+export async function getLatestGoogleSheetsJobForUsername(
+  username: string
+): Promise<GoogleSheetsSyncJob | null> {
+  return backend().getLatestGoogleSheetsJobForUsername(username);
+}
+
+export type GoogleSheetsUserSyncKind = "ok" | "failed" | "pending" | "none";
+
+export interface GoogleSheetsUserSyncStatus {
+  kind: GoogleSheetsUserSyncKind;
+  /** Short UI label after `status = `. */
+  label: string;
+  lastSyncedAt: string | null;
+  lastError: string | null;
+}
+
+/**
+ * Compact sync status for History → Google Sheets (under the spreadsheet link).
+ * Derived from the user's most recent outbox job — not from GOOGLE_SHEETS_ENABLED.
+ */
+export async function getGoogleSheetsUserSyncStatus(
+  username: string
+): Promise<GoogleSheetsUserSyncStatus> {
+  let job: GoogleSheetsSyncJob | null = null;
+  try {
+    job = await getLatestGoogleSheetsJobForUsername(username);
+  } catch (err) {
+    console.warn(
+      "[google-sheets] getLatestGoogleSheetsJobForUsername failed:",
+      err instanceof Error ? err.message : err
+    );
+    return {
+      kind: "none",
+      label: "no sync yet",
+      lastSyncedAt: null,
+      lastError: null,
+    };
+  }
+
+  if (!job) {
+    return {
+      kind: "none",
+      label: "no sync yet",
+      lastSyncedAt: null,
+      lastError: null,
+    };
+  }
+
+  if (job.status === "synced") {
+    return {
+      kind: "ok",
+      label: "last sync done correctly",
+      lastSyncedAt: job.completedAt ?? job.updatedAt,
+      lastError: null,
+    };
+  }
+
+  if (job.status === "failed") {
+    return {
+      kind: "failed",
+      label: "sync failed",
+      lastSyncedAt: null,
+      lastError: job.lastError,
+    };
+  }
+
+  // pending | processing | retry
+  return {
+    kind: "pending",
+    label: job.status === "retry" ? "sync retrying" : "sync pending",
+    lastSyncedAt: null,
+    lastError: job.lastError,
+  };
 }

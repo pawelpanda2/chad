@@ -6,19 +6,18 @@ import {
   getPostgresSource,
   setPostgresSource,
   describeEffectivePostgresTarget,
+  closePostgresConnection,
+  withPostgresClient,
   type DbSource,
 } from 'dba';
+import { invalidateUsersCache } from '@/lib/user-service';
 
 /**
  * GET/POST /api/dev-settings/db-source
  *
- * Backs the Dev Panel's Settings tab: live, independent switches for
- * Postgres (CHAD primary, Story 80/81) and Mongo (Beeper / leftover paths)
- * between local docker and QNAP-over-Tailscale — previously only decidable
- * at shell start via `DBA_MONGO_MODE`.
- *
- * SAFETY: allowed only for local — `CHAD_ENVIRONMENT=local` (official
- * local-mac-docker) or bare `next dev`. Hard-blocked on QNAP TEST/PROD.
+ * Dev Panel Settings: live switches for Postgres + Mongo (local vs QNAP).
+ * Story 89: invalidate users cache + probe the new connection so the UI
+ * shows a real failure instead of a silent stale login.
  */
 
 function assertDevOnly(): NextResponse | null {
@@ -31,10 +30,31 @@ function assertDevOnly(): NextResponse | null {
   return null;
 }
 
-function snapshot() {
+async function probePostgres(): Promise<{ ok: boolean; itemCount?: number; error?: string }> {
+  try {
+    await closePostgresConnection();
+    const itemCount = await withPostgresClient(async (client) => {
+      const { rows } = await client.query<{ count: string }>('SELECT count(*)::text AS count FROM cp_items');
+      return Number(rows[0]?.count ?? 0);
+    });
+    return { ok: true, itemCount };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+async function snapshot() {
+  const postgresProbe = await probePostgres();
   return {
-    postgres: { current: getPostgresSource(), target: describeEffectivePostgresTarget() },
-    mongo: { current: getMongoSource(), target: describeEffectiveMongoTarget() },
+    postgres: {
+      current: getPostgresSource(),
+      target: describeEffectivePostgresTarget(),
+      probe: postgresProbe,
+    },
+    mongo: {
+      current: getMongoSource(),
+      target: describeEffectiveMongoTarget(),
+    },
   };
 }
 
@@ -42,7 +62,7 @@ export async function GET() {
   const blocked = assertDevOnly();
   if (blocked) return blocked;
 
-  return NextResponse.json(snapshot());
+  return NextResponse.json(await snapshot());
 }
 
 export async function POST(request: Request) {
@@ -56,7 +76,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
 
-  // Backward compat: old UI sent `{ source }` for Mongo only.
   const postgres = payload.postgres ?? undefined;
   const mongo = payload.mongo ?? payload.source ?? undefined;
 
@@ -73,6 +92,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'Invalid "postgres" (must be "local" or "qnap")' }, { status: 400 });
       }
       setPostgresSource(postgres as DbSource);
+      await closePostgresConnection();
     }
     if (mongo !== undefined) {
       if (mongo !== 'local' && mongo !== 'qnap') {
@@ -87,5 +107,19 @@ export async function POST(request: Request) {
     );
   }
 
-  return NextResponse.json(snapshot());
+  // Login/users-list cache must not keep serving the previous DB's users.
+  invalidateUsersCache();
+
+  const snap = await snapshot();
+  if (postgres !== undefined && snap.postgres.probe && !snap.postgres.probe.ok) {
+    return NextResponse.json(
+      {
+        error: `Postgres switch applied but connection failed: ${snap.postgres.probe.error}`,
+        ...snap,
+      },
+      { status: 502 }
+    );
+  }
+
+  return NextResponse.json(snap);
 }
