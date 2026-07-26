@@ -13,9 +13,11 @@
 # once to create the schema.
 #
 # Content Provider (content-provider-api) removed from this stack — the
-# .NET adapter code (`NetFileCpProvider`) and the `net-content-provider`
-# submodule are untouched; this is a deployment-only change, reversible by
-# re-adding the service below.
+# .NET adapter code (`NetFileCpProvider`) is untouched; this is a
+# deployment-only change, reversible by re-adding the service below. The
+# `net-content-provider` submodule itself was removed from this monorepo
+# (legacy Content Provider fully migrated) — see git history if you need
+# its old .NET source.
 #
 # For local dev WITHOUT Docker (pnpm/tmuxinator instead), see
 # bash-scripts/dashboard/02_local_mac/ — that path runs mongo standalone (no

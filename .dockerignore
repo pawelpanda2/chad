@@ -7,9 +7,8 @@
 .git
 .gitignore
 
-# Whole separate .NET/Blazor repo — huge, irrelevant to the dashboard's
-# Node.js build, and paused TS rewrite — also irrelevant.
-packages/net-content-provider
+# Paused TS rewrite of content-provider — irrelevant to the dashboard's
+# Node.js build.
 packages/content-provider
 packages/cp-gui
 packages/cp-plugin

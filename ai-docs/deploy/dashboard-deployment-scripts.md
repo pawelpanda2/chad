@@ -33,13 +33,18 @@ TEST jest widoczna również w PROD.
 (.NET) został usunięty z deploymentu — Mongo (`MongoCpProvider`) jest
 jedynym aktywnym backendem w czasie działania
 (`DBA_CONTENT_PROVIDER_ENABLED=false`, `DBA_PRIMARY_BACKEND=mongo`). Kod
-adaptera (`NetFileCpProvider`) i submoduł `packages/net-content-provider`
-pozostają nietknięte — to zmiana wyłącznie w deploymencie, odwracalna przez
-ponowne dodanie serwisu do `docker-compose.qnap.shared.yml` (patrz tego
-pliku nagłówek) i przywrócenie flag. Sekcje poniżej, które opisują
-`content-provider-api` jako część `00_qnap_shared`, opisują stan
-historyczny (przed Story 72) — zachowane dla kontekstu architektonicznego i
-jako dokumentacja ścieżki powrotu, patrz "Historia zmian" na końcu.
+adaptera (`NetFileCpProvider`) pozostaje nietknięty — to zmiana wyłącznie w
+deploymencie, odwracalna przez ponowne dodanie serwisu do
+`docker-compose.qnap.shared.yml` (patrz tego pliku nagłówek) i przywrócenie
+flag. Sekcje poniżej, które opisują `content-provider-api` jako część
+`00_qnap_shared`, opisują stan historyczny (przed Story 72) — zachowane dla
+kontekstu architektonicznego i jako dokumentacja ścieżki powrotu, patrz
+"Historia zmian" na końcu.
+
+**Aktualizacja (2026-07-27):** submoduł `packages/net-content-provider`
+został usunięty z tego monorepo (legacy Content Provider w pełni
+zmigrowany, submoduł nie jest już utrzymywany). Wszystkie poniższe
+wzmianki o tym submodule opisują stan historyczny sprzed usunięcia.
 
 ## Kontrakt numeracji operacji (globalny, obowiązujący we wszystkich katalogach)
 

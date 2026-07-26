@@ -100,13 +100,14 @@ nigdy hardkodowana wprost w `02_*`-`07_*`. Pełny przykład podziału (GHCR):
   diagnozy przy zgłoszeniach typu "coś nie działa w Content Providerze/
   Dashboardzie po deployu".
 - **Git preflight `06_qnap_test_ssh/06_deploy.sh` ignoruje submoduły
-  (`--ignore-submodules`)** — `packages/net-content-provider` jest gitowym
-  submodułem; jego wskaźnik commita regularnie pokazuje się jako
+  (`--ignore-submodules`)** — historycznie (do 2026-07-27) `packages/net-content-provider`
+  był gitowym submodułem; jego wskaźnik commita regularnie pokazywał się jako
   " M packages/net-content-provider" pod zwykłym `git status --porcelain`
   nawet przy zerowych realnych zmianach. Preflight (`git_deploy_preflight`
-  w `bash-scripts/common/lib.sh`) świadomie to ignoruje od 2026-07-18 —
-  jeśli widzisz realne, niezacommitowane zmiany w preflight, to nie submoduł
-  jest ich źródłem.
+  w `bash-scripts/common/lib.sh`) świadomie to ignorował od 2026-07-18. Ten
+  submoduł został usunięty z monorepo 2026-07-27 (legacy Content Provider
+  zmigrowany) — flaga `--ignore-submodules` została w preflight defensywnie
+  na wypadek dodania submodułu w przyszłości.
 - **Preflight ma trzecią opcję `[y/N/d]` na każdym pytaniu** — `d` = "wdróż
   mimo ostrzeżenia", pomija zalecaną akcję (commit/push) i od razu kończy
   cały preflight sukcesem. Nie to samo co `y` przy pierwszych dwóch pytaniach
