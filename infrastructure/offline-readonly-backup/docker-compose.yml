@@ -1,0 +1,26 @@
+# Emergency read-only CHAD PostgreSQL snapshot — NOT part of the normal
+# local-mac-docker workflow. Start explicitly:
+#   ./start.sh
+# or:
+#   docker compose --profile offline-readonly-backup up -d
+
+services:
+  postgres-offline-readonly-backup:
+    image: postgres:17
+    container_name: chad-postgres-offline-readonly-backup
+    profiles:
+      - offline-readonly-backup
+    restart: unless-stopped
+    ports:
+      - "${OFFLINE_READONLY_BACKUP_POSTGRES_PORT:-55432}:5432"
+    environment:
+      POSTGRES_USER: ${OFFLINE_READONLY_BACKUP_ADMIN_USER:-chad_offline_readonly_backup_admin}
+      POSTGRES_PASSWORD: ${OFFLINE_READONLY_BACKUP_ADMIN_PASSWORD:?OFFLINE_READONLY_BACKUP_ADMIN_PASSWORD is required}
+      POSTGRES_DB: chad_offline_readonly_backup
+    volumes:
+      - ${CHAD_OFFLINE_READONLY_BACKUP_ROOT:?CHAD_OFFLINE_READONLY_BACKUP_ROOT is required}/postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: pg_isready -U ${OFFLINE_READONLY_BACKUP_ADMIN_USER:-chad_offline_readonly_backup_admin} -d chad_offline_readonly_backup
+      interval: 10s
+      timeout: 5s
+      retries: 5

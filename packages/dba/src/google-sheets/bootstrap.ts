@@ -16,7 +16,8 @@
  */
 
 import { loadGoogleSheetsConfig, type GoogleSheetsConfig } from "./config.js";
-import { checkGoogleSheetsProductionGuard } from "./production-guard.js";
+import { checkGoogleSheetsProductionGuard, checkGoogleSheetsWriteAllowed } from "./production-guard.js";
+import { isOfflineReadonlyBackupMode } from "../chad-data-mode.js";
 import { GoogleSheetsApiClient } from "./sheets-api-client.js";
 import { runGoogleSheetsSyncWorker } from "./worker.js";
 import { ensureDailyTrackerLayout, ensureDatesLayout, ensureLeadsLayout } from "./layout.js";
@@ -28,15 +29,17 @@ let started = false;
 /**
  * Lays out (or confirms already-laid-out, via `CHAD_SHEET_LAYOUT_VERSION`)
  * every configured user's own "daily"/"dates"/"leads" tabs — once per user, at
- * worker startup, deliberately separate from the per-record sync loop
- * (`layout.ts`'s own header comment). Fire-and-forget from the caller's
- * point of view (never awaited by `startGoogleSheetsSyncWorkerIfEnabled`,
- * see below) — a slow/failing Sheets API call here must never delay
- * Dashboard startup or block the sync loop from starting; each user's
- * layout is independent, so one user's failure never stops another's.
+ * worker startup. On non-prod environments only allowlisted write users
+ * (default test3) get layout mutations, so pawel_f/kamil_s sheets stay
+ * untouched during TEST regression.
  */
 async function ensureLayoutsForAllUsers(client: GoogleSheetsClient, config: GoogleSheetsConfig): Promise<void> {
   for (const [username, spreadsheetId] of Object.entries(config.spreadsheetMap)) {
+    const writeOk = checkGoogleSheetsWriteAllowed(username);
+    if (!writeOk.allowed) {
+      console.log(`[google-sheets] layout skipped for username=${username} (${writeOk.reason})`);
+      continue;
+    }
     try {
       const changedDaily = await ensureDailyTrackerLayout(client, {
         spreadsheetId,
@@ -86,12 +89,11 @@ export function startGoogleSheetsSyncWorkerIfEnabled(intervalMs = 5000): (() => 
     return null;
   }
 
-  // Defense-in-depth (2026-07-22, independent of GOOGLE_SHEETS_ENABLED) —
-  // the worker itself must refuse to run unless this is genuinely the real
-  // production environment connected to the real production Mongo. See
-  // production-guard.ts's own doc comment for the full reasoning (this is
-  // the check that matters even if GOOGLE_SHEETS_ENABLED were mistakenly
-  // left on in a local/test/staging context).
+  if (isOfflineReadonlyBackupMode()) {
+    console.log("[google-sheets] sync worker not started — CHAD_DATA_MODE=offline-readonly-backup.");
+    return null;
+  }
+
   const guard = checkGoogleSheetsProductionGuard();
   if (!guard.allowed) {
     console.warn(`[google-sheets] sync worker NOT started — production guard blocked it: ${guard.reason}`);

@@ -18,7 +18,7 @@ cd "$REPO_ROOT"
 # doesn't need a real tag (never pulls/runs it) — use the recorded tag if
 # present, otherwise a harmless placeholder (see image_tag_for_readonly).
 export IMAGE_TAG="$(image_tag_for_readonly "$(dashboard_image_tag_file)")"
-docker compose -p "$COMPOSE_PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps
+docker compose -p "$COMPOSE_PROJECT_NAME" --env-file "$ENV_FILE" --env-file "$ENV_FILE2" -f "$COMPOSE_FILE" ps
 
 echo ""
 if curl -fsS -o /dev/null -m 3 -w '%{http_code}' "http://localhost:$DASHBOARD_PORT" 2>/dev/null | grep -qE '^[23]'; then

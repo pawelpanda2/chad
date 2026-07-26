@@ -1,31 +1,29 @@
-import { NextResponse } from 'next/server';
+import { NextResponse } from "next/server";
 import {
-  getMongoSource,
-  setMongoSource,
+  buildChadDataSourceActiveView,
+  buildOfflineBackupOptionDetails,
+  chadPostgresSourceToLabel,
   describeEffectiveMongoTarget,
+  getMongoSource,
   getPostgresSource,
+  labelToChadPostgresSource,
+  setMongoSource,
   setPostgresSource,
-  describeEffectivePostgresTarget,
   closePostgresConnection,
   withPostgresClient,
+  verifyPostgresReadonlyRole,
+  type ChadPostgresSource,
   type DbSource,
-} from 'dba';
-import { invalidateUsersCache } from '@/lib/user-service';
-
-/**
- * GET/POST /api/dev-settings/db-source
- *
- * Dev Panel Settings: live switches for Postgres + Mongo (local vs QNAP).
- * Story 89: invalidate users cache + probe the new connection so the UI
- * shows a real failure instead of a silent stale login.
- */
+} from "dba";
+import { invalidateUsersCache } from "@/lib/user-service";
+import { appendDevDataSourceAudit } from "@/lib/dev-panel/data-source-audit";
 
 function assertDevOnly(): NextResponse | null {
   const chadEnv = process.env.CHAD_ENVIRONMENT;
   const allowed =
-    chadEnv === 'local' || (chadEnv !== 'test' && chadEnv !== 'prod' && process.env.NODE_ENV !== 'production');
+    chadEnv === "local" || (chadEnv !== "test" && chadEnv !== "prod" && process.env.NODE_ENV !== "production");
   if (!allowed) {
-    return NextResponse.json({ error: 'DISABLED_OUTSIDE_LOCAL' }, { status: 403 });
+    return NextResponse.json({ error: "DISABLED_OUTSIDE_LOCAL" }, { status: 403 });
   }
   return null;
 }
@@ -34,7 +32,7 @@ async function probePostgres(): Promise<{ ok: boolean; itemCount?: number; error
   try {
     await closePostgresConnection();
     const itemCount = await withPostgresClient(async (client) => {
-      const { rows } = await client.query<{ count: string }>('SELECT count(*)::text AS count FROM cp_items');
+      const { rows } = await client.query<{ count: string }>("SELECT count(*)::text AS count FROM cp_items");
       return Number(rows[0]?.count ?? 0);
     });
     return { ok: true, itemCount };
@@ -45,23 +43,37 @@ async function probePostgres(): Promise<{ ok: boolean; itemCount?: number; error
 
 async function snapshot() {
   const postgresProbe = await probePostgres();
+  const active = buildChadDataSourceActiveView({
+    probeOk: postgresProbe.ok,
+    probeError: postgresProbe.error,
+    cpItemsCount: postgresProbe.itemCount,
+    chadEnvironment: process.env.CHAD_ENVIRONMENT,
+  });
+  const backupOption = buildOfflineBackupOptionDetails();
+  const mongoTarget = describeEffectiveMongoTarget();
+
   return {
-    postgres: {
-      current: getPostgresSource(),
-      target: describeEffectivePostgresTarget(),
-      probe: postgresProbe,
+    active,
+    changeOptions: {
+      current: chadPostgresSourceToLabel(getPostgresSource()),
+      options: ["Server PostgreSQL", "offline-readonly-backup"] as const,
+      offlineReadonlyBackup: backupOption,
     },
-    mongo: {
+    beeper: {
+      label: "Beeper CRM",
+      backend: "MongoDB",
+      source: mongoTarget.source === "qnap" ? "Server Mongo" : "Local Mongo",
+      status: mongoTarget.error ? `error: ${mongoTarget.error}` : "informational",
+      hostPort: mongoTarget.hostPort,
       current: getMongoSource(),
-      target: describeEffectiveMongoTarget(),
     },
+    postgresProbe,
   };
 }
 
 export async function GET() {
   const blocked = assertDevOnly();
   if (blocked) return blocked;
-
   return NextResponse.json(await snapshot());
 }
 
@@ -69,52 +81,101 @@ export async function POST(request: Request) {
   const blocked = assertDevOnly();
   if (blocked) return blocked;
 
-  let payload: { postgres?: unknown; mongo?: unknown; source?: unknown };
+  let payload: {
+    chadPostgres?: unknown;
+    postgres?: unknown;
+    mongo?: unknown;
+    confirmOfflineReadonly?: unknown;
+  };
   try {
     payload = await request.json();
   } catch {
-    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const postgres = payload.postgres ?? undefined;
-  const mongo = payload.mongo ?? payload.source ?? undefined;
+  const chadPostgresRaw = payload.chadPostgres ?? payload.postgres;
+  const mongo = payload.mongo;
 
-  if (postgres === undefined && mongo === undefined) {
+  if (chadPostgresRaw === undefined && mongo === undefined) {
     return NextResponse.json(
-      { error: 'Provide "postgres" and/or "mongo" ("local" | "qnap")' },
+      { error: 'Provide "chadPostgres" ("Server PostgreSQL" | "offline-readonly-backup") and/or "mongo" ("local" | "qnap")' },
       { status: 400 }
     );
   }
 
+  const previous = getPostgresSource();
+
   try {
-    if (postgres !== undefined) {
-      if (postgres !== 'local' && postgres !== 'qnap') {
-        return NextResponse.json({ error: 'Invalid "postgres" (must be "local" or "qnap")' }, { status: 400 });
+    if (chadPostgresRaw !== undefined) {
+      const mapped =
+        typeof chadPostgresRaw === "string"
+          ? labelToChadPostgresSource(chadPostgresRaw)
+          : (chadPostgresRaw as ChadPostgresSource | null);
+      if (!mapped) {
+        return NextResponse.json(
+          { error: 'Invalid chadPostgres (must be "Server PostgreSQL" or "offline-readonly-backup")' },
+          { status: 400 }
+        );
       }
-      setPostgresSource(postgres as DbSource);
+
+      if (mapped === "offline-readonly-backup") {
+        if (payload.confirmOfflineReadonly !== true) {
+          return NextResponse.json(
+            { error: "CONFIRM_OFFLINE_READONLY_REQUIRED", ...(await snapshot()) },
+            { status: 400 }
+          );
+        }
+        const backup = buildOfflineBackupOptionDetails();
+        if (!backup.available) {
+          return NextResponse.json({ error: backup.error ?? "BACKUP_UNAVAILABLE", ...(await snapshot()) }, { status: 400 });
+        }
+      }
+
+      setPostgresSource(mapped);
       await closePostgresConnection();
+
+      if (mapped === "offline-readonly-backup") {
+        const readonlyCheck = await withPostgresClient(async (client) => verifyPostgresReadonlyRole(client));
+        if (!readonlyCheck.ok) {
+          setPostgresSource(previous);
+          await closePostgresConnection();
+          return NextResponse.json(
+            { error: "OFFLINE_READONLY_VERIFICATION_FAILED", checks: readonlyCheck.checks, ...(await snapshot()) },
+            { status: 502 }
+          );
+        }
+      }
     }
+
     if (mongo !== undefined) {
-      if (mongo !== 'local' && mongo !== 'qnap') {
+      if (mongo !== "local" && mongo !== "qnap") {
         return NextResponse.json({ error: 'Invalid "mongo" (must be "local" or "qnap")' }, { status: 400 });
       }
       setMongoSource(mongo as DbSource);
     }
   } catch (err) {
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'UNKNOWN_ERROR' },
+      { error: err instanceof Error ? err.message : "UNKNOWN_ERROR" },
       { status: 500 }
     );
   }
 
-  // Login/users-list cache must not keep serving the previous DB's users.
   invalidateUsersCache();
-
   const snap = await snapshot();
-  if (postgres !== undefined && snap.postgres.probe && !snap.postgres.probe.ok) {
+
+  if (chadPostgresRaw !== undefined) {
+    const next = getPostgresSource();
+    appendDevDataSourceAudit({
+      from: previous,
+      to: next,
+      at: new Date().toISOString(),
+    });
+  }
+
+  if (chadPostgresRaw !== undefined && snap.postgresProbe && !snap.postgresProbe.ok) {
     return NextResponse.json(
       {
-        error: `Postgres switch applied but connection failed: ${snap.postgres.probe.error}`,
+        error: `Postgres switch applied but connection failed: ${snap.postgresProbe.error}`,
         ...snap,
       },
       { status: 502 }

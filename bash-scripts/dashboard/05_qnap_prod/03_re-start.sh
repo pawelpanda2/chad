@@ -19,6 +19,7 @@ source "$SCRIPT_DIR/01_config.sh"
 
 require_command docker "install Docker" || exit 1
 require_file "$ENV_FILE" "cp .env.qnap.example .env.qnap and fill in real values" || exit 1
+require_file "$ENV_FILE2" "cp .env.server1.prod.example .env.server1.prod and fill in real values" || exit 1
 
 echo ""
 log_info "chad QNAP PROD — restart"
@@ -36,7 +37,7 @@ require_shared_services_healthy || {
 # TEST is running, without a second build — that's how a release is promoted.
 require_image_tag "$(dashboard_image_tag_file)" "chad-dashboard" || exit 1
 
-if docker compose -p "$COMPOSE_PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps --format json 2>/dev/null | grep -q '"State":"running"'; then
+if docker compose -p "$COMPOSE_PROJECT_NAME" --env-file "$ENV_FILE" --env-file "$ENV_FILE2" -f "$COMPOSE_FILE" ps --format json 2>/dev/null | grep -q '"State":"running"'; then
   log_warn "chad-prod stack is already running — stopping it first, then starting fresh."
   bash "$SCRIPT_DIR/04_end.sh"
 fi
@@ -46,7 +47,7 @@ fi
 # cleanup.
 ensure_port_available "$DASHBOARD_PORT" || exit 1
 
-docker compose -p "$COMPOSE_PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d
+docker compose -p "$COMPOSE_PROJECT_NAME" --env-file "$ENV_FILE" --env-file "$ENV_FILE2" -f "$COMPOSE_FILE" up -d
 
 log_info "Waiting for dashboard to respond..."
 for _ in $(seq 1 30); do

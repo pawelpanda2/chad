@@ -4,38 +4,47 @@ import {
   QNAP_TAILSCALE_HOST,
   QNAP_MONGO_PORT,
   QNAP_POSTGRES_PORT,
-  LOCAL_POSTGRES_HOST_PORT,
 } from "./dev-db-hosts.js";
+import {
+  OFFLINE_READONLY_BACKUP_DATABASE,
+  OFFLINE_READONLY_BACKUP_READER_ROLE,
+  DEFAULT_OFFLINE_READONLY_BACKUP_PORT,
+  CHAD_DATA_MODE_OFFLINE_READONLY_BACKUP,
+  CHAD_DATA_MODE_REMOTE_PRIMARY,
+} from "./offline-readonly-backup/constants.js";
 
 /**
- * Runtime-switchable data sources for local development (Story 83 + Story 81 + Story 89).
+ * Runtime-switchable data sources for local development.
  *
- * Originally only Mongo (local vs QNAP-over-Tailscale). After Story 80/81 the
- * primary CHAD datastore is PostgreSQL — the Dev Panel Settings tab now
- * switches Postgres and Mongo independently.
- *
- * Deliberately global (module-level), not per-request: there is one connection
- * pool per process, so "which DB" is a process-wide fact. Safe ONLY because
- * setters refuse to run outside local (`CHAD_ENVIRONMENT=local` or bare next
- * dev). Preference can persist under DEV_DB_SOURCE_PREF_PATH (default
- * `/app/data/dev-db-source.json` in local Docker).
+ * Postgres (CHAD cp_items): `server` (QNAP primary) or `offline-readonly-backup`
+ * (emergency read-only snapshot). Mongo (Beeper CRM): `local` vs `qnap`.
  */
 
+export type ChadPostgresSource = "server" | "offline-readonly-backup";
 export type DbSource = "local" | "qnap";
-/** @deprecated Prefer `DbSource` — kept for existing callers. */
+/** @deprecated Prefer `DbSource` — kept for existing Mongo callers. */
 export type MongoSource = DbSource;
 
 function prefPath(): string {
   return process.env.DEV_DB_SOURCE_PREF_PATH || "/app/data/dev-db-source.json";
 }
 
-function loadPersistedSources(): { postgres?: DbSource; mongo?: DbSource } | null {
+function normalizePersistedPostgres(raw: unknown): ChadPostgresSource | undefined {
+  if (raw === "server" || raw === "offline-readonly-backup") return raw;
+  // Legacy Dev Panel values — local mirror is no longer a CHAD data source.
+  if (raw === "qnap") return "server";
+  if (raw === "local") return "server";
+  return undefined;
+}
+
+function loadPersistedSources(): { postgres?: ChadPostgresSource; mongo?: DbSource } | null {
   try {
     const path = prefPath();
     if (!existsSync(path)) return null;
     const raw = JSON.parse(readFileSync(path, "utf8")) as { postgres?: unknown; mongo?: unknown };
-    const out: { postgres?: DbSource; mongo?: DbSource } = {};
-    if (raw.postgres === "local" || raw.postgres === "qnap") out.postgres = raw.postgres;
+    const out: { postgres?: ChadPostgresSource; mongo?: DbSource } = {};
+    const postgres = normalizePersistedPostgres(raw.postgres);
+    if (postgres) out.postgres = postgres;
     if (raw.mongo === "local" || raw.mongo === "qnap") out.mongo = raw.mongo;
     return out;
   } catch {
@@ -43,18 +52,47 @@ function loadPersistedSources(): { postgres?: DbSource; mongo?: DbSource } | nul
   }
 }
 
-function persistSources(postgres: DbSource, mongo: DbSource): void {
+function persistSources(postgres: ChadPostgresSource, mongo: DbSource): void {
   try {
     const path = prefPath();
     mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(path, JSON.stringify({ postgres, mongo, updatedAt: new Date().toISOString() }, null, 2));
+    writeFileSync(
+      path,
+      JSON.stringify(
+        {
+          postgres,
+          mongo,
+          chadDataMode: postgresSourceToMode(postgres),
+          updatedAt: new Date().toISOString(),
+        },
+        null,
+        2
+      )
+    );
   } catch {
     // Preference is best-effort — volume may be missing on bare next dev.
   }
 }
 
+function postgresSourceToMode(source: ChadPostgresSource): string {
+  return source === "offline-readonly-backup"
+    ? CHAD_DATA_MODE_OFFLINE_READONLY_BACKUP
+    : CHAD_DATA_MODE_REMOTE_PRIMARY;
+}
+
 function isQnapPostgresUri(uri: string): boolean {
-  return uri.includes(QNAP_TAILSCALE_HOST) || uri.includes(`:${QNAP_POSTGRES_PORT}`);
+  // "chad-postgres" (docker-compose container_name, docker-compose.qnap.shared.yml)
+  // is how the QNAP-hosted TEST/PROD dashboard containers themselves reach the
+  // same Postgres — same-host container network, never over Tailscale. Without
+  // this, getEffectivePostgresUri() below treated that URI as "not the QNAP
+  // server" and rebuilt a Tailscale-IP connection instead (requiring
+  // POSTGRES_QNAP_PASSWORD to be exported standalone in-container, which it
+  // isn't — only embedded in POSTGRES_URI), breaking real cp_items reads/writes
+  // on TEST/PROD (2026-07-27, found while verifying the TEST deploy after the
+  // compose consolidation).
+  return (
+    uri.includes(QNAP_TAILSCALE_HOST) || uri.includes(`:${QNAP_POSTGRES_PORT}`) || uri.includes("chad-postgres")
+  );
 }
 
 function defaultMongoSource(): DbSource {
@@ -63,44 +101,40 @@ function defaultMongoSource(): DbSource {
   return process.env.DBA_MONGO_MODE === "qnap" ? "qnap" : "local";
 }
 
-function defaultPostgresSource(): DbSource {
+function defaultPostgresSource(): ChadPostgresSource {
   const persisted = loadPersistedSources();
   if (persisted?.postgres) return persisted.postgres;
   const uri = process.env.POSTGRES_URI ?? "";
-  if (uri && isQnapPostgresUri(uri)) return "qnap";
-  if (process.env.DBA_MONGO_MODE === "qnap") return "qnap";
-  return "local";
+  if (uri.includes(OFFLINE_READONLY_BACKUP_DATABASE) || uri.includes(OFFLINE_READONLY_BACKUP_READER_ROLE)) {
+    return "offline-readonly-backup";
+  }
+  if (uri && isQnapPostgresUri(uri)) return "server";
+  if (process.env.CHAD_DATA_MODE === "offline-readonly-backup") return "offline-readonly-backup";
+  return "server";
 }
 
 let currentMongoSource: DbSource = defaultMongoSource();
-let currentPostgresSource: DbSource = defaultPostgresSource();
+let currentPostgresSource: ChadPostgresSource = defaultPostgresSource();
 let mongoGeneration = 0;
 let postgresGeneration = 0;
 
-/** The currently selected Mongo source (defaults from `DBA_MONGO_MODE`). */
 export function getMongoSource(): DbSource {
   return currentMongoSource;
 }
 
-/** The currently selected Postgres source (local volume vs QNAP Tailscale). */
-export function getPostgresSource(): DbSource {
+export function getPostgresSource(): ChadPostgresSource {
   return currentPostgresSource;
 }
 
-/** Bumped when Mongo source changes — `mongo.ts` tears down stale clients. */
 export function getDevDbOverrideGeneration(): number {
   return mongoGeneration;
 }
 
-/** Bumped when Postgres source changes — `postgres.ts` tears down the stale pool. */
 export function getPostgresOverrideGeneration(): number {
   return postgresGeneration;
 }
 
 function assertLocalDev(action: string): void {
-  // Allow on bare `next dev` (NODE_ENV !== production) AND on the official
-  // local-mac-docker stack (CHAD_ENVIRONMENT=local, even though that image
-  // builds with NODE_ENV=production). Never on QNAP TEST/PROD.
   const chadEnv = process.env.CHAD_ENVIRONMENT;
   const allowed =
     chadEnv === "local" || (chadEnv !== "test" && chadEnv !== "prod" && process.env.NODE_ENV !== "production");
@@ -111,27 +145,40 @@ function assertLocalDev(action: string): void {
   }
 }
 
-function assertSource(source: unknown, label: string): asserts source is DbSource {
+function assertMongoSource(source: unknown, label: string): asserts source is DbSource {
   if (source !== "local" && source !== "qnap") {
     throw new Error(`Invalid ${label} source: "${String(source)}" (must be "local" or "qnap")`);
   }
 }
 
+function assertPostgresSource(source: unknown): asserts source is ChadPostgresSource {
+  if (source !== "server" && source !== "offline-readonly-backup") {
+    throw new Error(
+      `Invalid postgres source: "${String(source)}" (must be "server" or "offline-readonly-backup")`
+    );
+  }
+}
+
+function applyChadDataModeEnv(source: ChadPostgresSource): void {
+  process.env.CHAD_DATA_MODE = postgresSourceToMode(source);
+}
+
 export function setMongoSource(source: DbSource): void {
   assertLocalDev("setMongoSource");
-  assertSource(source, "Mongo");
+  assertMongoSource(source, "Mongo");
   if (source === currentMongoSource) return;
   currentMongoSource = source;
   mongoGeneration += 1;
   persistSources(currentPostgresSource, currentMongoSource);
 }
 
-export function setPostgresSource(source: DbSource): void {
+export function setPostgresSource(source: ChadPostgresSource): void {
   assertLocalDev("setPostgresSource");
-  assertSource(source, "Postgres");
+  assertPostgresSource(source);
   if (source === currentPostgresSource) return;
   currentPostgresSource = source;
   postgresGeneration += 1;
+  applyChadDataModeEnv(source);
   persistSources(currentPostgresSource, currentMongoSource);
 }
 
@@ -153,8 +200,6 @@ function requireQnapMongoCredentials(): { user: string; pass: string } {
 function requirePostgresCredentials(forQnap: boolean): { user: string; pass: string; db: string } {
   const user = process.env.POSTGRES_USER || "chad";
   const db = process.env.POSTGRES_DB || "chad";
-  // Local volume password and QNAP chad-postgres password often drift —
-  // prefer POSTGRES_QNAP_PASSWORD when targeting the server.
   const pass = forQnap
     ? process.env.POSTGRES_QNAP_PASSWORD || process.env.POSTGRES_PASSWORD
     : process.env.POSTGRES_PASSWORD;
@@ -168,7 +213,23 @@ function requirePostgresCredentials(forQnap: boolean): { user: string; pass: str
   return { user, pass, db };
 }
 
-/** Effective `chad` (CP items) Mongo URI, honoring the runtime override. */
+function requireOfflineReaderCredentials(): { user: string; pass: string; db: string; host: string; port: string } {
+  const pass = process.env.OFFLINE_READONLY_BACKUP_READER_PASSWORD;
+  if (!pass) {
+    throw new Error(
+      "OFFLINE_READONLY_BACKUP_READER_PASSWORD must be set to connect to offline-readonly-backup."
+    );
+  }
+  const inLocalDocker = process.env.CHAD_ENVIRONMENT === "local" && process.env.NODE_ENV === "production";
+  return {
+    user: OFFLINE_READONLY_BACKUP_READER_ROLE,
+    pass,
+    db: OFFLINE_READONLY_BACKUP_DATABASE,
+    host: inLocalDocker ? "host.docker.internal" : "127.0.0.1",
+    port: process.env.OFFLINE_READONLY_BACKUP_POSTGRES_PORT || DEFAULT_OFFLINE_READONLY_BACKUP_PORT,
+  };
+}
+
 export function getEffectiveMongoUri(): string {
   if (currentMongoSource === "qnap") {
     const envUri = process.env.MONGODB_URI;
@@ -188,7 +249,6 @@ export function getEffectiveMongoUri(): string {
   return uri;
 }
 
-/** Effective Beeper Mongo *server* URI (no database segment), honoring the runtime override. */
 export function getEffectiveBeeperMongoUri(): string {
   if (currentMongoSource === "qnap") {
     const envUri = process.env.BEEPER_MONGODB_URI;
@@ -208,30 +268,24 @@ export function getEffectiveBeeperMongoUri(): string {
   return uri;
 }
 
-/** Effective Postgres URI for CHAD cp_items (Story 80/81 primary), honoring the runtime override. */
 export function getEffectivePostgresUri(): string {
-  if (currentPostgresSource === "qnap") {
-    const envUri = process.env.POSTGRES_URI;
-    if (envUri && isQnapPostgresUri(envUri) && !process.env.POSTGRES_QNAP_PASSWORD) {
-      // Process already started pointed at QNAP with a working URI — keep it.
-      return envUri;
-    }
-    const { user, pass, db } = requirePostgresCredentials(true);
-    return `postgres://${user}:${pass}@${QNAP_TAILSCALE_HOST}:${QNAP_POSTGRES_PORT}/${db}`;
+  if (currentPostgresSource === "offline-readonly-backup") {
+    const { user, pass, db, host, port } = requireOfflineReaderCredentials();
+    return `postgres://${user}:${pass}@${host}:${port}/${db}`;
   }
 
   const envUri = process.env.POSTGRES_URI;
+  // Local-mac-docker: POSTGRES_URI is the sibling `postgres:5432` mirror
+  // (users-list + cp_items). Only build a QNAP URI when explicitly targeting
+  // the server or when the process env already points at QNAP.
   if (envUri && !isQnapPostgresUri(envUri)) {
     return envUri;
   }
-  // Env still points at QNAP (e.g. DBA_MONGO_MODE=qnap rewrite) — build a
-  // local URI. Inside official local-mac-docker the sibling service is
-  // `postgres:5432`; on bare next on the Mac host it's published :5433.
-  const { user, pass, db } = requirePostgresCredentials(false);
-  const inLocalDocker = process.env.CHAD_ENVIRONMENT === "local" && process.env.NODE_ENV === "production";
-  const host = inLocalDocker ? "postgres" : "127.0.0.1";
-  const port = inLocalDocker ? "5432" : LOCAL_POSTGRES_HOST_PORT;
-  return `postgres://${user}:${pass}@${host}:${port}/${db}`;
+  if (envUri && isQnapPostgresUri(envUri) && !process.env.POSTGRES_QNAP_PASSWORD) {
+    return envUri;
+  }
+  const { user, pass, db } = requirePostgresCredentials(true);
+  return `postgres://${user}:${pass}@${QNAP_TAILSCALE_HOST}:${QNAP_POSTGRES_PORT}/${db}`;
 }
 
 function describeUriHostPort(uri: string): string {
@@ -239,7 +293,6 @@ function describeUriHostPort(uri: string): string {
   return parsed.host;
 }
 
-/** Host:port only (no credentials) — safe to show in the Settings UI. */
 export function describeEffectiveMongoTarget(): { source: DbSource; hostPort: string; error?: string } {
   try {
     return { source: currentMongoSource, hostPort: describeUriHostPort(getEffectiveMongoUri()) };
@@ -252,7 +305,11 @@ export function describeEffectiveMongoTarget(): { source: DbSource; hostPort: st
   }
 }
 
-export function describeEffectivePostgresTarget(): { source: DbSource; hostPort: string; error?: string } {
+export function describeEffectivePostgresTarget(): {
+  source: ChadPostgresSource;
+  hostPort: string;
+  error?: string;
+} {
   try {
     return { source: currentPostgresSource, hostPort: describeUriHostPort(getEffectivePostgresUri()) };
   } catch (err) {
@@ -263,3 +320,5 @@ export function describeEffectivePostgresTarget(): { source: DbSource; hostPort:
     };
   }
 }
+
+applyChadDataModeEnv(currentPostgresSource);

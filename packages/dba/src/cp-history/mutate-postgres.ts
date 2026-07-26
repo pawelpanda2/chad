@@ -27,6 +27,7 @@ import {
   discardPendingGoogleSheetsJobs,
   flushPendingGoogleSheetsJobs,
 } from "../google-sheets/txn-hook.js";
+import { assertChadWriteAllowed } from "../chad-data-mode.js";
 
 export type CpHistoryActorKind = "user" | "system" | "migration" | "unknown";
 export type CpHistoryOperationType = "insert" | "update" | "delete";
@@ -162,6 +163,7 @@ export async function executeCpMutationWithHistoryPostgres(
   context: CpMutationContext,
   clock: Clock = systemClock
 ): Promise<CpMutationResult> {
+  assertChadWriteAllowed();
   return withPostgresClient(async (client) => {
     // Idempotent retry, fast path — see mutate.ts's identical comment.
     const existingEvent = await findHistoryByMutationId(client, mutationId);

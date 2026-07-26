@@ -1,0 +1,117 @@
+# Docker Compose — QNAP dashboard runtime, shared by BOTH TEST and PROD
+# (2026-07-27 unification). Replaces docker-compose.qnap.test.yml and
+# docker-compose.qnap.prod.yml, which were two structurally-duplicated files
+# that had drifted (different DBA_* backend flags — the actual root cause of
+# PROD's empty-folder bug: PROD read Mongo while TEST read Postgres against
+# the same shared QNAP host). One file now = one runtime architecture that
+# cannot drift between environments by construction; only the values in
+# each environment's own .env.server1.<env> file differ.
+#
+# Same shared datastores as before (docker-compose.qnap.shared.yml, started
+# separately, never by this file): chad-mongodb (Beeper CRM ONLY from this
+# point on), beeper-mongodb, chad-postgres (CHAD's sole primary — cp_items/
+# cp_history/cp_outbox_* — for BOTH environments).
+#
+# Usage (see bash-scripts/dashboard/04_qnap_test/ and 05_qnap_prod/ — those
+# scripts are what actually invoke this; the commands below are the manual
+# equivalent):
+#   docker compose -p chad-test --env-file .env.qnap --env-file .env.server1.test \
+#     -f docker-compose.server1.test-prod.dashboard.yml up -d
+#   docker compose -p chad-prod --env-file .env.qnap --env-file .env.server1.prod \
+#     -f docker-compose.server1.test-prod.dashboard.yml up -d
+#
+# .env.qnap holds secrets shared by both environments (SSH creds, Mongo/
+# Postgres/Beeper-Mongo credentials, Google service-account key, ...) —
+# unchanged, see .env.qnap.example. .env.server1.test / .env.server1.prod
+# (gitignored; see .env.server1.test.example / .env.server1.prod.example for
+# the committed templates) hold ONLY the small set of values that genuinely
+# differ per environment: container name, port, data volume name,
+# CHAD_ENVIRONMENT, and the Google Sheets info-page sheet-name defaults +
+# non-prod write allowlist (TEST-only).
+#
+# Image/promotion model deliberately UNCHANGED (explicit 2026-07-27
+# decision): build once (chad-dashboard image), deploy to TEST, verify,
+# promote the SAME verified image to PROD — see
+# ai-docs/bash-scripts/image-tagging-standard.md and
+# bash-scripts/dashboard/07_qnap_prod_ssh/06_last_from_test.sh. Both
+# environments still read the one shared .image-tag.chad-dashboard.env file
+# via require_image_tag() — no separate TEST/PROD image lifecycle. The
+# `build:` section below exists so TEST's own 02_build.sh keeps working now
+# that both environments share one compose file; PROD's directory
+# (bash-scripts/dashboard/05_qnap_prod/) still has NO 02_build.sh, and
+# nothing on the PROD deploy path ever calls `docker compose ... build` for
+# the chad-prod project — that procedural rule (not the compose file shape)
+# is what keeps PROD from ever running an unverified image.
+services:
+  dashboard:
+    image: "chad-dashboard:${IMAGE_TAG:?IMAGE_TAG is required, see ai-docs/bash-scripts/image-tagging-standard.md}"
+    build:
+      context: .
+      dockerfile: packages/dashboard/Dockerfile
+      target: runner
+      labels:
+        org.opencontainers.image.revision: "${GIT_SHA:-unknown}"
+    container_name: "${DASHBOARD_CONTAINER_NAME:?DASHBOARD_CONTAINER_NAME is required (set in .env.server1.<env>)}"
+    restart: unless-stopped
+    ports:
+      - "${DASHBOARD_PORT:?DASHBOARD_PORT is required (set in .env.server1.<env>)}:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_TELEMETRY_DISABLED=1
+      - DATABASE_URL=file:/app/data/dev.db
+      # Beeper CRM's own Mongo — UNCHANGED, unaffected by the CHAD backend
+      # decision below. MONGODB_URI (chad-mongodb) is kept wired for any
+      # code path in packages/dba/src/mongo.ts that still references it
+      # directly (e.g. diagnostics), but is never used for cp_items reads/
+      # writes now that DBA_MONGO_ENABLED=false — see the block below.
+      - MONGODB_URI=mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@chad-mongodb:27017/chad?authSource=admin
+      - BEEPER_MONGODB_URI=mongodb://${BEEPER_MONGO_ROOT_USERNAME}:${BEEPER_MONGO_ROOT_PASSWORD}@beeper-mongodb:27017?authSource=admin
+      # ---- CHAD cp_items backend (2026-07-27 architecture decision) ----
+      # TEST and PROD both read/write the SAME shared QNAP PostgreSQL as the
+      # sole primary. Mongo CHAD (chad-mongodb) is disconnected from the CHAD
+      # runtime — kept only as a read-only rollback backup (see
+      # .runtime/backups/cp-data/ and ai-docs/deploy/). These five values
+      # are DELIBERATELY IDENTICAL literals for both environments (not
+      # ${VAR:-default} reads) so TEST and PROD structurally cannot drift
+      # again the way they did before this fix (docker-compose.qnap.prod.yml
+      # used to default DBA_PRIMARY_BACKEND to "mongo" while TEST hardcoded
+      # "postgres" — see backlog root-cause note, Story 2026-07-27).
+      - DBA_MONGO_ENABLED=false
+      - DBA_POSTGRES_ENABLED=true
+      - DBA_PRIMARY_BACKEND=postgres
+      - DBA_DATA_OUTBOX_WORKER_ENABLED=true
+      - DBA_POSTGRES_REPO_ALLOWLIST=
+      - DBA_CONTENT_PROVIDER_ENABLED=${DBA_CONTENT_PROVIDER_ENABLED:-false}
+      - POSTGRES_URI=postgres://${POSTGRES_USER:-chad}:${POSTGRES_PASSWORD}@chad-postgres:5432/${POSTGRES_DB:-chad}
+      # ---- Per-environment values (from .env.server1.<env>) ----
+      - CHAD_ENVIRONMENT=${CHAD_ENVIRONMENT:?CHAD_ENVIRONMENT is required (test|prod) — gates Google Sheets production-guard.ts}
+      - GOOGLE_SHEETS_ENABLED=${GOOGLE_SHEETS_ENABLED:-false}
+      - GOOGLE_SHEETS_SPREADSHEET_MAP=${GOOGLE_SHEETS_SPREADSHEET_MAP:-}
+      - GOOGLE_SHEETS_DAILY_TRACKER_SHEET_NAME=${GOOGLE_SHEETS_DAILY_TRACKER_SHEET_NAME:-}
+      - GOOGLE_SHEETS_DATE_ENTRIES_SHEET_NAME=${GOOGLE_SHEETS_DATE_ENTRIES_SHEET_NAME:-}
+      - GOOGLE_SHEETS_LEADS_SHEET_NAME=${GOOGLE_SHEETS_LEADS_SHEET_NAME:-}
+      - GOOGLE_SHEETS_NON_PROD_WRITE_USERS=${GOOGLE_SHEETS_NON_PROD_WRITE_USERS:-}
+      - GOOGLE_SERVICE_ACCOUNT_EMAIL=${GOOGLE_SERVICE_ACCOUNT_EMAIL:-}
+      - GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY=${GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY:-}
+      - GOOGLE_SHEETS_VIEWER_ACCOUNT_EMAIL=${GOOGLE_SHEETS_VIEWER_ACCOUNT_EMAIL:-}
+      - GOOGLE_SHEETS_VIEWER_ACCOUNT_PASSWORD=${GOOGLE_SHEETS_VIEWER_ACCOUNT_PASSWORD:-}
+      - SECRETS_ENCRYPTION_KEY=${SECRETS_ENCRYPTION_KEY:-}
+    volumes:
+      - dashboard-data:/app/data
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  # One logical volume key; the underlying named Docker volume differs per
+  # environment via DASHBOARD_VOLUME_NAME (set in .env.server1.<env>) — same
+  # mechanism the two old files used with a hardcoded `name:` each.
+  dashboard-data:
+    name: "${DASHBOARD_VOLUME_NAME:?DASHBOARD_VOLUME_NAME is required (set in .env.server1.<env>)}"
+
+networks:
+  default:
+    name: chad-shared
+    external: true

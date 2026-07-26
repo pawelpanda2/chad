@@ -50,45 +50,9 @@ done
 
 docker compose -p "$COMPOSE_PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d
 
-# Always keep the local Postgres volume as a mirror of QNAP (Story 89) so
-# Dev Panel → Local is real data, not test-fixture garbage under pawel_f.
-# Test mutations must use test3 only (see ai-docs/begin_here/01_ai_start.md).
-log_info "Waiting for local Postgres to accept connections..."
-ready=0
-for _ in $(seq 1 30); do
-  if docker exec chad-postgres-local-mac-docker pg_isready -U "${POSTGRES_USER:-chad}" -d "${POSTGRES_DB:-chad}" >/dev/null 2>&1; then
-    ready=1
-    break
-  fi
-  sleep 1
-done
-if [ "$ready" != "1" ]; then
-  log_error "Local Postgres did not become ready in time."
-  exit 1
-fi
-
-# Host URI for migrate/sync/seed (published :5433). Prefer vars from 01_config
-# when DBA_MONGO_MODE=local; otherwise rebuild from .env.local.
-if [ -z "${LOCAL_POSTGRES_HOST_URI:-}" ]; then
-  _pg_user="$(read_env_var "$ENV_FILE" POSTGRES_USER)"
-  _pg_pass="$(read_env_var "$ENV_FILE" POSTGRES_PASSWORD)"
-  _pg_db="$(read_env_var "$ENV_FILE" POSTGRES_DB)"
-  _pg_port="$(read_env_var "$ENV_FILE" POSTGRES_PORT)"
-  LOCAL_POSTGRES_HOST_URI="postgres://${_pg_user:-chad}:${_pg_pass}@127.0.0.1:${_pg_port:-5433}/${_pg_db:-chad}"
-fi
-
-log_info "Migrating schema + mirroring QNAP → local Postgres volume..."
-(
-  cd "$REPO_ROOT"
-  pnpm --filter dba build >/dev/null
-  POSTGRES_URI="$LOCAL_POSTGRES_HOST_URI" node packages/dba/scripts/apply-postgres-migrations.mjs
-  bash "$SCRIPT_DIR/07_sync-postgres-from-qnap.sh"
-  # Fallback only if sync somehow left users-list empty (offline QNAP): test3.
-  POSTGRES_URI="$LOCAL_POSTGRES_HOST_URI" node packages/dba/scripts/seed-local-postgres-login.mjs
-) || {
-  log_error "Local Postgres migrate/sync/seed failed."
-  exit 1
-}
+log_info "Standard local workflow uses Server PostgreSQL (QNAP). Local CHAD Postgres mirror is opt-in:"
+log_info "  docker compose -p $COMPOSE_PROJECT_NAME --profile local-postgres-mirror up -d postgres"
+log_info "Emergency read-only snapshot: infrastructure/offline-readonly-backup/start.sh"
 
 log_info "Waiting for dashboard to respond..."
 for _ in $(seq 1 30); do
@@ -101,5 +65,5 @@ done
 echo ""
 log_ok "chad-local stack is up."
 log_info "Dashboard: http://localhost:$DASHBOARD_PORT"
-log_info "Dev Panel Settings: switch Postgres local/QNAP; Sync pulls QNAP → local mirror."
+log_info "Dev Panel Settings: Server PostgreSQL vs offline-readonly-backup (emergency read-only)."
 log_info "Test data / mutations: use user test3 only — never dump fixtures under pawel_f."
