@@ -117,8 +117,6 @@ elif [ "$DBA_MONGO_MODE" = "local" ]; then
   # "local", regardless of what .env.local itself says; only DBA_MONGO_MODE=
   # qnap (production Mongo) can leave it enabled.
   export GOOGLE_SHEETS_ENABLED=false
-  # Host-side URI for migrations/seed/sync scripts (port published on the Mac).
-  # Inside Compose the dashboard still uses service DNS `postgres:5432`.
   POSTGRES_USER="$(read_env_var "$ENV_FILE" POSTGRES_USER)"
   POSTGRES_PASSWORD="$(read_env_var "$ENV_FILE" POSTGRES_PASSWORD)"
   POSTGRES_DB="$(read_env_var "$ENV_FILE" POSTGRES_DB)"
@@ -127,13 +125,28 @@ elif [ "$DBA_MONGO_MODE" = "local" ]; then
   POSTGRES_USER="${POSTGRES_USER:-chad}"
   POSTGRES_DB="${POSTGRES_DB:-chad}"
   POSTGRES_PORT="${POSTGRES_PORT:-5433}"
+  QNAP_TAILSCALE_HOST="100.117.139.83"
+  QNAP_POSTGRES_PORT="12042"
+  if [ -z "$POSTGRES_QNAP_PASSWORD" ] && [ -f "$REPO_ROOT/.env.qnap" ]; then
+    POSTGRES_QNAP_PASSWORD="$(read_env_var "$REPO_ROOT/.env.qnap" POSTGRES_PASSWORD)"
+  fi
+  if [ -z "$POSTGRES_QNAP_PASSWORD" ]; then
+    POSTGRES_QNAP_PASSWORD="$POSTGRES_PASSWORD"
+  fi
   if [ -z "$POSTGRES_PASSWORD" ]; then
     log_error "POSTGRES_PASSWORD missing in $ENV_FILE (required for DBA_MONGO_MODE=local)."
     exit 1
   fi
+  if [ -z "$POSTGRES_QNAP_PASSWORD" ]; then
+    log_error "POSTGRES_QNAP_PASSWORD missing — required for Server PostgreSQL."
+    exit 1
+  fi
+  # CHAD primary datastore: always Server PostgreSQL. Local mirror is opt-in
+  # (`local-postgres-mirror` compose profile), not part of normal workflow.
+  POSTGRES_URI="postgres://${POSTGRES_USER}:${POSTGRES_QNAP_PASSWORD}@${QNAP_TAILSCALE_HOST}:${QNAP_POSTGRES_PORT}/${POSTGRES_DB}"
   LOCAL_POSTGRES_HOST_URI="postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@127.0.0.1:${POSTGRES_PORT}/${POSTGRES_DB}"
-  export POSTGRES_USER POSTGRES_PASSWORD POSTGRES_DB POSTGRES_PORT LOCAL_POSTGRES_HOST_URI POSTGRES_QNAP_PASSWORD
-  log_info "DBA_MONGO_MODE=local — Google Sheets sync forced OFF; local volume mirrors QNAP via 07_sync / Dev Panel."
+  export POSTGRES_URI POSTGRES_USER POSTGRES_PASSWORD POSTGRES_DB POSTGRES_PORT LOCAL_POSTGRES_HOST_URI POSTGRES_QNAP_PASSWORD
+  log_info "DBA_MONGO_MODE=local — CHAD Postgres = Server (${QNAP_TAILSCALE_HOST}:${QNAP_POSTGRES_PORT}); Google Sheets sync forced OFF."
 else
   log_error "Invalid DBA_MONGO_MODE=\"$DBA_MONGO_MODE\" in $ENV_FILE — must be \"local\" or \"qnap\"."
   exit 1

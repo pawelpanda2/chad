@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import {
   syncLocalPostgresFromQnap,
-  setPostgresSource,
   closePostgresConnection,
 } from "dba";
 import { invalidateUsersCache } from "@/lib/user-service";
@@ -31,10 +30,13 @@ export async function POST() {
 
   try {
     const result = await syncLocalPostgresFromQnap();
-    setPostgresSource("local");
     await closePostgresConnection();
     invalidateUsersCache();
-    return NextResponse.json({ ok: true, ...result, postgresSource: "local" });
+    return NextResponse.json({
+      ok: true,
+      ...result,
+      deprecated: "Local Postgres mirror is opt-in (compose profile local-postgres-mirror). Use infrastructure/offline-readonly-backup/refresh-from-server.sh for emergency snapshots.",
+    });
   } catch (err) {
     return NextResponse.json(
       { ok: false, error: err instanceof Error ? err.message : String(err) },

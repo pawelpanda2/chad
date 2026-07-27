@@ -466,3 +466,31 @@
   padding-bottom: 4px;
   border-bottom: 1px solid #3e3e42;
 }
+
+.dev-data-source-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+@media (max-width: 768px) {
+  .dev-data-source-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.dev-data-source-column {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid #3e3e42;
+  border-radius: 4px;
+  background: #252526;
+}
+
+.dev-data-source-heading {
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  margin-bottom: 10px;
+  color: #007acc;
+}

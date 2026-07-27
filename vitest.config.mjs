@@ -28,6 +28,7 @@ export default defineConfig({
       // Story 90 — Lead ↔ Beeper Links (phone match / save validation).
       "packages/dba/src/lead-beeper-links.test.ts",
       "test/**/*.test.{ts,mjs}",
+      "tests/offline-readonly-backup/**/*.test.ts",
     ],
     exclude: ["**/node_modules/**", "**/dist/**"],
     testTimeout: 30_000,

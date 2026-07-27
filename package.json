@@ -41,7 +41,9 @@
     "test:tables-sync:local": "CHAD_ENVIRONMENT=local GOOGLE_SHEETS_ALLOW_NON_PROD=true node tests/tables-sync/run-all.mjs",
     "test:tables-sync:qnap-test": "CHAD_ENVIRONMENT=test node tests/tables-sync/run-all.mjs --qnap-test",
     "tables-sync:reconcile": "pnpm --filter dba build && node packages/dba/scripts/reconcile-tables-sheets.mjs",
-    "tables-sync:validate-config": "pnpm --filter dba build && node packages/dba/scripts/validate-google-sheets-config.mjs"
+    "tables-sync:validate-config": "pnpm --filter dba build && node packages/dba/scripts/validate-google-sheets-config.mjs",
+    "test:offline-readonly-backup": "node tests/offline-readonly-backup/run-all.mjs",
+    "test:e2e:offline-readonly-backup-dev-panel": "playwright test --config=test/e2e/playwright.offline-readonly-backup.config.mjs"
   },
   "dependencies": {
     "mongodb": "^7.1.1"

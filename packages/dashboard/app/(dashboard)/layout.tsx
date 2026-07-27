@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Sidebar, SIDEBAR_EXPANDED_WIDTH_CLASS, SIDEBAR_EXPANDED_LEFT_CLASS } from "@/components/shared/sidebar";
 import { Topbar } from "@/components/shared/topbar";
 import { DashboardHistoryProvider } from "@/components/shared/dashboard-history-provider";
+import { OfflineReadonlyBackupBanner } from "@/components/offline-readonly-backup-banner";
 import { cn } from "@/lib/utils";
 
 // The top bar is intentionally hidden on EVERY screen size (desktop + mobile)
@@ -79,6 +80,7 @@ export default function DashboardLayout({
 				    the frame uses the full window width. Sidebar open/close still
 				    uses DESKTOP_QUERY (`md`/768px) above. */}
 				<main className="min-h-0 flex-1 overflow-y-auto p-0.5 xl:pr-[150px]">
+					<OfflineReadonlyBackupBanner />
 					<Suspense fallback={null}>
 						<DashboardHistoryProvider>{children}</DashboardHistoryProvider>
 					</Suspense>
