@@ -92,8 +92,9 @@ export function DevPanelDataSourceTab() {
     load();
   }, [load]);
 
-  const backupUnavailable =
-    selected === 'offline-readonly-backup' && state && !state.changeOptions.offlineReadonlyBackup.available;
+  const backupUnavailable = Boolean(
+    selected === 'offline-readonly-backup' && state && !state.changeOptions.offlineReadonlyBackup.available
+  );
 
   async function handleSwitch() {
     if (!state || selected === state.changeOptions.current) return;

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { useDevPanelStore } from '@/lib/dev-panel/dev-panel-store';
 import { DevPanelDataSourceTab } from './dev-panel-data-source';
 

@@ -9,7 +9,3 @@ export async function GET() {
     writeForbidden: isOfflineReadonlyBackupMode(),
   });
 }
-
-export function offlineWriteForbiddenResponse(): NextResponse {
-  return NextResponse.json({ error: "OFFLINE_READONLY_BACKUP_WRITE_FORBIDDEN" }, { status: 403 });
-}
