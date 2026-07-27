@@ -255,8 +255,9 @@ export class PostgresCpProvider implements CpCompatibleDataProvider {
         const children = await this.queryChildren(client, command.parentAddress);
         const existingChild = children.find((c) => c.config.name === command.name);
         if (existingChild) {
-          const { discardPendingGoogleSheetsJobs } = await import("../google-sheets/txn-hook.js");
-          discardPendingGoogleSheetsJobs();
+          // Do NOT discard pending Google Sheets factories here — folder
+          // find-or-create (views/daily) reuses this path and must leave
+          // the caller's sheet-sync factory intact for the real Text child.
           await client.query("COMMIT");
           return { item: existingChild, alreadyExisted: true };
         }
@@ -287,7 +288,12 @@ export class PostgresCpProvider implements CpCompatibleDataProvider {
         }
 
         const { flushPendingGoogleSheetsJobs } = await import("../google-sheets/txn-hook.js");
-        await flushPendingGoogleSheetsJobs(client, command.operationId, result.item);
+        // Only Text creates flush sheet-sync factories. Folder find-or-create
+        // for views/daily/dates must not consume (or attach outbox jobs to)
+        // the pending Daily/Dates entry factory registered by leads.ts.
+        if (command.type === "Text") {
+          await flushPendingGoogleSheetsJobs(client, command.operationId, result.item);
+        }
         await client.query("COMMIT");
         return { item: result.item!, alreadyExisted: false };
       } catch (error) {
