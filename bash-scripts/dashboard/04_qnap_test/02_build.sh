@@ -17,6 +17,7 @@ source "$SCRIPT_DIR/01_config.sh"
 
 require_command docker "install Docker" || exit 1
 require_file "$ENV_FILE" "cp .env.qnap.example .env.qnap and fill in real values (never commit .env.qnap)" || exit 1
+require_file "$ENV_FILE2" "cp .env.server1.test.example .env.server1.test and fill in real values" || exit 1
 
 echo ""
 log_info "chad QNAP TEST — build"
@@ -40,7 +41,7 @@ export IMAGE_TAG
 GIT_SHA="$(git -C "$REPO_ROOT" rev-parse HEAD)"
 export GIT_SHA
 
-docker compose -p "$COMPOSE_PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" build --pull
+docker compose -p "$COMPOSE_PROJECT_NAME" --env-file "$ENV_FILE" --env-file "$ENV_FILE2" -f "$COMPOSE_FILE" build --pull
 
 # Only reached if `build` succeeded (set -e) — never records a tag for a
 # failed build.

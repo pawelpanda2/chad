@@ -17,8 +17,13 @@
 
 COMPOSE_PROJECT_NAME="chad-prod"
 ENV_NAME="prod"
-COMPOSE_FILE="$REPO_ROOT/docker-compose.qnap.prod.yml"
+# 2026-07-27: consolidated with TEST into one compose file (see that file's
+# own header comment for why) — TEST/PROD differences now live in
+# .env.server1.test / .env.server1.prod (ENV_FILE2 below), never in a second
+# copy of the compose file itself.
+COMPOSE_FILE="$REPO_ROOT/docker-compose.server1.test-prod.dashboard.yml"
 ENV_FILE="$REPO_ROOT/.env.qnap"
+ENV_FILE2="$REPO_ROOT/.env.server1.prod"
 
 DASHBOARD_PORT=12030
 

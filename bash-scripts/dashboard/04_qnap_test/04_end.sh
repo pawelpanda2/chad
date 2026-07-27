@@ -21,6 +21,6 @@ cd "$REPO_ROOT"
 # doesn't need a real tag (never pulls/runs it) — use the recorded tag if
 # present, otherwise a harmless placeholder (see image_tag_for_readonly).
 export IMAGE_TAG="$(image_tag_for_readonly "$(dashboard_image_tag_file)")"
-docker compose -p "$COMPOSE_PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" down --remove-orphans
+docker compose -p "$COMPOSE_PROJECT_NAME" --env-file "$ENV_FILE" --env-file "$ENV_FILE2" -f "$COMPOSE_FILE" down --remove-orphans
 
 log_ok "chad-test dashboard stopped. Data volume and images preserved. Shared services (mongo) untouched."
