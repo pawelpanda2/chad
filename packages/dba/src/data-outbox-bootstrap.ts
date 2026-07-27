@@ -29,6 +29,7 @@ import { loadDataProvidersConfig } from "./data-providers/config.js";
 import { getPostgresProvider } from "./data-router-instance.js";
 import type { CpCompatibleDataProvider, DataBackendName } from "./data-providers/types.js";
 import { NetFileCpProvider } from "./data-providers/net-file-cp-provider.js";
+import { isOfflineReadonlyBackupMode } from "./chad-data-mode.js";
 
 let stop: (() => void) | null = null;
 
@@ -51,6 +52,11 @@ export function startDataOutboxWorkerIfEnabled(intervalMs = 5000): (() => void) 
 
   if (!readBool("DBA_DATA_OUTBOX_WORKER_ENABLED", false)) {
     console.log("[data-outbox] worker not started — DBA_DATA_OUTBOX_WORKER_ENABLED is not true.");
+    return null;
+  }
+
+  if (isOfflineReadonlyBackupMode()) {
+    console.log("[data-outbox] worker not started — CHAD_DATA_MODE=offline-readonly-backup.");
     return null;
   }
 

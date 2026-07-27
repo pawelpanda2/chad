@@ -10,6 +10,19 @@ const protectedApiRoutes = ["/api"];
 export function middleware(request: NextRequest) {
 	const { pathname } = request.nextUrl;
 	const session = request.cookies.get("session");
+	const method = request.method;
+
+	if (
+		method !== "GET" &&
+		method !== "HEAD" &&
+		process.env.CHAD_DATA_MODE === "offline-readonly-backup" &&
+		pathname.startsWith("/api/") &&
+		!pathname.startsWith("/api/auth/") &&
+		!pathname.startsWith("/api/dev-settings/") &&
+		!pathname.startsWith("/api/beeper-crm/")
+	) {
+		return NextResponse.json({ error: "OFFLINE_READONLY_BACKUP_WRITE_FORBIDDEN" }, { status: 403 });
+	}
 
 	// Check if the route is public
 	const isPublicRoute = publicRoutes.some((route) => {

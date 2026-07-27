@@ -18,6 +18,7 @@ import type { DataWriteCommand, DataWriteResult } from "./data-commands.js";
 import { enqueueFollowerOperation } from "./data-outbox.js";
 import { recordShadowReadMismatch } from "./data-sync-diagnostics.js";
 import type { CpItem } from "./cp-model.js";
+import { assertChadWriteAllowed } from "./chad-data-mode.js";
 
 export interface DbaDataRouterDeps {
   config: DbaDataProvidersConfig;
@@ -74,6 +75,7 @@ export class DbaDataRouter {
    * same command for the follower via the durable outbox (§11/§12).
    */
   async executeWrite(command: DataWriteCommand): Promise<DataWriteResult> {
+    assertChadWriteAllowed();
     const primary = this.resolvePrimaryProvider();
     const primaryResult = await primary.executeWrite(command);
 

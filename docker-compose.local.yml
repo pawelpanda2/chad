@@ -29,6 +29,8 @@ services:
   # is unaffected by this Story) — CHAD's own data no longer needs it once
   # DBA_PRIMARY_BACKEND=postgres (see the dashboard service's env below).
   postgres:
+    profiles:
+      - local-postgres-mirror
     image: postgres:17
     container_name: chad-postgres-local-mac-docker
     restart: unless-stopped
@@ -87,8 +89,6 @@ services:
     container_name: chad-dashboard-local-mac-docker
     restart: unless-stopped
     depends_on:
-      postgres:
-        condition: service_healthy
       mongodb:
         condition: service_healthy
     ports:
@@ -171,7 +171,9 @@ services:
       - GOOGLE_SHEETS_VIEWER_ACCOUNT_PASSWORD=${GOOGLE_SHEETS_VIEWER_ACCOUNT_PASSWORD:-}
       # AES key for decrypting per-repo `secrets` Text items (Google viewer
       # login shown on History -> Google Sheets when viewer env vars are unset).
-      - SECRETS_ENCRYPTION_KEY=${SECRETS_ENCRYPTION_KEY:-}
+      - OFFLINE_READONLY_BACKUP_READER_PASSWORD=${OFFLINE_READONLY_BACKUP_READER_PASSWORD:-}
+      - OFFLINE_READONLY_BACKUP_POSTGRES_PORT=${OFFLINE_READONLY_BACKUP_POSTGRES_PORT:-55432}
+      - CHAD_OFFLINE_READONLY_BACKUP_ROOT=${CHAD_OFFLINE_READONLY_BACKUP_ROOT:-}
     volumes:
       - chad-dashboard-local-mac-docker-data:/app/data
     logging:
