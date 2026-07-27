@@ -81,7 +81,18 @@ function postgresSourceToMode(source: ChadPostgresSource): string {
 }
 
 function isQnapPostgresUri(uri: string): boolean {
-  return uri.includes(QNAP_TAILSCALE_HOST) || uri.includes(`:${QNAP_POSTGRES_PORT}`);
+  // "chad-postgres" (docker-compose container_name, docker-compose.qnap.shared.yml)
+  // is how the QNAP-hosted TEST/PROD dashboard containers themselves reach the
+  // same Postgres — same-host container network, never over Tailscale. Without
+  // this, getEffectivePostgresUri() below treated that URI as "not the QNAP
+  // server" and rebuilt a Tailscale-IP connection instead (requiring
+  // POSTGRES_QNAP_PASSWORD to be exported standalone in-container, which it
+  // isn't — only embedded in POSTGRES_URI), breaking real cp_items reads/writes
+  // on TEST/PROD (2026-07-27, found while verifying the TEST deploy after the
+  // compose consolidation).
+  return (
+    uri.includes(QNAP_TAILSCALE_HOST) || uri.includes(`:${QNAP_POSTGRES_PORT}`) || uri.includes("chad-postgres")
+  );
 }
 
 function defaultMongoSource(): DbSource {
@@ -264,6 +275,12 @@ export function getEffectivePostgresUri(): string {
   }
 
   const envUri = process.env.POSTGRES_URI;
+  // Local-mac-docker: POSTGRES_URI is the sibling `postgres:5432` mirror
+  // (users-list + cp_items). Only build a QNAP URI when explicitly targeting
+  // the server or when the process env already points at QNAP.
+  if (envUri && !isQnapPostgresUri(envUri)) {
+    return envUri;
+  }
   if (envUri && isQnapPostgresUri(envUri) && !process.env.POSTGRES_QNAP_PASSWORD) {
     return envUri;
   }

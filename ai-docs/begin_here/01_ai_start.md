@@ -38,6 +38,17 @@ odpowiedź jest już opisana w `04_deployment-rules.md` i
 - Pełny kontrakt: `04_deployment-rules.md` (niżej w tej kolejności) i
   `deploy/ai-start.md` → `deploy/dashboard-deployment-scripts.md`.
 
+### Bazy danych — `ai-docs/databases/` (przeczytaj przed dotknięciem Postgres/Mongo)
+
+**(dodane 2026-07-27.)** `ai-docs/databases/red-rules.md` zawiera twarde,
+niepodważalne zasady: LOCAL łączy się z prawdziwym współdzielonym Server
+PostgreSQL przez Tailscale (to zamierzone, nie regresja do "naprawienia"),
+Beeper Mongo tak samo przez Tailscale, `offline-readonly-backup` jest
+wyłącznie awaryjny i tylko do odczytu. `ai-docs/databases/ai-start.md` to
+mapa orientacyjna (który backend gdzie, gdzie leży kod, jak zrobić
+backup/restore/integrity). Przeczytaj oba PRZED jakąkolwiek zmianą w
+`packages/dba/src/dev-db-override.ts` albo w routingu backendu TEST/PROD.
+
 ### offline-readonly-backup — awaryjny snapshot (NIE development database)
 
 - Normalny CHAD **nigdy** nie używa lokalnej bazy do zapisów.
