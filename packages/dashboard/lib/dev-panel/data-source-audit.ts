@@ -1,5 +1,5 @@
 import { appendFileSync, mkdirSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
 
 const AUDIT_PATH =
   process.env.DEV_DATA_SOURCE_AUDIT_PATH || "/app/data/dev-data-source-audit.log";
