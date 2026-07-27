@@ -7,10 +7,12 @@
 # cannot drift between environments by construction; only the values in
 # each environment's own .env.server1.<env> file differ.
 #
-# Same shared datastores as before (docker-compose.qnap.shared.yml, started
-# separately, never by this file): chad-mongodb (Beeper CRM ONLY from this
-# point on), beeper-mongodb, chad-postgres (CHAD's sole primary — cp_items/
-# cp_history/cp_outbox_* — for BOTH environments).
+# Shared datastores (docker-compose.qnap.shared.yml, started separately,
+# never by this file): beeper-mongodb (Beeper CRM only), chad-postgres
+# (CHAD's sole primary — cp_items/cp_history/cp_outbox_* — for BOTH
+# environments). The old chad-mongodb service no longer exists at all
+# (2026-07-27, CHAD Mongo runtime removed — see
+# ai-docs/databases/red-rules.md).
 #
 # Usage (see bash-scripts/dashboard/04_qnap_test/ and 05_qnap_prod/ — those
 # scripts are what actually invoke this; the commands below are the manual
@@ -60,17 +62,19 @@ services:
       - NEXT_TELEMETRY_DISABLED=1
       - DATABASE_URL=file:/app/data/dev.db
       # Beeper CRM's own Mongo — UNCHANGED, unaffected by the CHAD backend
-      # decision below. MONGODB_URI (chad-mongodb) is kept wired for any
-      # code path in packages/dba/src/mongo.ts that still references it
-      # directly (e.g. diagnostics), but is never used for cp_items reads/
-      # writes now that DBA_MONGO_ENABLED=false — see the block below.
-      - MONGODB_URI=mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@chad-mongodb:27017/chad?authSource=admin
+      # decision below. No MONGODB_URI here at all (2026-07-27, CHAD Mongo
+      # runtime removed — see ai-docs/databases/red-rules.md): the
+      # chad-mongodb service no longer exists in
+      # docker-compose.qnap.shared.yml, and the dashboard must never be
+      # able to resolve a CHAD-Mongo connection string, not even an unused
+      # one. If Postgres is unavailable, this must fail loudly, never
+      # silently fall back to Mongo.
       - BEEPER_MONGODB_URI=mongodb://${BEEPER_MONGO_ROOT_USERNAME}:${BEEPER_MONGO_ROOT_PASSWORD}@beeper-mongodb:27017?authSource=admin
       # ---- CHAD cp_items backend (2026-07-27 architecture decision) ----
       # TEST and PROD both read/write the SAME shared QNAP PostgreSQL as the
-      # sole primary. Mongo CHAD (chad-mongodb) is disconnected from the CHAD
-      # runtime — kept only as a read-only rollback backup (see
-      # .runtime/backups/cp-data/ and ai-docs/deploy/). These five values
+      # sole primary. The old CHAD Mongo (chad-mongodb) service no longer
+      # exists at all — its final data lives only in a point-in-time backup
+      # (see .runtime/backups/cp-data/). These five values
       # are DELIBERATELY IDENTICAL literals for both environments (not
       # ${VAR:-default} reads) so TEST and PROD structurally cannot drift
       # again the way they did before this fix (docker-compose.qnap.prod.yml
