@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Shows container status + health for the QNAP SHARED docker-compose stack
-# (mongo). Never changes state.
+# (chad-postgres + beeper-mongodb). Never changes state.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -25,11 +25,11 @@ else
 fi
 
 echo ""
-mongo_state="$(docker inspect -f '{{.State.Health.Status}}' chad-mongodb 2>/dev/null || true)"
-if [ "$mongo_state" = "healthy" ]; then
-  log_ok "chad-mongodb healthy."
+pg_state="$(docker inspect -f '{{.State.Health.Status}}' chad-postgres 2>/dev/null || true)"
+if [ "$pg_state" = "healthy" ]; then
+  log_ok "chad-postgres healthy."
 else
-  log_warn "chad-mongodb state: ${mongo_state:-not found}."
+  log_warn "chad-postgres state: ${pg_state:-not found}."
 fi
 
 beeper_mongo_state="$(docker inspect -f '{{.State.Health.Status}}' beeper-mongodb 2>/dev/null || true)"

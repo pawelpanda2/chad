@@ -2,8 +2,8 @@
 # Story 81 — starts ONLY the `postgres` service from the QNAP SHARED stack,
 # via a scoped `docker compose ... up -d postgres`. Deliberately does NOT
 # call 03_re-start.sh (that stops+restarts the WHOLE shared stack, briefly
-# interrupting chad-mongodb/beeper-mongodb for both TEST and PROD — see
-# that script's own warning). A scoped `up -d <service>` only ever creates/
+# interrupting beeper-mongodb for both TEST and PROD — see that script's
+# own warning). A scoped `up -d <service>` only ever creates/
 # starts the named service; Docker Compose does not touch other already-
 # running containers in the same project unless their own definition
 # changed. Idempotent — safe to re-run; a healthy, up-to-date postgres
@@ -24,9 +24,9 @@ echo ""
 
 cd "$REPO_ROOT"
 
-# Preflight: same tmpfs-vs-real-volume tripwire as mongo's own start script,
-# scoped to ONLY the postgres data directory — never touches
-# chad-shared/mongodb or chad-shared/beeper-mongodb.
+# Preflight: same tmpfs-vs-real-volume tripwire as beeper-mongodb's own
+# start script, scoped to ONLY the postgres data directory — never touches
+# chad-shared/beeper-mongodb.
 QNAP_CONTAINER_DATA_PATH="$(read_env_var "$ENV_FILE" QNAP_CONTAINER_DATA_PATH)"
 QNAP_CONTAINER_DATA_PATH="${QNAP_CONTAINER_DATA_PATH:-/share/ContainerData}"
 require_data_path_writable "$QNAP_CONTAINER_DATA_PATH/chad-shared/postgres" || exit 1
@@ -56,13 +56,11 @@ if [ "$PG_HEALTHY" != true ]; then
 fi
 log_ok "chad-postgres healthy."
 
-# Confirm the two Mongo containers were NOT touched by this — their start
-# time should be unchanged (this script never issues any command against
-# them). Purely informational, not a hard failure if they happen to be
-# down for an unrelated reason.
-mongo_started="$(docker inspect -f '{{.State.StartedAt}}' chad-mongodb 2>/dev/null || echo "not found")"
+# Confirm beeper-mongodb was NOT touched by this — its start time should be
+# unchanged (this script never issues any command against it). Purely
+# informational, not a hard failure if it happens to be down for an
+# unrelated reason.
 beeper_started="$(docker inspect -f '{{.State.StartedAt}}' beeper-mongodb 2>/dev/null || echo "not found")"
-log_info "chad-mongodb StartedAt (should be unchanged by this script): $mongo_started"
 log_info "beeper-mongodb StartedAt (should be unchanged by this script): $beeper_started"
 
 echo ""

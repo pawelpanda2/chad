@@ -29,15 +29,21 @@ developer explicitly choosing `offline-readonly-backup`.
 
 ## Rule 2 — Beeper contacts live in Mongo, reached the same way (Tailscale)
 
-Beeper CRM data lives in its own MongoDB (`beeper-mongodb` on the QNAP host),
-separate from CHAD's own `chad-mongodb` (which is legacy/inactive for CHAD's
-own cp_items — see `ai-docs/databases/ai-start.md`).
+Beeper CRM data lives in its own MongoDB (`beeper-mongodb` on the QNAP
+host) — the ONLY active Mongo in CHAD's runtime. CHAD's own legacy Mongo
+(`chad-mongodb`) was fully removed on 2026-07-27 — no service, no volume,
+no port, no connection string anywhere in an active compose file. See
+`ai-docs/databases/ai-start.md`.
 
 - LOCAL reaches Beeper Mongo over Tailscale, exactly the same pattern as
-  Rule 1: `getEffectiveBeeperMongoUri()` in `dev-db-override.ts`.
+  Rule 1: `getEffectiveBeeperMongoUri()` in `dev-db-override.ts` — never
+  `getEffectiveMongoUri()` (CHAD's legacy resolver, dead code kept only
+  because deleting library functions wasn't in scope).
 - This is a live connection to the real shared Beeper data, not a mirror.
-- Beeper Mongo is unaffected by anything CHAD does with Postgres or with
-  `chad-mongodb` — never conflate the two Mongo instances.
+- Beeper Mongo is unaffected by anything CHAD does with Postgres. Never
+  reintroduce a CHAD-Mongo connection string, never let `MONGO_ROOT_*`
+  (CHAD's old credentials) be reused for Beeper — Beeper has its own
+  `BEEPER_MONGO_ROOT_USERNAME`/`BEEPER_MONGO_ROOT_PASSWORD`.
 
 ## Rule 3 — `offline-readonly-backup` is read-only, emergency-only, and never the source of truth
 

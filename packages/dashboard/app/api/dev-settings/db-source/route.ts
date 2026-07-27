@@ -3,7 +3,7 @@ import {
   buildChadDataSourceActiveView,
   buildOfflineBackupOptionDetails,
   chadPostgresSourceToLabel,
-  describeEffectiveMongoTarget,
+  describeEffectiveBeeperMongoTarget,
   getMongoSource,
   getPostgresSource,
   labelToChadPostgresSource,
@@ -50,7 +50,7 @@ async function snapshot() {
     chadEnvironment: process.env.CHAD_ENVIRONMENT,
   });
   const backupOption = buildOfflineBackupOptionDetails();
-  const mongoTarget = describeEffectiveMongoTarget();
+  const mongoTarget = describeEffectiveBeeperMongoTarget();
 
   return {
     active,

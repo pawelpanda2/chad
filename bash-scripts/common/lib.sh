@@ -113,18 +113,25 @@ ensure_docker_network() {
 
 # Usage: require_shared_services_healthy
 # Preflight for TEST/PROD dashboard restart scripts: refuses to proceed
-# unless the shared chad-mongodb stack (started separately by
+# unless the shared stack (started separately by
 # bash-scripts/dashboard/00_qnap_shared/03_re-start.sh) is already up and
 # healthy. Never starts/restarts shared services itself — only reads state.
 #
+# 2026-07-27: the old chad-mongodb health check was removed along with the
+# service itself (CHAD Mongo runtime fully removed — see
+# ai-docs/databases/red-rules.md). Only beeper-mongodb (Beeper CRM) is
+# checked now; chad-postgres has its own separate check
+# (require_data_path_writable in 00_qnap_shared/03_re-start.sh) since it's
+# the primary CHAD datastore, not an optional dependency.
+#
 # Content Provider (chad-content-provider-api) is no longer part of this
-# check — it's been removed from deployment (Mongo is the only active
-# runtime backend now; DBA_CONTENT_PROVIDER_ENABLED=false everywhere). The
-# .NET adapter code (`NetFileCpProvider`) is untouched — this is a
-# deployment-only change, reversible by re-adding the service to
-# docker-compose.qnap.shared.yml. The `net-content-provider` submodule
-# itself was removed from this monorepo (legacy Content Provider fully
-# migrated) — see git history if you need its old .NET source.
+# check either — it's been removed from deployment
+# (DBA_CONTENT_PROVIDER_ENABLED=false everywhere). The .NET adapter code
+# (`NetFileCpProvider`) is untouched — this is a deployment-only change,
+# reversible by re-adding the service to docker-compose.qnap.shared.yml.
+# The `net-content-provider` submodule itself was removed from this
+# monorepo (legacy Content Provider fully migrated) — see git history if
+# you need its old .NET source.
 require_shared_services_healthy() {
   if ! docker network inspect chad-shared >/dev/null 2>&1; then
     log_error "Docker network 'chad-shared' does not exist."
@@ -132,16 +139,8 @@ require_shared_services_healthy() {
     return 1
   fi
 
-  local mongo_state
-  mongo_state="$(docker inspect -f '{{.State.Health.Status}}' chad-mongodb 2>/dev/null || true)"
-  if [ "$mongo_state" != "healthy" ]; then
-    log_error "Shared chad-mongodb container is not running/healthy (state: ${mongo_state:-not found})."
-    log_error "  Fix: bash bash-scripts/dashboard/00_qnap_shared/03_re-start.sh"
-    return 1
-  fi
-
-  # beeper-mongodb (Story 76, 2026-07-22 physical split) — separate
-  # standalone container, same preflight treatment as chad-mongodb above.
+  # beeper-mongodb (Story 76, 2026-07-22 physical split) — standalone
+  # container, the ONLY active Mongo in this project's runtime.
   local beeper_mongo_state
   beeper_mongo_state="$(docker inspect -f '{{.State.Health.Status}}' beeper-mongodb 2>/dev/null || true)"
   if [ "$beeper_mongo_state" != "healthy" ]; then

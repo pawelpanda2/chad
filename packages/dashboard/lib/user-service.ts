@@ -1,5 +1,7 @@
 /**
- * User Service - Fetches the login user list via `dba` (Mongo-backed).
+ * User Service - Fetches the login user list via `dba` (backend-agnostic —
+ * reads whichever provider is configured as primary; PostgreSQL for CHAD,
+ * see ai-docs/databases/ai-start.md).
  *
  * Previously called Content Provider directly over HTTP
  * (`GetByNames("chad_admin", "users", "users-list")`), independent of
@@ -7,7 +9,10 @@
  * §2 (Dashboard must never call a provider directly) that also meant login
  * couldn't survive Content Provider being removed from deployment. Now
  * calls `getUsersListBody()` from `dba`, which routes through the same
- * `DbaDataRouter`/`MongoCpProvider` every other business function uses.
+ * `DbaDataRouter` every other business function uses — whatever backend
+ * `DBA_PRIMARY_BACKEND` configures (Postgres for CHAD; `MongoCpProvider`
+ * remains available as a library option for other projects, see
+ * ai-docs/databases/red-rules.md).
  *
  * All user-related operations should use this service to ensure consistency
  * and to avoid duplicating the user fetching logic.

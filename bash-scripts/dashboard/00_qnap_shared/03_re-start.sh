@@ -1,15 +1,20 @@
 #!/usr/bin/env bash
-# Starts the QNAP SHARED stack (mongo) under docker-compose. Never builds.
-# Idempotent: checks whether the stack is already running; if so, calls
-# 04_end.sh (docker compose down --remove-orphans, never -v) then starts
-# fresh. Use 06_deploy.sh for build+restart. Run this directly on the QNAP
-# host over SSH — there is no thin SSH wrapper for the shared stack (Story
-# 63 deliberately didn't add one; manage it via SSH + these scripts
-# directly, same as before).
+# Starts the QNAP SHARED stack (beeper-mongodb + chad-postgres) under
+# docker-compose. Never builds. Idempotent: checks whether the stack is
+# already running; if so, calls 04_end.sh (docker compose down
+# --remove-orphans, never -v) then starts fresh. Use 06_deploy.sh for
+# build+restart. Run this directly on the QNAP host over SSH — there is no
+# thin SSH wrapper for the shared stack (Story 63 deliberately didn't add
+# one; manage it via SSH + these scripts directly, same as before).
 #
 # IMPORTANT: this stack is shared by BOTH chad-dashboard-test and
 # chad-dashboard-prod. Restarting it briefly interrupts BOTH dashboards.
 # Never called automatically by 04_qnap_test/*.sh or 05_qnap_prod/*.sh.
+#
+# 2026-07-27: the old chad-mongodb replica-set service (+ mongo-keyfile-init/
+# mongo-rs-init helpers) is gone — CHAD Mongo runtime fully removed (see
+# ai-docs/databases/red-rules.md). beeper-mongodb is now the only Mongo in
+# this stack.
 #
 # Content Provider (content-provider-api) removed from this stack — see
 # docker-compose.qnap.shared.yml's header comment for the
@@ -25,7 +30,7 @@ require_command docker "install Docker" || exit 1
 require_file "$ENV_FILE" "cp .env.qnap.example .env.qnap and fill in real values" || exit 1
 
 echo ""
-log_info "chad QNAP SHARED — restart (mongo)"
+log_info "chad QNAP SHARED — restart (postgres + beeper-mongodb)"
 echo ""
 
 cd "$REPO_ROOT"
@@ -36,19 +41,14 @@ cd "$REPO_ROOT"
 
 # Preflight: QNAP_CONTAINER_DATA_PATH must point at a real, writable volume
 # with enough room — NOT a small tmpfs (see documentation/ai-docs/deploy/
-# qnap-data-path.md for the real incident this guards against: chad-mongodb
-# crash-looping with "No space left on device" because this path resolved
-# onto the 16MB /share tmpfs instead of the data volume). Same default as
-# docker-compose.qnap.shared.yml so this checks the exact path Compose will
-# mount. Also creates the three bind-mount subdirectories Compose expects —
-# no manual `mkdir`/`sed` on the QNAP needed.
+# qnap-data-path.md for the real incident this guards against: a Mongo
+# container crash-looping with "No space left on device" because this path
+# resolved onto the 16MB /share tmpfs instead of the data volume). Same
+# default as docker-compose.qnap.shared.yml so this checks the exact path
+# Compose will mount. Also creates the bind-mount subdirectories Compose
+# expects — no manual `mkdir`/`sed` on the QNAP needed.
 QNAP_CONTAINER_DATA_PATH="$(read_env_var "$ENV_FILE" QNAP_CONTAINER_DATA_PATH)"
 QNAP_CONTAINER_DATA_PATH="${QNAP_CONTAINER_DATA_PATH:-/share/ContainerData}"
-require_data_path_writable "$QNAP_CONTAINER_DATA_PATH/chad-shared/mongodb" || exit 1
-mkdir -p \
-  "$QNAP_CONTAINER_DATA_PATH/chad-shared/mongodb/db" \
-  "$QNAP_CONTAINER_DATA_PATH/chad-shared/mongodb/configdb" \
-  "$QNAP_CONTAINER_DATA_PATH/chad-shared/mongodb/backups"
 
 # beeper-mongodb (Story 76, 2026-07-22 physical split) — its own volume,
 # same tmpfs-vs-real-volume check, own subdirectories. Deliberately no
@@ -58,6 +58,13 @@ mkdir -p \
   "$QNAP_CONTAINER_DATA_PATH/chad-shared/beeper-mongodb/db" \
   "$QNAP_CONTAINER_DATA_PATH/chad-shared/beeper-mongodb/configdb" \
   "$QNAP_CONTAINER_DATA_PATH/chad-shared/beeper-mongodb/backups"
+
+# chad-postgres — same tmpfs-vs-real-volume check, own subdirectories (same
+# path 07_postgres_up.sh uses for its own scoped `up -d postgres`).
+require_data_path_writable "$QNAP_CONTAINER_DATA_PATH/chad-shared/postgres" || exit 1
+mkdir -p \
+  "$QNAP_CONTAINER_DATA_PATH/chad-shared/postgres/db" \
+  "$QNAP_CONTAINER_DATA_PATH/chad-shared/postgres/backups"
 
 ensure_docker_network chad-shared
 
@@ -69,23 +76,23 @@ fi
 
 docker compose -p "$COMPOSE_PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d
 
-log_info "Waiting for MongoDB health..."
-MONGO_HEALTHY=false
+log_info "Waiting for PostgreSQL health..."
+PG_HEALTHY=false
 for _ in $(seq 1 30); do
-  state="$(docker inspect -f '{{.State.Health.Status}}' chad-mongodb 2>/dev/null || true)"
+  state="$(docker inspect -f '{{.State.Health.Status}}' chad-postgres 2>/dev/null || true)"
   if [ "$state" = "healthy" ]; then
-    MONGO_HEALTHY=true
+    PG_HEALTHY=true
     break
   fi
   sleep 2
 done
 
-if [ "$MONGO_HEALTHY" != true ]; then
-  log_error "chad-mongodb did not become healthy in time."
-  log_error "  Check: docker compose -p $COMPOSE_PROJECT_NAME -f $COMPOSE_FILE logs mongodb"
+if [ "$PG_HEALTHY" != true ]; then
+  log_error "chad-postgres did not become healthy in time."
+  log_error "  Check: docker compose -p $COMPOSE_PROJECT_NAME -f $COMPOSE_FILE logs postgres"
   exit 1
 fi
-log_ok "chad-mongodb healthy."
+log_ok "chad-postgres healthy."
 
 log_info "Waiting for beeper-mongodb health..."
 BEEPER_MONGO_HEALTHY=false
@@ -107,5 +114,5 @@ log_ok "beeper-mongodb healthy."
 
 echo ""
 log_ok "chad-shared stack is up."
-log_info "MongoDB: chad-mongodb:27017 on the chad-shared network, also published on the QNAP host's port 12040 (Tailscale-reachable, e.g. MongoDB Compass)"
+log_info "Postgres: chad-postgres:5432 on the chad-shared network, also published on the QNAP host's port 12042 (Tailscale-reachable)"
 log_info "Beeper MongoDB: beeper-mongodb:27017 on the chad-shared network, also published on the QNAP host's port 12041 (Tailscale-reachable, standalone, no replica set)"

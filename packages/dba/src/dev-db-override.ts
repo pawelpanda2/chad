@@ -3,6 +3,7 @@ import { dirname } from "node:path";
 import {
   QNAP_TAILSCALE_HOST,
   QNAP_MONGO_PORT,
+  QNAP_BEEPER_MONGO_PORT,
   QNAP_POSTGRES_PORT,
 } from "./dev-db-hosts.js";
 import {
@@ -183,15 +184,29 @@ export function setPostgresSource(source: ChadPostgresSource): void {
 }
 
 function isQnapMongoUri(uri: string): boolean {
-  return uri.includes(QNAP_TAILSCALE_HOST) || uri.includes(`:${QNAP_MONGO_PORT}`);
+  return (
+    uri.includes(QNAP_TAILSCALE_HOST) || uri.includes(`:${QNAP_MONGO_PORT}`) || uri.includes(`:${QNAP_BEEPER_MONGO_PORT}`)
+  );
 }
 
+/** @deprecated CHAD's own legacy Mongo credentials — no active connection uses these anymore (removed 2026-07-27). Kept only for `getEffectiveMongoUri()`'s dead-but-not-deleted code path. */
 function requireQnapMongoCredentials(): { user: string; pass: string } {
   const user = process.env.MONGO_ROOT_USERNAME;
   const pass = process.env.MONGO_ROOT_PASSWORD;
   if (!user || !pass) {
     throw new Error(
       "MONGO_ROOT_USERNAME/MONGO_ROOT_PASSWORD must be set (via .env.local) to connect to QNAP Mongo."
+    );
+  }
+  return { user, pass };
+}
+
+function requireQnapBeeperMongoCredentials(): { user: string; pass: string } {
+  const user = process.env.BEEPER_MONGO_ROOT_USERNAME;
+  const pass = process.env.BEEPER_MONGO_ROOT_PASSWORD;
+  if (!user || !pass) {
+    throw new Error(
+      "BEEPER_MONGO_ROOT_USERNAME/BEEPER_MONGO_ROOT_PASSWORD must be set (via .env.local) to connect to QNAP Beeper Mongo."
     );
   }
   return { user, pass };
@@ -253,8 +268,13 @@ export function getEffectiveBeeperMongoUri(): string {
   if (currentMongoSource === "qnap") {
     const envUri = process.env.BEEPER_MONGODB_URI;
     if (envUri && isQnapMongoUri(envUri)) return envUri;
-    const { user, pass } = requireQnapMongoCredentials();
-    return `mongodb://${user}:${pass}@${QNAP_TAILSCALE_HOST}:${QNAP_MONGO_PORT}?authSource=admin&directConnection=true`;
+    // Beeper's OWN credentials/port — never CHAD's (requireQnapMongoCredentials/
+    // QNAP_MONGO_PORT), which is a different, now-removed Mongo instance.
+    // This branch previously reused those by copy-paste mistake; fixed
+    // 2026-07-27 while separating CHAD/Beeper Mongo (see
+    // ai-docs/databases/red-rules.md).
+    const { user, pass } = requireQnapBeeperMongoCredentials();
+    return `mongodb://${user}:${pass}@${QNAP_TAILSCALE_HOST}:${QNAP_BEEPER_MONGO_PORT}?authSource=admin&directConnection=true`;
   }
   const uri = process.env.BEEPER_MONGODB_URI;
   if (!uri) throw new Error("BEEPER_MONGODB_URI environment variable is not set");
@@ -293,9 +313,23 @@ function describeUriHostPort(uri: string): string {
   return parsed.host;
 }
 
+/** @deprecated Describes CHAD's own legacy Mongo target — nothing in CHAD's runtime uses this anymore. Use `describeEffectiveBeeperMongoTarget()` for the Dev Panel's Beeper block. */
 export function describeEffectiveMongoTarget(): { source: DbSource; hostPort: string; error?: string } {
   try {
     return { source: currentMongoSource, hostPort: describeUriHostPort(getEffectiveMongoUri()) };
+  } catch (err) {
+    return {
+      source: currentMongoSource,
+      hostPort: "(unresolved)",
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+/** Beeper CRM's own Mongo target — what the Dev Panel's "Beeper CRM" block should describe (never CHAD's). */
+export function describeEffectiveBeeperMongoTarget(): { source: DbSource; hostPort: string; error?: string } {
+  try {
+    return { source: currentMongoSource, hostPort: describeUriHostPort(getEffectiveBeeperMongoUri()) };
   } catch (err) {
     return {
       source: currentMongoSource,
