@@ -3,6 +3,14 @@
 Status: wdrożone i zweryfikowane na realnym QNAP (s12, `100.117.139.83`),
 2026-07-11.
 
+> **UWAGA (2026-07-27):** `chad-mongodb` opisane w tym dokumencie (Mongo dla
+> CHAD cp_items) zostało **całkowicie usunięte** z runtime — patrz
+> `ai-docs/databases/red-rules.md` i `ai-docs/databases/ai-start.md`.
+> `docker-compose.qnap.shared.yml` zawiera teraz tylko `beeper-mongodb` i
+> `chad-postgres`. Ten plik pozostaje jako historyczny zapis architektury
+> sprzed cutoveru — nie traktuj wzmianek o `chad-mongodb` poniżej jako
+> opisu bieżącego stanu.
+
 ## 1. Problem poprzedniej architektury
 
 Do 2026-07-11 QNAP TEST i QNAP PROD były uruchamiane z jednego pliku

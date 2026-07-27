@@ -1,5 +1,13 @@
 # Dashboard stack deployment — docker-compose (`bash-scripts/dashboard/`)
 
+> **UWAGA (2026-07-27):** `chad-mongodb` wspominane poniżej (Mongo dla CHAD
+> cp_items) zostało **całkowicie usunięte** z runtime — patrz
+> `ai-docs/databases/red-rules.md`. Dashboard TEST/PROD teraz uruchamia się
+> z jednego pliku `docker-compose.server1.test-prod.dashboard.yml`
+> (zastąpił osobne `docker-compose.qnap.{test,prod}.yml` wspominane
+> poniżej), backend danych CHAD to wyłącznie PostgreSQL. Skrypty
+> `04_qnap_test/`/`05_qnap_prod/` i ich numeracja pozostają aktualne.
+
 Status: aktualne (Story 70, 2026-07-17) — dodany **równoległy** mechanizm
 GHCR: build+push z Maca lub GitHub Actions, QNAP `docker pull`uje i
 restartuje (patrz sekcja "Registry flow (GHCR) — Story 70" niżej), przez

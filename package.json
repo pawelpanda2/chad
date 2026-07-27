@@ -37,6 +37,7 @@
     "test:e2e:local-dev-panel-settings": "playwright test --config=test/e2e/playwright.local-dev-panel.config.mjs",
     "test:regression:dev-panel-settings": "pnpm test:e2e:local-dev-panel-settings",
     "test:regression:daily-dates": "pnpm test:unit && pnpm test:integration:local-mongo && pnpm test:integration:local-postgres && pnpm test:integration:daily-dates && pnpm test:e2e:daily-dates",
+    "test:backend-config:no-chad-mongo": "node --test tests/backend-config/no-chad-mongo-runtime.test.mjs",
     "test:tables-sync": "node tests/tables-sync/run-all.mjs",
     "test:tables-sync:local": "CHAD_ENVIRONMENT=local GOOGLE_SHEETS_ALLOW_NON_PROD=true node tests/tables-sync/run-all.mjs",
     "test:tables-sync:qnap-test": "CHAD_ENVIRONMENT=test node tests/tables-sync/run-all.mjs --qnap-test",

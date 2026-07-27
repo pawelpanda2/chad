@@ -25,10 +25,12 @@ odpowiedź jest już opisana w `04_deployment-rules.md` i
   dashboardu i najpierw zweryfikować na TEST, zanim ten sam obraz trafi na
   PROD), ale **współdzielą te same, prawdziwe dane** przez
   `docker-compose.qnap.shared.yml` — TEST **nie jest środowiskiem z
-  fejkowymi/testowymi danymi**. Od Story 76 (2026-07-22) shared zawiera
-  DWIE bazy Mongo: `chad-mongodb` (cp_items/cp_history, replica set) oraz
-  `beeper-mongodb` (dane Beepera, standalone) — obie współdzielone przez
-  TEST i PROD.
+  fejkowymi/testowymi danymi**. Shared zawiera `chad-postgres` (CHAD's
+  jedyny backend danych — cp_items/cp_history/outboxy) oraz `beeper-mongodb`
+  (dane Beepera) — oba współdzielone przez TEST i PROD. Stary `chad-mongodb`
+  (Mongo dla CHAD, replica set) został **całkowicie usunięty** z runtime
+  2026-07-27 (patrz `ai-docs/databases/red-rules.md`) — nie zakładaj, że
+  nadal istnieje, nawet jeśli starsza dokumentacja/backlog o nim wspomina.
 - **Wniosek praktyczny:** deploy na PROD (promocja już przetestowanego na
   TEST obrazu) to rutynowa, niskiego ryzyka operacja przez oficjalny
   skrypt — nie wymaga tego samego poziomu ostrożności co np. migracja
