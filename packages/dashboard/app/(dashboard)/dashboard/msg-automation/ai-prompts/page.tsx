@@ -93,13 +93,13 @@ export default function AiPromptsListPage() {
             <div
               className={cn(
                 ROW_GRID,
-                "rounded-xl border border-border bg-muted/30 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+                "px-0 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
               )}
             >
-              <div className={CELL}>Ver.</div>
-              <div className={CELL}>Name</div>
-              <div className={CELL}>Category</div>
-              <div className={CELL} aria-hidden />
+              <div className="px-2.5 first:pl-3">Ver.</div>
+              <div className="px-2.5">Name</div>
+              <div className="px-2.5">Category</div>
+              <div aria-hidden />
             </div>
             {prompts.map((p) => {
               const kind = normalizeAiPromptKind(p.promptKind);
