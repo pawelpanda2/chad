@@ -86,6 +86,7 @@ export * from './google-sheets/fake-client.js';
 export * from './google-sheets/sheets-api-client.js';
 export * from './google-sheets/service-account-auth.js';
 export * from './google-sheets/outbox.js';
+export * from './google-sheets/reconciliation.js';
 export * from './google-sheets/worker.js';
 export * from './google-sheets/sync.js';
 export * from './google-sheets/layout.js';

@@ -10,7 +10,7 @@
 // it at the end (test3's own "only data created by this test" scope).
 import { describe, it, expect, afterAll } from "vitest";
 import { loadQnapEnv, getTest3Password, QNAP_TEST_BASE_URL } from "../../support/database/qnap-env.mjs";
-import { classifyOutboxState } from "../../support/google-sheets/reconciliation.mjs";
+import { classifyOutboxState } from "../../../packages/dba/dist/google-sheets/reconciliation.js";
 
 loadQnapEnv();
 

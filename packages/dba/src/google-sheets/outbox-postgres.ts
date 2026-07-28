@@ -92,6 +92,39 @@ export async function enqueueGoogleSheetsSync(input: EnqueueGoogleSheetsSyncInpu
   await withPostgresClient((client) => enqueueGoogleSheetsSyncOnClient(client, input, clock));
 }
 
+/**
+ * 2026-07-28 — inserts a job that is already `failed` with a specific
+ * `lastError`, for a mutation that SHOULD sync but couldn't even be
+ * enqueued (misconfigured Google Sheets config, production guard, missing
+ * spreadsheet mapping). Previously these cases silently returned with no
+ * outbox row at all — indistinguishable from a record that was never
+ * meant to sync ("no sync yet"), and the root cause of the pawel_f Daily
+ * gap this was added to fix (see tests/release-audit-report.md). A record
+ * that should sync must always leave a visible, non-retrying trace with a
+ * real reason, never nothing.
+ */
+export async function enqueueBlockedGoogleSheetsSyncOnClient(
+  client: import("pg").PoolClient,
+  input: EnqueueGoogleSheetsSyncInput & { reason: string },
+  clock: Clock = systemClock
+): Promise<void> {
+  const now = clock.now();
+  await client.query(
+    `INSERT INTO cp_outbox_google_sheets_sync
+       (id, operation_id, record_key, kind, payload, status, attempts, created_at, updated_at, next_attempt_at, last_error)
+     VALUES ($1, $1, $2, $3, $4::jsonb, 'failed', 0, $5, $5, $5, $6)
+     ON CONFLICT (id) DO NOTHING`,
+    [input.operationId, input.payload.recordKey, input.kind, JSON.stringify(input.payload), now, input.reason]
+  );
+}
+
+export async function enqueueBlockedGoogleSheetsSync(
+  input: EnqueueGoogleSheetsSyncInput & { reason: string },
+  clock: Clock = systemClock
+): Promise<void> {
+  await withPostgresClient((client) => enqueueBlockedGoogleSheetsSyncOnClient(client, input, clock));
+}
+
 export async function claimNextGoogleSheetsJob(workerId: string, clock: Clock = systemClock): Promise<GoogleSheetsSyncJob | null> {
   const now = clock.now();
   return withPostgresClient(async (client) => {
