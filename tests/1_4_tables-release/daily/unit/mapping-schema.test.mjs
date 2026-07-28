@@ -8,8 +8,8 @@
 // `test:unit:google-sheets-config`).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { assertUiColumnsMatchMapper, DAILY_ENTRY_DOMAIN_COLUMNS, ITEM_NUMBER_COLUMN } from "../helpers/assert-mapping.mjs";
-import { DAILY_UI_COLUMNS } from "../fixtures/daily-ui-columns.mjs";
+import { assertUiColumnsMatchMapper, DAILY_ENTRY_DOMAIN_COLUMNS, ITEM_NUMBER_COLUMN } from "../../../support/assertions/assert-mapping.mjs";
+import { DAILY_UI_COLUMNS } from "../../../support/fixtures/daily-ui-columns.mjs";
 
 test("Daily Tracker UI columns match the Google Sheets mapper's DAILY_ENTRY_DOMAIN_COLUMNS exactly", () => {
   assert.doesNotThrow(() => assertUiColumnsMatchMapper("daily-entry", DAILY_UI_COLUMNS));

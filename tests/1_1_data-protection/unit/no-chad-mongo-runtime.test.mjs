@@ -14,7 +14,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
-const REPO_ROOT = path.resolve(fileURLToPath(import.meta.url), "../../..");
+const REPO_ROOT = path.resolve(fileURLToPath(import.meta.url), "../../../..");
 
 function read(relPath) {
   return readFileSync(path.join(REPO_ROOT, relPath), "utf8");

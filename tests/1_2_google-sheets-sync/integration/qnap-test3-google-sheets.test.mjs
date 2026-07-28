@@ -14,15 +14,15 @@
 import { describe, it, expect } from "vitest";
 import path from "node:path";
 import dotenv from "dotenv";
-import { TEST3_SPREADSHEET_ID, REPO_ROOT } from "../support/qnap-env.mjs";
-import { TEST3_REPO_GUID } from "../../packages/dba/dist/testing/test3-guard.js";
+import { TEST3_SPREADSHEET_ID, REPO_ROOT } from "../../support/database/qnap-env.mjs";
+import { TEST3_REPO_GUID } from "../../../packages/dba/dist/testing/test3-guard.js";
 
 dotenv.config({ path: path.join(REPO_ROOT, ".env.local") });
 
-const { GoogleSheetsApiClient } = await import("../../packages/dba/dist/google-sheets/sheets-api-client.js");
-const { normalizePrivateKey } = await import("../../packages/dba/dist/google-sheets/config.js");
+const { GoogleSheetsApiClient } = await import("../../../packages/dba/dist/google-sheets/sheets-api-client.js");
+const { normalizePrivateKey } = await import("../../../packages/dba/dist/google-sheets/config.js");
 const { mapDateEntryToSheetRow, mapDeleteToSheetRow, DATE_ENTRIES_SHEET_HEADERS, DATE_ENTRIES_HEADER_ROW_COUNT } = await import(
-  "../../packages/dba/dist/google-sheets/mapper.js"
+  "../../../packages/dba/dist/google-sheets/mapper.js"
 );
 
 const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;

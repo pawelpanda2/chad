@@ -5,12 +5,12 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { loadStory81QnapEnv, REPO_ROOT, CHAD_ADMIN_REPO_GUID } from "../support/story81-qnap-env.mjs";
+import { loadStory81QnapEnv, REPO_ROOT, CHAD_ADMIN_REPO_GUID } from "./story81-qnap-env.mjs";
 
 const repoGuid = process.argv[2] || CHAD_ADMIN_REPO_GUID;
 loadStory81QnapEnv();
 
-const { getMongoDb, closeMongoConnection } = await import("../../packages/dba/dist/index.js");
+const { getMongoDb, closeMongoConnection } = await import("../../../packages/dba/dist/index.js");
 
 const db = await getMongoDb();
 const esc = repoGuid.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

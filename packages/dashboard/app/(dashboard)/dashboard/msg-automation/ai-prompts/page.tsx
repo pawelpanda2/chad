@@ -56,7 +56,7 @@ function StatusBadge({ status }: { status: AiPromptSummary["status"] }) {
 }
 
 function promptKindLabel(kind: AiPromptKind | undefined): string {
-  const k = kind === "openai_managed" ? "openai_managed" : "chad_custom";
+  const k = kind === "openai_managed" ? "openai_managed" : "our_custom";
   return PROMPT_KIND_OPTIONS.find((o) => o.value === k)?.label ?? k;
 }
 

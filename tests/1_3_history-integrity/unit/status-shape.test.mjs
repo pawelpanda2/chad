@@ -11,7 +11,7 @@
 // `helpers/env.mjs`'s `probeMongoReachable()` doc comment.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { loadTablesSyncEnv, probeMongoReachable, DBA_DIST, TABLES_SYNC_TEST_PREFIX } from "../helpers/env.mjs";
+import { loadTablesSyncEnv, probeMongoReachable, DBA_DIST, TABLES_SYNC_TEST_PREFIX } from "../../support/database/tables-sync-env.mjs";
 
 loadTablesSyncEnv();
 process.env.DBA_PRIMARY_BACKEND = "mongo";

@@ -35,7 +35,7 @@ export type AiProvider = "openai" | "anthropic" | "gemini" | "openai-compatible"
 export type AiPromptStatus = "draft" | "published" | "archived";
 
 /** Where the prompt body lives — stable technical values (UI labels differ). */
-export type AiPromptKind = "chad_custom" | "openai_managed";
+export type AiPromptKind = "our_custom" | "openai_managed";
 
 export type AiPromptActionType =
   | "conversation-health"
@@ -46,7 +46,7 @@ export type AiPromptActionType =
   | "custom";
 
 export const AI_PROMPT_KIND_LABELS: Record<AiPromptKind, string> = {
-  chad_custom: "CHAD Custom Prompt",
+  our_custom: "Our Custom Prompt",
   openai_managed: "OpenAI Managed Prompt",
 };
 
@@ -108,7 +108,7 @@ export interface AiPromptDefinition {
 
   /**
    * Storage mode for the prompt body. Missing on pre–promptKind records —
-   * treat as `chad_custom`.
+   * treat as `our_custom`. Legacy stored value `chad_custom` normalizes to `our_custom`.
    */
   promptKind?: AiPromptKind;
   /** Soft enable flag for Forms UI; missing → true. Independent of publish. */
@@ -323,8 +323,10 @@ function requireContent(messages: AiPromptMessage[] | undefined): AiPromptMessag
   return list;
 }
 
-export function normalizeAiPromptKind(kind: AiPromptKind | undefined | null): AiPromptKind {
-  return kind === "openai_managed" ? "openai_managed" : "chad_custom";
+export function normalizeAiPromptKind(
+  kind: AiPromptKind | "chad_custom" | undefined | null,
+): AiPromptKind {
+  return kind === "openai_managed" ? "openai_managed" : "our_custom";
 }
 
 function assertPromptKindPayload(

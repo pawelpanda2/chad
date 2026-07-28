@@ -3,7 +3,7 @@
 // google-sheets/*.test.mjs files, so each test file doesn't repeat the
 // same payload/target boilerplate already established in
 // packages/dba/src/google-sheets/worker.test.ts.
-import { DBA_DIST, TABLES_SYNC_TEST_PREFIX } from "./env.mjs";
+import { DBA_DIST, TABLES_SYNC_TEST_PREFIX } from "../database/tables-sync-env.mjs";
 
 const fakeClientModule = await import(`${DBA_DIST}/google-sheets/fake-client.js`);
 const mapperModule = await import(`${DBA_DIST}/google-sheets/mapper.js`);

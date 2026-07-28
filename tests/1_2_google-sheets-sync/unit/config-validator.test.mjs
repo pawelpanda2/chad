@@ -7,7 +7,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { REPO_ROOT } from "../helpers/env.mjs";
+import { REPO_ROOT } from "../../support/database/tables-sync-env.mjs";
 
 const { validateGoogleSheetsConfig } = await import(
   path.join(REPO_ROOT, "packages/dba/scripts/validate-google-sheets-config.mjs")

@@ -5,6 +5,7 @@ import { defineConfig } from "@playwright/test";
 // screenshot only kept on failure (Input 1 §1.1/§9).
 export default defineConfig({
   testDir: ".",
+  testMatch: "daily-dates.spec.mjs",
   timeout: 30_000,
   retries: 0,
   fullyParallel: false,

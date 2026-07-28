@@ -14,10 +14,10 @@ import {
 import { cn } from "@/lib/utils";
 import { CheckCircle2, AlertCircle } from "lucide-react";
 
-export type AiPromptKind = "chad_custom" | "openai_managed";
+export type AiPromptKind = "our_custom" | "openai_managed";
 
 export const PROMPT_KIND_OPTIONS: Array<{ value: AiPromptKind; label: string }> = [
-  { value: "chad_custom", label: "CHAD Custom Prompt" },
+  { value: "our_custom", label: "Our Custom Prompt" },
   { value: "openai_managed", label: "OpenAI Managed Prompt" },
 ];
 
@@ -49,7 +49,6 @@ export interface PromptFormState {
   promptBody: string;
   openaiPromptId: string;
   enabled: boolean;
-  version: number;
   tags: string;
   slug: string;
 }
@@ -57,12 +56,11 @@ export interface PromptFormState {
 const EMPTY: PromptFormState = {
   name: "",
   description: "",
-  promptKind: "chad_custom",
+  promptKind: "our_custom",
   category: "custom",
   promptBody: "",
   openaiPromptId: "",
   enabled: true,
-  version: 1,
   tags: "",
   slug: "",
 };
@@ -105,24 +103,22 @@ export function PromptForm({
       const p = json.data as {
         name: string;
         description?: string;
-        promptKind?: AiPromptKind;
+        promptKind?: AiPromptKind | "chad_custom";
         actionType: string;
         messages?: Array<{ role: string; content: string }>;
         providerBindings?: { openaiPromptId?: string };
         enabled?: boolean;
-        version: number;
         tags?: string[];
         slug: string;
       };
       setState({
         name: p.name ?? "",
         description: p.description ?? "",
-        promptKind: p.promptKind === "openai_managed" ? "openai_managed" : "chad_custom",
+        promptKind: p.promptKind === "openai_managed" ? "openai_managed" : "our_custom",
         category: p.actionType || "custom",
         promptBody: (p.messages ?? []).map((m) => m.content).filter(Boolean).join("\n\n"),
         openaiPromptId: p.providerBindings?.openaiPromptId ?? "",
         enabled: p.enabled !== false,
-        version: p.version ?? 1,
         tags: Array.isArray(p.tags) ? p.tags.join(", ") : "",
         slug: p.slug ?? "",
       });
@@ -153,7 +149,7 @@ export function PromptForm({
         .map((t) => t.trim())
         .filter(Boolean);
       const messages =
-        state.promptKind === "chad_custom"
+        state.promptKind === "our_custom"
           ? [{ role: "user" as const, content: state.promptBody }]
           : state.promptBody.trim()
             ? [{ role: "user" as const, content: state.promptBody }]
@@ -301,7 +297,7 @@ export function PromptForm({
                 </select>
               </td>
             </tr>
-            {state.promptKind === "chad_custom" && (
+            {state.promptKind === "our_custom" && (
               <tr>
                 <td className={labelCell}>Prompt</td>
                 <td className={fieldCell}>
@@ -342,12 +338,6 @@ export function PromptForm({
                   />
                   Enabled
                 </label>
-              </td>
-            </tr>
-            <tr>
-              <td className={labelCell}>Version</td>
-              <td className={fieldCell}>
-                <span className="px-1 text-sm text-muted-foreground">v{state.version}</span>
               </td>
             </tr>
             <tr>

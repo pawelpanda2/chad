@@ -2,7 +2,7 @@
 // kept in its own file so every mapping-schema test imports from one place
 // instead of reaching into packages/dba/dist directly, and so the import
 // path only needs to change here if dba's build output ever moves.
-import { DBA_DIST } from "./env.mjs";
+import { DBA_DIST } from "../database/tables-sync-env.mjs";
 
 const mapper = await import(`${DBA_DIST}/google-sheets/mapper.js`);
 
