@@ -10,6 +10,7 @@ import { describe, it, expect } from "vitest";
 import {
   createFolderChildItem,
   updateFolderTextBody,
+  deleteFolderItem,
   validateChildName,
   validateChildType,
   FoldersOperationError,
@@ -58,6 +59,9 @@ function fakeOps(seed: CpItem[] = []): { ops: FolderChildOps; items: Map<string,
       const updated = { ...existing, body };
       items.set(address, updated);
       return updated;
+    },
+    async deleteItemByAddress(address: string) {
+      return items.delete(address);
     },
   };
 
@@ -206,6 +210,44 @@ describe("updateFolderTextBody", () => {
     const { ops } = fakeOps([folder]);
     await expect(updateFolderTextBody(`${REPO}/01`, "x", ops)).rejects.toMatchObject({
       code: "NOT_TEXT_ITEM",
+    });
+  });
+});
+
+describe("deleteFolderItem", () => {
+  it("deletes an existing Text item", async () => {
+    const item = textItem(`${REPO}/01`, "notes");
+    const { ops, items } = fakeOps([item]);
+
+    await deleteFolderItem(`${REPO}/01`, ops);
+
+    expect(items.has(`${REPO}/01`)).toBe(false);
+  });
+
+  it("deletes an empty Folder", async () => {
+    const folder = folderItem(`${REPO}/01`, "sub");
+    const { ops, items } = fakeOps([folder]);
+
+    await deleteFolderItem(`${REPO}/01`, ops);
+
+    expect(items.has(`${REPO}/01`)).toBe(false);
+  });
+
+  it("rejects deleting a Folder that still has children", async () => {
+    const folder = folderItem(`${REPO}/01`, "sub");
+    const child = textItem(`${REPO}/01/01`, "child");
+    const { ops, items } = fakeOps([folder, child]);
+
+    await expect(deleteFolderItem(`${REPO}/01`, ops)).rejects.toMatchObject({
+      code: "FOLDER_NOT_EMPTY",
+    });
+    expect(items.has(`${REPO}/01`)).toBe(true);
+  });
+
+  it("rejects deleting a non-existent item", async () => {
+    const { ops } = fakeOps([]);
+    await expect(deleteFolderItem(`${REPO}/99`, ops)).rejects.toMatchObject({
+      code: "ITEM_NOT_FOUND",
     });
   });
 });

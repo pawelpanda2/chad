@@ -18,7 +18,15 @@ export async function GET() {
   }
 
   try {
-    return NextResponse.json({ success: true, data: listReadOnlyFolders() });
+    return NextResponse.json({
+      success: true,
+      data: listReadOnlyFolders(),
+      canUnlock: user.isAdmin,
+      currentUser: {
+        username: user.username,
+        role: user.role,
+      },
+    });
   } catch (error) {
     console.error('[settings/read-only-folders] failed:', error);
     return NextResponse.json(

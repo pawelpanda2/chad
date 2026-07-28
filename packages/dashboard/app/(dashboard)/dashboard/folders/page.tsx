@@ -13,7 +13,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ArrowLeft, ArrowRight, RefreshCw, Lock } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import { toast } from "sonner";
+import { ArrowLeft, ArrowRight, RefreshCw, Lock, Unlock, Trash2 } from "lucide-react";
+
+// One of these is picked at random each time the delete confirmation dialog
+// opens, so the user must actually read and retype it rather than
+// muscle-memory a fixed word — same pattern as the Daily/Date Entry delete
+// confirmation on the Forms page (Story 62 Round 8).
+const DELETE_CONFIRM_WORDS = ["DELETE", "CONFIRM", "USUN", "PERMANENT"];
 
 /**
  * Content Provider browser, ported from
@@ -100,6 +115,16 @@ interface ReadOnlyFolderRow {
   reason: string;
 }
 
+interface ReadOnlyFoldersApiResponse {
+  success: boolean;
+  data?: ReadOnlyFolderRow[];
+  canUnlock?: boolean;
+  currentUser?: {
+    username: string;
+    role: "admin" | "user";
+  };
+}
+
 /**
  * Finds the read-only-folder row (if any) that protects `namePath` —
  * either an exact match or a descendant of one (e.g. `views/daily/01`
@@ -162,6 +187,13 @@ export default function FoldersPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [readOnlyFolders, setReadOnlyFolders] = useState<ReadOnlyFolderRow[]>([]);
+  const [canUnlockSystemFolders, setCanUnlockSystemFolders] = useState(false);
+  const [unlockedFolderAddresses, setUnlockedFolderAddresses] = useState<string[]>([]);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteConfirmWord, setDeleteConfirmWord] = useState("");
+  const [deleteConfirmInput, setDeleteConfirmInput] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const currentItem = nav.index >= 0 ? nav.items[nav.index] : null;
   // nav.items[0] is the repo root itself (never a registered system
@@ -169,12 +201,18 @@ export default function FoldersPage() {
   // from its children (e.g. ["views", "daily"]).
   const currentNamePath = nav.items.slice(1, nav.index + 1).map((item) => item.Config.name);
   const protectingFolder = findProtectingReadOnlyFolder(currentNamePath, readOnlyFolders);
+  const isProtectedWriteUnlocked = Boolean(
+    protectingFolder && unlockedFolderAddresses.includes(protectingFolder.address)
+  );
 
   useEffect(() => {
     fetch("/api/settings/read-only-folders")
       .then((res) => res.json())
-      .then((json: { success: boolean; data?: ReadOnlyFolderRow[] }) => {
-        if (json.success && json.data) setReadOnlyFolders(json.data);
+      .then((json: ReadOnlyFoldersApiResponse) => {
+        if (json.success && json.data) {
+          setReadOnlyFolders(json.data);
+          setCanUnlockSystemFolders(json.canUnlock === true);
+        }
       })
       .catch(() => {
         // Purely informational banner — a failed fetch here must never block browsing Folders.
@@ -307,7 +345,7 @@ export default function FoldersPage() {
    * never the child it just created).
    */
   async function handleAddChild() {
-    if (!currentItem || creating) return;
+    if (!currentItem || creating || (protectingFolder && !isProtectedWriteUnlocked)) return;
     const trimmedName = addName.trim();
     if (!trimmedName) {
       setCreateError("Nazwa nie może być pusta");
@@ -322,7 +360,12 @@ export default function FoldersPage() {
       const res = await fetch("/api/folders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ parentLoca, type: addType, name: trimmedName }),
+        body: JSON.stringify({
+          parentLoca,
+          type: addType,
+          name: trimmedName,
+          allowSystemFolderWrite: isProtectedWriteUnlocked,
+        }),
       });
       const data: CreateChildApiResponse = await res.json();
       if (!res.ok || !data.parent) {
@@ -344,7 +387,7 @@ export default function FoldersPage() {
 
   /** Saves the Text editor's body. Mirrors `CodeEditorTabs.razor`'s Save: only meaningful while editing, never clobbers unsaved text on failure. */
   async function handleSaveBody() {
-    if (!currentItem || savingBody) return;
+    if (!currentItem || savingBody || (protectingFolder && !isProtectedWriteUnlocked)) return;
     const loca = relativeLoca(currentItem.Address, selectedRepoGuid);
 
     setSavingBody(true);
@@ -354,7 +397,7 @@ export default function FoldersPage() {
       const res = await fetch("/api/folders", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ loca, body: editorBody }),
+        body: JSON.stringify({ loca, body: editorBody, allowSystemFolderWrite: isProtectedWriteUnlocked }),
       });
       const data: UpdateBodyApiResponse = await res.json();
       if (!res.ok || !data.item) {
@@ -375,6 +418,62 @@ export default function FoldersPage() {
   function handleEditorBodyChange(value: string) {
     setEditorBody(value);
     if (bodySaved) setBodySaved(false);
+  }
+
+  function toggleProtectedWriteUnlock() {
+    if (!protectingFolder || !canUnlockSystemFolders) return;
+    setUnlockedFolderAddresses((prev) =>
+      prev.includes(protectingFolder.address)
+        ? prev.filter((address) => address !== protectingFolder.address)
+        : [...prev, protectingFolder.address]
+    );
+  }
+
+  function openDeleteDialog() {
+    setDeleteConfirmWord(DELETE_CONFIRM_WORDS[Math.floor(Math.random() * DELETE_CONFIRM_WORDS.length)]);
+    setDeleteConfirmInput("");
+    setDeleteError(null);
+    setDeleteDialogOpen(true);
+  }
+
+  /**
+   * Permanently deletes the currently-open item (Text, or an empty Folder —
+   * the API refuses a non-empty Folder with 409 FOLDER_NOT_EMPTY, never
+   * cascading). Retype-a-random-word confirmation mirrors the Forms page's
+   * Daily/Date Entry delete (Story 62 Round 8) — see DELETE_CONFIRM_WORDS.
+   */
+  async function handleDeleteItem() {
+    if (!currentItem || deleting || deleteConfirmInput.trim() !== deleteConfirmWord) return;
+    const loca = relativeLoca(currentItem.Address, selectedRepoGuid);
+    if (!loca) {
+      setDeleteError("Nie można usunąć głównego folderu repo");
+      return;
+    }
+
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      const query = new URLSearchParams({ loca });
+      if (isProtectedWriteUnlocked) query.set("allowSystemFolderWrite", "true");
+      const res = await fetch(`/api/folders?${query}`, { method: "DELETE" });
+      const data: { success?: boolean; parent?: CpItem | null; error?: string; details?: string } = await res.json();
+      if (!res.ok || !data.success) {
+        setDeleteError(data.details ?? data.error ?? `Request failed (${res.status})`);
+        return;
+      }
+
+      toast.success("Element usunięty");
+      setDeleteDialogOpen(false);
+      if (data.parent) {
+        pushItem(data.parent);
+      } else {
+        goBack();
+      }
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : "Nie udało się usunąć");
+    } finally {
+      setDeleting(false);
+    }
   }
 
   return (
@@ -458,11 +557,23 @@ export default function FoldersPage() {
             </div>
 
             {protectingFolder && (
-              <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/30 px-3 py-2 text-xs text-amber-800 dark:text-amber-400">
-                <Lock className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+              <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950/30 dark:text-amber-400">
+                {canUnlockSystemFolders && (
+                  <Button
+                    type="button"
+                    variant={isProtectedWriteUnlocked ? "default" : "outline"}
+                    size="sm"
+                    className="h-7 shrink-0"
+                    onClick={toggleProtectedWriteUnlock}
+                  >
+                    <Unlock className="mr-1 h-3.5 w-3.5" />
+                    {isProtectedWriteUnlocked ? "Zablokuj" : "Odblokuj"}
+                  </Button>
+                )}
+                <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                 <span>
                   Managed by <strong>{protectingFolder.managedBy}</strong> — {protectingFolder.reason} Writes here are
-                  blocked from this Folders browser.
+                  {isProtectedWriteUnlocked ? " temporarily unblocked for this admin session." : " blocked from this Folders browser."}
                 </span>
               </div>
             )}
@@ -470,10 +581,22 @@ export default function FoldersPage() {
             {currentItem.Config.type === "Text" && (
             <div className="space-y-2">
               <div className="flex flex-wrap gap-2">
-                <InertButton title="Wymaga cp-plugin — niedostępne w dashboardzie">Folder</InertButton>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="sm"
+                  onClick={openDeleteDialog}
+                  disabled={Boolean(protectingFolder && !isProtectedWriteUnlocked)}
+                  title={
+                    protectingFolder && !isProtectedWriteUnlocked
+                      ? `Managed by ${protectingFolder.managedBy} — read-only here`
+                      : "Permanently deletes this item"
+                  }
+                >
+                  <Trash2 className="mr-1 h-3.5 w-3.5" />
+                  Delete
+                </Button>
                 <InertButton title="Wymaga cp-plugin — niedostępne w dashboardzie">Content</InertButton>
-                <InertButton title="Wymaga cp-plugin — niedostępne w dashboardzie">Config</InertButton>
-                <InertButton title="Wymaga cp-plugin — niedostępne w dashboardzie">Terminal</InertButton>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <Select defaultValue="Open" disabled>
@@ -497,6 +620,7 @@ export default function FoldersPage() {
                 onSave={handleSaveBody}
                 saving={savingBody}
                 saved={bodySaved}
+                showSave={!protectingFolder || isProtectedWriteUnlocked}
                 placeholder="Enter text body..."
                 className="min-h-[360px] h-[50vh]"
               />
@@ -506,20 +630,40 @@ export default function FoldersPage() {
           {currentItem.Config.type === "Folder" && (
             <div className="space-y-2">
               <div className="flex flex-wrap gap-2">
-                <InertButton title="Wymaga cp-plugin — niedostępne w dashboardzie">Folder</InertButton>
-                <InertButton title="Wymaga cp-plugin — niedostępne w dashboardzie">Config</InertButton>
-                <InertButton title="Wymaga cp-plugin — niedostępne w dashboardzie">Terminal</InertButton>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="sm"
+                  onClick={openDeleteDialog}
+                  disabled={Boolean(protectingFolder && !isProtectedWriteUnlocked)}
+                  title={
+                    protectingFolder && !isProtectedWriteUnlocked
+                      ? `Managed by ${protectingFolder.managedBy} — read-only here`
+                      : "Permanently deletes this folder (must be empty)"
+                  }
+                >
+                  <Trash2 className="mr-1 h-3.5 w-3.5" />
+                  Delete
+                </Button>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <Button
                   size="sm"
                   onClick={handleAddChild}
-                  disabled={creating || Boolean(protectingFolder)}
-                  title={protectingFolder ? `Managed by ${protectingFolder.managedBy} — read-only here` : undefined}
+                  disabled={creating || Boolean(protectingFolder && !isProtectedWriteUnlocked)}
+                  title={
+                    protectingFolder && !isProtectedWriteUnlocked
+                      ? `Managed by ${protectingFolder.managedBy} — read-only here`
+                      : undefined
+                  }
                 >
                   {creating ? "Dodawanie..." : "Add"}
                 </Button>
-                <Select value={addType} onValueChange={setAddType} disabled={creating || Boolean(protectingFolder)}>
+                <Select
+                  value={addType}
+                  onValueChange={setAddType}
+                  disabled={creating || Boolean(protectingFolder && !isProtectedWriteUnlocked)}
+                >
                   <SelectTrigger className="w-[100px]">
                     <SelectValue />
                   </SelectTrigger>
@@ -532,7 +676,7 @@ export default function FoldersPage() {
                   value={addName}
                   onChange={(e) => setAddName(e.target.value)}
                   placeholder="nazwa"
-                  disabled={creating}
+                  disabled={creating || Boolean(protectingFolder && !isProtectedWriteUnlocked)}
                   className="w-[200px]"
                   onKeyDown={(e) => {
                     if (e.key === "Enter") handleAddChild();
@@ -571,6 +715,45 @@ export default function FoldersPage() {
           </div>
         )}
       </div>
+
+      {/* Delete confirmation — retype a randomly-picked word, same pattern
+          as the Forms page's Daily/Date Entry delete (Story 62 Round 8). */}
+      <Dialog open={deleteDialogOpen} onOpenChange={(open) => !deleting && setDeleteDialogOpen(open)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete this item?</DialogTitle>
+            <DialogDescription>
+              This permanently removes{" "}
+              <span className="font-mono">{currentItem?.Config.name}</span>. This can&apos;t be undone.
+              {currentItem?.Config.type === "Folder" && " A non-empty folder cannot be deleted."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <p className="text-sm">
+              Type <span className="font-mono font-bold">{deleteConfirmWord}</span> to confirm.
+            </p>
+            <Input
+              value={deleteConfirmInput}
+              onChange={(e) => setDeleteConfirmInput(e.target.value)}
+              placeholder={deleteConfirmWord}
+              autoFocus
+            />
+            <ErrorBox message={deleteError} className="mb-0" />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} disabled={deleting}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteItem}
+              disabled={deleting || deleteConfirmInput.trim() !== deleteConfirmWord}
+            >
+              {deleting ? "Deleting..." : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DashboardPageShell>
   );
 }

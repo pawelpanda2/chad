@@ -7,6 +7,8 @@ import {
   updateFolderTextBody,
   createFolderChildItemAllowingSystemFolderWrite,
   updateFolderTextBodyAllowingSystemFolderWrite,
+  deleteFolderItem,
+  deleteFolderItemAllowingSystemFolderWrite,
   FoldersOperationError,
   runWithRepoContext,
   type CpItem,
@@ -49,6 +51,8 @@ function statusForFoldersError(error: FoldersOperationError): number {
       return 409;
     case 'SYSTEM_FOLDER_READ_ONLY':
       return 403;
+    case 'FOLDER_NOT_EMPTY':
+      return 409;
     default:
       return 500;
   }
@@ -234,6 +238,59 @@ export async function PUT(request: Request) {
         : updateFolderTextBody(address, body)
     );
     return NextResponse.json({ item: await toApiItem(updated) });
+  } catch (err) {
+    if (err instanceof FoldersOperationError) {
+      return NextResponse.json({ error: err.code, details: err.message }, { status: statusForFoldersError(err) });
+    }
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : 'UNKNOWN_ERROR' },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * DELETE /api/folders?loca=<slash-joined loca>&allowSystemFolderWrite=true
+ *
+ * Permanently removes a Text or Folder item. A Folder can only be deleted
+ * while empty (409 FOLDER_NOT_EMPTY otherwise) — this never cascades, so a
+ * single click can never remove more than the one item the user selected.
+ *
+ * SECURITY: same repo-isolation rule as GET/POST/PUT — `loca` is only ever
+ * resolved relative to `user.repoGuid`. `allowSystemFolderWrite` is only
+ * honored for `user.isAdmin` sessions, same admin-bypass gate already used
+ * by POST/PUT.
+ */
+export async function DELETE(request: Request) {
+  const user = await getCurrentUserFromCookies();
+  if (!user) {
+    return NextResponse.json({ error: 'NOT_AUTHENTICATED' }, { status: 401 });
+  }
+
+  const { searchParams } = new URL(request.url);
+  const loca = searchParams.get('loca') ?? '';
+  const allowSystemFolderWrite = searchParams.get('allowSystemFolderWrite') === 'true';
+
+  if (!loca) {
+    return NextResponse.json({ error: 'Missing "loca" — refusing to delete the repo root' }, { status: 400 });
+  }
+
+  const address = `${user.repoGuid}/${loca}`;
+  const parentLoca = loca.includes('/') ? loca.slice(0, loca.lastIndexOf('/')) : '';
+  const parentAddress = parentLoca ? `${user.repoGuid}/${parentLoca}` : user.repoGuid;
+
+  try {
+    await runWithRepoContext(user, () =>
+      user.isAdmin && allowSystemFolderWrite
+        ? deleteFolderItemAllowingSystemFolderWrite(address)
+        : deleteFolderItem(address)
+    );
+
+    const parent = await getItemByAddress(parentAddress);
+    return NextResponse.json({
+      success: true,
+      parent: parent ? await toApiItem(parent) : null,
+    });
   } catch (err) {
     if (err instanceof FoldersOperationError) {
       return NextResponse.json({ error: err.code, details: err.message }, { status: statusForFoldersError(err) });
