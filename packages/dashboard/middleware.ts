@@ -60,8 +60,12 @@ export function middleware(request: NextRequest) {
 	// For API routes, check if user is authenticated
 	if (protectedApiRoutes.some((route) => pathname.startsWith(route))) {
 		if (!session) {
+			// Same shape every route's own getCurrentUserFromCookies() null-check
+			// already returns (see e.g. app/api/folders/route.ts,
+			// app/api/msg-automation/links/route.ts) — middleware runs first, so
+			// its own response shape must match, not a different ad-hoc one.
 			return NextResponse.json(
-				{ error: "Unauthorized" },
+				{ success: false, error: "NOT_AUTHENTICATED" },
 				{ status: 401 }
 			);
 		}
