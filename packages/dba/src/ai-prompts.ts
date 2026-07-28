@@ -68,6 +68,7 @@ export interface AiPromptSettings {
   reasoningEffort?: string;
   verbosity?: string;
   summary?: string;
+  storeLogs?: boolean;
   outputSchema?: unknown;
 }
 

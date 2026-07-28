@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AI Prompts Mockup v4</title>
+<style>
+:root{
+  --bg:#fff;--fg:#171717;--muted:#f5f5f5;--muted-fg:#737373;
+  --border:#e5e5e5;--primary:#202020;--danger:#b42318;--sidebar:160px;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.4 Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+button,input,textarea,select{font:inherit}button{cursor:pointer}
+.app{display:flex;min-height:100vh}
+.sidebar{width:var(--sidebar);flex:0 0 var(--sidebar);border-right:1px solid var(--border);background:#fff}
+.brand{height:64px;display:flex;align-items:center;gap:8px;padding:0 12px;border-bottom:1px solid var(--border);font-size:18px;font-weight:700}
+.brand-icon{width:32px;height:32px;border-radius:9px;background:var(--primary);color:#fff;display:grid;place-items:center}
+.nav{padding:12px}.group{margin-bottom:26px}.group-title{padding:0 10px;margin-bottom:8px;font-size:11px;font-weight:700;color:var(--muted-fg);text-transform:uppercase;letter-spacing:.08em}
+.nav-item{display:flex;align-items:center;gap:9px;padding:11px 10px;margin:3px 0;border-radius:12px;color:var(--muted-fg);text-decoration:none;font-weight:600}
+.nav-item.active{background:var(--primary);color:#fff}.nav-item:hover:not(.active){background:var(--muted);color:var(--fg)}
+.main{flex:1;min-width:0}
+.top-nav{height:74px;display:flex;align-items:center;gap:10px;padding:0 18px;border-bottom:1px solid var(--border);background:#fff}
+.nav-btn{height:44px;padding:0 16px;border:1px solid var(--border);border-radius:14px;background:#fff;font-weight:700}
+.nav-btn.icon{width:48px;padding:0;font-size:24px}.nav-btn:disabled{color:#aaa}.page-title{margin-left:8px;font-size:22px;font-weight:800}
+.page{padding:18px}.view{display:none}.view.active{display:block}
+.panel,.editor-shell{border:1px solid var(--border);border-radius:14px;background:#fff;overflow:hidden}
+.action-bar{min-height:78px;display:flex;align-items:center;justify-content:flex-start;gap:10px;padding:12px 16px;border-bottom:1px solid var(--border)}
+.btn{height:46px;padding:0 18px;border:1px solid var(--border);border-radius:14px;background:#fff;color:var(--fg);font-weight:700;display:inline-flex;align-items:center;gap:10px}
+.btn:hover{background:var(--muted)}.btn.primary{background:var(--primary);border-color:var(--primary);color:#fff}.btn.danger{color:var(--danger)}
+.btn.add{font-size:17px}.btn .plus{font-size:28px;font-weight:300;line-height:1}
+.table-wrap{padding:16px}.table{border:1px solid var(--border);border-radius:14px;overflow:hidden}
+.row{display:grid;grid-template-columns:minmax(280px,1.7fr) minmax(220px,.9fr) 44px;align-items:center;min-height:66px;padding:0 18px;border-bottom:1px solid var(--border)}
+.row:last-child{border-bottom:0}.row.header{min-height:44px;background:#fafafa;color:var(--muted-fg);font-size:12px;font-weight:800}.row.data{cursor:pointer}.row.data:hover{background:#fafafa}
+.prompt-name{font-size:16px;font-weight:800}.prompt-sub{margin-top:3px;color:var(--muted-fg);font-size:12px}
+.category{display:inline-flex;align-items:center;width:max-content;padding:6px 10px;border-radius:999px;background:#f2f2f2;font-size:12px;font-weight:700}
+.category.custom{background:#f5f0ff;color:#6847a4}.category.managed{background:#edf3ff;color:#2d5da8}.arrow{font-size:22px;color:#888;text-align:right}
+
+.editor-head{min-height:58px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 14px;border-bottom:1px solid var(--border)}
+.editor-title{display:flex;align-items:center;gap:10px;font-size:18px;font-weight:800}.back{width:40px;height:40px;border:1px solid var(--border);border-radius:12px;background:#fff;font-size:20px}
+.editor-actions{display:flex;gap:8px}.draft{padding:5px 9px;border-radius:999px;background:#f1f1f1;color:#666;font-size:12px;font-weight:700}
+
+.custom-app{display:grid;grid-template-columns:340px minmax(0,1fr);height:720px}
+.custom-sidebar{border-right:1px solid var(--border);overflow:auto;background:#fff}
+.custom-main{display:flex;flex-direction:column;background:#fff}
+.section{padding:16px;border-bottom:1px solid var(--border)}
+.section-title{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;font-weight:800}
+.toggle-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+.seg{height:40px;border:1px solid var(--border);border-radius:10px;background:#fff;font-weight:700}
+.field{margin-bottom:14px}.field:last-child{margin-bottom:0}.field label{display:block;margin-bottom:7px;color:#555;font-weight:700}
+.field input,.field textarea,.field select{width:100%;border:1px solid #d9d9d9;border-radius:10px;background:#fff;padding:10px 12px;outline:none}
+.field textarea{min-height:180px;resize:vertical;line-height:1.5}
+.add-message{width:100%;height:42px;border:0;background:#fff;text-align:left;padding:0;font-weight:600}
+.settings-grid{display:grid;grid-template-columns:130px 1fr;gap:10px;align-items:center}.settings-grid label{color:#555}.settings-grid select{height:38px;border:1px solid #d9d9d9;border-radius:9px;padding:0 10px;background:#fff}
+.tool-row{display:flex;align-items:center;justify-content:space-between;padding:8px 0}.switch{width:30px;height:18px;border-radius:999px;background:#ddd;position:relative}.switch.on{background:#222}.switch::after{content:"";position:absolute;top:3px;left:3px;width:12px;height:12px;border-radius:50%;background:#fff}.switch.on::after{left:15px}
+.chat-empty{flex:1;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;color:var(--muted-fg)}
+.chat-icon{width:38px;height:38px;border-radius:10px;display:grid;place-items:center;background:#f0f0f0;font-size:20px}
+.composer{width:min(670px,calc(100% - 60px));margin:0 auto 24px;border:1px solid var(--border);border-radius:24px;min-height:110px;padding:16px;box-shadow:0 2px 8px rgba(0,0,0,.05)}
+.composer textarea{width:100%;min-height:60px;border:0;outline:0;resize:none}
+
+.managed-wrap{max-width:700px;margin:0 auto;padding:28px}
+.managed-card{border:1px solid var(--border);border-radius:16px;background:#fff;padding:22px}
+.managed-card h2{margin:0 0 6px;font-size:20px}
+.managed-card p{margin:0 0 20px;color:var(--muted-fg)}
+.prompt-id-row{display:flex;gap:8px}.prompt-id-row input{flex:1}
+.type-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.type-card{border:1px solid var(--border);border-radius:16px;padding:18px;background:#fff;cursor:pointer}.type-card:hover{background:#fafafa}.type-card h3{margin:0 0 6px}.type-card p{margin:0;color:var(--muted-fg)}
+
+.dialog-backdrop{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.35);z-index:50}.dialog-backdrop.open{display:flex}
+.dialog{width:min(460px,calc(100vw - 32px));border:1px solid var(--border);border-radius:16px;background:#fff;padding:22px;box-shadow:0 24px 70px rgba(0,0,0,.24)}
+.dialog h2{margin:0 0 8px}.dialog p{margin:0 0 14px;color:#555}.dialog-word{font-size:18px;font-weight:800;letter-spacing:.04em}.dialog-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
+@media(max-width:950px){.sidebar{display:none}.custom-app{grid-template-columns:1fr;height:auto}.custom-sidebar{border-right:0;border-bottom:1px solid var(--border)}.type-grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand"><div class="brand-icon">▦</div><span>pawel_f</span></div>
+    <nav class="nav">
+      <div class="group"><div class="group-title">Pages</div><a class="nav-item" href="#">▣ Forms</a><a class="nav-item" href="#">▤ Views</a><a class="nav-item active" href="#">◫ Msg Auto</a></div>
+      <div class="group"><div class="group-title">Others</div><a class="nav-item" href="#">↶ History</a><a class="nav-item" href="#">▰ Folders</a><a class="nav-item" href="#">⚙ Settings</a></div>
+    </nav>
+  </aside>
+
+  <main class="main">
+    <header class="top-nav">
+      <button class="nav-btn icon">‹</button>
+      <button class="nav-btn">↶ Back</button>
+      <button class="nav-btn" disabled>Forw →</button>
+      <div class="page-title">AI Prompts</div>
+    </header>
+
+    <div class="page">
+      <section id="listView" class="view active">
+        <div class="panel">
+          <div class="action-bar">
+            <button class="btn add" onclick="showView('typeView')"><span class="plus">＋</span> Add</button>
+          </div>
+          <div class="table-wrap">
+            <div class="table">
+              <div class="row header"><div>Name</div><div>Category</div><div></div></div>
+              <div class="row data" onclick="openCustom(false)">
+                <div><div class="prompt-name">Next Message</div><div class="prompt-sub">next-message</div></div>
+                <div><span class="category custom">Our Custom Prompt</span></div><div class="arrow">›</div>
+              </div>
+              <div class="row data" onclick="openManaged(false)">
+                <div><div class="prompt-name">Conversation Health</div><div class="prompt-sub">conversation-health</div></div>
+                <div><span class="category managed">OpenAI Managed Prompt</span></div><div class="arrow">›</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="typeView" class="view">
+        <div class="editor-shell">
+          <div class="editor-head"><div class="editor-title"><button class="back" onclick="showView('listView')">←</button>Add prompt</div></div>
+          <div class="managed-wrap">
+            <div class="type-grid">
+              <div class="type-card" onclick="openCustom(true)"><h3>Our Custom Prompt</h3><p>The full prompt is stored and edited in the application.</p></div>
+              <div class="type-card" onclick="openManaged(true)"><h3>OpenAI Managed Prompt</h3><p>Only the published OpenAI prompt ID and version are stored.</p></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="customView" class="view">
+        <div class="editor-shell">
+          <div class="editor-head">
+            <div class="editor-title"><button class="back" onclick="showView('listView')">←</button><span id="customTitle">Next Message</span><span class="draft">Draft</span></div>
+            <div class="editor-actions">
+              <button class="btn danger" onclick="openDeleteDialog()">Delete</button>
+              <button class="btn">⇄ Compare</button>
+              <button class="btn primary">Code</button>
+            </div>
+          </div>
+
+          <div class="custom-app">
+            <aside class="custom-sidebar">
+              <div class="section">
+                <div class="section-title"><span>Prompt</span><span>⌃</span></div>
+                <div class="toggle-grid">
+                  <button class="seg">✎ Generate prompt</button>
+                  <button class="seg">Templates</button>
+                </div>
+                <div class="field">
+                  <textarea placeholder="Describe desired model behavior (tone, tool usage, response style)">You are a dating-message coach. Use only supplied data and return a concise analysis plus a ready-to-send message.</textarea>
+                </div>
+                <button class="add-message">Add messages to prompt <span style="float:right;font-size:20px">＋</span></button>
+              </div>
+
+              <div class="section">
+                <div class="section-title"><span>Model</span><span>⌃</span></div>
+                <div class="settings-grid">
+                  <label>Model</label><select><option>gpt-5.5</option><option>Provider default</option></select>
+                  <label>Text format</label><select><option>text</option><option>json_schema</option></select>
+                  <label>Reasoning mode</label><select><option>standard</option><option>minimal</option></select>
+                  <label>Reasoning effort</label><select><option>medium</option><option>low</option><option>high</option></select>
+                  <label>Verbosity</label><select><option>medium</option><option>low</option><option>high</option></select>
+                  <label>Summary</label><select><option>auto</option><option>none</option></select>
+                </div>
+                <div class="tool-row"><span>Store logs</span><div class="switch on"></div></div>
+              </div>
+
+              <div class="section">
+                <div class="section-title"><span>Variables</span><span>⌃</span></div>
+                <button class="btn" style="height:34px;padding:0 12px">＋ Add</button>
+              </div>
+
+              <div class="section">
+                <div class="section-title"><span>Hosted tools</span><span>⌃</span></div>
+                <div class="tool-row"><span>MCP server</span><div class="switch"></div></div>
+                <div class="tool-row"><span>File search</span><div class="switch"></div></div>
+                <div class="tool-row"><span>Web search</span><div class="switch"></div></div>
+                <div class="tool-row"><span>Image generation</span><div class="switch"></div></div>
+                <div class="tool-row"><span>Tool search</span><div class="switch"></div></div>
+                <div class="tool-row"><span>Code interpreter</span><div class="switch"></div></div>
+                <div class="tool-row"><span>Hosted Shell</span><div class="switch"></div></div>
+              </div>
+            </aside>
+
+            <section class="custom-main">
+              <div class="chat-empty">
+                <div class="chat-icon">💬</div>
+                <div style="font-size:18px;font-weight:700;color:#222">Your conversation will appear here</div>
+              </div>
+              <div class="composer"><textarea placeholder="Ask anything"></textarea></div>
+            </section>
+          </div>
+        </div>
+      </section>
+
+      <section id="managedView" class="view">
+        <div class="editor-shell">
+          <div class="editor-head">
+            <div class="editor-title"><button class="back" onclick="showView('listView')">←</button><span id="managedTitle">Conversation Health</span><span class="category managed">OpenAI Managed Prompt</span></div>
+            <div class="editor-actions">
+              <button class="btn danger" onclick="openDeleteDialog()">Delete</button>
+              <button class="btn primary">Save</button>
+            </div>
+          </div>
+
+          <div class="managed-wrap">
+            <div class="managed-card">
+              <h2>OpenAI published prompt</h2>
+              <p>Enter only the values shown after publishing the prompt in OpenAI.</p>
+
+              <div class="field">
+                <label>Prompt ID</label>
+                <div class="prompt-id-row">
+                  <input id="managedPromptId" value="pmpt_6a68e945b6508190b95a0b5e015c4d9006430191">
+                  <button class="btn" type="button">Copy</button>
+                </div>
+              </div>
+
+              <div class="field">
+                <label>Version</label>
+                <input id="managedVersion" value="1">
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+
+<div class="dialog-backdrop" id="deleteDialog">
+  <div class="dialog">
+    <h2>Delete prompt</h2>
+    <p>Type the random word below to confirm:</p>
+    <div class="dialog-word" id="deleteWord">river</div>
+    <div class="field" style="margin-top:14px"><input id="deleteInput" placeholder="Type confirmation word" autocomplete="off"></div>
+    <div class="dialog-actions">
+      <button class="btn" onclick="closeDeleteDialog()">Cancel</button>
+      <button class="btn danger" onclick="confirmDelete()">Delete</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const views=['listView','typeView','customView','managedView'];
+
+function showView(id){
+  views.forEach(viewId=>document.getElementById(viewId).classList.toggle('active',viewId===id));
+}
+function openCustom(isNew){
+  showView('customView');
+  document.getElementById('customTitle').textContent=isNew?'New prompt':'Next Message';
+}
+function openManaged(isNew){
+  showView('managedView');
+  document.getElementById('managedTitle').textContent=isNew?'New prompt':'Conversation Health';
+  if(isNew){
+    document.getElementById('managedPromptId').value='';
+    document.getElementById('managedVersion').value='';
+  }
+}
+const words=['river','planet','window','forest','orange','silver'];
+let currentWord='';
+function openDeleteDialog(){
+  currentWord=words[Math.floor(Math.random()*words.length)];
+  document.getElementById('deleteWord').textContent=currentWord;
+  document.getElementById('deleteInput').value='';
+  document.getElementById('deleteDialog').classList.add('open');
+}
+function closeDeleteDialog(){document.getElementById('deleteDialog').classList.remove('open')}
+function confirmDelete(){
+  if(document.getElementById('deleteInput').value.trim()!==currentWord){
+    alert('Confirmation word does not match.');
+    return;
+  }
+  closeDeleteDialog();
+  showView('listView');
+}
+</script>
+</body>
+</html>
