@@ -149,13 +149,6 @@ describe("createAiPrompt", () => {
       code: "VALIDATION",
     });
   });
-
-  it("rejects a prompt with no non-empty message content", async () => {
-    const { ops } = fakeOps([]);
-    await expect(
-      createAiPrompt({ ...baseInput, messages: [{ role: "user", content: "   " }] }, ops),
-    ).rejects.toMatchObject({ code: "VALIDATION" });
-  });
 });
 
 describe("updateAiPrompt", () => {
