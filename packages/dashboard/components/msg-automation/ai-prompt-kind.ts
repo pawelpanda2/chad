@@ -3,18 +3,9 @@ export type AiPromptKind = "our_custom" | "openai_managed";
 export const AI_PROMPT_KIND_OPTIONS: Array<{
   value: AiPromptKind;
   label: string;
-  description: string;
 }> = [
-  {
-    value: "our_custom",
-    label: "Our Custom Prompt",
-    description: "The full prompt is stored and edited in the application.",
-  },
-  {
-    value: "openai_managed",
-    label: "OpenAI Managed Prompt",
-    description: "Only the published OpenAI prompt ID and version are stored.",
-  },
+  { value: "our_custom", label: "Our Custom Prompt" },
+  { value: "openai_managed", label: "OpenAI Managed Prompt" },
 ];
 
 export function normalizeAiPromptKind(
