@@ -142,6 +142,7 @@ export interface AiPromptSummary {
   id: string;
   slug: string;
   name: string;
+  description?: string;
   schoolId?: string;
   actionType: AiPromptActionType;
   promptKind: AiPromptKind;
@@ -356,6 +357,7 @@ export async function listAiPrompts(ops: AiPromptsOps = defaultOps): Promise<AiP
       id: p.id,
       slug: p.slug,
       name: p.name,
+      description: p.description,
       schoolId: p.schoolId,
       actionType: p.actionType,
       promptKind: normalizeAiPromptKind(p.promptKind),

@@ -18,6 +18,7 @@ interface AiPromptSummary {
   id: string;
   slug: string;
   name: string;
+  description?: string;
   promptKind?: AiPromptKind | string;
   version: number;
 }
@@ -32,10 +33,13 @@ const VER_CELL =
   "flex w-12 shrink-0 items-center border-border px-1 py-0.5 pl-1.5 border-r";
 
 const NAME_CELL =
-  "flex w-[9.5rem] shrink-0 flex-col items-start justify-center gap-0 border-border px-1 py-0.5 border-r sm:w-[14rem]";
+  "flex w-[9.5rem] shrink-0 items-center border-border px-1 py-0.5 border-r sm:w-[14rem]";
 
 const CATEGORY_CELL =
   "flex w-[10.75rem] shrink-0 items-center border-border px-1 py-0.5 border-r sm:w-[12.5rem]";
+
+const DESCRIPTION_CELL =
+  "flex w-[8rem] shrink-0 items-center border-border px-1 py-0.5 border-r sm:w-[12rem]";
 
 const SPACER_CELL = "min-w-0 flex-1";
 
@@ -110,6 +114,7 @@ export default function AiPromptsListPage() {
               <div className={VER_CELL}>Ver.</div>
               <div className={NAME_CELL}>Name</div>
               <div className={CATEGORY_CELL}>Category</div>
+              <div className={DESCRIPTION_CELL}>Description</div>
               <div className={SPACER_CELL} aria-hidden />
             </div>
             {prompts.map((p) => {
@@ -132,7 +137,6 @@ export default function AiPromptsListPage() {
                   </div>
                   <div className={NAME_CELL}>
                     <span className="w-full truncate text-sm font-semibold">{p.name}</span>
-                    <span className="w-full truncate text-xs text-muted-foreground">{p.slug}</span>
                   </div>
                   <div className={CATEGORY_CELL}>
                     <span
@@ -144,6 +148,11 @@ export default function AiPromptsListPage() {
                       )}
                     >
                       {category}
+                    </span>
+                  </div>
+                  <div className={DESCRIPTION_CELL}>
+                    <span className="w-full truncate text-xs text-muted-foreground">
+                      {p.description?.trim() || ""}
                     </span>
                   </div>
                   <div className={SPACER_CELL} aria-hidden />
