@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { TextEditorWithToolbar } from "@/components/shared/text-editor-with-toolbar";
 import { VoiceRecordingPanel } from "@/components/shared/voice-recording-panel";
 import { ErrorBox } from "@/components/shared/error-box";
+import { PromptForm } from "@/components/msg-automation/prompt-form";
 import {
   Dialog,
   DialogContent,
@@ -120,7 +121,7 @@ interface DateEntryFormData {
   jakosc: string;
 }
 
-type FormType = null | "action" | "lead" | "add_action" | "date_entry" | "reports";
+type FormType = null | "action" | "lead" | "add_action" | "date_entry" | "reports" | "add_prompt";
 
 // ============================================================================
 // Helper Functions
@@ -244,7 +245,12 @@ function FormsPageContent() {
   // replace, so back-navigation steps through each state in order.
   const formParam = searchParams.get("form");
   const selectedForm: FormType =
-    formParam === "action" || formParam === "lead" || formParam === "add_action" || formParam === "date_entry" || formParam === "reports"
+    formParam === "action" ||
+    formParam === "lead" ||
+    formParam === "add_action" ||
+    formParam === "date_entry" ||
+    formParam === "reports" ||
+    formParam === "add_prompt"
       ? formParam
       : null;
 
@@ -879,7 +885,37 @@ function FormsPageContent() {
           >
             <span className="font-semibold text-sm">ADD REPORT</span>
           </button>
+          <button
+            type="button"
+            onClick={() => handleFormSelect("add_prompt")}
+            className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[70px]"
+          >
+            <span className="font-semibold text-sm">ADD PROMPT</span>
+          </button>
         </div>
+      </DashboardPageShell>
+    );
+  }
+
+  // ============================================================================
+  // Render: Add / Edit Prompt
+  // ============================================================================
+
+  if (selectedForm === "add_prompt") {
+    const promptId = searchParams.get("promptId");
+    return (
+      <DashboardPageShell
+        contentClassName={FRAME_SECTION_GAP_CLASS}
+        upLevel={{
+          onClick: () =>
+            router.push(promptId ? "/dashboard/msg-automation/ai-prompts" : "/dashboard/forms"),
+        }}
+        title={promptId ? "Edit Prompt" : "Add Prompt"}
+      >
+        <PromptForm
+          promptId={promptId}
+          returnTo={promptId ? "/dashboard/msg-automation/ai-prompts" : "/dashboard/forms"}
+        />
       </DashboardPageShell>
     );
   }
