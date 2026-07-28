@@ -11,7 +11,6 @@ import { cn } from "@/lib/utils";
 import { TextEditorWithToolbar } from "@/components/shared/text-editor-with-toolbar";
 import { VoiceRecordingPanel } from "@/components/shared/voice-recording-panel";
 import { ErrorBox } from "@/components/shared/error-box";
-import { PromptForm } from "@/components/msg-automation/prompt-form";
 import {
   Dialog,
   DialogContent,
@@ -22,6 +21,7 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { Plus, X, CheckCircle2, AlertCircle } from "lucide-react";
+import { PromptForm } from "@/components/msg-automation/prompt-form";
 
 // ============================================================================
 // Constants & Mappings
@@ -853,42 +853,42 @@ function FormsPageContent() {
           <button
             type="button"
             onClick={() => handleFormSelect("add_action")}
-            className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[70px]"
+            className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
           >
             <span className="font-semibold text-sm">ADD DAILY ENTRY</span>
           </button>
           <button
             type="button"
             onClick={() => handleFormSelect("date_entry")}
-            className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[70px]"
+            className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
           >
             <span className="font-semibold text-sm">ADD DATE</span>
           </button>
           <button
             type="button"
             onClick={() => handleFormSelect("lead")}
-            className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[70px]"
+            className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
           >
             <span className="font-semibold text-sm">ADD LEAD</span>
           </button>
           <button
             type="button"
             onClick={() => handleFormSelect("action")}
-            className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[70px]"
+            className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
           >
             <span className="font-semibold text-sm">ADD ACTION</span>
           </button>
           <button
             type="button"
             onClick={() => handleFormSelect("reports")}
-            className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[70px]"
+            className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
           >
             <span className="font-semibold text-sm">ADD REPORT</span>
           </button>
           <button
             type="button"
             onClick={() => handleFormSelect("add_prompt")}
-            className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[70px]"
+            className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
           >
             <span className="font-semibold text-sm">ADD PROMPT</span>
           </button>
@@ -898,7 +898,7 @@ function FormsPageContent() {
   }
 
   // ============================================================================
-  // Render: Add / Edit Prompt
+  // Render: Add / Edit Prompt (Daily Entry–style table + Prompt type combobox)
   // ============================================================================
 
   if (selectedForm === "add_prompt") {

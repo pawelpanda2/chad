@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { ErrorBox } from "@/components/shared/error-box";
 import {
   FRAME_SECTION_GAP_CLASS,
@@ -13,43 +12,30 @@ import {
 } from "@/components/shared/layout-tokens";
 import { cn } from "@/lib/utils";
 import { CheckCircle2, AlertCircle } from "lucide-react";
+import {
+  type AiPromptKind,
+  AI_PROMPT_KIND_OPTIONS,
+  slugifyPromptName,
+} from "@/components/msg-automation/ai-prompt-kind";
 
-export type AiPromptKind = "our_custom" | "openai_managed";
+export type { AiPromptKind };
+export { slugifyPromptName };
+export const PROMPT_KIND_OPTIONS = AI_PROMPT_KIND_OPTIONS.map(({ value, label }) => ({
+  value,
+  label,
+}));
 
-export const PROMPT_KIND_OPTIONS: Array<{ value: AiPromptKind; label: string }> = [
-  { value: "our_custom", label: "Our Custom Prompt" },
-  { value: "openai_managed", label: "OpenAI Managed Prompt" },
-];
-
-/** Category = existing actionType values (central list). */
+/** Category — for now a single Msg Creator option (Our Custom Prompt only). */
 export const PROMPT_CATEGORY_OPTIONS = [
-  { value: "conversation-health", label: "conversation-health" },
-  { value: "capital", label: "capital" },
-  { value: "next-message", label: "next-message" },
-  { value: "improve", label: "improve" },
-  { value: "full-analysis", label: "full-analysis" },
-  { value: "custom", label: "custom" },
+  { value: "custom", label: "Msg Creator" },
 ] as const;
-
-export function slugifyPromptName(name: string): string {
-  const base = name
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 48);
-  return base || `prompt-${Date.now().toString(36)}`;
-}
 
 export interface PromptFormState {
   name: string;
   description: string;
   promptKind: AiPromptKind;
   category: string;
-  promptBody: string;
   openaiPromptId: string;
-  enabled: boolean;
-  tags: string;
   slug: string;
 }
 
@@ -58,10 +44,7 @@ const EMPTY: PromptFormState = {
   description: "",
   promptKind: "our_custom",
   category: "custom",
-  promptBody: "",
   openaiPromptId: "",
-  enabled: true,
-  tags: "",
   slug: "",
 };
 
@@ -74,8 +57,8 @@ interface PromptFormProps {
 }
 
 /**
- * Shared Add/Edit prompt form (Forms → Add Prompt and Msg Auto → Edit).
- * Field layout matches Date Entry table style.
+ * Add/Edit prompt form — same table layout as Add Daily Entry.
+ * Prompt type is a combobox (no type-picker cards / captions).
  */
 export function PromptForm({
   promptId,
@@ -105,10 +88,7 @@ export function PromptForm({
         description?: string;
         promptKind?: AiPromptKind | "chad_custom";
         actionType: string;
-        messages?: Array<{ role: string; content: string }>;
         providerBindings?: { openaiPromptId?: string };
-        enabled?: boolean;
-        tags?: string[];
         slug: string;
       };
       setState({
@@ -116,10 +96,7 @@ export function PromptForm({
         description: p.description ?? "",
         promptKind: p.promptKind === "openai_managed" ? "openai_managed" : "our_custom",
         category: p.actionType || "custom",
-        promptBody: (p.messages ?? []).map((m) => m.content).filter(Boolean).join("\n\n"),
         openaiPromptId: p.providerBindings?.openaiPromptId ?? "",
-        enabled: p.enabled !== false,
-        tags: Array.isArray(p.tags) ? p.tags.join(", ") : "",
         slug: p.slug ?? "",
       });
     } catch (err) {
@@ -144,16 +121,12 @@ export function PromptForm({
     setError(null);
     try {
       const slug = state.slug.trim() || slugifyPromptName(state.name);
-      const tags = state.tags
-        .split(",")
-        .map((t) => t.trim())
-        .filter(Boolean);
-      const messages =
+      const category =
         state.promptKind === "our_custom"
-          ? [{ role: "user" as const, content: state.promptBody }]
-          : state.promptBody.trim()
-            ? [{ role: "user" as const, content: state.promptBody }]
-            : [];
+          ? PROMPT_CATEGORY_OPTIONS.some((o) => o.value === state.category)
+            ? state.category
+            : PROMPT_CATEGORY_OPTIONS[0].value
+          : "custom";
       const providerBindings =
         state.promptKind === "openai_managed"
           ? { openaiPromptId: state.openaiPromptId.trim() }
@@ -163,12 +136,11 @@ export function PromptForm({
         slug,
         name: state.name.trim(),
         description: state.description.trim() || undefined,
-        actionType: state.category,
+        actionType: category,
         promptKind: state.promptKind,
-        enabled: state.enabled,
-        tags,
         provider: "openai" as const,
-        messages,
+        // Body is edited in the rich custom editor — form only creates metadata.
+        messages: [] as Array<{ role: "user"; content: string }>,
         providerBindings,
       };
 
@@ -188,7 +160,10 @@ export function PromptForm({
       }
       setResult({ type: "success", message: isEdit ? "Saved" : "Created" });
       if (!isEdit && json.data?.id) {
-        router.replace(`/dashboard/forms?form=add_prompt&promptId=${encodeURIComponent(json.data.id)}`);
+        const editUrl = returnTo.includes("/forms")
+          ? `/dashboard/forms?form=add_prompt&promptId=${encodeURIComponent(json.data.id)}`
+          : `/dashboard/msg-automation/ai-prompts/new?promptId=${encodeURIComponent(json.data.id)}`;
+        router.replace(editUrl);
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -198,15 +173,15 @@ export function PromptForm({
     }
   };
 
-  const fieldCell =
-    "border bg-amber-50 dark:bg-amber-950/30 px-2 py-1.5";
-  const labelCell = "whitespace-nowrap border bg-muted/60 px-3 py-2 font-semibold";
+  // Same layout as Add Daily Entry; dashboard-neutral cells (no amber / grey fills).
+  const fieldCell = "border bg-background px-2 py-1.5";
+  const labelCell = "whitespace-nowrap border bg-background px-3 py-2 font-semibold";
 
   return (
     <form onSubmit={handleSubmit} className={cn(FRAME_SECTION_SPACE_Y_CLASS, FRAME_SECTION_GAP_CLASS)}>
       <div
         className={cn(
-          "flex flex-wrap items-center gap-3 max-w-[460px] rounded-lg border bg-muted/10",
+          "flex flex-wrap items-center gap-3 max-w-[500px] rounded-lg border bg-muted/10",
           SAVE_FRAME_PADDING_CLASS
         )}
       >
@@ -214,8 +189,16 @@ export function PromptForm({
           {saving ? "Saving..." : "Save"}
         </Button>
         <Button type="button" variant="outline" onClick={() => router.push(returnTo)}>
-          Back
+          Full View
         </Button>
+        <Input
+          value={state.name}
+          readOnly
+          tabIndex={-1}
+          aria-label="Prompt name"
+          placeholder="Name"
+          className="h-9 min-w-[140px] flex-1 bg-muted font-mono"
+        />
         {loading && <span className="text-sm text-muted-foreground">Loading…</span>}
         {result && (
           <span
@@ -235,7 +218,7 @@ export function PromptForm({
 
       {error && <ErrorBox message={error} />}
 
-      <div className="max-w-xl rounded-lg border bg-muted/10 p-2">
+      <div className="max-w-[460px] rounded-lg border bg-muted/10 p-2">
         <table className="w-full border-collapse text-sm">
           <tbody>
             <tr>
@@ -279,42 +262,33 @@ export function PromptForm({
                 </select>
               </td>
             </tr>
-            <tr>
-              <td className={labelCell}>Category</td>
-              <td className={fieldCell}>
-                <select
-                  value={state.category}
-                  onChange={(e) => setField("category", e.target.value)}
-                  disabled={loading}
-                  className="h-8 w-full border-0 bg-transparent text-sm focus:outline-none focus:ring-1"
-                  aria-label="Category"
-                >
-                  {PROMPT_CATEGORY_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-              </td>
-            </tr>
             {state.promptKind === "our_custom" && (
               <tr>
-                <td className={labelCell}>Prompt</td>
+                <td className={labelCell}>Category</td>
                 <td className={fieldCell}>
-                  <Textarea
-                    value={state.promptBody}
-                    onChange={(e) => setField("promptBody", e.target.value)}
+                  <select
+                    value={
+                      PROMPT_CATEGORY_OPTIONS.some((o) => o.value === state.category)
+                        ? state.category
+                        : PROMPT_CATEGORY_OPTIONS[0].value
+                    }
+                    onChange={(e) => setField("category", e.target.value)}
                     disabled={loading}
-                    required
-                    rows={8}
-                    className="min-h-[140px] border-0 bg-transparent shadow-none focus-visible:ring-1"
-                  />
+                    className="h-8 w-full border-0 bg-transparent text-sm focus:outline-none focus:ring-1"
+                    aria-label="Category"
+                  >
+                    {PROMPT_CATEGORY_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
                 </td>
               </tr>
             )}
             {state.promptKind === "openai_managed" && (
               <tr>
-                <td className={labelCell}>OpenAI Prompt ID</td>
+                <td className={labelCell}>Prompt ID</td>
                 <td className={fieldCell}>
                   <Input
                     value={state.openaiPromptId}
@@ -326,32 +300,6 @@ export function PromptForm({
                 </td>
               </tr>
             )}
-            <tr>
-              <td className={labelCell}>Enabled</td>
-              <td className={fieldCell}>
-                <label className="inline-flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={state.enabled}
-                    onChange={(e) => setField("enabled", e.target.checked)}
-                    disabled={loading}
-                  />
-                  Enabled
-                </label>
-              </td>
-            </tr>
-            <tr>
-              <td className={labelCell}>Tags</td>
-              <td className={fieldCell}>
-                <Input
-                  value={state.tags}
-                  onChange={(e) => setField("tags", e.target.value)}
-                  disabled={loading}
-                  placeholder="comma, separated"
-                  className="h-8 border-0 bg-transparent shadow-none focus-visible:ring-1"
-                />
-              </td>
-            </tr>
           </tbody>
         </table>
       </div>

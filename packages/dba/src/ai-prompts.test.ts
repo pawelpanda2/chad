@@ -149,13 +149,6 @@ describe("createAiPrompt", () => {
       code: "VALIDATION",
     });
   });
-
-  it("rejects a prompt with no non-empty message content", async () => {
-    const { ops } = fakeOps([]);
-    await expect(
-      createAiPrompt({ ...baseInput, messages: [{ role: "user", content: "   " }] }, ops),
-    ).rejects.toMatchObject({ code: "VALIDATION" });
-  });
 });
 
 describe("updateAiPrompt", () => {
@@ -281,18 +274,18 @@ describe("promptKind mapping + conditional validation", () => {
     expect(list[0].enabled).toBe(true);
   });
 
-  it("our_custom still requires prompt body", async () => {
+  it("our_custom allows empty prompt body (filled later in editor)", async () => {
     const { ops } = fakeOps([]);
-    await expect(
-      createAiPrompt(
-        {
-          ...baseInput,
-          promptKind: "our_custom",
-          messages: [{ role: "user", content: "  " }],
-        },
-        ops,
-      ),
-    ).rejects.toMatchObject({ code: "VALIDATION" });
+    const created = await createAiPrompt(
+      {
+        ...baseInput,
+        promptKind: "our_custom",
+        messages: [],
+      },
+      ops,
+    );
+    expect(created.promptKind).toBe("our_custom");
+    expect(created.messages).toEqual([]);
   });
 
   it("openai_managed requires OpenAI Prompt ID, not body", async () => {

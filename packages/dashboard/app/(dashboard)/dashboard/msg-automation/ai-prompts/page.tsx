@@ -3,75 +3,46 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
-import {
-  FRAME_SECTION_GAP_CLASS,
-  LIST_ROW_CLASS,
-  LIST_ROW_WRAPPER_CLASS,
-} from "@/components/shared/layout-tokens";
+import { FRAME_SECTION_GAP_CLASS } from "@/components/shared/layout-tokens";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { ErrorBox } from "@/components/shared/error-box";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { Loader2, Plus, Save, Trash2 } from "lucide-react";
-import { PROMPT_KIND_OPTIONS, type AiPromptKind } from "@/components/msg-automation/prompt-form";
+import { Loader2, Plus } from "lucide-react";
+import {
+  aiPromptKindLabel,
+  normalizeAiPromptKind,
+  type AiPromptKind,
+} from "@/components/msg-automation/ai-prompt-kind";
 
 interface AiPromptSummary {
   id: string;
   slug: string;
   name: string;
-  schoolId?: string;
-  actionType: string;
-  promptKind?: AiPromptKind;
-  enabled?: boolean;
-  tags?: string[];
-  status: "draft" | "published" | "archived";
+  promptKind?: AiPromptKind | string;
   version: number;
-  provider: string;
-  updatedAt: string;
 }
 
-const DELETE_CONFIRM_WORDS = ["DELETE", "CONFIRM", "CLEAR", "WYCZYSC", "USUN", "PERMANENT"];
+/**
+ * Left-packed columns (phone-friendly): Ver | Name | Category | empty spacer.
+ * Content columns size to content; the last cell flex-grows so the row still
+ * fills the card without stretching Category to the right.
+ */
+const ROW =
+  "flex w-full items-stretch text-left";
 
-function StatusBadge({ status }: { status: AiPromptSummary["status"] }) {
-  if (status === "published") {
-    return (
-      <Badge className="border-transparent bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
-        Published
-      </Badge>
-    );
-  }
-  if (status === "archived") {
-    return <Badge variant="outline">Archived</Badge>;
-  }
-  return <Badge variant="secondary">Draft</Badge>;
-}
+const CELL =
+  "flex shrink-0 items-center border-border px-2.5 py-2.5 first:pl-3 [&:not(:last-child)]:border-r";
 
-function promptKindLabel(kind: AiPromptKind | undefined): string {
-  const k = kind === "openai_managed" ? "openai_managed" : "our_custom";
-  return PROMPT_KIND_OPTIONS.find((o) => o.value === k)?.label ?? k;
-}
+const NAME_CELL =
+  "flex min-w-0 max-w-[9.5rem] shrink flex-col items-start justify-center gap-0.5 border-border px-2.5 py-2.5 sm:max-w-[14rem] [&:not(:last-child)]:border-r";
+
+const SPACER_CELL = "min-w-0 flex-1";
 
 export default function AiPromptsListPage() {
   const router = useRouter();
   const [prompts, setPrompts] = useState<AiPromptSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-
-  const [deleteOpen, setDeleteOpen] = useState(false);
-  const [deleteWord, setDeleteWord] = useState("");
-  const [deleteInput, setDeleteInput] = useState("");
-  const [deleting, setDeleting] = useState(false);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -94,36 +65,8 @@ export default function AiPromptsListPage() {
     load();
   }, [load]);
 
-  const selected = prompts.find((p) => p.id === selectedId) ?? null;
-
-  const openDelete = () => {
-    if (!selected) return;
-    setDeleteWord(DELETE_CONFIRM_WORDS[Math.floor(Math.random() * DELETE_CONFIRM_WORDS.length)]);
-    setDeleteInput("");
-    setDeleteError(null);
-    setDeleteOpen(true);
-  };
-
-  const handleDelete = async () => {
-    if (!selected || deleteInput.trim() !== deleteWord) return;
-    setDeleting(true);
-    setDeleteError(null);
-    try {
-      const res = await fetch(`/api/msg-automation/ai-prompts/${encodeURIComponent(selected.id)}`, {
-        method: "DELETE",
-      });
-      const json = await res.json();
-      if (!res.ok || !json.success) {
-        throw new Error(json.error || `Delete failed (${res.status})`);
-      }
-      setDeleteOpen(false);
-      setSelectedId(null);
-      await load();
-    } catch (err) {
-      setDeleteError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setDeleting(false);
-    }
+  const openPrompt = (p: AiPromptSummary) => {
+    router.push(`/dashboard/msg-automation/ai-prompts/${encodeURIComponent(p.id)}`);
   };
 
   return (
@@ -136,43 +79,17 @@ export default function AiPromptsListPage() {
         <Button
           variant="outline"
           size="sm"
-          className="gap-2 h-7 text-xs"
-          onClick={() => router.push("/dashboard/forms?form=add_prompt")}
+          className="h-7 gap-2 text-xs"
+          onClick={() => router.push("/dashboard/msg-automation/ai-prompts/new")}
         >
           <Plus className="h-3 w-3" />
           Add
         </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          className="gap-2 h-7 text-xs"
-          disabled={!selected}
-          onClick={() => {
-            if (!selected) return;
-            router.push(
-              `/dashboard/forms?form=add_prompt&promptId=${encodeURIComponent(selected.id)}`
-            );
-          }}
-        >
-          <Save className="h-3 w-3" />
-          Edit
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          className="gap-2 h-7 text-xs"
-          disabled={!selected}
-          onClick={openDelete}
-        >
-          <Trash2 className="h-3 w-3" />
-          Delete
-        </Button>
-        <span className="ml-auto text-xs text-muted-foreground">{prompts.length} prompts</span>
       </div>
 
       <ErrorBox message={error} className="shrink-0" />
 
-      <div className={cn(LIST_ROW_WRAPPER_CLASS, "min-h-0 flex-1 overflow-auto")}>
+      <div className="min-h-0 flex-1 overflow-auto rounded-lg border bg-muted/10 p-3">
         {loading ? (
           <div className="flex items-center gap-2 p-4 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -181,74 +98,54 @@ export default function AiPromptsListPage() {
         ) : prompts.length === 0 ? (
           <div className="p-6 text-sm text-muted-foreground">No prompts yet</div>
         ) : (
-          <div className="divide-y">
+          <div className="space-y-2">
+            <div className={cn(ROW, "text-xs font-semibold uppercase tracking-wide text-muted-foreground")}>
+              <div className={cn(CELL, "w-12 justify-start")}>Ver.</div>
+              <div className={cn(NAME_CELL, "font-semibold")}>Name</div>
+              <div className={CELL}>Category</div>
+              <div className={SPACER_CELL} aria-hidden />
+            </div>
             {prompts.map((p) => {
-              const isSelected = p.id === selectedId;
+              const kind = normalizeAiPromptKind(p.promptKind);
+              const category = aiPromptKindLabel(kind);
               return (
                 <button
                   type="button"
                   key={p.id}
                   data-testid="ai-prompt-row"
-                  onClick={() => setSelectedId(p.id)}
-                  onDoubleClick={() =>
-                    router.push(
-                      `/dashboard/forms?form=add_prompt&promptId=${encodeURIComponent(p.id)}`
-                    )
-                  }
+                  data-prompt-kind={kind}
+                  onClick={() => openPrompt(p)}
                   className={cn(
-                    "flex w-full items-center gap-3 text-left",
-                    LIST_ROW_CLASS,
-                    isSelected && "bg-accent"
+                    ROW,
+                    "rounded-xl border border-border bg-background transition-colors hover:bg-accent/60"
                   )}
                 >
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-medium">{p.name}</div>
-                    <div className="truncate text-xs text-muted-foreground">
-                      {promptKindLabel(p.promptKind)} · {p.actionType}
-                    </div>
+                  <div className={cn(CELL, "w-12 font-semibold text-muted-foreground")}>
+                    v{p.version}
                   </div>
-                  <StatusBadge status={p.status} />
-                  <span className="shrink-0 text-xs text-muted-foreground">v{p.version}</span>
-                  <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">
-                    {p.enabled === false ? "Off" : "On"}
-                  </span>
+                  <div className={NAME_CELL}>
+                    <span className="w-full truncate text-sm font-semibold">{p.name}</span>
+                    <span className="w-full truncate text-xs text-muted-foreground">{p.slug}</span>
+                  </div>
+                  <div className={CELL}>
+                    <span
+                      className={cn(
+                        "inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold",
+                        kind === "openai_managed"
+                          ? "bg-blue-50 text-blue-800 dark:bg-blue-950/40 dark:text-blue-200"
+                          : "bg-violet-50 text-violet-800 dark:bg-violet-950/40 dark:text-violet-200"
+                      )}
+                    >
+                      {category}
+                    </span>
+                  </div>
+                  <div className={SPACER_CELL} aria-hidden />
                 </button>
               );
             })}
           </div>
         )}
       </div>
-
-      <Dialog open={deleteOpen} onOpenChange={(open) => !deleting && setDeleteOpen(open)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete this prompt?</DialogTitle>
-            <DialogDescription>
-              Permanently removes <strong>{selected?.name}</strong> from the registry. Type{" "}
-              <span className="font-mono font-bold">{deleteWord}</span> to confirm.
-            </DialogDescription>
-          </DialogHeader>
-          <Input
-            value={deleteInput}
-            onChange={(e) => setDeleteInput(e.target.value)}
-            placeholder={deleteWord}
-            autoFocus
-          />
-          {deleteError && <p className="text-sm text-destructive">{deleteError}</p>}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteOpen(false)} disabled={deleting}>
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handleDelete}
-              disabled={deleting || deleteInput.trim() !== deleteWord}
-            >
-              {deleting ? "Deleting…" : "Delete"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </DashboardPageShell>
   );
 }
