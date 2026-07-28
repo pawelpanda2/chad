@@ -7,7 +7,7 @@ import { FRAME_SECTION_GAP_CLASS } from "@/components/shared/layout-tokens";
 import { Button } from "@/components/ui/button";
 import { ErrorBox } from "@/components/shared/error-box";
 import { cn } from "@/lib/utils";
-import { ChevronRight, Loader2, Plus } from "lucide-react";
+import { Loader2, Plus } from "lucide-react";
 import {
   aiPromptKindLabel,
   normalizeAiPromptKind,
@@ -22,12 +22,21 @@ interface AiPromptSummary {
   version: number;
 }
 
-/** Ver. | Name | Category | › — left-aligned columns with cell dividers. */
-const ROW_GRID =
-  "grid w-full grid-cols-[3.25rem_minmax(0,1fr)_minmax(9rem,0.85fr)_1.75rem] items-stretch text-left";
+/**
+ * Left-packed columns (phone-friendly): Ver | Name | Category | empty spacer.
+ * Content columns size to content; the last cell flex-grows so the row still
+ * fills the card without stretching Category to the right.
+ */
+const ROW =
+  "flex w-full items-stretch text-left";
 
 const CELL =
-  "flex min-w-0 items-center border-border px-2.5 py-2.5 first:pl-3 last:pr-2 last:justify-end [&:not(:last-child)]:border-r";
+  "flex shrink-0 items-center border-border px-2.5 py-2.5 first:pl-3 [&:not(:last-child)]:border-r";
+
+const NAME_CELL =
+  "flex min-w-0 max-w-[9.5rem] shrink flex-col items-start justify-center gap-0.5 border-border px-2.5 py-2.5 sm:max-w-[14rem] [&:not(:last-child)]:border-r";
+
+const SPACER_CELL = "min-w-0 flex-1";
 
 export default function AiPromptsListPage() {
   const router = useRouter();
@@ -90,16 +99,11 @@ export default function AiPromptsListPage() {
           <div className="p-6 text-sm text-muted-foreground">No prompts yet</div>
         ) : (
           <div className="space-y-2">
-            <div
-              className={cn(
-                ROW_GRID,
-                "px-0 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
-              )}
-            >
-              <div className="px-2.5 first:pl-3">Ver.</div>
-              <div className="px-2.5">Name</div>
-              <div className="px-2.5">Category</div>
-              <div aria-hidden />
+            <div className={cn(ROW, "text-xs font-semibold uppercase tracking-wide text-muted-foreground")}>
+              <div className={cn(CELL, "w-12 justify-start")}>Ver.</div>
+              <div className={cn(NAME_CELL, "font-semibold")}>Name</div>
+              <div className={CELL}>Category</div>
+              <div className={SPACER_CELL} aria-hidden />
             </div>
             {prompts.map((p) => {
               const kind = normalizeAiPromptKind(p.promptKind);
@@ -112,21 +116,21 @@ export default function AiPromptsListPage() {
                   data-prompt-kind={kind}
                   onClick={() => openPrompt(p)}
                   className={cn(
-                    ROW_GRID,
+                    ROW,
                     "rounded-xl border border-border bg-background transition-colors hover:bg-accent/60"
                   )}
                 >
-                  <div className={cn(CELL, "font-semibold text-muted-foreground")}>
+                  <div className={cn(CELL, "w-12 font-semibold text-muted-foreground")}>
                     v{p.version}
                   </div>
-                  <div className={cn(CELL, "flex-col items-start justify-center gap-0.5")}>
+                  <div className={NAME_CELL}>
                     <span className="w-full truncate text-sm font-semibold">{p.name}</span>
                     <span className="w-full truncate text-xs text-muted-foreground">{p.slug}</span>
                   </div>
                   <div className={CELL}>
                     <span
                       className={cn(
-                        "inline-flex max-w-full truncate rounded-full px-2.5 py-1 text-xs font-semibold",
+                        "inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold",
                         kind === "openai_managed"
                           ? "bg-blue-50 text-blue-800 dark:bg-blue-950/40 dark:text-blue-200"
                           : "bg-violet-50 text-violet-800 dark:bg-violet-950/40 dark:text-violet-200"
@@ -135,9 +139,7 @@ export default function AiPromptsListPage() {
                       {category}
                     </span>
                   </div>
-                  <div className={CELL}>
-                    <ChevronRight className="h-5 w-5 text-muted-foreground" />
-                  </div>
+                  <div className={SPACER_CELL} aria-hidden />
                 </button>
               );
             })}
