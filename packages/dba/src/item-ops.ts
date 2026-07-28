@@ -14,11 +14,12 @@
  * never touch a provider or a config flag themselves.
  */
 
-import { getDataRouter } from "./data-router-instance.js";
+import { getDataRouter, getPostgresProvider, getMongoProvider } from "./data-router-instance.js";
 import { getCurrentRepoGuid } from "./repo-context.js";
 import { systemClock } from "./data-clock.js";
 import { buildCreateChildItemCommand, buildPutItemCommand } from "./data-commands.js";
 import { repoAndLocaToAddress, type CpItem } from "./cp-model.js";
+import { loadDataProvidersConfig } from "./data-providers/config.js";
 
 /** Resolves a logical name path from the repo root, e.g. `["leads", "all items"]`. */
 export async function resolveByNames(names: string[]): Promise<CpItem | null> {
@@ -111,4 +112,32 @@ export async function putItem(item: CpItem): Promise<CpItem> {
   const command = buildPutItemCommand(item, systemClock);
   const result = await getDataRouter().executeWrite(command);
   return result.item;
+}
+
+/**
+ * Permanently removes a single item by address. Bypasses `DbaDataRouter`
+ * and calls the primary provider directly — same convention already
+ * established by `leads.ts`'s `deleteDailyEntry`/`deleteDateEntry` (the
+ * router has no "delete" command; Postgres never acts as a Mongo
+ * follower — or vice versa — so there is no follower-replication concern
+ * a router-level delete would need to solve here). The Content Provider's
+ * own Delete is a confirmed non-functional stub, so this throws (never a
+ * pretend success) when only that backend is active.
+ *
+ * @returns `false` if no item existed at that address (nothing to delete).
+ */
+export async function deleteItemByAddress(address: string): Promise<boolean> {
+  const config = loadDataProvidersConfig();
+  const provider =
+    config.primaryBackend === "postgres"
+      ? getPostgresProvider()
+      : config.primaryBackend === "mongo"
+        ? getMongoProvider()
+        : null;
+  if (!provider) {
+    throw new Error(
+      "Item deletion requires the Mongo or Postgres backend — the Content Provider's own Delete is a non-functional stub."
+    );
+  }
+  return provider.deleteItem(address);
 }

@@ -29,7 +29,14 @@ export async function GET() {
 		if (!user) {
 			return NextResponse.json({ user: null });
 		}
-		return NextResponse.json({ user: { username: user.username, displayName: user.username } });
+		return NextResponse.json({
+			user: {
+				username: user.username,
+				displayName: user.username,
+				role: user.role,
+				isAdmin: user.isAdmin,
+			},
+		});
 	} catch (error) {
 		console.error("Session error:", error);
 		return NextResponse.json({ user: null });

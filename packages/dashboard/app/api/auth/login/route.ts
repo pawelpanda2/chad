@@ -88,6 +88,7 @@ export async function POST(request: NextRequest) {
 					repoGuid: user.repoGuid,
 					username: user.username,
 					displayName: user.username,
+					role: user.role ?? (user.username.toLowerCase() === "pawel_f" ? "admin" : "user"),
 				},
 			},
 			{
