@@ -345,7 +345,8 @@ function assertPromptKindPayload(
     }
     return messages ?? [];
   }
-  return requireContent(messages);
+  // our_custom: body may be empty on create (filled later in the rich editor).
+  return messages ?? [];
 }
 
 function assertNoDuplicateSlug(prompts: AiPromptDefinition[], slug: string, excludeId?: string): void {

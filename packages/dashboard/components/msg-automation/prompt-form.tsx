@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { ErrorBox } from "@/components/shared/error-box";
 import {
   FRAME_SECTION_GAP_CLASS,
@@ -36,11 +35,7 @@ export interface PromptFormState {
   description: string;
   promptKind: AiPromptKind;
   category: string;
-  promptBody: string;
   openaiPromptId: string;
-  openaiPromptVersion: string;
-  enabled: boolean;
-  tags: string;
   slug: string;
 }
 
@@ -49,11 +44,7 @@ const EMPTY: PromptFormState = {
   description: "",
   promptKind: "our_custom",
   category: "custom",
-  promptBody: "",
   openaiPromptId: "",
-  openaiPromptVersion: "",
-  enabled: true,
-  tags: "",
   slug: "",
 };
 
@@ -97,10 +88,7 @@ export function PromptForm({
         description?: string;
         promptKind?: AiPromptKind | "chad_custom";
         actionType: string;
-        messages?: Array<{ role: string; content: string }>;
-        providerBindings?: { openaiPromptId?: string; openaiPromptVersion?: string };
-        enabled?: boolean;
-        tags?: string[];
+        providerBindings?: { openaiPromptId?: string };
         slug: string;
       };
       setState({
@@ -108,11 +96,7 @@ export function PromptForm({
         description: p.description ?? "",
         promptKind: p.promptKind === "openai_managed" ? "openai_managed" : "our_custom",
         category: p.actionType || "custom",
-        promptBody: (p.messages ?? []).map((m) => m.content).filter(Boolean).join("\n\n"),
         openaiPromptId: p.providerBindings?.openaiPromptId ?? "",
-        openaiPromptVersion: p.providerBindings?.openaiPromptVersion ?? "",
-        enabled: p.enabled !== false,
-        tags: Array.isArray(p.tags) ? p.tags.join(", ") : "",
         slug: p.slug ?? "",
       });
     } catch (err) {
@@ -137,34 +121,26 @@ export function PromptForm({
     setError(null);
     try {
       const slug = state.slug.trim() || slugifyPromptName(state.name);
-      const tags = state.tags
-        .split(",")
-        .map((t) => t.trim())
-        .filter(Boolean);
-      const messages =
+      const category =
         state.promptKind === "our_custom"
-          ? [{ role: "user" as const, content: state.promptBody }]
-          : state.promptBody.trim()
-            ? [{ role: "user" as const, content: state.promptBody }]
-            : [];
+          ? PROMPT_CATEGORY_OPTIONS.some((o) => o.value === state.category)
+            ? state.category
+            : PROMPT_CATEGORY_OPTIONS[0].value
+          : "custom";
       const providerBindings =
         state.promptKind === "openai_managed"
-          ? {
-              openaiPromptId: state.openaiPromptId.trim(),
-              openaiPromptVersion: state.openaiPromptVersion.trim() || undefined,
-            }
+          ? { openaiPromptId: state.openaiPromptId.trim() }
           : undefined;
 
       const payload = {
         slug,
         name: state.name.trim(),
         description: state.description.trim() || undefined,
-        actionType: state.category,
+        actionType: category,
         promptKind: state.promptKind,
-        enabled: state.enabled,
-        tags,
         provider: "openai" as const,
-        messages,
+        // Body is edited in the rich custom editor — form only creates metadata.
+        messages: [] as Array<{ role: "user"; content: string }>,
         providerBindings,
       };
 
@@ -310,74 +286,20 @@ export function PromptForm({
                 </td>
               </tr>
             )}
-            {state.promptKind === "our_custom" && (
+            {state.promptKind === "openai_managed" && (
               <tr>
-                <td className={labelCell}>Prompt</td>
+                <td className={labelCell}>Prompt ID</td>
                 <td className={fieldCell}>
-                  <Textarea
-                    value={state.promptBody}
-                    onChange={(e) => setField("promptBody", e.target.value)}
+                  <Input
+                    value={state.openaiPromptId}
+                    onChange={(e) => setField("openaiPromptId", e.target.value)}
                     disabled={loading}
                     required
-                    rows={8}
-                    className="min-h-[140px] border-0 bg-transparent shadow-none focus-visible:ring-1"
+                    className="h-8 border-0 bg-transparent shadow-none font-mono focus-visible:ring-1"
                   />
                 </td>
               </tr>
             )}
-            {state.promptKind === "openai_managed" && (
-              <>
-                <tr>
-                  <td className={labelCell}>Prompt ID</td>
-                  <td className={fieldCell}>
-                    <Input
-                      value={state.openaiPromptId}
-                      onChange={(e) => setField("openaiPromptId", e.target.value)}
-                      disabled={loading}
-                      required
-                      className="h-8 border-0 bg-transparent shadow-none font-mono focus-visible:ring-1"
-                    />
-                  </td>
-                </tr>
-                <tr>
-                  <td className={labelCell}>Version</td>
-                  <td className={fieldCell}>
-                    <Input
-                      value={state.openaiPromptVersion}
-                      onChange={(e) => setField("openaiPromptVersion", e.target.value)}
-                      disabled={loading}
-                      className="h-8 border-0 bg-transparent shadow-none focus-visible:ring-1"
-                    />
-                  </td>
-                </tr>
-              </>
-            )}
-            <tr>
-              <td className={labelCell}>Enabled</td>
-              <td className={fieldCell}>
-                <label className="inline-flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={state.enabled}
-                    onChange={(e) => setField("enabled", e.target.checked)}
-                    disabled={loading}
-                  />
-                  Enabled
-                </label>
-              </td>
-            </tr>
-            <tr>
-              <td className={labelCell}>Tags</td>
-              <td className={fieldCell}>
-                <Input
-                  value={state.tags}
-                  onChange={(e) => setField("tags", e.target.value)}
-                  disabled={loading}
-                  placeholder="comma, separated"
-                  className="h-8 border-0 bg-transparent shadow-none focus-visible:ring-1"
-                />
-              </td>
-            </tr>
           </tbody>
         </table>
       </div>
