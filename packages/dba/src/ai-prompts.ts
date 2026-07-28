@@ -313,17 +313,6 @@ function requireName(name: string | undefined): string {
   return trimmed;
 }
 
-function requireContent(messages: AiPromptMessage[] | undefined): AiPromptMessage[] {
-  const list = messages ?? [];
-  if (!list.some((m) => m.content.trim())) {
-    throw new AiPromptsOperationError(
-      "VALIDATION",
-      "at least one prompt message with non-empty content is required",
-    );
-  }
-  return list;
-}
-
 export function normalizeAiPromptKind(
   kind: AiPromptKind | "chad_custom" | undefined | null,
 ): AiPromptKind {
