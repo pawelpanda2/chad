@@ -210,7 +210,7 @@ export function PromptForm({
     <form onSubmit={handleSubmit} className={cn(FRAME_SECTION_SPACE_Y_CLASS, FRAME_SECTION_GAP_CLASS)}>
       <div
         className={cn(
-          "flex flex-wrap items-center gap-3 max-w-[460px] rounded-lg border bg-muted/10",
+          "flex flex-wrap items-center gap-3 max-w-[500px] rounded-lg border bg-muted/10",
           SAVE_FRAME_PADDING_CLASS
         )}
       >
@@ -218,8 +218,16 @@ export function PromptForm({
           {saving ? "Saving..." : "Save"}
         </Button>
         <Button type="button" variant="outline" onClick={() => router.push(returnTo)}>
-          Back
+          Full View
         </Button>
+        <Input
+          value={state.name}
+          readOnly
+          tabIndex={-1}
+          aria-label="Prompt name"
+          placeholder="Name"
+          className="h-9 min-w-[140px] flex-1 bg-muted font-mono"
+        />
         {loading && <span className="text-sm text-muted-foreground">Loading…</span>}
         {result && (
           <span

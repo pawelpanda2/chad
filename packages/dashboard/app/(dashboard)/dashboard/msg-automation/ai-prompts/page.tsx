@@ -22,6 +22,13 @@ interface AiPromptSummary {
   version: number;
 }
 
+/** Ver. | Name | Category | › — left-aligned columns with cell dividers. */
+const ROW_GRID =
+  "grid w-full grid-cols-[3.25rem_minmax(0,1fr)_minmax(9rem,0.85fr)_1.75rem] items-stretch text-left";
+
+const CELL =
+  "flex min-w-0 items-center border-border px-2.5 py-2.5 first:pl-3 last:pr-2 last:justify-end [&:not(:last-child)]:border-r";
+
 export default function AiPromptsListPage() {
   const router = useRouter();
   const [prompts, setPrompts] = useState<AiPromptSummary[]>([]);
@@ -83,10 +90,16 @@ export default function AiPromptsListPage() {
           <div className="p-6 text-sm text-muted-foreground">No prompts yet</div>
         ) : (
           <div className="space-y-2">
-            <div className="grid grid-cols-[minmax(0,1.7fr)_minmax(160px,0.9fr)_28px] gap-3 px-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              <div>Name</div>
-              <div>Category</div>
-              <div />
+            <div
+              className={cn(
+                ROW_GRID,
+                "rounded-xl border border-border bg-muted/30 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+              )}
+            >
+              <div className={CELL}>Ver.</div>
+              <div className={CELL}>Name</div>
+              <div className={CELL}>Category</div>
+              <div className={CELL} aria-hidden />
             </div>
             {prompts.map((p) => {
               const kind = normalizeAiPromptKind(p.promptKind);
@@ -99,21 +112,18 @@ export default function AiPromptsListPage() {
                   data-prompt-kind={kind}
                   onClick={() => openPrompt(p)}
                   className={cn(
-                    "grid w-full grid-cols-[minmax(0,1.7fr)_minmax(160px,0.9fr)_28px] items-center gap-3 rounded-xl border border-border bg-background px-3 py-3 text-left transition-colors hover:bg-accent/60"
+                    ROW_GRID,
+                    "rounded-xl border border-border bg-background transition-colors hover:bg-accent/60"
                   )}
                 >
-                  <div className="min-w-0">
-                    <div className="flex min-w-0 items-baseline gap-2">
-                      <span className="shrink-0 text-xs font-semibold text-muted-foreground">
-                        v{p.version}
-                      </span>
-                      <span className="truncate text-sm font-semibold">{p.name}</span>
-                    </div>
-                    <div className="truncate pl-0 text-xs text-muted-foreground sm:pl-7">
-                      {p.slug}
-                    </div>
+                  <div className={cn(CELL, "font-semibold text-muted-foreground")}>
+                    v{p.version}
                   </div>
-                  <div>
+                  <div className={cn(CELL, "flex-col items-start justify-center gap-0.5")}>
+                    <span className="w-full truncate text-sm font-semibold">{p.name}</span>
+                    <span className="w-full truncate text-xs text-muted-foreground">{p.slug}</span>
+                  </div>
+                  <div className={CELL}>
                     <span
                       className={cn(
                         "inline-flex max-w-full truncate rounded-full px-2.5 py-1 text-xs font-semibold",
@@ -125,7 +135,9 @@ export default function AiPromptsListPage() {
                       {category}
                     </span>
                   </div>
-                  <ChevronRight className="h-5 w-5 justify-self-end text-muted-foreground" />
+                  <div className={CELL}>
+                    <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                  </div>
                 </button>
               );
             })}
