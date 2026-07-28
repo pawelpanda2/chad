@@ -17,27 +17,42 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = path.resolve(__dirname, "../../..");
 
 const QNAP_TAILSCALE_HOST = "100.117.139.83";
-const QNAP_MONGO_PORT = "12040";
+const QNAP_MONGO_PORT = "12040"; // Beeper Mongo only — CHAD's own chad-mongodb was physically removed 2026-07-27.
+const QNAP_POSTGRES_PORT = "12042";
 
 export function loadQnapEnv() {
   dotenv.config({ path: path.join(REPO_ROOT, ".env.local") });
-  const user = process.env.MONGO_ROOT_USERNAME;
-  const pass = process.env.MONGO_ROOT_PASSWORD;
-  if (!user || !pass) {
+  dotenv.config({ path: path.join(REPO_ROOT, ".env.qnap"), override: true });
+
+  const pgUser = process.env.POSTGRES_USER || "chad";
+  const pgPass = process.env.POSTGRES_PASSWORD;
+  const pgDb = process.env.POSTGRES_DB || "chad";
+  if (!pgPass) {
     throw new Error(
-      "MONGO_ROOT_USERNAME/MONGO_ROOT_PASSWORD not set (expected in .env.local, gitignored) — " +
-        "cannot connect to QNAP's real Mongo for Story 78 QNAP-TEST-targeted tests."
+      "POSTGRES_PASSWORD not set (expected in .env.qnap, gitignored) — cp_items/cp_history for " +
+        "QNAP-TEST-targeted tests are read through PostgreSQL (chad-postgres), CHAD's real primary " +
+        "backend since 2026-07-27's full Mongo removal."
     );
   }
-  process.env.MONGODB_URI = `mongodb://${user}:${pass}@${QNAP_TAILSCALE_HOST}:${QNAP_MONGO_PORT}/chad?authSource=admin&directConnection=true`;
-  process.env.BEEPER_MONGODB_URI = `mongodb://${user}:${pass}@${QNAP_TAILSCALE_HOST}:${QNAP_MONGO_PORT}?authSource=admin&directConnection=true`;
-  // QNAP TEST's real runtime shape (docker-compose.qnap.test.yml) —
-  // Content Provider is not part of that stack at all (Mongo-only runtime).
-  // Without this, dba's dual-backend read path tries to also reach Content
-  // Provider (default contentProviderEnabled: true) and fails on a missing
-  // CONTENT_PROVIDER_API_URL that's irrelevant to this Story's scope.
-  process.env.DBA_MONGO_ENABLED = "true";
+  process.env.POSTGRES_URI = `postgres://${encodeURIComponent(pgUser)}:${encodeURIComponent(pgPass)}@${QNAP_TAILSCALE_HOST}:${QNAP_POSTGRES_PORT}/${pgDb}`;
+  process.env.DBA_PRIMARY_BACKEND = "postgres";
+  process.env.DBA_POSTGRES_ENABLED = "true";
+  process.env.DBA_MONGO_ENABLED = "false";
+  // QNAP TEST's real runtime shape (docker-compose.server1.test-prod.dashboard.yml)
+  // — Content Provider is not part of that stack at all. Without this, dba's
+  // dual-backend read path tries to also reach Content Provider (default
+  // contentProviderEnabled: true) and fails on a missing CONTENT_PROVIDER_API_URL
+  // that's irrelevant here.
   process.env.DBA_CONTENT_PROVIDER_ENABLED = "false";
+
+  // Beeper Mongo — untouched, separate from CHAD's own cp_items/cp_history.
+  // Only set if the (optional, Beeper-only) root credentials are present;
+  // never required for a CHAD-only test that never touches Beeper data.
+  const mongoUser = process.env.MONGO_ROOT_USERNAME;
+  const mongoPass = process.env.MONGO_ROOT_PASSWORD;
+  if (mongoUser && mongoPass) {
+    process.env.BEEPER_MONGODB_URI = `mongodb://${mongoUser}:${mongoPass}@${QNAP_TAILSCALE_HOST}:${QNAP_MONGO_PORT}?authSource=admin&directConnection=true`;
+  }
 }
 
 /** test3's real login password — never hardcoded/committed, see Story 78 01_input.md Input 3. */

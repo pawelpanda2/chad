@@ -118,9 +118,12 @@ test.describe("QNAP TEST — History -> Google Sheets info page (Story 78 split)
     const res = await responsePromise;
     const json = await res.json();
     expect(json.success).toBe(true);
-    // syncWritesEnabled must be false on TEST regardless of infoConfigured
-    // (GOOGLE_SHEETS_ENABLED is deliberately never set on TEST — Input 1 §5.1).
-    expect(json.data.syncWritesEnabled).toBe(false);
+    // syncWritesEnabled must be true on TEST: TEST and PROD share the same
+    // PostgreSQL database, so any change made on TEST (e.g. by test3) must
+    // sync to Google Sheets exactly like it would on PROD — see
+    // `production-guard.ts`'s own header comment ("test" is an allowed,
+    // intentional writes-enabled environment when GOOGLE_SHEETS_ENABLED=true).
+    expect(json.data.syncWritesEnabled).toBe(true);
     // The route must never carry a private key field under any name.
     const raw = JSON.stringify(json.data).toLowerCase();
     expect(raw).not.toContain("privatekey");

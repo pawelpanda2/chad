@@ -1,11 +1,16 @@
 // Real QNAP-TEST-targeted integration tests (Story 78, Input 2) — runs
-// against the ACTUAL deployed QNAP TEST Dashboard + shared Mongo, using
-// test3, isolated by repoGuid. No local/isolated stack, no mocking of
-// Change Streams — see backlog/stories/78/02_plan.md §1 for why.
+// against the ACTUAL deployed QNAP TEST Dashboard, using test3, isolated by
+// repoGuid. No local/isolated stack. cp_items/cp_history are read through
+// `dba`'s own backend-dispatched functions (`getItemByAddress`/
+// `listCpHistory`), never a direct database driver — this repo's real
+// primary backend is PostgreSQL (2026-07-27 full CHAD-Mongo removal, see
+// `ai-docs/databases/red-rules.md`), and history is written synchronously
+// by a Postgres trigger inside the same mutation transaction, not by an
+// async Mongo Change-Stream worker (Story 80 dispatcher — same public shape
+// regardless of backend, see `packages/dba/src/cp-history.ts`).
 //
-// Requires (both gitignored, local-only env vars):
+// Requires (gitignored, local-only env var):
 //   E2E_TEST3_PASSWORD   — test3's real login password
-//   MONGO_ROOT_USERNAME / MONGO_ROOT_PASSWORD (from .env.local)
 //
 // Skips itself (not fails) if QNAP TEST isn't reachable from this machine
 // (e.g. Tailscale down) — this is an integration test against real
@@ -16,7 +21,7 @@ import { loadQnapEnv, getTest3Password, QNAP_TEST_BASE_URL } from "../../../supp
 
 loadQnapEnv();
 
-const { getCpHistoryWorkerStatus, getMongoDb, closeMongoConnection } = await import("../../../../packages/dba/dist/index.js");
+const { getItemByAddress, listCpHistory, closePostgresConnection } = await import("../../../../packages/dba/dist/index.js");
 const { TEST3_REPO_GUID, assertTest3Scoped } = await import("../../../../packages/dba/dist/testing/test3-guard.js");
 
 async function loginAsTest3() {
@@ -38,10 +43,12 @@ async function authedFetch(path, init = {}) {
   });
 }
 
-// The real history-worker processes a Change Stream event asynchronously,
-// slightly after the write's own HTTP response returns — never assume it's
-// already landed, poll with a timeout instead (Input 1's own "no sleep()"
-// rule — this is a bounded poll with a clear failure, not a fixed delay).
+// Postgres's history trigger writes cp_history synchronously, inside the
+// same transaction as the mutation itself — unlike the old Mongo Change-
+// Stream worker, there is no expected async lag. Still poll with a bounded
+// timeout rather than asserting on the very first read (Input 1's own "no
+// sleep()" rule) — defense against read-replica-style staleness, not a
+// known real delay.
 async function pollUntilTrue(fn, { timeoutMs = 10_000, intervalMs = 250 } = {}) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
@@ -72,7 +79,7 @@ if (qnapReachable) {
 }
 
 afterAll(async () => {
-  await closeMongoConnection().catch(() => {});
+  await closePostgresConnection().catch(() => {});
 });
 
 describe.skipIf(!qnapReachable)("QNAP TEST — test3 real login + isolation", () => {
@@ -124,9 +131,8 @@ describe.skipIf(!qnapReachable)("QNAP TEST — Daily/Dates round-trip + AUTO col
     const result = await res.json();
     expect(result.success).toBe(true);
 
-    const db = await getMongoDb();
-    const doc = await db.collection("cp_items").findOne({ "config.address": `${TEST3_REPO_GUID}/${row.loca}` });
-    expect(doc.body).not.toContain("PULLS AUTO");
+    const item = await getItemByAddress(`${TEST3_REPO_GUID}/${row.loca}`);
+    expect(item.body).not.toContain("PULLS AUTO");
   });
 
   it("cross-repo PATCH (a loca that does not belong to test3) is rejected, not silently redirected", async () => {
@@ -140,26 +146,15 @@ describe.skipIf(!qnapReachable)("QNAP TEST — Daily/Dates round-trip + AUTO col
   });
 });
 
-describe.skipIf(!qnapReachable)("QNAP TEST — cp_history for test3's seeded items (real Change Stream, no manual cp_history inserts)", () => {
-  it("every seeded item has a real insert history entry with correct actor/address, not backfilled", async () => {
-    const db = await getMongoDb();
-    const docs = await db
-      .collection("cp_history")
-      .find({ address: { $regex: `^${TEST3_REPO_GUID}/`, $options: "i" }, "changes.config": { $exists: true } })
-      .toArray();
-    const markerInserts = docs.filter((d) => d.operationType === "insert");
+describe.skipIf(!qnapReachable)("QNAP TEST — cp_history for test3's seeded items (real PostgreSQL trigger, no manual cp_history inserts)", () => {
+  it("every seeded item has a real insert history entry with correct actor/address", async () => {
+    const { items } = await listCpHistory({ repoGuid: TEST3_REPO_GUID, operationType: "insert", pageSize: 200 });
+    const markerInserts = items.filter((d) => d.address.startsWith(TEST3_REPO_GUID));
     expect(markerInserts.length).toBeGreaterThan(0);
     for (const d of markerInserts) {
       expect(d.address.startsWith(TEST3_REPO_GUID)).toBe(true);
-      expect(d.backfilled).toBeUndefined();
       if (d.actor) expect(d.actor.repoGuid).toBe(TEST3_REPO_GUID);
     }
-  });
-
-  it("the shared history-worker is healthy (diagnostic only, never restarted/reset by this test)", async () => {
-    const status = await getCpHistoryWorkerStatus();
-    expect(status).not.toBeNull();
-    expect(["running"]).toContain(status.status);
   });
 });
 
@@ -182,15 +177,14 @@ describe.skipIf(!qnapReachable)("QNAP TEST — real DELETE for Daily and Date En
     const { entries } = await listRes.json();
     expect(entries.some((e) => e.loca === created.loca)).toBe(false);
 
-    const db = await getMongoDb();
-    const doc = await db.collection("cp_items").findOne({ "config.address": `${TEST3_REPO_GUID}/${created.loca}` });
-    expect(doc).toBeNull();
+    const item = await getItemByAddress(`${TEST3_REPO_GUID}/${created.loca}`);
+    expect(item).toBeNull();
 
     const gotDeleteEvent = await pollUntilTrue(async () => {
-      const docs = await db.collection("cp_history").find({ address: `${TEST3_REPO_GUID}/${created.loca}` }).toArray();
-      return docs.some((d) => d.operationType === "delete");
+      const { items } = await listCpHistory({ repoGuid: TEST3_REPO_GUID, addressPrefix: `${TEST3_REPO_GUID}/${created.loca}` });
+      return items.some((d) => d.operationType === "delete" && d.address === `${TEST3_REPO_GUID}/${created.loca}`);
     });
-    expect(gotDeleteEvent, "expected a real delete event in cp_history, captured by the actual history-worker").toBe(true);
+    expect(gotDeleteEvent, "expected a real delete event in cp_history, written by the Postgres history trigger").toBe(true);
 
     // Second DELETE of the same, already-deleted loca must be a controlled
     // failure, not a silent success or an unrelated deletion (Input 1 §6).
@@ -217,9 +211,8 @@ describe.skipIf(!qnapReachable)("QNAP TEST — real DELETE for Daily and Date En
     const { entries } = await listRes.json();
     expect(entries.some((e) => e.loca === created.loca)).toBe(false);
 
-    const db = await getMongoDb();
-    const doc = await db.collection("cp_items").findOne({ "config.address": `${TEST3_REPO_GUID}/${created.loca}` });
-    expect(doc).toBeNull();
+    const item = await getItemByAddress(`${TEST3_REPO_GUID}/${created.loca}`);
+    expect(item).toBeNull();
   });
 
   it("cross-repo DELETE (a loca not owned by test3) is rejected, never deletes another repo's item", async () => {
