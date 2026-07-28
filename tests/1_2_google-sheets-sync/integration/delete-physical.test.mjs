@@ -15,8 +15,8 @@
 // must be safe to run in a sandbox with no docker-compose stack up.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { loadTablesSyncEnv, probeMongoReachable, DBA_DIST } from "../helpers/env.mjs";
-import { FakeGoogleSheetsClient, SHEET_NAMES, dailyTarget, datesTarget, testRepoGuid, buildPayload } from "../helpers/fake-sheets.mjs";
+import { loadTablesSyncEnv, probeMongoReachable, DBA_DIST } from "../../support/database/tables-sync-env.mjs";
+import { FakeGoogleSheetsClient, SHEET_NAMES, dailyTarget, datesTarget, testRepoGuid, buildPayload } from "../../support/google-sheets/fake-sheets.mjs";
 
 loadTablesSyncEnv();
 process.env.DBA_PRIMARY_BACKEND = "mongo";

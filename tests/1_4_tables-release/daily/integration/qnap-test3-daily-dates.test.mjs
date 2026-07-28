@@ -12,12 +12,12 @@
 // infrastructure, not a unit test; a network precondition failing is a
 // distinct signal from a code regression.
 import { describe, it, expect, afterAll } from "vitest";
-import { loadQnapEnv, getTest3Password, QNAP_TEST_BASE_URL } from "../support/qnap-env.mjs";
+import { loadQnapEnv, getTest3Password, QNAP_TEST_BASE_URL } from "../../../support/database/qnap-env.mjs";
 
 loadQnapEnv();
 
-const { getCpHistoryWorkerStatus, getMongoDb, closeMongoConnection } = await import("../../packages/dba/dist/index.js");
-const { TEST3_REPO_GUID, assertTest3Scoped } = await import("../../packages/dba/dist/testing/test3-guard.js");
+const { getCpHistoryWorkerStatus, getMongoDb, closeMongoConnection } = await import("../../../../packages/dba/dist/index.js");
+const { TEST3_REPO_GUID, assertTest3Scoped } = await import("../../../../packages/dba/dist/testing/test3-guard.js");
 
 async function loginAsTest3() {
   const res = await fetch(`${QNAP_TEST_BASE_URL}/api/auth/login`, {

@@ -81,7 +81,7 @@ type SortDir = "asc" | "desc";
 // Single source of truth (no more locally-duplicated DATE_COLUMNS/
 // DAILY_COLUMNS): both column lists now come straight from dba's own
 // Google Sheets mapper — the same constants `assertUiColumnsMatchMapper`
-// (tests/tables-sync) checks this table against. `ITEM_NUMBER_COLUMN`
+// (tests/1_4_tables-release) checks this table against. `ITEM_NUMBER_COLUMN`
 // ("N") is filtered out here — it's a Sheets-only, always-visible column;
 // the Dashboard table has its own separate "n" toggle button instead (see
 // `entry.itemName` usage below).

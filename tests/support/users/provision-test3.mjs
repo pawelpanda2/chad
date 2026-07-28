@@ -5,14 +5,14 @@
 // real app uses, inside runWithRepoContext, so it's indistinguishable from
 // a real user's own writes — never a hand-rolled cp_items insert.
 //
-// Usage: node test/support/provision-test3.mjs
-import { loadQnapEnv } from "./qnap-env.mjs";
+// Usage: node tests/support/users/provision-test3.mjs
+import { loadQnapEnv } from "../database/qnap-env.mjs";
 loadQnapEnv();
 
 const { runWithRepoContext, saveDailyEntry, saveDateEntry, getAllDailyEntries, getAllDateEntries, generateEntryName } =
-  await import("../../packages/dba/dist/index.js");
+  await import("../../../packages/dba/dist/index.js");
 const { TEST3_REPO_GUID, TEST3_USERNAME, assertTest3Scoped, assertIsTest3Session } = await import(
-  "../../packages/dba/dist/testing/test3-guard.js"
+  "../../../packages/dba/dist/testing/test3-guard.js"
 );
 
 const SESSION = { repoGuid: TEST3_REPO_GUID, username: TEST3_USERNAME };

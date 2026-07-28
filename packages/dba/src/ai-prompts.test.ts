@@ -265,28 +265,29 @@ describe("repo context isolation", () => {
 describe("promptKind mapping + conditional validation", () => {
   it("exposes stable kind values in AI_PROMPT_KIND_LABELS", async () => {
     const { AI_PROMPT_KIND_LABELS, normalizeAiPromptKind } = await import("./ai-prompts.js");
-    expect(Object.keys(AI_PROMPT_KIND_LABELS).sort()).toEqual(["chad_custom", "openai_managed"]);
-    expect(AI_PROMPT_KIND_LABELS.chad_custom).toBe("CHAD Custom Prompt");
+    expect(Object.keys(AI_PROMPT_KIND_LABELS).sort()).toEqual(["openai_managed", "our_custom"]);
+    expect(AI_PROMPT_KIND_LABELS.our_custom).toBe("Our Custom Prompt");
     expect(AI_PROMPT_KIND_LABELS.openai_managed).toBe("OpenAI Managed Prompt");
-    expect(normalizeAiPromptKind(undefined)).toBe("chad_custom");
+    expect(normalizeAiPromptKind(undefined)).toBe("our_custom");
+    expect(normalizeAiPromptKind("chad_custom")).toBe("our_custom");
     expect(normalizeAiPromptKind("openai_managed")).toBe("openai_managed");
   });
 
-  it("defaults missing promptKind to chad_custom on list", async () => {
+  it("defaults missing promptKind to our_custom on list", async () => {
     const { ops } = fakeOps([]);
     await createAiPrompt(baseInput, ops);
     const list = await listAiPrompts(ops);
-    expect(list[0].promptKind).toBe("chad_custom");
+    expect(list[0].promptKind).toBe("our_custom");
     expect(list[0].enabled).toBe(true);
   });
 
-  it("chad_custom still requires prompt body", async () => {
+  it("our_custom still requires prompt body", async () => {
     const { ops } = fakeOps([]);
     await expect(
       createAiPrompt(
         {
           ...baseInput,
-          promptKind: "chad_custom",
+          promptKind: "our_custom",
           messages: [{ role: "user", content: "  " }],
         },
         ops,

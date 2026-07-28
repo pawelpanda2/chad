@@ -2,8 +2,8 @@
 // table / "dates" tab.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { assertUiColumnsMatchMapper, DATE_ENTRY_DOMAIN_COLUMNS, ITEM_NUMBER_COLUMN } from "../helpers/assert-mapping.mjs";
-import { DATE_UI_COLUMNS } from "../fixtures/date-ui-columns.mjs";
+import { assertUiColumnsMatchMapper, DATE_ENTRY_DOMAIN_COLUMNS, ITEM_NUMBER_COLUMN } from "../../../support/assertions/assert-mapping.mjs";
+import { DATE_UI_COLUMNS } from "../../../support/fixtures/date-ui-columns.mjs";
 
 test("Dates UI columns match the Google Sheets mapper's DATE_ENTRY_DOMAIN_COLUMNS exactly", () => {
   assert.doesNotThrow(() => assertUiColumnsMatchMapper("date-entry", DATE_UI_COLUMNS));

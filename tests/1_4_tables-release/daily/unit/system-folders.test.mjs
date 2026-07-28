@@ -4,7 +4,7 @@
 // packages/dba/src/system-folders.ts and its use from folders.ts).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { DBA_DIST } from "../helpers/env.mjs";
+import { DBA_DIST } from "../../../support/database/tables-sync-env.mjs";
 
 const { listReadOnlyFolders, assertNotSystemFolderWrite, findProtectingSystemFolder, SystemFolderReadOnlyError } = await import(
   `${DBA_DIST}/system-folders.js`

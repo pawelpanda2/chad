@@ -1,0 +1,1 @@
+Ten dział zawiera testy regresyjne ochrony i separacji danych. Nie trzeba uruchamiać ich przed każdym commitem. Muszą przejść przed zakończeniem zadania zmieniającego bazę, provider, logowanie, sesję, repo context, migrację, backup/restore, runtime compose lub cp_items.
