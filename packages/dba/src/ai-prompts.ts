@@ -34,6 +34,9 @@ export type AiProvider = "openai" | "anthropic" | "gemini" | "openai-compatible"
 
 export type AiPromptStatus = "draft" | "published" | "archived";
 
+/** Where the prompt body lives — stable technical values (UI labels differ). */
+export type AiPromptKind = "chad_custom" | "openai_managed";
+
 export type AiPromptActionType =
   | "conversation-health"
   | "capital"
@@ -41,6 +44,11 @@ export type AiPromptActionType =
   | "improve"
   | "full-analysis"
   | "custom";
+
+export const AI_PROMPT_KIND_LABELS: Record<AiPromptKind, string> = {
+  chad_custom: "CHAD Custom Prompt",
+  openai_managed: "OpenAI Managed Prompt",
+};
 
 export interface AiPromptMessage {
   role: "developer" | "system" | "user";
@@ -98,6 +106,15 @@ export interface AiPromptDefinition {
   schoolId?: string;
   actionType: AiPromptActionType;
 
+  /**
+   * Storage mode for the prompt body. Missing on pre–promptKind records —
+   * treat as `chad_custom`.
+   */
+  promptKind?: AiPromptKind;
+  /** Soft enable flag for Forms UI; missing → true. Independent of publish. */
+  enabled?: boolean;
+  tags?: string[];
+
   status: AiPromptStatus;
   /** Current draft version number — incremented each time `publishAiPrompt` runs. */
   version: number;
@@ -126,6 +143,9 @@ export interface AiPromptSummary {
   name: string;
   schoolId?: string;
   actionType: AiPromptActionType;
+  promptKind: AiPromptKind;
+  enabled: boolean;
+  tags: string[];
   status: AiPromptStatus;
   version: number;
   provider: AiProvider;
@@ -138,6 +158,9 @@ export interface CreateAiPromptInput {
   description?: string;
   schoolId?: string;
   actionType: AiPromptActionType;
+  promptKind?: AiPromptKind;
+  enabled?: boolean;
+  tags?: string[];
   messages: AiPromptMessage[];
   variables?: AiPromptVariable[];
   provider: AiProvider;
@@ -152,6 +175,9 @@ export interface UpdateAiPromptInput {
   description?: string;
   schoolId?: string;
   actionType?: AiPromptActionType;
+  promptKind?: AiPromptKind;
+  enabled?: boolean;
+  tags?: string[];
   messages?: AiPromptMessage[];
   variables?: AiPromptVariable[];
   provider?: AiProvider;
@@ -297,6 +323,28 @@ function requireContent(messages: AiPromptMessage[] | undefined): AiPromptMessag
   return list;
 }
 
+export function normalizeAiPromptKind(kind: AiPromptKind | undefined | null): AiPromptKind {
+  return kind === "openai_managed" ? "openai_managed" : "chad_custom";
+}
+
+function assertPromptKindPayload(
+  kind: AiPromptKind,
+  messages: AiPromptMessage[] | undefined,
+  bindings: AiPromptProviderBindings | undefined,
+): AiPromptMessage[] {
+  if (kind === "openai_managed") {
+    const id = bindings?.openaiPromptId?.trim();
+    if (!id) {
+      throw new AiPromptsOperationError(
+        "VALIDATION",
+        "OpenAI Prompt ID is required for openai_managed prompts",
+      );
+    }
+    return messages ?? [];
+  }
+  return requireContent(messages);
+}
+
 function assertNoDuplicateSlug(prompts: AiPromptDefinition[], slug: string, excludeId?: string): void {
   const clash = prompts.find((p) => p.slug === slug && p.id !== excludeId);
   if (clash) {
@@ -317,6 +365,9 @@ export async function listAiPrompts(ops: AiPromptsOps = defaultOps): Promise<AiP
       name: p.name,
       schoolId: p.schoolId,
       actionType: p.actionType,
+      promptKind: normalizeAiPromptKind(p.promptKind),
+      enabled: p.enabled !== false,
+      tags: Array.isArray(p.tags) ? p.tags : [],
       status: p.status,
       version: p.version,
       provider: p.provider,
@@ -339,7 +390,8 @@ export async function createAiPrompt(
 ): Promise<AiPromptDefinition> {
   const slug = requireStableId(input.slug);
   const name = requireName(input.name);
-  const messages = requireContent(input.messages);
+  const promptKind = normalizeAiPromptKind(input.promptKind);
+  const messages = assertPromptKindPayload(promptKind, input.messages, input.providerBindings);
 
   const { item, prompts } = await readRegistry(ops);
   assertNoDuplicateSlug(prompts, slug);
@@ -352,6 +404,9 @@ export async function createAiPrompt(
     description: input.description,
     schoolId: input.schoolId,
     actionType: input.actionType,
+    promptKind,
+    enabled: input.enabled !== false,
+    tags: Array.isArray(input.tags) ? input.tags : [],
     status: "draft",
     version: 1,
     messages,
@@ -389,8 +444,15 @@ export async function updateAiPrompt(
 
   const slug = input.slug !== undefined ? requireStableId(input.slug) : existing.slug;
   const name = input.name !== undefined ? requireName(input.name) : existing.name;
-  const messages = input.messages !== undefined ? requireContent(input.messages) : existing.messages;
-  requireContent(messages);
+  const promptKind = normalizeAiPromptKind(
+    input.promptKind !== undefined ? input.promptKind : existing.promptKind,
+  );
+  const bindings =
+    input.providerBindings !== undefined ? input.providerBindings : existing.providerBindings;
+  const messages =
+    input.messages !== undefined
+      ? assertPromptKindPayload(promptKind, input.messages, bindings)
+      : assertPromptKindPayload(promptKind, existing.messages, bindings);
   if (slug !== existing.slug) {
     assertNoDuplicateSlug(prompts, slug, id);
   }
@@ -402,12 +464,15 @@ export async function updateAiPrompt(
     description: input.description !== undefined ? input.description : existing.description,
     schoolId: input.schoolId !== undefined ? input.schoolId : existing.schoolId,
     actionType: input.actionType ?? existing.actionType,
+    promptKind,
+    enabled: input.enabled !== undefined ? input.enabled : existing.enabled !== false,
+    tags: input.tags !== undefined ? input.tags : existing.tags ?? [],
     messages,
     variables: input.variables ?? existing.variables,
     provider: input.provider ?? existing.provider,
     model: input.model !== undefined ? input.model : existing.model,
     settings: input.settings !== undefined ? input.settings : existing.settings,
-    providerBindings: input.providerBindings !== undefined ? input.providerBindings : existing.providerBindings,
+    providerBindings: bindings,
     updatedAt: new Date().toISOString(),
   };
 
@@ -437,7 +502,11 @@ export async function publishAiPrompt(
   if (existing.status === "archived") {
     throw new AiPromptsOperationError("VALIDATION", "Cannot publish an archived prompt");
   }
-  requireContent(existing.messages);
+  assertPromptKindPayload(
+    normalizeAiPromptKind(existing.promptKind),
+    existing.messages,
+    existing.providerBindings,
+  );
 
   const now = new Date().toISOString();
   const version = existing.version + 1;
@@ -495,6 +564,20 @@ export async function archiveAiPrompt(
   next[index] = updated;
   await writeRegistry(ops, item, next);
   return updated;
+}
+
+/** Permanently removes a prompt from the registry JSON (Forms Delete). */
+export async function deleteAiPrompt(
+  id: string,
+  ops: AiPromptsOps = defaultOps,
+): Promise<void> {
+  const { item, prompts } = await readRegistry(ops);
+  const index = prompts.findIndex((p) => p.id === id);
+  if (index === -1) {
+    throw new AiPromptsOperationError("NOT_FOUND", `No prompt with id "${id}"`);
+  }
+  const next = prompts.filter((p) => p.id !== id);
+  await writeRegistry(ops, item, next);
 }
 
 /**
