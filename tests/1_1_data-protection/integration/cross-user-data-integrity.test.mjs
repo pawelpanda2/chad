@@ -6,7 +6,7 @@
 // tests/1_2_google-sheets-sync (never duplicated here — see
 // reconcile-real-users.test.mjs for the actual per-table diff).
 import { describe, it, expect } from "vitest";
-import { classifyOutboxState } from "../../support/google-sheets/reconciliation.mjs";
+import { classifyOutboxState } from "../../../packages/dba/dist/google-sheets/reconciliation.js";
 
 const dba = await import("../../../packages/dba/dist/index.js");
 

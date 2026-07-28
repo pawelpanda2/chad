@@ -44,6 +44,7 @@ export default defineConfig({
       // added after the Story 82 migration was found to have left pawel_f's
       // Daily entries without any Google Sheets outbox job ever.
       "tests/1_2_google-sheets-sync/integration/reconcile-real-users.test.mjs",
+      "tests/1_2_google-sheets-sync/integration/blocked-outbox-job.test.mjs",
       "tests/1_2_google-sheets-sync/integration/history-outbox-sheet-lifecycle.test.mjs",
       "tests/1_1_data-protection/integration/cross-user-data-integrity.test.mjs",
       "tests/1_4_tables-release/daily/integration/qnap-test3-daily-dates.test.mjs",

@@ -1,8 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getCurrentUserFromCookies } from "@/lib/session";
+
+// 2026-07-28 P0 fix — see app/api/outings/route.ts's identical comment:
+// this legacy "DataLib" Prisma/SQLite store had no auth check and is not
+// repo-isolated. Gated admin-only rather than migrated/removed outright.
+// NOTE: unrelated to the real, per-user, dba-backed Leads feature (Google
+// Sheets-synced) despite the same "/api/leads" URL prefix — that one lives
+// under app/api/forms/ and app/api/leads/message-creator/ (dba's leads.ts).
+async function requireAdminForDataLib(): Promise<NextResponse | null> {
+  const user = await getCurrentUserFromCookies();
+  if (!user || !user.isAdmin) {
+    return NextResponse.json({ error: "NOT_AUTHORIZED" }, { status: 403 });
+  }
+  return null;
+}
 
 // GET /api/leads - Get all leads
 export async function GET() {
+  const denied = await requireAdminForDataLib();
+  if (denied) return denied;
   try {
     const leads = await prisma.lead.findMany({
       orderBy: { createdAt: "desc" },
@@ -26,6 +43,8 @@ export async function GET() {
 
 // POST /api/leads - Create a new lead
 export async function POST(request: NextRequest) {
+  const denied = await requireAdminForDataLib();
+  if (denied) return denied;
   try {
     const body = await request.json();
     const {

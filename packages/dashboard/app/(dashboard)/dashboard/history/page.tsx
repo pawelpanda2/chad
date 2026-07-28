@@ -204,6 +204,7 @@ function GoogleSheetsViewContent() {
   const [revealDialogOpen, setRevealDialogOpen] = useState(false);
   const [revealConfirmWord, setRevealConfirmWord] = useState("");
   const [revealConfirmInput, setRevealConfirmInput] = useState("");
+  const [revealPasswordInput, setRevealPasswordInput] = useState("");
   const [revealing, setRevealing] = useState(false);
 
   useEffect(() => {
@@ -231,20 +232,32 @@ function GoogleSheetsViewContent() {
   const openRevealDialog = () => {
     setRevealConfirmWord(REVEAL_CONFIRM_WORDS[Math.floor(Math.random() * REVEAL_CONFIRM_WORDS.length)]);
     setRevealConfirmInput("");
+    setRevealPasswordInput("");
     setRevealDialogOpen(true);
   };
 
   const handleRevealPassword = async () => {
-    if (revealConfirmInput.trim() !== revealConfirmWord) return;
+    if (revealConfirmInput.trim() !== revealConfirmWord || !revealPasswordInput) return;
     setRevealing(true);
     try {
-      const res = await fetch("/api/google-sheets/reveal-password", { method: "POST" });
+      const res = await fetch("/api/google-sheets/reveal-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ currentPassword: revealPasswordInput }),
+      });
       const json = (await res.json()) as { success: boolean; data?: { password: string }; error?: string };
       if (!res.ok || !json.success || !json.data?.password) {
-        throw new Error(json.error || "Failed to reveal password");
+        throw new Error(
+          json.error === "REAUTH_FAILED"
+            ? "Incorrect password"
+            : json.error === "RATE_LIMITED"
+              ? "Too many attempts — try again later"
+              : json.error || "Failed to reveal password"
+        );
       }
       setRevealedPassword(json.data.password);
       setRevealDialogOpen(false);
+      setRevealPasswordInput("");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to reveal password");
     } finally {
@@ -394,6 +407,13 @@ function GoogleSheetsViewContent() {
                   placeholder={revealConfirmWord}
                   autoFocus
                 />
+                <p className="text-sm">Re-enter your own account password to confirm it's you.</p>
+                <Input
+                  type="password"
+                  value={revealPasswordInput}
+                  onChange={(e) => setRevealPasswordInput(e.target.value)}
+                  placeholder="Your account password"
+                />
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setRevealDialogOpen(false)} disabled={revealing}>
@@ -401,7 +421,7 @@ function GoogleSheetsViewContent() {
                 </Button>
                 <Button
                   onClick={handleRevealPassword}
-                  disabled={revealing || revealConfirmInput.trim() !== revealConfirmWord}
+                  disabled={revealing || revealConfirmInput.trim() !== revealConfirmWord || !revealPasswordInput}
                 >
                   {revealing ? "Revealing..." : "Reveal password"}
                 </Button>

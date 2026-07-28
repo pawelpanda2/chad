@@ -100,6 +100,16 @@ services:
       - GOOGLE_SHEETS_VIEWER_ACCOUNT_EMAIL=${GOOGLE_SHEETS_VIEWER_ACCOUNT_EMAIL:-}
       - GOOGLE_SHEETS_VIEWER_ACCOUNT_PASSWORD=${GOOGLE_SHEETS_VIEWER_ACCOUNT_PASSWORD:-}
       - SECRETS_ENCRYPTION_KEY=${SECRETS_ENCRYPTION_KEY:-}
+      # 2026-07-28 P0 fix — signed session tokens (see
+      # packages/dashboard/lib/session-token.ts) and the Secure cookie flag.
+      # Both must be set per-environment: SESSION_SIGNING_SECRET the same
+      # random value on every dashboard instance sharing this Postgres
+      # (TEST/PROD both read/write the same session-bearing users), and
+      # AUTH_COOKIE_SECURE=true wherever the dashboard is reached over
+      # HTTPS. Falls back to the old (insecure) behavior with a loud log
+      # if unset — never breaks login, but never silently stays insecure.
+      - SESSION_SIGNING_SECRET=${SESSION_SIGNING_SECRET:-}
+      - AUTH_COOKIE_SECURE=${AUTH_COOKIE_SECURE:-false}
     volumes:
       - dashboard-data:/app/data
     logging:

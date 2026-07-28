@@ -13,7 +13,7 @@ import type { PoolClient } from "pg";
 import type { CpItem } from "../cp-model.js";
 import { addressToRepoAndLoca } from "../cp-model.js";
 import type { EnqueueGoogleSheetsSyncInput } from "./outbox-postgres.js";
-import { enqueueGoogleSheetsSyncOnClient } from "./outbox-postgres.js";
+import { enqueueGoogleSheetsSyncOnClient, enqueueBlockedGoogleSheetsSyncOnClient } from "./outbox-postgres.js";
 
 export interface GoogleSheetsFlushContext {
   mutationId: string;
@@ -21,10 +21,19 @@ export interface GoogleSheetsFlushContext {
   item: CpItem | null;
 }
 
-type PendingFactory = (ctx: GoogleSheetsFlushContext) => EnqueueGoogleSheetsSyncInput | null;
+/**
+ * When set, `flushPendingGoogleSheetsJobs` inserts this job as an already-
+ * `failed` row with this `lastError` instead of a normal `pending` one —
+ * used when a record IS supposed to sync but couldn't even be enqueued
+ * (config/guard/mapping failure), so the mutation still commits with a
+ * visible, non-silent sync record instead of none at all.
+ */
+type BlockableInput = EnqueueGoogleSheetsSyncInput & { blockedReason?: string };
+
+type PendingFactory = (ctx: GoogleSheetsFlushContext) => BlockableInput | null;
 
 interface SheetTxnStore {
-  pending: EnqueueGoogleSheetsSyncInput[];
+  pending: BlockableInput[];
   factories: PendingFactory[];
 }
 
@@ -35,7 +44,7 @@ export function runWithGoogleSheetsTxnBuffer<T>(fn: () => Promise<T>): Promise<T
 }
 
 /** Returns true when the job was buffered for the open mutation transaction. */
-export function deferGoogleSheetsJob(input: EnqueueGoogleSheetsSyncInput): boolean {
+export function deferGoogleSheetsJob(input: BlockableInput): boolean {
   const store = als.getStore();
   if (!store) return false;
   store.pending.push(input);
@@ -65,7 +74,7 @@ export async function flushPendingGoogleSheetsJobs(
   const store = als.getStore();
   if (!store) return 0;
 
-  const jobs: EnqueueGoogleSheetsSyncInput[] = [];
+  const jobs: BlockableInput[] = [];
   while (store.pending.length) jobs.push(store.pending.shift()!);
   while (store.factories.length) {
     const factory = store.factories.shift()!;
@@ -85,11 +94,20 @@ export async function flushPendingGoogleSheetsJobs(
         recordKey: `${payload.repoGuid}:${loca}`,
       };
     }
-    await enqueueGoogleSheetsSyncOnClient(client, {
-      ...job,
-      operationId: mutationId,
-      payload,
-    });
+    if (job.blockedReason) {
+      await enqueueBlockedGoogleSheetsSyncOnClient(client, {
+        ...job,
+        operationId: mutationId,
+        payload,
+        reason: job.blockedReason,
+      });
+    } else {
+      await enqueueGoogleSheetsSyncOnClient(client, {
+        ...job,
+        operationId: mutationId,
+        payload,
+      });
+    }
   }
   return jobs.length;
 }
