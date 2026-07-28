@@ -40,6 +40,12 @@ export default defineConfig({
       "tests/1_1_data-protection/unit/offline-readonly-backup-mode-and-formatters.test.ts",
       "tests/1_2_google-sheets-sync/integration/local-google-sheets-info.test.mjs",
       "tests/1_2_google-sheets-sync/integration/qnap-test3-google-sheets.test.mjs",
+      // 2026-07-28 — real-user (pawel_f/kamil_s) read-only reconciliation,
+      // added after the Story 82 migration was found to have left pawel_f's
+      // Daily entries without any Google Sheets outbox job ever.
+      "tests/1_2_google-sheets-sync/integration/reconcile-real-users.test.mjs",
+      "tests/1_2_google-sheets-sync/integration/history-outbox-sheet-lifecycle.test.mjs",
+      "tests/1_1_data-protection/integration/cross-user-data-integrity.test.mjs",
       "tests/1_4_tables-release/daily/integration/qnap-test3-daily-dates.test.mjs",
       "tests/1_4_tables-release/leads/integration/local-msg-auto-links-api.test.mjs",
     ],
