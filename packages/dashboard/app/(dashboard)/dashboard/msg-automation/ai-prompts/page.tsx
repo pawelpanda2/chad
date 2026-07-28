@@ -29,13 +29,13 @@ interface AiPromptSummary {
 const ROW = "flex w-full items-stretch text-left";
 
 const VER_CELL =
-  "flex w-12 shrink-0 items-center border-border px-2.5 py-2.5 pl-3 border-r";
+  "flex w-12 shrink-0 items-center border-border px-1 py-0.5 pl-1.5 border-r";
 
 const NAME_CELL =
-  "flex w-[9.5rem] shrink-0 flex-col items-start justify-center gap-0.5 border-border px-2.5 py-2.5 border-r sm:w-[14rem]";
+  "flex w-[9.5rem] shrink-0 flex-col items-start justify-center gap-0 border-border px-1 py-0.5 border-r sm:w-[14rem]";
 
 const CATEGORY_CELL =
-  "flex w-[10.75rem] shrink-0 items-center border-border px-2.5 py-2.5 border-r sm:w-[12.5rem]";
+  "flex w-[10.75rem] shrink-0 items-center border-border px-1 py-0.5 border-r sm:w-[12.5rem]";
 
 const SPACER_CELL = "min-w-0 flex-1";
 
@@ -99,7 +99,7 @@ export default function AiPromptsListPage() {
         ) : prompts.length === 0 ? (
           <div className="p-6 text-sm text-muted-foreground">No prompts yet</div>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-0.5">
             {/* Transparent border matches row box model so columns line up. */}
             <div
               className={cn(

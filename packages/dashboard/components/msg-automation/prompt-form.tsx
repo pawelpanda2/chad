@@ -159,11 +159,9 @@ export function PromptForm({
         throw new Error(json.error || `Save failed (${res.status})`);
       }
       setResult({ type: "success", message: isEdit ? "Saved" : "Created" });
-      if (!isEdit && json.data?.id) {
-        const editUrl = returnTo.includes("/forms")
-          ? `/dashboard/forms?form=add_prompt&promptId=${encodeURIComponent(json.data.id)}`
-          : `/dashboard/msg-automation/ai-prompts/new?promptId=${encodeURIComponent(json.data.id)}`;
-        router.replace(editUrl);
+      if (!isEdit) {
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        router.push(returnTo);
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
