@@ -35,7 +35,7 @@ const REQUIRED_SHEET_NAME_VARS = [
 /**
  * Pure function of an env-like object (never reads `process.env` directly)
  * so it's trivially unit-testable with synthetic env objects — see
- * tests/tables-sync/google-sheets/config-validator.test.mjs.
+ * tests/1_2_google-sheets-sync/unit/config-validator.test.mjs.
  *
  * `parseSpreadsheetMap` is injected (not imported at module scope) so this
  * script has no hard dependency on `packages/dba/dist` existing yet when

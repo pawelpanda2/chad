@@ -27,8 +27,19 @@ export default defineConfig({
       "packages/dba/src/ai-prompts.test.ts",
       // Story 90 — Lead ↔ Beeper Links (phone match / save validation).
       "packages/dba/src/lead-beeper-links.test.ts",
-      "test/**/*.test.{ts,mjs}",
-      "tests/offline-readonly-backup/**/*.test.ts",
+      // tests/ reorg (2026-07-28) — only the Vitest-based files from each
+      // pillar's unit/integration dirs; the node:test-based files in the
+      // same directories (no-chad-mongo-runtime, config-validator,
+      // delete-physical, worker-order, status-shape, mapping-schema,
+      // system-folders) run via `node --test` (see package.json), never
+      // through this config.
+      "tests/1_1_data-protection/integration/local-login-api.test.mjs",
+      "tests/1_1_data-protection/integration/offline-readonly-backup-workers.test.ts",
+      "tests/1_1_data-protection/unit/offline-readonly-backup-mode-and-formatters.test.ts",
+      "tests/1_2_google-sheets-sync/integration/local-google-sheets-info.test.mjs",
+      "tests/1_2_google-sheets-sync/integration/qnap-test3-google-sheets.test.mjs",
+      "tests/1_4_tables-release/daily/integration/qnap-test3-daily-dates.test.mjs",
+      "tests/1_4_tables-release/leads/integration/local-msg-auto-links-api.test.mjs",
     ],
     exclude: ["**/node_modules/**", "**/dist/**"],
     testTimeout: 30_000,

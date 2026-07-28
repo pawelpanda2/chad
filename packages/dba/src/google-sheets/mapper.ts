@@ -303,8 +303,8 @@ export function assertMappedRowCoversRequiredHeaders(
 
 /**
  * Compares CHAD UI column keys against the sheet mapper. Used by
- * `tests/tables-sync` so adding a UI column without updating the mapper
- * fails the suite immediately.
+ * `tests/1_4_tables-release` so adding a UI column without updating the
+ * mapper fails the suite immediately.
  */
 export function assertUiColumnsMatchMapper(
   recordType: "daily-entry" | "date-entry",

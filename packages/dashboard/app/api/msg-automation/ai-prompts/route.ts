@@ -49,14 +49,15 @@ export async function POST(request: NextRequest) {
     typeof input?.slug !== "string" ||
     typeof input?.name !== "string" ||
     typeof input?.actionType !== "string" ||
-    typeof input?.provider !== "string" ||
-    !Array.isArray(input?.messages)
+    typeof input?.provider !== "string"
   ) {
     return NextResponse.json(
-      { success: false, error: "Missing required fields: slug, name, actionType, provider, messages" },
+      { success: false, error: "Missing required fields: slug, name, actionType, provider" },
       { status: 400 },
     );
   }
+
+  const messages = Array.isArray(input.messages) ? input.messages : [];
 
   try {
     const data = await runWithRepoContext(user, () =>
@@ -66,9 +67,12 @@ export async function POST(request: NextRequest) {
         description: typeof input.description === "string" ? input.description : undefined,
         schoolId: typeof input.schoolId === "string" ? input.schoolId : undefined,
         actionType: input.actionType as never,
+        promptKind: typeof input.promptKind === "string" ? (input.promptKind as never) : undefined,
+        enabled: typeof input.enabled === "boolean" ? input.enabled : undefined,
+        tags: Array.isArray(input.tags) ? (input.tags as string[]) : undefined,
         provider: input.provider as never,
         model: typeof input.model === "string" ? input.model : undefined,
-        messages: input.messages as never,
+        messages: messages as never,
         variables: Array.isArray(input.variables) ? (input.variables as never) : undefined,
         settings: (input.settings as never) ?? undefined,
         providerBindings: (input.providerBindings as never) ?? undefined,

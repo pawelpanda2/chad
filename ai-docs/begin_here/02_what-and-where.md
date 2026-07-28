@@ -374,6 +374,27 @@ zapisywanych do Content Providera i renderowanych w dashboardzie.
 
 ---
 
+## Testy (`tests/`)
+
+**Opis:** Struktura regresji — 4 stałe filary
+(`1_1_data-protection`, `1_2_google-sheets-sync`, `1_3_history-integrity`,
+`1_4_tables-release`) + wspólny `support/`, każdy filar z własnym
+`description.md` mówiącym, po jakiej zmianie trzeba go uruchomić przed DONE.
+Definicje unit/integration/e2e, standard dodawania nowego testu (który
+filar, który runner — `node:test` vs Vitest, gdzie wspólne helpery),
+zasada gate'owania testów mutujących realne środowisko (`E2E_TEST3_PASSWORD`
+itp.), oraz że SKIPPED/BLOCKED nigdy nie liczy się jako PASS.
+
+**Lokalizacja:** [`ai-docs/tests/ai-start.md`](../tests/ai-start.md)
+(orientacja) i `tests/README.md` (pełny reference — komendy, PASS/FAIL/
+SKIPPED/BLOCKED, local vs QNAP TEST vs realny Google Sheets).
+
+**Czytać gdy:** dodajesz/przenosisz/usuwasz jakikolwiek test, albo kończysz
+zadanie dotykające obszaru jednego z 4 filarów i musisz wiedzieć, jaki
+regression przed DONE jest wymagany.
+
+---
+
 ## Knowledge (globalna baza wiedzy — czytaj pierwsza, zacznij od
 `01_ai_start.md`)
 

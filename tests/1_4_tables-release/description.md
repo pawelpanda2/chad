@@ -1,0 +1,1 @@
+Ten dział zawiera testy regresyjne gotowości funkcjonalnej Daily Tracker, Dates i Leads. Muszą przejść przed przekazaniem tych funkcji użytkownikowi oraz przed zakończeniem zadania zmieniającego ich GUI, API, DBA, dane, History lub Google Sheets.

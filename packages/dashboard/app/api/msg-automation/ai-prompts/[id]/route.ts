@@ -1,11 +1,7 @@
 /**
- * GET   /api/msg-automation/ai-prompts/[id] — one full definition
- * PATCH /api/msg-automation/ai-prompts/[id] — update draft fields, or
- *   { "action": "publish" } / { "action": "archive" } for the status
- *   transitions (kept on this route instead of two more thin ones —
- *   Story 88 input §9 lists PATCH as the only write verb here).
- *
- * Thin adapters — all business logic lives in dba/ai-prompts.ts.
+ * GET    /api/msg-automation/ai-prompts/[id]
+ * PATCH  /api/msg-automation/ai-prompts/[id] — update / publish / archive
+ * DELETE /api/msg-automation/ai-prompts/[id] — remove from registry
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -14,6 +10,7 @@ import {
   updateAiPrompt,
   publishAiPrompt,
   archiveAiPrompt,
+  deleteAiPrompt,
   runWithRepoContext,
   AiPromptsOperationError,
 } from "dba";
@@ -76,6 +73,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         description: typeof input.description === "string" ? input.description : undefined,
         schoolId: typeof input.schoolId === "string" ? input.schoolId : undefined,
         actionType: typeof input.actionType === "string" ? (input.actionType as never) : undefined,
+        promptKind: typeof input.promptKind === "string" ? (input.promptKind as never) : undefined,
+        enabled: typeof input.enabled === "boolean" ? input.enabled : undefined,
+        tags: Array.isArray(input.tags) ? (input.tags as string[]) : undefined,
         provider: typeof input.provider === "string" ? (input.provider as never) : undefined,
         model: typeof input.model === "string" ? input.model : undefined,
         messages: Array.isArray(input.messages) ? (input.messages as never) : undefined,
@@ -87,6 +87,29 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     return NextResponse.json({ success: true, data });
   } catch (error) {
     console.error("[ai-prompts/[id] PATCH]", error instanceof Error ? error.message : error);
+    if (error instanceof AiPromptsOperationError) {
+      const status = error.code === "NOT_FOUND" ? 404 : error.code === "CORRUPT_REGISTRY" ? 422 : 400;
+      return NextResponse.json({ success: false, error: error.message, code: error.code }, { status });
+    }
+    return NextResponse.json(
+      { success: false, error: error instanceof Error ? error.message : String(error) },
+      { status: 500 },
+    );
+  }
+}
+
+export async function DELETE(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const user = await getCurrentUserFromCookies();
+  if (!user) {
+    return NextResponse.json({ success: false, error: "NOT_AUTHENTICATED" }, { status: 401 });
+  }
+  const { id } = await params;
+
+  try {
+    await runWithRepoContext(user, () => deleteAiPrompt(id));
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("[ai-prompts/[id] DELETE]", error instanceof Error ? error.message : error);
     if (error instanceof AiPromptsOperationError) {
       const status = error.code === "NOT_FOUND" ? 404 : error.code === "CORRUPT_REGISTRY" ? 422 : 400;
       return NextResponse.json({ success: false, error: error.message, code: error.code }, { status });

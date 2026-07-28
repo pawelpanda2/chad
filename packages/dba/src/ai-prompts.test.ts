@@ -12,6 +12,7 @@ import {
   updateAiPrompt,
   publishAiPrompt,
   archiveAiPrompt,
+  deleteAiPrompt,
   findPublishedAiPrompt,
   AiPromptsOperationError,
   type AiPromptsOps,
@@ -258,5 +259,95 @@ describe("repo context isolation", () => {
     // getCurrentRepoGuid()/runWithRepoContext, never a caller-supplied id.
     expect(createAiPrompt.length).toBeLessThanOrEqual(2);
     expect(listAiPrompts.length).toBeLessThanOrEqual(1);
+  });
+});
+
+describe("promptKind mapping + conditional validation", () => {
+  it("exposes stable kind values in AI_PROMPT_KIND_LABELS", async () => {
+    const { AI_PROMPT_KIND_LABELS, normalizeAiPromptKind } = await import("./ai-prompts.js");
+    expect(Object.keys(AI_PROMPT_KIND_LABELS).sort()).toEqual(["openai_managed", "our_custom"]);
+    expect(AI_PROMPT_KIND_LABELS.our_custom).toBe("Our Custom Prompt");
+    expect(AI_PROMPT_KIND_LABELS.openai_managed).toBe("OpenAI Managed Prompt");
+    expect(normalizeAiPromptKind(undefined)).toBe("our_custom");
+    expect(normalizeAiPromptKind("chad_custom")).toBe("our_custom");
+    expect(normalizeAiPromptKind("openai_managed")).toBe("openai_managed");
+  });
+
+  it("defaults missing promptKind to our_custom on list", async () => {
+    const { ops } = fakeOps([]);
+    await createAiPrompt(baseInput, ops);
+    const list = await listAiPrompts(ops);
+    expect(list[0].promptKind).toBe("our_custom");
+    expect(list[0].enabled).toBe(true);
+  });
+
+  it("our_custom still requires prompt body", async () => {
+    const { ops } = fakeOps([]);
+    await expect(
+      createAiPrompt(
+        {
+          ...baseInput,
+          promptKind: "our_custom",
+          messages: [{ role: "user", content: "  " }],
+        },
+        ops,
+      ),
+    ).rejects.toMatchObject({ code: "VALIDATION" });
+  });
+
+  it("openai_managed requires OpenAI Prompt ID, not body", async () => {
+    const { ops } = fakeOps([]);
+    await expect(
+      createAiPrompt(
+        {
+          ...baseInput,
+          slug: "managed-1",
+          promptKind: "openai_managed",
+          messages: [],
+          providerBindings: {},
+        },
+        ops,
+      ),
+    ).rejects.toMatchObject({ code: "VALIDATION" });
+
+    const created = await createAiPrompt(
+      {
+        ...baseInput,
+        slug: "managed-2",
+        promptKind: "openai_managed",
+        messages: [],
+        providerBindings: { openaiPromptId: "pmpt_abc123" },
+      },
+      ops,
+    );
+    expect(created.promptKind).toBe("openai_managed");
+    expect(created.providerBindings?.openaiPromptId).toBe("pmpt_abc123");
+    expect(created.messages).toEqual([]);
+  });
+
+  it("switching update to openai_managed keeps name and sets binding", async () => {
+    const { ops } = fakeOps([]);
+    const created = await createAiPrompt(baseInput, ops);
+    const updated = await updateAiPrompt(
+      created.id,
+      {
+        promptKind: "openai_managed",
+        providerBindings: { openaiPromptId: "pmpt_keep" },
+        messages: [],
+      },
+      ops,
+    );
+    expect(updated.name).toBe(baseInput.name);
+    expect(updated.promptKind).toBe("openai_managed");
+    expect(updated.providerBindings?.openaiPromptId).toBe("pmpt_keep");
+  });
+});
+describe("deleteAiPrompt", () => {
+  it("removes the prompt from the registry", async () => {
+    const { ops } = fakeOps([]);
+    const created = await createAiPrompt(baseInput, ops);
+    await deleteAiPrompt(created.id, ops);
+    expect(await getAiPrompt(created.id, ops)).toBeNull();
+    expect(await listAiPrompts(ops)).toEqual([]);
   });
 });

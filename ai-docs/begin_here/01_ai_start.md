@@ -86,23 +86,26 @@ GUID i/albo przełączyły dashboard na pustą lokalną bazę bez syncu z QNAP.)
   → UI `Unexpected end of JSON input`. Regresja:
   `pnpm test:regression:google-sheets-history`.
 
-### Tabele ↔ Google Sheets — obowiązkowy regression test (`tests/tables-sync`)
+### Tabele ↔ Google Sheets — obowiązkowy regression test (`tests/1_2_google-sheets-sync`, `tests/1_4_tables-release`)
 
-**(dodane po utworzeniu `tests/tables-sync` — pakiet regresyjny dla
-Daily Tracker/Dates/Leads ↔ Google Sheets sync, folder-protection i
-outboxów.)**
+**(pakiet regresyjny dla Daily Tracker/Dates/Leads ↔ Google Sheets sync,
+folder-protection i outboxów — od reorganizacji `tests/` z 2026-07-28
+rozłożony na 4 filary, zobacz `tests/README.md`.)**
 
 - Po **każdej** zmianie dotykającej: dane tabel (Daily Tracker/Dates/Leads),
   listy w Dashboardzie, History, outboxy (`data-outbox*`,
   `google-sheets/outbox*`), sync z Google Sheets, albo system folders
   (`system-folders.ts`, `assertNotSystemFolderWrite`) — agent MA OBOWIĄZEK
   uruchomić `pnpm test:tables-sync` (lokalnie z realną bazą:
-  `pnpm test:tables-sync:local`) przed zgłoszeniem taska jako DONE.
+  `pnpm test:tables-sync:local`) przed zgłoszeniem taska jako DONE. Pełny
+  regression całych filarów: `pnpm test:regression:google-sheets` i
+  `pnpm test:regression:tables-release`.
 - **Zakaz** oznaczania taska jako DONE albo deployu na TEST, jeśli ten
   zestaw testów nie przechodzi. Failing test = sygnał **regresji danych**,
   nie "test do naprawienia później" — zgłoś to jawnie w raporcie/checkliście
   (`05_tasks_and_checklist.md`), nie pomijaj cicho.
-- Zobacz `tests/tables-sync/README.md` po zakres testów (mapping-schema
+- Zobacz `tests/README.md`, `tests/1_2_google-sheets-sync/description.md` i
+  `tests/1_4_tables-release/description.md` po zakres testów (mapping-schema
   drift UI↔mapper, fizyczny delete w Sheets, kolejność
   create→update→delete, ochrona system folders, kształt statusu w
   History, walidacja `GOOGLE_SHEETS_SPREADSHEET_MAP`).

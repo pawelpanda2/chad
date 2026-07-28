@@ -1,0 +1,1 @@
+Ten dział zawiera testy regresyjne integralności historii. Muszą przejść przed zakończeniem zadania zmieniającego mutacje cp_items, trigger historii, provider PostgreSQL, History API/UI, outbox, operationId/mutationId lub delete.
