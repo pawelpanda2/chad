@@ -3,7 +3,7 @@
 // to Google Sheets (only `values.get`, never ensureHeaders/appendRow/
 // updateRow/batchUpdate). Resolves each user's repoGuid via the read-only
 // `chad_admin/users/users-list` lookup — never logs in as pawel_f/kamil_s.
-import { diffRecordKeys } from "../google-sheets/reconciliation.mjs";
+import { diffRecordKeys } from "../../../packages/dba/dist/google-sheets/reconciliation.js";
 
 const DAILY_HEADER_ROW_INDEX = 1; // DAILY_TRACKER_HEADER_ROW_COUNT = 2 (0-indexed: row 2 is index 1)
 const SINGLE_HEADER_ROW_INDEX = 0;

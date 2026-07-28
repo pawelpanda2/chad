@@ -11,6 +11,7 @@
 
 import { cookies } from "next/headers";
 import { resolveCurrentUser } from "./user-service";
+import { verifySessionToken } from "./session-token";
 
 export interface CurrentUser {
   repoGuid: string;
@@ -26,7 +27,7 @@ export async function getCurrentUserFromCookies(): Promise<CurrentUser | null> {
     return null;
   }
 
-  const [repoGuidFromCookie] = sessionCookie.value.split(":");
+  const repoGuidFromCookie = verifySessionToken(sessionCookie.value);
   if (!repoGuidFromCookie) {
     return null;
   }

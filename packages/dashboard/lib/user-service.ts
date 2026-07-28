@@ -34,6 +34,8 @@ export interface CpUser {
   email: string;
   passwordHash: string;
   role?: string;
+  /** Absent/undefined means active (backward-compatible with every existing users-list row) — only an explicit `false` disables login. */
+  isActive?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -63,12 +65,13 @@ interface GetByNamesResponse {
 }
 
 function normalizeUserRole(user: Pick<CpUser, "username" | "role">): UserRole {
-  if (user.role === "admin" || user.role === "user") {
-    return user.role;
-  }
-  // Backward-compatible fallback until every live users-list row carries
-  // an explicit role. `pawel_f` remains the only admin by policy.
-  return user.username.toLowerCase() === "pawel_f" ? "admin" : "user";
+  // 2026-07-28 P0 fix: no username-keyed magic-string admin grant. The real
+  // users-list already carries an explicit `role: admin` for pawel_f (the
+  // one admin account, confirmed against the live chad_admin/users/
+  // users-list) — every account, including any future one, must have its
+  // role set explicitly. Defaults to "user" for anything else, never infers
+  // admin from a username.
+  return user.role === "admin" ? "admin" : "user";
 }
 
 /**
@@ -170,7 +173,7 @@ export async function getUsersFromSharp(options?: { includeDebug?: boolean }): P
         username: user.username,
         displayName: user.username, // Use username as displayName
         email: user.email,
-        isActive: true, // All users from Content Provider are active
+        isActive: user.isActive !== false, // explicit `false` disables; absent/anything else stays active (backward-compatible).
         role,
         isAdmin: role === "admin",
         createdAt: user.createdAt,

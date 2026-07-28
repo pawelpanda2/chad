@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { findUserByUsername, type CpUser } from "@/lib/user-service";
+import { createSessionToken } from "@/lib/session-token";
 
 export async function POST(request: NextRequest) {
 	try {
@@ -58,12 +59,20 @@ export async function POST(request: NextRequest) {
 			);
 		}
 
+		if (user.isActive === false) {
+			console.log("[Login] Account is disabled:", username);
+			return NextResponse.json(
+				{ error: "This account is disabled" },
+				{ status: 403 }
+			);
+		}
+
 		console.log("[Login] Successfully authenticated user:", username);
 
-		// Create session cookie (simple implementation using httpOnly cookie).
-		// user.repoGuid doubles as this user's identity AND their Content
-		// Provider data-root repo GUID — see chad_admin's body.txt comment.
-		const sessionToken = `${user.repoGuid}:${Date.now()}`;
+		// Signed, expiring session token (2026-07-28 P0 fix) — see
+		// lib/session-token.ts's own doc comment for why the previous plain
+		// `${repoGuid}:${timestamp}` was forgeable.
+		const sessionToken = createSessionToken(user.repoGuid);
 		const cookieOptions = [
 			"session=" + encodeURIComponent(sessionToken),
 			"HttpOnly",

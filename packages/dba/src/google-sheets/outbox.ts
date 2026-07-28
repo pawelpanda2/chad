@@ -36,6 +36,19 @@ export async function enqueueGoogleSheetsSync(input: EnqueueGoogleSheetsSyncInpu
   return backend().enqueueGoogleSheetsSync(input, clock);
 }
 
+/**
+ * Postgres-only (CHAD's real primary — see `outbox-postgres.ts`'s own doc
+ * comment for why this exists). No-ops on the legacy Mongo backend, which
+ * isn't live for CHAD's own cp_items/cp_history since 2026-07-27.
+ */
+export async function enqueueBlockedGoogleSheetsSync(
+  input: EnqueueGoogleSheetsSyncInput & { reason: string },
+  clock: Clock = systemClock
+): Promise<void> {
+  if (loadDataProvidersConfig().primaryBackend !== "postgres") return;
+  return postgresOutbox.enqueueBlockedGoogleSheetsSync(input, clock);
+}
+
 export async function claimNextGoogleSheetsJob(workerId: string, clock: Clock = systemClock): Promise<GoogleSheetsSyncJob | null> {
   return backend().claimNextGoogleSheetsJob(workerId, clock);
 }

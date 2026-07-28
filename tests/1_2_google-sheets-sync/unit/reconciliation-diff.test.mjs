@@ -7,7 +7,7 @@
 // "lost_outbox" branch exists to catch.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { diffRecordKeys, classifyOutboxState } from "../../support/google-sheets/reconciliation.mjs";
+import { diffRecordKeys, classifyOutboxState } from "../../../packages/dba/dist/google-sheets/reconciliation.js";
 
 test("diffRecordKeys: exact match -> no missing/extra/duplicates", () => {
   const result = diffRecordKeys(["r:01", "r:02"], ["r:01", "r:02"]);
