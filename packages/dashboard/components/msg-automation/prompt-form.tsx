@@ -32,7 +32,6 @@ export const PROMPT_CATEGORY_OPTIONS = [
 
 export interface PromptFormState {
   name: string;
-  description: string;
   promptKind: AiPromptKind;
   category: string;
   openaiPromptId: string;
@@ -41,7 +40,6 @@ export interface PromptFormState {
 
 const EMPTY: PromptFormState = {
   name: "",
-  description: "",
   promptKind: "our_custom",
   category: "custom",
   openaiPromptId: "",
@@ -85,7 +83,6 @@ export function PromptForm({
       }
       const p = json.data as {
         name: string;
-        description?: string;
         promptKind?: AiPromptKind | "chad_custom";
         actionType: string;
         providerBindings?: { openaiPromptId?: string };
@@ -93,7 +90,6 @@ export function PromptForm({
       };
       setState({
         name: p.name ?? "",
-        description: p.description ?? "",
         promptKind: p.promptKind === "openai_managed" ? "openai_managed" : "our_custom",
         category: p.actionType || "custom",
         openaiPromptId: p.providerBindings?.openaiPromptId ?? "",
@@ -135,7 +131,6 @@ export function PromptForm({
       const payload = {
         slug,
         name: state.name.trim(),
-        description: state.description.trim() || undefined,
         actionType: category,
         promptKind: state.promptKind,
         provider: "openai" as const,
@@ -159,11 +154,9 @@ export function PromptForm({
         throw new Error(json.error || `Save failed (${res.status})`);
       }
       setResult({ type: "success", message: isEdit ? "Saved" : "Created" });
-      if (!isEdit && json.data?.id) {
-        const editUrl = returnTo.includes("/forms")
-          ? `/dashboard/forms?form=add_prompt&promptId=${encodeURIComponent(json.data.id)}`
-          : `/dashboard/msg-automation/ai-prompts/new?promptId=${encodeURIComponent(json.data.id)}`;
-        router.replace(editUrl);
+      if (!isEdit) {
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        router.push(returnTo);
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -229,17 +222,6 @@ export function PromptForm({
                   onChange={(e) => setField("name", e.target.value)}
                   disabled={loading}
                   required
-                  className="h-8 border-0 bg-transparent shadow-none focus-visible:ring-1"
-                />
-              </td>
-            </tr>
-            <tr>
-              <td className={labelCell}>Description</td>
-              <td className={fieldCell}>
-                <Input
-                  value={state.description}
-                  onChange={(e) => setField("description", e.target.value)}
-                  disabled={loading}
                   className="h-8 border-0 bg-transparent shadow-none focus-visible:ring-1"
                 />
               </td>

@@ -18,23 +18,28 @@ interface AiPromptSummary {
   id: string;
   slug: string;
   name: string;
+  description?: string;
   promptKind?: AiPromptKind | string;
   version: number;
 }
 
 /**
- * Left-packed columns (phone-friendly): Ver | Name | Category | empty spacer.
- * Content columns size to content; the last cell flex-grows so the row still
- * fills the card without stretching Category to the right.
+ * Fixed column widths so header cells and row cells share the same left edges.
+ * Last cell is an empty flex spacer (no chevron). Left-packed, phone-friendly.
  */
-const ROW =
-  "flex w-full items-stretch text-left";
+const ROW = "flex w-full items-stretch text-left";
 
-const CELL =
-  "flex shrink-0 items-center border-border px-2.5 py-2.5 first:pl-3 [&:not(:last-child)]:border-r";
+const VER_CELL =
+  "flex w-12 shrink-0 items-center border-border px-1 py-0.5 pl-1.5 border-r";
 
 const NAME_CELL =
-  "flex min-w-0 max-w-[9.5rem] shrink flex-col items-start justify-center gap-0.5 border-border px-2.5 py-2.5 sm:max-w-[14rem] [&:not(:last-child)]:border-r";
+  "flex w-[9.5rem] shrink-0 items-center border-border px-1 py-0.5 border-r sm:w-[14rem]";
+
+const CATEGORY_CELL =
+  "flex w-[10.75rem] shrink-0 items-center border-border px-1 py-0.5 border-r sm:w-[12.5rem]";
+
+const DESCRIPTION_CELL =
+  "flex w-[8rem] shrink-0 items-center border-border px-1 py-0.5 border-r sm:w-[12rem]";
 
 const SPACER_CELL = "min-w-0 flex-1";
 
@@ -98,11 +103,18 @@ export default function AiPromptsListPage() {
         ) : prompts.length === 0 ? (
           <div className="p-6 text-sm text-muted-foreground">No prompts yet</div>
         ) : (
-          <div className="space-y-2">
-            <div className={cn(ROW, "text-xs font-semibold uppercase tracking-wide text-muted-foreground")}>
-              <div className={cn(CELL, "w-12 justify-start")}>Ver.</div>
-              <div className={cn(NAME_CELL, "font-semibold")}>Name</div>
-              <div className={CELL}>Category</div>
+          <div className="space-y-0.5">
+            {/* Transparent border matches row box model so columns line up. */}
+            <div
+              className={cn(
+                ROW,
+                "rounded-xl border border-transparent text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+              )}
+            >
+              <div className={VER_CELL}>Ver.</div>
+              <div className={NAME_CELL}>Name</div>
+              <div className={CATEGORY_CELL}>Category</div>
+              <div className={DESCRIPTION_CELL}>Description</div>
               <div className={SPACER_CELL} aria-hidden />
             </div>
             {prompts.map((p) => {
@@ -120,23 +132,27 @@ export default function AiPromptsListPage() {
                     "rounded-xl border border-border bg-background transition-colors hover:bg-accent/60"
                   )}
                 >
-                  <div className={cn(CELL, "w-12 font-semibold text-muted-foreground")}>
+                  <div className={cn(VER_CELL, "font-semibold text-muted-foreground")}>
                     v{p.version}
                   </div>
                   <div className={NAME_CELL}>
                     <span className="w-full truncate text-sm font-semibold">{p.name}</span>
-                    <span className="w-full truncate text-xs text-muted-foreground">{p.slug}</span>
                   </div>
-                  <div className={CELL}>
+                  <div className={CATEGORY_CELL}>
                     <span
                       className={cn(
-                        "inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold",
+                        "inline-flex max-w-full truncate rounded-full px-2.5 py-1 text-xs font-semibold",
                         kind === "openai_managed"
                           ? "bg-blue-50 text-blue-800 dark:bg-blue-950/40 dark:text-blue-200"
                           : "bg-violet-50 text-violet-800 dark:bg-violet-950/40 dark:text-violet-200"
                       )}
                     >
                       {category}
+                    </span>
+                  </div>
+                  <div className={DESCRIPTION_CELL}>
+                    <span className="w-full truncate text-xs text-muted-foreground">
+                      {p.description?.trim() || ""}
                     </span>
                   </div>
                   <div className={SPACER_CELL} aria-hidden />
