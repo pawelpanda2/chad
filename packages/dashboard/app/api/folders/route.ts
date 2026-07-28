@@ -5,6 +5,8 @@ import {
   getChildrenOf,
   createFolderChildItem,
   updateFolderTextBody,
+  createFolderChildItemAllowingSystemFolderWrite,
+  updateFolderTextBodyAllowingSystemFolderWrite,
   FoldersOperationError,
   runWithRepoContext,
   type CpItem,
@@ -132,7 +134,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'NOT_AUTHENTICATED' }, { status: 401 });
   }
 
-  let payload: { parentLoca?: unknown; type?: unknown; name?: unknown; body?: unknown };
+  let payload: { parentLoca?: unknown; type?: unknown; name?: unknown; body?: unknown; allowSystemFolderWrite?: unknown };
   try {
     payload = await request.json();
   } catch {
@@ -143,6 +145,7 @@ export async function POST(request: Request) {
   const type = payload.type;
   const name = payload.name;
   const body = payload.body;
+  const allowSystemFolderWrite = payload.allowSystemFolderWrite === true;
 
   if (typeof type !== 'string') {
     return NextResponse.json({ error: 'Missing or invalid "type"' }, { status: 400 });
@@ -158,7 +161,9 @@ export async function POST(request: Request) {
 
   try {
     const { item: createdOrFound, alreadyExisted } = await runWithRepoContext(user, () =>
-      createFolderChildItem(parentAddress, name, type, body)
+      user.isAdmin && allowSystemFolderWrite
+        ? createFolderChildItemAllowingSystemFolderWrite(parentAddress, name, type, body)
+        : createFolderChildItem(parentAddress, name, type, body)
     );
 
     const parent = await getItemByAddress(parentAddress);
@@ -202,7 +207,7 @@ export async function PUT(request: Request) {
     return NextResponse.json({ error: 'NOT_AUTHENTICATED' }, { status: 401 });
   }
 
-  let payload: { loca?: unknown; body?: unknown };
+  let payload: { loca?: unknown; body?: unknown; allowSystemFolderWrite?: unknown };
   try {
     payload = await request.json();
   } catch {
@@ -211,6 +216,7 @@ export async function PUT(request: Request) {
 
   const loca = payload.loca;
   const body = payload.body;
+  const allowSystemFolderWrite = payload.allowSystemFolderWrite === true;
 
   if (typeof loca !== 'string' || !loca) {
     return NextResponse.json({ error: 'Missing or invalid "loca"' }, { status: 400 });
@@ -222,7 +228,11 @@ export async function PUT(request: Request) {
   const address = `${user.repoGuid}/${loca}`;
 
   try {
-    const updated = await runWithRepoContext(user, () => updateFolderTextBody(address, body));
+    const updated = await runWithRepoContext(user, () =>
+      user.isAdmin && allowSystemFolderWrite
+        ? updateFolderTextBodyAllowingSystemFolderWrite(address, body)
+        : updateFolderTextBody(address, body)
+    );
     return NextResponse.json({ item: await toApiItem(updated) });
   } catch (err) {
     if (err instanceof FoldersOperationError) {

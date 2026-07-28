@@ -33,9 +33,12 @@ export interface CpUser {
   username: string;
   email: string;
   passwordHash: string;
+  role?: string;
   createdAt: string;
   updatedAt: string;
 }
+
+export type UserRole = "admin" | "user";
 
 /**
  * Normalized user data structure for application use
@@ -46,6 +49,8 @@ export interface AppUser {
   displayName: string;
   email?: string;
   isActive: boolean;
+  role: UserRole;
+  isAdmin: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -55,6 +60,15 @@ export interface AppUser {
  */
 interface GetByNamesResponse {
   users: CpUser[];
+}
+
+function normalizeUserRole(user: Pick<CpUser, "username" | "role">): UserRole {
+  if (user.role === "admin" || user.role === "user") {
+    return user.role;
+  }
+  // Backward-compatible fallback until every live users-list row carries
+  // an explicit role. `pawel_f` remains the only admin by policy.
+  return user.username.toLowerCase() === "pawel_f" ? "admin" : "user";
 }
 
 /**
@@ -79,7 +93,7 @@ export interface UserServiceDebugInfo {
  *   same as before).
  */
 export async function getUsersFromSharpRaw(): Promise<string> {
-  console.log('[UserService] Fetching users-list body via dba (Mongo)');
+  console.log('[UserService] Fetching users-list body via dba (backend-agnostic router)');
 
   const body = await getUsersListBody();
 
@@ -149,15 +163,20 @@ export async function getUsersFromSharp(options?: { includeDebug?: boolean }): P
     }
 
     // Map to application user format
-    const users: AppUser[] = parsedData.users.map((user: CpUser) => ({
-      id: user.repoGuid,
-      username: user.username,
-      displayName: user.username, // Use username as displayName
-      email: user.email,
-      isActive: true, // All users from Content Provider are active
-      createdAt: user.createdAt,
-      updatedAt: user.updatedAt,
-    }));
+    const users: AppUser[] = parsedData.users.map((user: CpUser) => {
+      const role = normalizeUserRole(user);
+      return {
+        id: user.repoGuid,
+        username: user.username,
+        displayName: user.username, // Use username as displayName
+        email: user.email,
+        isActive: true, // All users from Content Provider are active
+        role,
+        isAdmin: role === "admin",
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+      };
+    });
 
     debug.usersCount = users.length;
     debug.usersSample = users.slice(0, 3).map(u => ({
@@ -260,13 +279,13 @@ const CACHE_TTL_MS = 30000; // 30 seconds cache
  */
 export async function resolveCurrentUser(
   repoGuidFromCookie: string
-): Promise<{ repoGuid: string; username: string } | null> {
+): Promise<{ repoGuid: string; username: string; role: UserRole; isAdmin: boolean } | null> {
   const users = await getCachedUsers();
   const user = users.find(u => u.id === repoGuidFromCookie);
   if (!user) {
     return null;
   }
-  return { repoGuid: user.id, username: user.username };
+  return { repoGuid: user.id, username: user.username, role: user.role, isAdmin: user.isAdmin };
 }
 
 /**
