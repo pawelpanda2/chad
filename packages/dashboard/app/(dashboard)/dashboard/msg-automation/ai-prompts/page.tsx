@@ -30,16 +30,16 @@ interface AiPromptSummary {
 const ROW = "flex w-full items-stretch text-left";
 
 const VER_CELL =
-  "flex w-12 shrink-0 items-center border-border px-1 py-0.5 pl-1.5 border-r";
+  "flex w-12 shrink-0 items-center border-border px-1.5 py-1 pl-2 border-r";
 
 const NAME_CELL =
-  "flex w-[9.5rem] shrink-0 items-center border-border px-1 py-0.5 border-r sm:w-[14rem]";
+  "flex w-[9.5rem] shrink-0 items-center border-border px-1.5 py-1 border-r sm:w-[14rem]";
 
 const CATEGORY_CELL =
-  "flex w-[10.75rem] shrink-0 items-center border-border px-1 py-0.5 border-r sm:w-[12.5rem]";
+  "flex w-[10.75rem] shrink-0 items-center border-border px-1.5 py-1 border-r sm:w-[12.5rem]";
 
 const DESCRIPTION_CELL =
-  "flex w-[8rem] shrink-0 items-center border-border px-1 py-0.5 border-r sm:w-[12rem]";
+  "flex w-[8rem] shrink-0 items-center border-border px-1.5 py-1 border-r sm:w-[12rem]";
 
 const SPACER_CELL = "min-w-0 flex-1";
 
