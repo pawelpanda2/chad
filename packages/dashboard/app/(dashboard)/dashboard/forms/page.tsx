@@ -853,42 +853,42 @@ function FormsPageContent() {
           <button
             type="button"
             onClick={() => handleFormSelect("add_action")}
-            className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[70px]"
+            className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
           >
             <span className="font-semibold text-sm">ADD DAILY ENTRY</span>
           </button>
           <button
             type="button"
             onClick={() => handleFormSelect("date_entry")}
-            className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[70px]"
+            className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
           >
             <span className="font-semibold text-sm">ADD DATE</span>
           </button>
           <button
             type="button"
             onClick={() => handleFormSelect("lead")}
-            className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[70px]"
+            className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
           >
             <span className="font-semibold text-sm">ADD LEAD</span>
           </button>
           <button
             type="button"
             onClick={() => handleFormSelect("action")}
-            className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[70px]"
+            className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
           >
             <span className="font-semibold text-sm">ADD ACTION</span>
           </button>
           <button
             type="button"
             onClick={() => handleFormSelect("reports")}
-            className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[70px]"
+            className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
           >
             <span className="font-semibold text-sm">ADD REPORT</span>
           </button>
           <button
             type="button"
             onClick={() => handleFormSelect("add_prompt")}
-            className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[70px]"
+            className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
           >
             <span className="font-semibold text-sm">ADD PROMPT</span>
           </button>
