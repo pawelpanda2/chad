@@ -1,0 +1,23 @@
+import { describe, expect, it } from "vitest";
+import {
+  AI_PROMPT_KIND_OPTIONS,
+  aiPromptKindLabel,
+  normalizeAiPromptKind,
+} from "./ai-prompt-kind";
+
+describe("ai-prompt-kind mapping", () => {
+  it("exposes only Our Custom and OpenAI Managed labels", () => {
+    expect(AI_PROMPT_KIND_OPTIONS.map((o) => o.value).sort()).toEqual([
+      "openai_managed",
+      "our_custom",
+    ]);
+    expect(aiPromptKindLabel("our_custom")).toBe("Our Custom Prompt");
+    expect(aiPromptKindLabel("openai_managed")).toBe("OpenAI Managed Prompt");
+  });
+
+  it("normalizes legacy chad_custom and missing to our_custom", () => {
+    expect(normalizeAiPromptKind(undefined)).toBe("our_custom");
+    expect(normalizeAiPromptKind("chad_custom")).toBe("our_custom");
+    expect(normalizeAiPromptKind("openai_managed")).toBe("openai_managed");
+  });
+});

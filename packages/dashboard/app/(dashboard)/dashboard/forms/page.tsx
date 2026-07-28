@@ -11,7 +11,6 @@ import { cn } from "@/lib/utils";
 import { TextEditorWithToolbar } from "@/components/shared/text-editor-with-toolbar";
 import { VoiceRecordingPanel } from "@/components/shared/voice-recording-panel";
 import { ErrorBox } from "@/components/shared/error-box";
-import { PromptForm } from "@/components/msg-automation/prompt-form";
 import {
   Dialog,
   DialogContent,
@@ -37,6 +36,18 @@ const MIN_SAVE_INDICATOR_MS = 450;
 // confirmation dialog opens, so the user must actually read and retype it
 // rather than muscle-memory a fixed word (Story 62 Round 8).
 const CLEAR_CONFIRM_WORDS = ["DELETE", "CONFIRM", "CLEAR", "WYCZYSC", "USUN", "PERMANENT"];
+
+function AddPromptRedirect() {
+  const router = useRouter();
+  useEffect(() => {
+    router.replace("/dashboard/msg-automation/ai-prompts/new");
+  }, [router]);
+  return (
+    <DashboardPageShell title="Add Prompt" upLevel={{ href: "/dashboard/forms" }}>
+      <p className="text-sm text-muted-foreground">Redirecting…</p>
+    </DashboardPageShell>
+  );
+}
 
 const APPROACH_KINDS = [
   { value: "p", label: "Daygame" },
@@ -887,7 +898,7 @@ function FormsPageContent() {
           </button>
           <button
             type="button"
-            onClick={() => handleFormSelect("add_prompt")}
+            onClick={() => router.push("/dashboard/msg-automation/ai-prompts/new")}
             className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[70px]"
           >
             <span className="font-semibold text-sm">ADD PROMPT</span>
@@ -898,26 +909,11 @@ function FormsPageContent() {
   }
 
   // ============================================================================
-  // Render: Add / Edit Prompt
+  // Add Prompt — type picker lives under Msg Auto / AI Prompts (mockup v4)
   // ============================================================================
 
   if (selectedForm === "add_prompt") {
-    const promptId = searchParams.get("promptId");
-    return (
-      <DashboardPageShell
-        contentClassName={FRAME_SECTION_GAP_CLASS}
-        upLevel={{
-          onClick: () =>
-            router.push(promptId ? "/dashboard/msg-automation/ai-prompts" : "/dashboard/forms"),
-        }}
-        title={promptId ? "Edit Prompt" : "Add Prompt"}
-      >
-        <PromptForm
-          promptId={promptId}
-          returnTo={promptId ? "/dashboard/msg-automation/ai-prompts" : "/dashboard/forms"}
-        />
-      </DashboardPageShell>
-    );
+    return <AddPromptRedirect />;
   }
 
   // ============================================================================

@@ -25,6 +25,8 @@ export default defineConfig({
       // guard, draft/published filtering, version increment): pure,
       // fake-ops-based, no real DB needed.
       "packages/dba/src/ai-prompts.test.ts",
+      // Msg Auto AI Prompts — kind labels / Category mapping (mockup v4).
+      "packages/dashboard/components/msg-automation/ai-prompt-kind.test.ts",
       // Story 90 — Lead ↔ Beeper Links (phone match / save validation).
       "packages/dba/src/lead-beeper-links.test.ts",
       // tests/ reorg (2026-07-28) — only the Vitest-based files from each
