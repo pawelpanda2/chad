@@ -90,8 +90,17 @@ pnpm test:regression:data-protection     # 1_1_data-protection
 pnpm test:regression:google-sheets       # 1_2_google-sheets-sync
 pnpm test:regression:history             # 1_3_history-integrity
 pnpm test:regression:tables-release      # 1_4_tables-release (Daily/Dates/Leads)
-pnpm test:regression:release-audit       # all four, in order
+pnpm test:regression:release-audit       # all four pillars — ALWAYS runs every one (tests/support/run-full-release-audit.mjs), even if an earlier pillar fails, so a full audit never silently skips a pillar
 ```
+
+**All four pillars are mandatory before a release-readiness verdict** — no
+`1_*` pillar is optional. `test:regression:release-audit` never short-
+circuits: it always runs 1_1, 1_2, 1_3, and 1_4, then exits non-zero if any
+of them failed, printing a PASS/FAIL summary per pillar. READY FOR BOSS
+requires all four to report PASS, plus a completed read-only reconciliation
+of real users (pawel_f, kamil_s) against Google Sheets — see
+`tests/1_2_google-sheets-sync/integration/reconcile-real-users.test.mjs`
+and `tests/release-audit-report.md` for the current result.
 
 Compatibility aliases (preserved from before the reorg, paths updated):
 

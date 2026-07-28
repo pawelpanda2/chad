@@ -1316,7 +1316,7 @@ async function saveDateEntryContentProvider(
 }
 
 /** Parses a Daily/Date Entry's YAML body into string-coerced fields, for the Google Sheets sync only (Story 75). */
-function parseYamlFieldsForSheetSync(bodyYaml: string): Record<string, string> {
+export function parseYamlFieldsForSheetSync(bodyYaml: string): Record<string, string> {
   let parsed: unknown;
   try {
     parsed = yaml.load(bodyYaml);
@@ -1342,7 +1342,7 @@ function parseYamlFieldsForSheetSync(bodyYaml: string): Record<string, string> {
  * of what the user actually sees in the Tracker view (Story 75, revised
  * 2026-07-21 after the user asked for AUTO columns to be included).
  */
-async function computeDailyAutoFieldsForSheetSync(dateStr: string): Promise<Record<string, string>> {
+export async function computeDailyAutoFieldsForSheetSync(dateStr: string): Promise<Record<string, string>> {
   if (!dateStr) return {};
   const dateEntries = await getAllDateEntries();
   const parsedDateFields = dateEntries.map((entry) => {

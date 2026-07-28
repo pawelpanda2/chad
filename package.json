@@ -48,11 +48,15 @@
     "test:offline-readonly-backup": "pnpm --filter dba build && vitest run tests/1_1_data-protection/unit/offline-readonly-backup-mode-and-formatters.test.ts tests/1_1_data-protection/integration/offline-readonly-backup-workers.test.ts",
     "test:e2e:offline-readonly-backup-dev-panel": "playwright test --config=tests/1_1_data-protection/e2e/playwright.offline-readonly-backup.config.mjs",
     "test:integration:local-msg-auto-links": "vitest run tests/1_4_tables-release/leads/integration/local-msg-auto-links-api.test.mjs",
-    "test:regression:data-protection": "pnpm test:backend-config:no-chad-mongo && pnpm test:integration:local-login && pnpm test:offline-readonly-backup && pnpm test:e2e:local-login && pnpm test:e2e:local-dev-panel-settings && pnpm test:e2e:offline-readonly-backup-dev-panel",
-    "test:regression:google-sheets": "pnpm --filter dba build && node --test --test-concurrency=1 tests/1_2_google-sheets-sync/unit/config-validator.test.mjs tests/1_2_google-sheets-sync/integration/delete-physical.test.mjs tests/1_2_google-sheets-sync/integration/worker-order.test.mjs && pnpm test:unit:google-sheets-config && pnpm test:integration:local-google-sheets-info && pnpm test:integration:qnap-test3-google-sheets && pnpm test:e2e:local-google-sheets-history",
+    "test:unit:reconciliation-diff": "node --test tests/1_2_google-sheets-sync/unit/reconciliation-diff.test.mjs",
+    "test:integration:cross-user-data-integrity": "pnpm --filter dba build && vitest run tests/1_1_data-protection/integration/cross-user-data-integrity.test.mjs",
+    "test:integration:reconcile-real-users": "pnpm --filter dba build && vitest run tests/1_2_google-sheets-sync/integration/reconcile-real-users.test.mjs",
+    "test:integration:history-outbox-lifecycle": "pnpm --filter dba build && vitest run tests/1_2_google-sheets-sync/integration/history-outbox-sheet-lifecycle.test.mjs",
+    "test:regression:data-protection": "pnpm test:backend-config:no-chad-mongo && pnpm test:integration:local-login && pnpm test:offline-readonly-backup && pnpm test:integration:cross-user-data-integrity && pnpm test:e2e:local-login && pnpm test:e2e:local-dev-panel-settings && pnpm test:e2e:offline-readonly-backup-dev-panel",
+    "test:regression:google-sheets": "pnpm --filter dba build && node --test --test-concurrency=1 tests/1_2_google-sheets-sync/unit/config-validator.test.mjs tests/1_2_google-sheets-sync/integration/delete-physical.test.mjs tests/1_2_google-sheets-sync/integration/worker-order.test.mjs && pnpm test:unit:reconciliation-diff && pnpm test:unit:google-sheets-config && pnpm test:integration:local-google-sheets-info && pnpm test:integration:qnap-test3-google-sheets && pnpm test:integration:reconcile-real-users && pnpm test:integration:history-outbox-lifecycle && pnpm test:e2e:local-google-sheets-history",
     "test:regression:history": "pnpm --filter dba build && node --test tests/1_3_history-integrity/unit/status-shape.test.mjs && pnpm test:e2e:history-ui",
     "test:regression:tables-release": "pnpm --filter dba build && node --test --test-concurrency=1 tests/1_4_tables-release/daily/unit/mapping-schema.test.mjs tests/1_4_tables-release/daily/unit/system-folders.test.mjs tests/1_4_tables-release/dates/unit/mapping-schema.test.mjs && pnpm test:integration:daily-dates && pnpm test:integration:local-msg-auto-links && pnpm test:e2e:daily-dates",
-    "test:regression:release-audit": "pnpm test:regression:data-protection && pnpm test:regression:google-sheets && pnpm test:regression:history && pnpm test:regression:tables-release"
+    "test:regression:release-audit": "node tests/support/run-full-release-audit.mjs"
   },
   "dependencies": {
     "mongodb": "^7.1.1"
