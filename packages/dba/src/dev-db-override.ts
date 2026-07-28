@@ -294,14 +294,22 @@ export function getEffectivePostgresUri(): string {
     return `postgres://${user}:${pass}@${host}:${port}/${db}`;
   }
 
+  // "server" is the only other source — CHAD's own real, shared PostgreSQL,
+  // always the QNAP server (see ai-docs/databases/red-rules.md Rule 1: this
+  // is an explicit selected mode, never a silent fallback to something
+  // else). A prior version of this function returned ANY non-QNAP-shaped
+  // POSTGRES_URI as-is (added for local-mac-docker's own `postgres:5432`
+  // mirror) — that made "server" mode silently inert on local-mac-docker:
+  // the Dev Panel said "Server PostgreSQL" but every read actually hit the
+  // local mirror, which only ever carries a minimal `test3` seed (see
+  // seed-local-postgres-login.mjs), never the real users-list — breaking
+  // login for every real account (found 2026-07-28). There is no "local"
+  // ChadPostgresSource anymore (see the type above) — don't reintroduce
+  // one via a URI-shape guess.
   const envUri = process.env.POSTGRES_URI;
-  // Local-mac-docker: POSTGRES_URI is the sibling `postgres:5432` mirror
-  // (users-list + cp_items). Only build a QNAP URI when explicitly targeting
-  // the server or when the process env already points at QNAP.
-  if (envUri && !isQnapPostgresUri(envUri)) {
-    return envUri;
-  }
   if (envUri && isQnapPostgresUri(envUri) && !process.env.POSTGRES_QNAP_PASSWORD) {
+    // Process already started pointed at QNAP with a working URI (TEST/PROD
+    // containers, e.g. chad-postgres:5432 or a direct Tailscale URI) — keep it.
     return envUri;
   }
   const { user, pass, db } = requirePostgresCredentials(true);
