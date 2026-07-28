@@ -15,6 +15,8 @@ import { resolveCurrentUser } from "./user-service";
 export interface CurrentUser {
   repoGuid: string;
   username: string;
+  role: "admin" | "user";
+  isAdmin: boolean;
 }
 
 export async function getCurrentUserFromCookies(): Promise<CurrentUser | null> {

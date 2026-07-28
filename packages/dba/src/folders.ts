@@ -16,6 +16,7 @@ import {
   getChildrenOf as realGetChildrenOf,
   createOrGetChild as realCreateOrGetChild,
   putItemBody as realPutItemBody,
+  deleteItemByAddress as realDeleteItemByAddress,
 } from "./item-ops.js";
 import type { CpItem } from "./cp-model.js";
 import { splitAddress } from "./cp-model.js";
@@ -33,7 +34,8 @@ export type FoldersErrorCode =
   | "PARENT_NOT_FOLDER"
   | "ITEM_NOT_FOUND"
   | "NOT_TEXT_ITEM"
-  | "SYSTEM_FOLDER_READ_ONLY";
+  | "SYSTEM_FOLDER_READ_ONLY"
+  | "FOLDER_NOT_EMPTY";
 
 export class FoldersOperationError extends Error {
   constructor(
@@ -59,6 +61,11 @@ export interface FolderChildOps {
   getChildrenOf: typeof realGetChildrenOf;
   createOrGetChild: typeof realCreateOrGetChild;
   putItemBody: typeof realPutItemBody;
+  deleteItemByAddress: typeof realDeleteItemByAddress;
+}
+
+interface FolderWriteOptions {
+  allowSystemFolderWrite?: boolean;
 }
 
 const defaultOps: FolderChildOps = {
@@ -66,6 +73,7 @@ const defaultOps: FolderChildOps = {
   getChildrenOf: realGetChildrenOf,
   createOrGetChild: realCreateOrGetChild,
   putItemBody: realPutItemBody,
+  deleteItemByAddress: realDeleteItemByAddress,
 };
 
 /** Walk parent chain collecting config.name → ["views","daily",...]. */
@@ -133,12 +141,13 @@ export function validateChildType(type: string): FolderChildType {
  *   trusts a client-supplied repo id.
  * @throws FoldersOperationError PARENT_NOT_FOUND / PARENT_NOT_FOLDER / VALIDATION
  */
-export async function createFolderChildItem(
+async function createFolderChildItemInternal(
   parentAddress: string,
   rawName: string,
   rawType: string,
   body?: string,
-  ops: FolderChildOps = defaultOps
+  ops: FolderChildOps = defaultOps,
+  options: FolderWriteOptions = {}
 ): Promise<{ item: CpItem; alreadyExisted: boolean }> {
   const name = validateChildName(rawName);
   const type = validateChildType(rawType);
@@ -157,11 +166,13 @@ export async function createFolderChildItem(
     );
   }
 
-  try {
-    const parentNames = await resolveLogicalNamePath(parentAddress, ops);
-    assertNotSystemFolderWrite(parentNames, "create-child");
-  } catch (err) {
-    rethrowSystemFolder(err);
+  if (!options.allowSystemFolderWrite) {
+    try {
+      const parentNames = await resolveLogicalNamePath(parentAddress, ops);
+      assertNotSystemFolderWrite(parentNames, "create-child");
+    } catch (err) {
+      rethrowSystemFolder(err);
+    }
   }
 
   const existingChildren = await ops.getChildrenOf(parent.config.address);
@@ -171,6 +182,27 @@ export async function createFolderChildItem(
   return { item, alreadyExisted };
 }
 
+export async function createFolderChildItem(
+  parentAddress: string,
+  rawName: string,
+  rawType: string,
+  body?: string,
+  ops: FolderChildOps = defaultOps
+): Promise<{ item: CpItem; alreadyExisted: boolean }> {
+  return createFolderChildItemInternal(parentAddress, rawName, rawType, body, ops);
+}
+
+export async function createFolderChildItemAllowingSystemFolderWrite(
+  parentAddress: string,
+  rawName: string,
+  rawType: string,
+  body?: string
+): Promise<{ item: CpItem; alreadyExisted: boolean }> {
+  return createFolderChildItemInternal(parentAddress, rawName, rawType, body, defaultOps, {
+    allowSystemFolderWrite: true,
+  });
+}
+
 /**
  * Overwrites an existing Text item's body. Never allowed on a Folder — a
  * Folder's visible "Body" is a computed children map, not its own stored
@@ -178,10 +210,11 @@ export async function createFolderChildItem(
  *
  * @throws FoldersOperationError ITEM_NOT_FOUND / NOT_TEXT_ITEM
  */
-export async function updateFolderTextBody(
+async function updateFolderTextBodyInternal(
   address: string,
   body: string,
-  ops: FolderChildOps = defaultOps
+  ops: FolderChildOps = defaultOps,
+  options: FolderWriteOptions = {}
 ): Promise<CpItem> {
   const existing = await ops.getItemByAddress(address);
   if (!existing) {
@@ -194,12 +227,79 @@ export async function updateFolderTextBody(
     );
   }
 
-  try {
-    const names = await resolveLogicalNamePath(address, ops);
-    assertNotSystemFolderWrite(names, "update-body");
-  } catch (err) {
-    rethrowSystemFolder(err);
+  if (!options.allowSystemFolderWrite) {
+    try {
+      const names = await resolveLogicalNamePath(address, ops);
+      assertNotSystemFolderWrite(names, "update-body");
+    } catch (err) {
+      rethrowSystemFolder(err);
+    }
   }
 
   return ops.putItemBody(address, body);
+}
+
+export async function updateFolderTextBody(
+  address: string,
+  body: string,
+  ops: FolderChildOps = defaultOps
+): Promise<CpItem> {
+  return updateFolderTextBodyInternal(address, body, ops);
+}
+
+export async function updateFolderTextBodyAllowingSystemFolderWrite(
+  address: string,
+  body: string
+): Promise<CpItem> {
+  return updateFolderTextBodyInternal(address, body, defaultOps, {
+    allowSystemFolderWrite: true,
+  });
+}
+
+/**
+ * Permanently deletes a Text or Folder item. A Folder can only be deleted
+ * while empty — this never cascades to children, so nothing is silently
+ * removed alongside what the user actually selected; delete the children
+ * first.
+ *
+ * @throws FoldersOperationError ITEM_NOT_FOUND / FOLDER_NOT_EMPTY / SYSTEM_FOLDER_READ_ONLY
+ */
+async function deleteFolderItemInternal(
+  address: string,
+  ops: FolderChildOps = defaultOps,
+  options: FolderWriteOptions = {}
+): Promise<void> {
+  const existing = await ops.getItemByAddress(address);
+  if (!existing) {
+    throw new FoldersOperationError("ITEM_NOT_FOUND", `Item not found at address "${address}"`);
+  }
+
+  if (existing.config.type === "Folder") {
+    const children = await ops.getChildrenOf(address);
+    if (children.length > 0) {
+      throw new FoldersOperationError(
+        "FOLDER_NOT_EMPTY",
+        `Folder at "${address}" still has ${children.length} child item(s) — delete those first`
+      );
+    }
+  }
+
+  if (!options.allowSystemFolderWrite) {
+    try {
+      const names = await resolveLogicalNamePath(address, ops);
+      assertNotSystemFolderWrite(names, "delete");
+    } catch (err) {
+      rethrowSystemFolder(err);
+    }
+  }
+
+  await ops.deleteItemByAddress(address);
+}
+
+export async function deleteFolderItem(address: string, ops: FolderChildOps = defaultOps): Promise<void> {
+  return deleteFolderItemInternal(address, ops);
+}
+
+export async function deleteFolderItemAllowingSystemFolderWrite(address: string): Promise<void> {
+  return deleteFolderItemInternal(address, defaultOps, { allowSystemFolderWrite: true });
 }
