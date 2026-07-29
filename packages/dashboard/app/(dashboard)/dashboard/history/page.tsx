@@ -407,7 +407,7 @@ function GoogleSheetsViewContent() {
                   placeholder={revealConfirmWord}
                   autoFocus
                 />
-                <p className="text-sm">Re-enter your own account password to confirm it's you.</p>
+                <p className="text-sm">Re-enter your own account password to confirm it&apos;s you.</p>
                 <Input
                   type="password"
                   value={revealPasswordInput}
