@@ -37,6 +37,7 @@ export default defineConfig({
       // through this config.
       "tests/1_1_data-protection/integration/local-login-api.test.mjs",
       "tests/1_1_data-protection/integration/session-signing-configured.test.mjs",
+      "tests/1_1_data-protection/unit/session-token.test.ts",
       "tests/1_1_data-protection/integration/offline-readonly-backup-workers.test.ts",
       "tests/1_1_data-protection/unit/offline-readonly-backup-mode-and-formatters.test.ts",
       "tests/1_2_google-sheets-sync/integration/local-google-sheets-info.test.mjs",
