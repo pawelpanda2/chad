@@ -9,6 +9,18 @@
 #
 # Runtime na QNAP to WYŁĄCZNIE docker-compose (bez tmuxinator).
 #
+# 2026-07-29 — QNAP_CONTAINER_DATA_PATH (set in .env.qnap, not here) moved
+# to /share/cp_1/chad-data — the actual real Shared Folder cp_1 (same
+# physical volume, cachedev1, as the previous /share/ContainerData path; not
+# a volume move, a directory-tree move requested explicitly). Real live
+# paths are now /share/cp_1/chad-data/chad-shared/{postgres,beeper-mongodb}/
+# {db,configdb,backups}. Old data at
+# /share/CACHEDEV1_DATA/ContainerData/chad-shared/{postgres,beeper-mongodb}
+# kept as a read-only rollback copy (chmod a-w'd, not deleted) — see
+# tests/release-audit-report.md for the migration record (pre/post counts,
+# checksums). This compose file itself needed no change — it already reads
+# the path from ${QNAP_CONTAINER_DATA_PATH}, only .env.qnap's value changed.
+#
 # 2026-07-27 — CHAD Mongo runtime fully removed (see
 # ai-docs/databases/red-rules.md): the old `chad-mongodb` replica-set
 # service (+ its `mongo-keyfile-init`/`mongo-rs-init` helpers), which used
