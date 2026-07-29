@@ -20,16 +20,23 @@ test.describe("reveal-password requires server-side reauth", () => {
     await expect(page).toHaveURL(/\/dashboard/, { timeout: 15_000 });
   });
 
-  test("no currentPassword in the request -> 403, never reveals anything", async ({ request }) => {
-    const res = await request.post("/api/google-sheets/reveal-password", { data: {} });
+  // page.request (not the standalone `request` fixture) — it reuses the
+  // browser context's own cookie jar, so it actually carries the session
+  // cookie the beforeEach just logged in with. The standalone `request`
+  // fixture is a separate APIRequestContext with an empty cookie jar; using
+  // it here always got 401 NOT_AUTHENTICATED regardless of the
+  // reveal-password reauth fix, since middleware rejected every call before
+  // reveal-password's own logic ever ran.
+  test("no currentPassword in the request -> 403, never reveals anything", async ({ page }) => {
+    const res = await page.request.post("/api/google-sheets/reveal-password", { data: {} });
     expect(res.status()).toBe(403);
     const json = await res.json();
     expect(json.success).toBe(false);
     expect(json.error).toBe("REAUTH_REQUIRED");
   });
 
-  test("wrong currentPassword -> 403, never reveals anything", async ({ request }) => {
-    const res = await request.post("/api/google-sheets/reveal-password", {
+  test("wrong currentPassword -> 403, never reveals anything", async ({ page }) => {
+    const res = await page.request.post("/api/google-sheets/reveal-password", {
       data: { currentPassword: "definitely-not-the-password" },
     });
     expect(res.status()).toBe(403);

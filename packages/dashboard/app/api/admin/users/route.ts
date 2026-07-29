@@ -1,7 +1,19 @@
 import { NextResponse } from "next/server";
 import { getUsersFromSharp, type AppUser, type UserServiceDebugInfo } from "@/lib/user-service";
+import { getCurrentUserFromCookies } from "@/lib/session";
 
 export async function GET() {
+	// 2026-07-29 P0 fix (READY FOR BOSS audit, section 3): this route had NO
+	// authorization check at all — any authenticated user (any role) could
+	// list every real user's id/username/email. Middleware only confirms a
+	// valid session exists, never a role, so every route that's meant to be
+	// admin-only must check it itself, same pattern as
+	// app/api/outings/route.ts's requireAdminForDataLib().
+	const currentUser = await getCurrentUserFromCookies();
+	if (!currentUser || !currentUser.isAdmin) {
+		return NextResponse.json({ error: "NOT_AUTHORIZED" }, { status: 403 });
+	}
+
 	try {
 		console.log("[AdminUsers] Fetching users via UserService (Sharp runner)");
 
