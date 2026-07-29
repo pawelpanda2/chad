@@ -129,13 +129,47 @@ See Story 88's `02_plan.md` for the full reasoning.
   `{{variable}}` substitution) and calls `openai.responses.create({ model,
   input, text?, reasoning? })`.
 - **OpenAI stored prompt** (`providerBindings.openaiPromptId` set): calls
-  `openai.responses.create({ prompt: { id, version }, input })` — mirrors
-  the one pre-existing OpenAI integration in the repo,
-  `packages/console/src/openai/askOpenAiAboutGirl.ts`.
+  `openai.responses.create` with the same shape as the console helper
+  `packages/console/src/openai/askOpenAiAboutGirl.ts` →
+  `callOpenAiPreparedPrompt`:
+  - `prompt: { id, version }`
+  - `input: [{ role: "user", content }]` (message array, not a bare string)
+  - `reasoning: { summary }` (default `auto`)
+  - `store` from `settings.storeLogs` (default true)
+  - `include: ["web_search_call.action.sources"]` (no encrypted reasoning in GUI)
+- Empty user messages → default `<current_case>` template with
+  `{{leadName}}` / `{{report}}` / `{{conversation}}` / `{{question}}`.
+- Message Creator (`full-analysis`) fills those variables from lead name,
+  first found report body, Beeper conversation, and optional user input
+  (else the console default question). Resolution uses
+  `publishedSnapshot` only — draft edits after publish are ignored until
+  the next Publish.
 - Any other `provider` value returns `{ status: "provider-not-configured"
   }` — an honest boundary, never a faked response.
+- **Preview test:** `POST /api/msg-automation/ai-prompts/[id]/test` runs
+  `executeAiPrompt` on the current draft (explicit user action). Does not
+  publish and does not write an analysis run.
 - No request is ever sent automatically on render or on save — only when
-  Message Creator's "Send new" actually resolves a published prompt.
+  Message Creator's "Send new" resolves a published prompt, or the user
+  clicks **Run test** in the editor.
+
+## Importing the console girl prompt
+
+Preferred: GUI — Msg Auto → AI Prompts → New → **OpenAI Managed Prompt**,
+set Prompt ID `pmpt_6a2d9932e7708197bf9a60767e94dcfb07c8292b52f64217`,
+Version `1`, Action type `full-analysis`, Save, then **Publish**.
+
+Optional idempotent script (draft only, no auto-publish; needs repo
+context / same env as DBA writes):
+
+```bash
+pnpm --filter dba build
+pnpm --filter dba exec node scripts/import-console-openai-girl-prompt.mjs
+```
+
+Re-run is a no-op when the same slug or `openaiPromptId` already exists.
+Console hardcodes remain marked `@deprecated` until a later Story wires
+console to the same registry.
 
 ## Errors and recovery
 
@@ -150,11 +184,9 @@ See Story 88's `02_plan.md` for the full reasoning.
 
 ## Tests
 
-- `packages/dba/src/ai-prompts.test.ts` (19 tests, Vitest, listed in
-  `vitest.config.mjs`) — empty registry, lazy folder/item creation, create/
-  read round-trip, isolated updates across siblings, duplicate-slug
-  blocking, corrupt-JSON guard, draft/published filtering +
-  `findPublishedAiPrompt`, version increment on publish.
-- `pnpm --filter dba build` / `npx tsc --noEmit` — clean.
-- `pnpm --filter dashboard build` — clean (`next build`, full typecheck,
-  all new routes present in the route table).
+- `packages/dba/src/ai-prompts.test.ts` — registry CRUD / publish / corrupt
+  guard / `findPublishedAiPrompt`.
+- `packages/dba/src/ai-prompts-openai.test.ts` — stored-prompt Responses
+  payload (id/version/input array/settings), `current_case` substitution,
+  published-snapshot isolation vs draft edits, school exact+fallback.
+- `pnpm --filter dba build` / `pnpm --filter dashboard build`.

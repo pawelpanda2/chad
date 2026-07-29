@@ -1,5 +1,5 @@
 /**
- * AI Prompts — provider execution adapters (Story 88).
+ * AI Prompts — provider execution adapters (Story 88 + console OpenAI parity).
  *
  * The domain model (`ai-prompts.ts`) never imports `openai` or any other
  * provider SDK — this file is the only place that translates
@@ -9,13 +9,13 @@
  * `process.env.OPENAI_API_KEY` — never accepted as a parameter, never
  * echoed back in a result.
  *
- * Mirrors the one existing OpenAI integration in the repo,
+ * OpenAI stored-prompt request shape mirrors
  * `packages/console/src/openai/askOpenAiAboutGirl.ts`'s
- * `callOpenAiPreparedPrompt` (Responses API, `openai.responses.create`).
+ * `callOpenAiPreparedPrompt` (Responses API).
  */
 
 import OpenAI from "openai";
-import type { AiPromptDefinition, AiPromptMessage } from "./ai-prompts.js";
+import type { AiPromptDefinition, AiPromptMessage, AiPromptSettings } from "./ai-prompts.js";
 
 export type AiPromptExecutionStatus = "complete" | "error" | "provider-not-configured";
 
@@ -24,6 +24,29 @@ export interface AiPromptExecutionResult {
   outputText?: string;
   error?: string;
 }
+
+/**
+ * Default user-message template for Message Creator / console-style case analysis.
+ * Neutral placeholders — not bound to console `GirlData` types.
+ */
+export const DEFAULT_CURRENT_CASE_USER_TEMPLATE = `<current_case>
+
+name: {{leadName}}
+
+report:
+{{report}}
+
+conversation:
+{{conversation}}
+
+my_question:
+{{question}}
+
+</current_case>`;
+
+/** Default question used by the console full-analysis flow when user_input is empty. */
+export const DEFAULT_FULL_ANALYSIS_QUESTION =
+  "Przeanalizuj tę sytuację według materiału mentora i powiedz co teraz zrobić.";
 
 /** Replaces `{{key}}` occurrences with `variables[key]` (missing → empty string). */
 export function substituteVariables(content: string, variables: Record<string, string>): string {
@@ -39,6 +62,70 @@ function buildInputMessages(
     .map((m) => ({ role: m.role, content: substituteVariables(m.content, variables) }));
 }
 
+/**
+ * Resolves the user content string sent as Responses API `input` for a
+ * stored OpenAI prompt (or as the user turn for a local prompt).
+ * Empty messages → DEFAULT_CURRENT_CASE_USER_TEMPLATE (openai_managed).
+ */
+export function resolveAiPromptUserContent(
+  promptDefinition: AiPromptDefinition,
+  variables: Record<string, string>,
+): string {
+  const userMessage = buildInputMessages(promptDefinition.messages, variables).find(
+    (m) => m.role === "user",
+  );
+  if (userMessage?.content.trim()) return userMessage.content;
+  return substituteVariables(DEFAULT_CURRENT_CASE_USER_TEMPLATE, variables);
+}
+
+export type OpenAiStoredPromptCreateParams = {
+  prompt: { id: string; version?: string };
+  input: Array<{ role: "user"; content: string }>;
+  reasoning: { summary: "auto" | "concise" | "detailed" };
+  store: boolean;
+  include: Array<"web_search_call.action.sources" | "reasoning.encrypted_content">;
+};
+
+/**
+ * Builds the OpenAI Responses create payload for a **stored** prompt —
+ * pure, no network, no API key. Used by execute + unit tests.
+ *
+ * Deliberately omits `reasoning.encrypted_content` by default (we only need
+ * `output_text` in CHAD). Includes web_search sources so hosted web-search
+ * tools on the OpenAI prompt keep working.
+ */
+export function buildOpenAiStoredPromptCreateParams(
+  promptDefinition: AiPromptDefinition,
+  variables: Record<string, string>,
+): OpenAiStoredPromptCreateParams {
+  const openaiPromptId = promptDefinition.providerBindings?.openaiPromptId?.trim();
+  if (!openaiPromptId) {
+    throw new Error("openaiPromptId is required for stored-prompt request");
+  }
+  const settings: AiPromptSettings | undefined = promptDefinition.settings;
+  const summaryRaw = settings?.summary;
+  const summary: "auto" | "concise" | "detailed" =
+    summaryRaw === "concise" || summaryRaw === "detailed" || summaryRaw === "auto"
+      ? summaryRaw
+      : "auto";
+
+  return {
+    prompt: {
+      id: openaiPromptId,
+      version: promptDefinition.providerBindings?.openaiPromptVersion?.trim() || undefined,
+    },
+    input: [
+      {
+        role: "user",
+        content: resolveAiPromptUserContent(promptDefinition, variables),
+      },
+    ],
+    reasoning: { summary },
+    store: settings?.storeLogs !== false,
+    include: ["web_search_call.action.sources"],
+  };
+}
+
 async function executeOpenAiPrompt(
   promptDefinition: AiPromptDefinition,
   variables: Record<string, string>,
@@ -51,18 +138,9 @@ async function executeOpenAiPrompt(
   const openai = new OpenAI({ apiKey });
 
   try {
-    if (promptDefinition.providerBindings?.openaiPromptId) {
-      // Variant B — a prompt already saved/versioned on OpenAI's side.
-      const userMessage = buildInputMessages(promptDefinition.messages, variables).find(
-        (m) => m.role === "user",
-      );
-      const response = await openai.responses.create({
-        prompt: {
-          id: promptDefinition.providerBindings.openaiPromptId,
-          version: promptDefinition.providerBindings.openaiPromptVersion,
-        },
-        input: userMessage?.content ?? "",
-      });
+    if (promptDefinition.providerBindings?.openaiPromptId?.trim()) {
+      const params = buildOpenAiStoredPromptCreateParams(promptDefinition, variables);
+      const response = await openai.responses.create(params);
       return { status: "complete", outputText: response.output_text || undefined };
     }
 
@@ -84,7 +162,12 @@ async function executeOpenAiPrompt(
           }
         : {}),
       ...(settings?.reasoningEffort
-        ? { reasoning: { effort: settings.reasoningEffort as "low" | "medium" | "high", summary: (settings.summary as "auto" | "concise" | "detailed") ?? "auto" } }
+        ? {
+            reasoning: {
+              effort: settings.reasoningEffort as "low" | "medium" | "high",
+              summary: (settings.summary as "auto" | "concise" | "detailed") ?? "auto",
+            },
+          }
         : {}),
     });
     return { status: "complete", outputText: response.output_text || undefined };
@@ -95,10 +178,8 @@ async function executeOpenAiPrompt(
 
 /**
  * Dispatches execution by `promptDefinition.provider`. Only `openai` is
- * fully implemented in this Story (matches input §11 — "pełne wykonanie
- * requestu wymagane jest przede wszystkim dla OpenAI"); every other
- * provider shares this same boundary and honestly reports
- * `provider-not-configured` rather than faking a response.
+ * fully implemented; every other provider shares this same boundary and
+ * honestly reports `provider-not-configured` rather than faking a response.
  */
 export async function executeAiPrompt(
   promptDefinition: AiPromptDefinition,

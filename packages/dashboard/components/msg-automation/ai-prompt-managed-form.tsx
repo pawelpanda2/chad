@@ -25,6 +25,7 @@ export function AiPromptManagedForm({ promptId }: AiPromptManagedFormProps) {
   const [error, setError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [name, setName] = useState(isNew ? "New prompt" : "");
+  const [actionType, setActionType] = useState("full-analysis");
   const [openaiPromptId, setOpenaiPromptId] = useState("");
   const [openaiPromptVersion, setOpenaiPromptVersion] = useState("");
 
@@ -38,9 +39,11 @@ export function AiPromptManagedForm({ promptId }: AiPromptManagedFormProps) {
       if (!res.ok || !json.success) throw new Error(json.error || "Failed to load");
       const p = json.data as {
         name: string;
+        actionType?: string;
         providerBindings?: { openaiPromptId?: string; openaiPromptVersion?: string };
       };
       setName(p.name || "Untitled");
+      setActionType(p.actionType || "full-analysis");
       setOpenaiPromptId(p.providerBindings?.openaiPromptId ?? "");
       setOpenaiPromptVersion(p.providerBindings?.openaiPromptVersion ?? "");
     } catch (err) {
@@ -63,10 +66,23 @@ export function AiPromptManagedForm({ promptId }: AiPromptManagedFormProps) {
       const payload = {
         slug: slugifyPromptName(name || idValue),
         name: (name || "OpenAI Managed Prompt").trim(),
-        actionType: "custom" as const,
+        actionType: actionType as
+          | "full-analysis"
+          | "next-message"
+          | "custom"
+          | "conversation-health"
+          | "capital"
+          | "improve",
         promptKind: "openai_managed" as const,
         provider: "openai" as const,
-        messages: [] as Array<{ role: "user"; content: string }>,
+        messages: [
+          {
+            role: "user" as const,
+            content:
+              "<current_case>\n\nname: {{leadName}}\n\nreport:\n{{report}}\n\nconversation:\n{{conversation}}\n\nmy_question:\n{{question}}\n\n</current_case>",
+          },
+        ],
+        settings: { summary: "auto" as const, storeLogs: true },
         providerBindings: {
           openaiPromptId: idValue,
           openaiPromptVersion: openaiPromptVersion.trim() || undefined,
@@ -87,6 +103,9 @@ export function AiPromptManagedForm({ promptId }: AiPromptManagedFormProps) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             promptKind: "openai_managed",
+            actionType: payload.actionType,
+            messages: payload.messages,
+            settings: payload.settings,
             providerBindings: {
               openaiPromptId: idValue,
               openaiPromptVersion: openaiPromptVersion.trim() || undefined,
@@ -201,6 +220,26 @@ export function AiPromptManagedForm({ promptId }: AiPromptManagedFormProps) {
                 onChange={(e) => setOpenaiPromptVersion(e.target.value)}
                 placeholder="1"
               />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="managed-action">Action type (Message Creator)</Label>
+              <select
+                id="managed-action"
+                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
+                value={actionType}
+                onChange={(e) => setActionType(e.target.value)}
+              >
+                <option value="full-analysis">full-analysis</option>
+                <option value="next-message">next-message</option>
+                <option value="custom">custom</option>
+                <option value="conversation-health">conversation-health</option>
+                <option value="capital">capital</option>
+                <option value="improve">improve</option>
+              </select>
+              <p className="text-xs text-muted-foreground">
+                Console girl analysis maps to <code>full-analysis</code>. Publish after save for
+                Message Creator to resolve it.
+              </p>
             </div>
           </div>
         </div>
