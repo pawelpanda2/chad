@@ -86,6 +86,9 @@ services:
         ENABLE_DEV_PANEL: "true"
     container_name: chad-dashboard-local-mac-docker
     restart: unless-stopped
+    # Reach host-published offline-readonly-backup Postgres (:55432).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       postgres:
         condition: service_healthy
