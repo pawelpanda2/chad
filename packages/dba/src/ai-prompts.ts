@@ -582,46 +582,15 @@ export async function deleteAiPrompt(
  * `null` (never a draft, never invented) when nothing matches — callers
  * must show "Prompt not configured", not silently substitute a draft.
  */
-/**
- * Resolves a **published-only** prompt for Message Creator (and similar).
- * Returns content hydrated from `publishedSnapshot` so later draft edits
- * never affect execution until the next publish.
- *
- * Match order: exact `schoolId` → school-agnostic (`!schoolId`) → null.
- * Never returns a draft or archived prompt.
- */
 export async function findPublishedAiPrompt(
   filter: { actionType: AiPromptActionType; schoolId?: string },
   ops: AiPromptsOps = defaultOps,
 ): Promise<AiPromptDefinition | null> {
   const { prompts } = await readRegistry(ops);
   const published = prompts.filter((p) => p.status === "published" && p.actionType === filter.actionType);
-  let match: AiPromptDefinition | undefined;
   if (filter.schoolId) {
-    match = published.find((p) => p.schoolId === filter.schoolId);
+    const exact = published.find((p) => p.schoolId === filter.schoolId);
+    if (exact) return exact;
   }
-  if (!match) {
-    match = published.find((p) => !p.schoolId);
-  }
-  if (!match) return null;
-  return hydratePublishedExecutionDefinition(match);
-}
-
-/** Apply frozen publishedSnapshot fields onto the definition used for execution. */
-export function hydratePublishedExecutionDefinition(prompt: AiPromptDefinition): AiPromptDefinition {
-  const snap = prompt.publishedSnapshot;
-  if (!snap) return prompt;
-  return {
-    ...prompt,
-    name: snap.name,
-    description: snap.description,
-    schoolId: snap.schoolId,
-    actionType: snap.actionType,
-    messages: snap.messages,
-    variables: snap.variables,
-    provider: snap.provider,
-    model: snap.model,
-    settings: snap.settings,
-    providerBindings: snap.providerBindings,
-  };
+  return published.find((p) => !p.schoolId) ?? null;
 }

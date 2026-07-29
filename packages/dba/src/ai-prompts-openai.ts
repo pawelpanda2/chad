@@ -1,5 +1,5 @@
 /**
- * AI Prompts — provider execution adapters (Story 88 + console OpenAI parity).
+ * AI Prompts — provider execution adapters (Story 88).
  *
  * The domain model (`ai-prompts.ts`) never imports `openai` or any other
  * provider SDK — this file is the only place that translates
@@ -25,29 +25,6 @@ export interface AiPromptExecutionResult {
   error?: string;
 }
 
-/**
- * Default user-message template for Message Creator / console-style case analysis.
- * Neutral placeholders — not bound to console `GirlData` types.
- */
-export const DEFAULT_CURRENT_CASE_USER_TEMPLATE = `<current_case>
-
-name: {{leadName}}
-
-report:
-{{report}}
-
-conversation:
-{{conversation}}
-
-my_question:
-{{question}}
-
-</current_case>`;
-
-/** Default question used by the console full-analysis flow when user_input is empty. */
-export const DEFAULT_FULL_ANALYSIS_QUESTION =
-  "Przeanalizuj tę sytuację według materiału mentora i powiedz co teraz zrobić.";
-
 /** Replaces `{{key}}` occurrences with `variables[key]` (missing → empty string). */
 export function substituteVariables(content: string, variables: Record<string, string>): string {
   return content.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key: string) => variables[key] ?? "");
@@ -62,11 +39,7 @@ function buildInputMessages(
     .map((m) => ({ role: m.role, content: substituteVariables(m.content, variables) }));
 }
 
-/**
- * Resolves the user content string sent as Responses API `input` for a
- * stored OpenAI prompt (or as the user turn for a local prompt).
- * Empty messages → DEFAULT_CURRENT_CASE_USER_TEMPLATE (openai_managed).
- */
+/** First substituted user message content, or empty string. */
 export function resolveAiPromptUserContent(
   promptDefinition: AiPromptDefinition,
   variables: Record<string, string>,
@@ -74,8 +47,7 @@ export function resolveAiPromptUserContent(
   const userMessage = buildInputMessages(promptDefinition.messages, variables).find(
     (m) => m.role === "user",
   );
-  if (userMessage?.content.trim()) return userMessage.content;
-  return substituteVariables(DEFAULT_CURRENT_CASE_USER_TEMPLATE, variables);
+  return userMessage?.content ?? "";
 }
 
 export type OpenAiStoredPromptCreateParams = {
@@ -90,9 +62,9 @@ export type OpenAiStoredPromptCreateParams = {
  * Builds the OpenAI Responses create payload for a **stored** prompt —
  * pure, no network, no API key. Used by execute + unit tests.
  *
- * Deliberately omits `reasoning.encrypted_content` by default (we only need
- * `output_text` in CHAD). Includes web_search sources so hosted web-search
- * tools on the OpenAI prompt keep working.
+ * Matches console `callOpenAiPreparedPrompt`: message-array `input`,
+ * `reasoning.summary`, `store`, and web_search sources in `include`
+ * (no encrypted reasoning content by default).
  */
 export function buildOpenAiStoredPromptCreateParams(
   promptDefinition: AiPromptDefinition,
@@ -178,8 +150,10 @@ async function executeOpenAiPrompt(
 
 /**
  * Dispatches execution by `promptDefinition.provider`. Only `openai` is
- * fully implemented; every other provider shares this same boundary and
- * honestly reports `provider-not-configured` rather than faking a response.
+ * fully implemented in this Story (matches input §11 — "pełne wykonanie
+ * requestu wymagane jest przede wszystkim dla OpenAI"); every other
+ * provider shares this same boundary and honestly reports
+ * `provider-not-configured` rather than faking a response.
  */
 export async function executeAiPrompt(
   promptDefinition: AiPromptDefinition,

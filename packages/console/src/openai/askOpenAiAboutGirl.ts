@@ -10,15 +10,9 @@ import {
 import { getGirlData, getPreviewLines, GirlData } from "./dataProviders.js";
 
 /**
- * Configuration for the OpenAI prepared prompt.
- *
- * @deprecated Console hardcodes OpenAI stored-prompt IDs. Prefer Dashboard
- * Msg Auto → AI Prompts (`openai_managed` + publish) and
- * `dba.executeAiPrompt`. Kept until console is wired to the same registry.
+ * Configuration for the OpenAI prepared prompt
  */
-const OPENAI_PROMPT_ID =
-  "pmpt_6a2d9932e7708197bf9a60767e94dcfb07c8292b52f64217";
-/** @deprecated Prefer AI Prompts registry (`providerBindings.openaiPromptVersion`). */
+const OPENAI_PROMPT_ID = "pmpt_6a2d9932e7708197bf9a60767e94dcfb07c8292b52f64217";
 const OPENAI_PROMPT_VERSION = "1";
 
 /**

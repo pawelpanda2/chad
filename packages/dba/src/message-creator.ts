@@ -27,10 +27,7 @@ import {
 import { getCurrentRepoGuid } from "./repo-context.js";
 import { getLeadMsgWorkoutsByLoca } from "./leads.js";
 import { findPublishedAiPrompt, type AiPromptActionType } from "./ai-prompts.js";
-import {
-  DEFAULT_FULL_ANALYSIS_QUESTION,
-  executeAiPrompt,
-} from "./ai-prompts-openai.js";
+import { executeAiPrompt } from "./ai-prompts-openai.js";
 import {
   buildMessagePromptVersionOptions,
   parseWhatsAppMessages,
@@ -738,23 +735,11 @@ export async function runMessageCreatorAiAction(
   });
 
   if (registryPrompt) {
-    const reports = await listLeadReportsForCreator(input.leadName);
-    const reportBody =
-      reports.find((r) => r.found && r.body)?.body?.trim() || "[not found]";
-    const question =
-      input.userInput?.trim() || DEFAULT_FULL_ANALYSIS_QUESTION;
     const execution = await executeAiPrompt(registryPrompt, {
-      // Preferred template keys (DEFAULT_CURRENT_CASE_USER_TEMPLATE).
-      leadName: input.leadName,
-      report: reportBody,
-      conversation: conversation.body ?? "",
-      question,
-      // Aliases used by older prompt drafts / docs.
-      name: input.leadName,
       lead_name: input.leadName,
-      my_question: question,
-      user_input: input.userInput ?? "",
       school_name: school.fullName,
+      conversation: conversation.body ?? "",
+      user_input: input.userInput ?? "",
     });
 
     if (execution.status === "complete") {
