@@ -61,9 +61,11 @@ CHAD itself simply never activates that path.
   `NODE_ENV` checks in `assertDevOnly()`), so it has nothing to say about
   what TEST or PROD are actually doing — check their own compose
   environment block for that. The panel shows exactly two CHAD Postgres
-  options (`Server PostgreSQL` / `offline-readonly-backup`) and a separate
-  "Beeper CRM / MongoDB" block — never a CHAD-Mongo option, never a
-  CHAD-Mongo fallback status.
+  options (`Server PostgreSQL` / `Offline backup — read only`, native radios
+  + Apply) and a separate Beeper Mongo radio group (`Server Mongo` /
+  `Local Mongo`) — never a CHAD-Mongo option, never a CHAD-Mongo fallback
+  status. GET probes use a short timeout so a dead Tailscale host cannot
+  hang Settings; switching to offline never probes the remote server.
 - `getEffectiveMongoUri()`/`getEffectiveBeeperMongoUri()` in
   `dev-db-override.ts` share the same `currentMongoSource` toggle state but
   resolve to genuinely different things: the former is CHAD's legacy

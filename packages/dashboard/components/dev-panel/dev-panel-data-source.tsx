@@ -2,8 +2,8 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 
-type ChadPostgresOption = 'Server PostgreSQL' | 'offline-readonly-backup';
-type BeeperMongoOption = 'Server Mongo' | 'Local readonly backup';
+type ChadPostgresOption = 'Server PostgreSQL' | 'Offline backup — read only';
+type BeeperMongoOption = 'Server Mongo' | 'Local Mongo';
 
 interface PostgresActiveView {
   chadDataSource: string;
@@ -19,10 +19,8 @@ interface PostgresActiveView {
   cpItemsCount: number | null;
   lastChecked: string;
   snapshotDate?: string;
-  snapshotSource?: string;
   snapshotAge?: string | null;
   verificationStatus?: string;
-  lastRefresh?: string;
 }
 
 interface BeeperActiveView {
@@ -50,11 +48,9 @@ interface DataSourceState {
       available: boolean;
       metadata: {
         restoreTimestamp?: string;
-        sourceHost?: string;
-        sourceDatabase?: string;
-        cpItemsCount?: number;
         verificationResult?: string;
       } | null;
+      age?: string | null;
       error?: string;
     };
   };
@@ -64,16 +60,18 @@ interface DataSourceState {
       current: BeeperMongoOption;
       options: BeeperMongoOption[];
     };
-    label: string;
-    backend: string;
-    source: string;
-    status: string;
-    hostPort: string;
-    current: 'local' | 'qnap';
   };
 }
 
-function ActiveRow({ label, value, testIdPrefix }: { label: string; value: string | number | null | undefined; testIdPrefix: string }) {
+function ActiveRow({
+  label,
+  value,
+  testIdPrefix,
+}: {
+  label: string;
+  value: string | number | null | undefined;
+  testIdPrefix: string;
+}) {
   return (
     <div style={{ display: 'flex', gap: '8px', marginBottom: '4px', fontSize: '12px' }}>
       <span style={{ minWidth: '140px', opacity: 0.75 }}>{label}:</span>
@@ -82,7 +80,52 @@ function ActiveRow({ label, value, testIdPrefix }: { label: string; value: strin
   );
 }
 
-/** Settings tab — ACTIVE / CHANGE OPTIONS for PostgreSQL and MongoDB. */
+function RadioOption({
+  name,
+  value,
+  checked,
+  disabled,
+  label,
+  testId,
+  onChange,
+}: {
+  name: string;
+  value: string;
+  checked: boolean;
+  disabled?: boolean;
+  label: string;
+  testId: string;
+  onChange: () => void;
+}) {
+  return (
+    <label
+      className="dev-radio-row"
+      data-testid={testId}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        padding: '6px 4px',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        fontSize: '12px',
+        opacity: disabled ? 0.6 : 1,
+      }}
+    >
+      <input
+        type="radio"
+        name={name}
+        value={value}
+        checked={checked}
+        disabled={disabled}
+        onChange={onChange}
+        style={{ cursor: disabled ? 'not-allowed' : 'pointer', accentColor: '#007acc' }}
+      />
+      <span>{label}</span>
+    </label>
+  );
+}
+
+/** Settings tab — ACTIVE / CHANGE OPTIONS with native radio groups. */
 export function DevPanelDataSourceTab() {
   const [state, setState] = useState<DataSourceState | null>(null);
   const [selectedPostgres, setSelectedPostgres] = useState<ChadPostgresOption>('Server PostgreSQL');
@@ -91,24 +134,25 @@ export function DevPanelDataSourceTab() {
   const [switchingPostgres, setSwitchingPostgres] = useState(false);
   const [switchingMongo, setSwitchingMongo] = useState(false);
   const [confirmOffline, setConfirmOffline] = useState(false);
-  const [confirmMongoLocal, setConfirmMongoLocal] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [postgresError, setPostgresError] = useState<string | null>(null);
+  const [mongoError, setMongoError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
-    setError(null);
+    setPostgresError(null);
+    setMongoError(null);
     try {
       const res = await fetch('/api/dev-settings/db-source', { credentials: 'include' });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error ?? `Request failed (${res.status})`);
+        setPostgresError(data.error ?? `Request failed (${res.status})`);
         return;
       }
       setState(data);
       setSelectedPostgres(data.changeOptions.current);
-      setSelectedMongo(data.beeper?.changeOptions?.current ?? data.beeper?.source ?? 'Server Mongo');
+      setSelectedMongo(data.beeper?.changeOptions?.current ?? 'Server Mongo');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to reach server');
+      setPostgresError(err instanceof Error ? err.message : 'Failed to reach server');
     } finally {
       setLoading(false);
     }
@@ -119,13 +163,15 @@ export function DevPanelDataSourceTab() {
   }, [load]);
 
   const backupUnavailable = Boolean(
-    selectedPostgres === 'offline-readonly-backup' && state && !state.changeOptions.offlineReadonlyBackup.available
+    selectedPostgres === 'Offline backup — read only' &&
+      state &&
+      !state.changeOptions.offlineReadonlyBackup.available
   );
 
-  async function handlePostgresSwitch() {
+  async function handlePostgresApply() {
     if (!state || selectedPostgres === state.changeOptions.current) return;
     setSwitchingPostgres(true);
-    setError(null);
+    setPostgresError(null);
     try {
       const res = await fetch('/api/dev-settings/db-source', {
         method: 'POST',
@@ -133,13 +179,14 @@ export function DevPanelDataSourceTab() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           chadPostgres: selectedPostgres,
-          confirmOfflineReadonly: selectedPostgres === 'offline-readonly-backup' ? confirmOffline : undefined,
+          confirmOfflineReadonly:
+            selectedPostgres === 'Offline backup — read only' ? confirmOffline : undefined,
         }),
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error ?? `Request failed (${res.status})`);
-        if (data.active) setState(data);
+        setPostgresError(data.error ?? `Request failed (${res.status})`);
+        if (data.active) setState((prev) => ({ ...prev!, ...data }));
         return;
       }
       setState(data);
@@ -147,16 +194,16 @@ export function DevPanelDataSourceTab() {
       setConfirmOffline(false);
       window.dispatchEvent(new Event('chad-data-source-changed'));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Switch failed');
+      setPostgresError(err instanceof Error ? err.message : 'Switch failed');
     } finally {
       setSwitchingPostgres(false);
     }
   }
 
-  async function handleMongoSwitch() {
+  async function handleMongoApply() {
     if (!state || selectedMongo === state.beeper.changeOptions.current) return;
     setSwitchingMongo(true);
-    setError(null);
+    setMongoError(null);
     try {
       const res = await fetch('/api/dev-settings/db-source', {
         method: 'POST',
@@ -166,16 +213,15 @@ export function DevPanelDataSourceTab() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error ?? `Request failed (${res.status})`);
-        if (data.beeper) setState(data);
+        setMongoError(data.error ?? `Request failed (${res.status})`);
+        if (data.beeper) setState((prev) => ({ ...prev!, ...data }));
         return;
       }
       setState(data);
       setSelectedMongo(data.beeper.changeOptions.current);
-      setConfirmMongoLocal(false);
       window.dispatchEvent(new Event('chad-data-source-changed'));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Switch failed');
+      setMongoError(err instanceof Error ? err.message : 'Switch failed');
     } finally {
       setSwitchingMongo(false);
     }
@@ -184,6 +230,7 @@ export function DevPanelDataSourceTab() {
   const active = state?.active;
   const beeperActive = state?.beeper?.active;
   const backupMeta = state?.changeOptions.offlineReadonlyBackup.metadata;
+  const backupAge = state?.changeOptions.offlineReadonlyBackup.age;
 
   return (
     <div className="dev-tab-section">
@@ -210,74 +257,81 @@ export function DevPanelDataSourceTab() {
               <ActiveRow testIdPrefix="dev-panel-active" label="Connection status" value={active.connectionStatus} />
               <ActiveRow testIdPrefix="dev-panel-active" label="cp_items count" value={active.cpItemsCount} />
               <ActiveRow testIdPrefix="dev-panel-active" label="Last checked" value={active.lastChecked} />
-              {active.snapshotDate && <ActiveRow testIdPrefix="dev-panel-active" label="Snapshot date" value={active.snapshotDate} />}
+              {active.snapshotDate && (
+                <ActiveRow testIdPrefix="dev-panel-active" label="Snapshot date" value={active.snapshotDate} />
+              )}
             </div>
           )}
         </div>
 
         <div className="dev-data-source-column" data-testid="dev-panel-change-options-column">
           <div className="dev-data-source-heading">CHANGE OPTIONS</div>
-          <label htmlFor="dev-panel-chad-source-select" style={{ fontSize: '12px', display: 'block', marginBottom: '6px' }}>
-            CHAD PostgreSQL source
-          </label>
-          <select
-            id="dev-panel-chad-source-select"
-            data-testid="dev-panel-chad-source-select"
-            value={selectedPostgres}
+          <fieldset
             disabled={loading || switchingPostgres}
-            onChange={(e) => {
-              setSelectedPostgres(e.target.value as ChadPostgresOption);
-              setConfirmOffline(false);
-            }}
-            style={{ width: '100%', marginBottom: '10px' }}
+            style={{ border: 'none', margin: 0, padding: 0 }}
+            data-testid="dev-panel-chad-postgres-fieldset"
           >
-            <option value="Server PostgreSQL">Server PostgreSQL</option>
-            <option value="offline-readonly-backup">offline-readonly-backup</option>
-          </select>
+            <legend style={{ fontSize: '12px', marginBottom: '6px', padding: 0 }}>CHAD PostgreSQL source</legend>
+            <RadioOption
+              name="chad-postgres-source"
+              value="server"
+              checked={selectedPostgres === 'Server PostgreSQL'}
+              disabled={loading || switchingPostgres}
+              label="Server PostgreSQL"
+              testId="dev-panel-radio-postgres-server"
+              onChange={() => {
+                setSelectedPostgres('Server PostgreSQL');
+                setConfirmOffline(false);
+              }}
+            />
+            <RadioOption
+              name="chad-postgres-source"
+              value="offline-readonly-backup"
+              checked={selectedPostgres === 'Offline backup — read only'}
+              disabled={loading || switchingPostgres}
+              label="Offline backup — read only"
+              testId="dev-panel-radio-postgres-offline"
+              onChange={() => setSelectedPostgres('Offline backup — read only')}
+            />
+          </fieldset>
 
-          {selectedPostgres === 'offline-readonly-backup' && (
+          {selectedPostgres === 'Offline backup — read only' && (
             <div
               data-testid="dev-panel-offline-warning"
               style={{
                 background: '#5c0000',
-                border: '2px solid #ff5252',
+                border: '1px solid #ff5252',
                 color: '#fff',
-                padding: '12px',
-                marginBottom: '10px',
-                fontSize: '12px',
-                lineHeight: 1.45,
+                padding: '8px',
+                margin: '8px 0',
+                fontSize: '11px',
+                lineHeight: 1.35,
               }}
             >
-              <strong>OSTRZEŻENIE — AWARYJNY BACKUP TYLKO DO ODCZYTU</strong>
-              <p style={{ margin: '8px 0' }}>
-                Ta baza to lokalny snapshot tylko do odczytu. Przełączanie jest odradzane i powinno nastąpić
-                wyłącznie gdy serwer lub sieć są niedostępne, a pilny dostęp do danych jest wymagany.
-              </p>
-              <p style={{ margin: '8px 0' }}>
-                W tym trybie nie można tworzyć, edytować, usuwać, synchronizować, migrować ani wysyłać danych do
-                Google Sheets. Snapshot może być starszy niż dane na serwerze.
-              </p>
+              <div>Tryb awaryjny: tylko odczyt.</div>
+              <div>Dane mogą być nieaktualne. Zapisy i synchronizacja są wyłączone.</div>
               {backupMeta ? (
-                <ul style={{ margin: 0, paddingLeft: '18px' }}>
-                  <li>Snapshot: {backupMeta.restoreTimestamp ?? '—'}</li>
-                  <li>Source: {backupMeta.sourceHost}/{backupMeta.sourceDatabase}</li>
-                  <li>cp_items: {backupMeta.cpItemsCount ?? '—'}</li>
-                  <li>Verification: {backupMeta.verificationResult ?? '—'}</li>
-                </ul>
+                <div style={{ marginTop: '6px', opacity: 0.9 }}>
+                  <div>Snapshot: {backupMeta.restoreTimestamp ?? '—'}</div>
+                  <div>Age: {backupAge ?? '—'}</div>
+                  <div>Status: {backupMeta.verificationResult ?? '—'}</div>
+                </div>
               ) : (
-                <p style={{ margin: '8px 0 0', color: '#ffcdd2' }}>
-                  {state?.changeOptions.offlineReadonlyBackup.error ?? 'Brak snapshotu — uruchom refresh-from-server.sh'}
-                </p>
+                <div style={{ marginTop: '6px', color: '#ffcdd2' }}>
+                  {state?.changeOptions.offlineReadonlyBackup.error ?? 'Brak snapshotu'}
+                </div>
               )}
-              <label style={{ display: 'flex', gap: '8px', marginTop: '10px', alignItems: 'flex-start' }}>
+              <label
+                style={{ display: 'flex', gap: '8px', marginTop: '8px', alignItems: 'flex-start', cursor: 'pointer' }}
+              >
                 <input
                   type="checkbox"
                   data-testid="dev-panel-offline-confirm"
                   checked={confirmOffline}
-                  disabled={backupUnavailable}
+                  disabled={backupUnavailable || switchingPostgres}
                   onChange={(e) => setConfirmOffline(e.target.checked)}
                 />
-                <span>Rozumiem, że to tryb tylko do odczytu i dane mogą być nieaktualne</span>
+                <span>Rozumiem — włącz tryb tylko do odczytu</span>
               </label>
             </div>
           )}
@@ -285,19 +339,25 @@ export function DevPanelDataSourceTab() {
           <button
             type="button"
             className="dev-btn"
-            data-testid="dev-panel-switch-button"
+            data-testid="dev-panel-apply-postgres"
             disabled={
               loading ||
               switchingPostgres ||
               !state ||
               selectedPostgres === state.changeOptions.current ||
               backupUnavailable ||
-              (selectedPostgres === 'offline-readonly-backup' && !confirmOffline)
+              (selectedPostgres === 'Offline backup — read only' && !confirmOffline)
             }
-            onClick={handlePostgresSwitch}
+            onClick={handlePostgresApply}
           >
-            {switchingPostgres ? 'Switching…' : 'Switch'}
+            {switchingPostgres ? 'Applying…' : 'Apply PostgreSQL source'}
           </button>
+          {postgresError && (
+            <div className="dev-request-detail dev-request-error" style={{ marginTop: '8px' }} data-testid="dev-panel-postgres-error">
+              <strong>ERROR:</strong>
+              <pre className="dev-log-pre dev-stack">{postgresError}</pre>
+            </div>
+          )}
         </div>
       </div>
 
@@ -333,78 +393,55 @@ export function DevPanelDataSourceTab() {
 
         <div className="dev-data-source-column" data-testid="dev-panel-mongo-change-options-column">
           <div className="dev-data-source-heading">CHANGE OPTIONS</div>
-          <label htmlFor="dev-panel-mongo-source-select" style={{ fontSize: '12px', display: 'block', marginBottom: '6px' }}>
-            Beeper MongoDB source
-          </label>
-          <select
-            id="dev-panel-mongo-source-select"
-            data-testid="dev-panel-mongo-source-select"
-            value={selectedMongo}
+          <fieldset
             disabled={loading || switchingMongo}
-            onChange={(e) => {
-              setSelectedMongo(e.target.value as BeeperMongoOption);
-              setConfirmMongoLocal(false);
-            }}
-            style={{ width: '100%', marginBottom: '10px' }}
+            style={{ border: 'none', margin: 0, padding: 0 }}
+            data-testid="dev-panel-beeper-mongo-fieldset"
           >
-            <option value="Server Mongo">Server Mongo</option>
-            <option value="Local readonly backup">Local readonly backup</option>
-          </select>
-
-          {selectedMongo === 'Local readonly backup' && (
-            <div
-              data-testid="dev-panel-mongo-local-warning"
-              style={{
-                background: '#5c0000',
-                border: '2px solid #ff5252',
-                color: '#fff',
-                padding: '12px',
-                marginBottom: '10px',
-                fontSize: '12px',
-                lineHeight: 1.45,
-              }}
-            >
-              <strong>OSTRZEŻENIE — LOKALNY BACKUP MONGO TYLKO DO ODCZYTU</strong>
-              <p style={{ margin: '8px 0' }}>
-                Local readonly backup to offline snapshot Beeper CRM. Wszystkie zapisy (edycja kontaktów, tagi,
-                merge, eventy) są zablokowane. Używaj tylko gdy Server Mongo jest niedostępny.
-              </p>
-              <label style={{ display: 'flex', gap: '8px', marginTop: '10px', alignItems: 'flex-start' }}>
-                <input
-                  type="checkbox"
-                  data-testid="dev-panel-mongo-local-confirm"
-                  checked={confirmMongoLocal}
-                  onChange={(e) => setConfirmMongoLocal(e.target.checked)}
-                />
-                <span>Rozumiem, że to tryb tylko do odczytu</span>
-              </label>
-            </div>
-          )}
+            <legend style={{ fontSize: '12px', marginBottom: '6px', padding: 0 }}>Beeper Mongo source</legend>
+            <RadioOption
+              name="beeper-mongo-source"
+              value="qnap"
+              checked={selectedMongo === 'Server Mongo'}
+              disabled={loading || switchingMongo}
+              label="Server Mongo"
+              testId="dev-panel-radio-mongo-server"
+              onChange={() => setSelectedMongo('Server Mongo')}
+            />
+            <RadioOption
+              name="beeper-mongo-source"
+              value="local"
+              checked={selectedMongo === 'Local Mongo'}
+              disabled={loading || switchingMongo}
+              label="Local Mongo"
+              testId="dev-panel-radio-mongo-local"
+              onChange={() => setSelectedMongo('Local Mongo')}
+            />
+          </fieldset>
 
           <button
             type="button"
             className="dev-btn"
-            data-testid="dev-panel-mongo-switch-button"
+            data-testid="dev-panel-apply-mongo"
+            style={{ marginTop: '10px' }}
             disabled={
               loading ||
               switchingMongo ||
               !state ||
-              selectedMongo === state.beeper.changeOptions.current ||
-              (selectedMongo === 'Local readonly backup' && !confirmMongoLocal)
+              selectedMongo === state.beeper.changeOptions.current
             }
-            onClick={handleMongoSwitch}
+            onClick={handleMongoApply}
           >
-            {switchingMongo ? 'Switching…' : 'Switch'}
+            {switchingMongo ? 'Applying…' : 'Apply Mongo source'}
           </button>
+          {mongoError && (
+            <div className="dev-request-detail dev-request-error" style={{ marginTop: '8px' }} data-testid="dev-panel-mongo-error">
+              <strong>ERROR:</strong>
+              <pre className="dev-log-pre dev-stack">{mongoError}</pre>
+            </div>
+          )}
         </div>
       </div>
-
-      {error && (
-        <div className="dev-request-detail dev-request-error" style={{ marginTop: '12px' }}>
-          <strong>ERROR:</strong>
-          <pre className="dev-log-pre dev-stack">{error}</pre>
-        </div>
-      )}
     </div>
   );
 }

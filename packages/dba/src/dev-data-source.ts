@@ -21,8 +21,8 @@ import {
   OFFLINE_READONLY_BACKUP_READER_ROLE,
 } from "./offline-readonly-backup/constants.js";
 
-export type ChadDataSourceLabel = "Server PostgreSQL" | "offline-readonly-backup";
-export type BeeperMongoSourceLabel = "Server Mongo" | "Local readonly backup";
+export type ChadDataSourceLabel = "Server PostgreSQL" | "Offline backup — read only";
+export type BeeperMongoSourceLabel = "Server Mongo" | "Local Mongo";
 
 export interface ChadDataSourceActiveView {
   chadDataSource: ChadDataSourceLabel;
@@ -61,22 +61,28 @@ export interface BeeperMongoActiveView {
 }
 
 export function chadPostgresSourceToLabel(source: ChadPostgresSource): ChadDataSourceLabel {
-  return source === "offline-readonly-backup" ? "offline-readonly-backup" : "Server PostgreSQL";
+  return source === "offline-readonly-backup" ? "Offline backup — read only" : "Server PostgreSQL";
 }
 
 export function labelToChadPostgresSource(label: string): ChadPostgresSource | null {
   if (label === "Server PostgreSQL" || label === "server") return "server";
-  if (label === "offline-readonly-backup") return "offline-readonly-backup";
+  if (
+    label === "Offline backup — read only" ||
+    label === "offline-readonly-backup" ||
+    label === "Offline backup - read only"
+  ) {
+    return "offline-readonly-backup";
+  }
   return null;
 }
 
 export function beeperMongoSourceToLabel(source: DbSource): BeeperMongoSourceLabel {
-  return source === "local" ? "Local readonly backup" : "Server Mongo";
+  return source === "local" ? "Local Mongo" : "Server Mongo";
 }
 
 export function labelToBeeperMongoSource(label: string): DbSource | null {
   if (label === "Server Mongo" || label === "qnap") return "qnap";
-  if (label === "Local readonly backup" || label === "local") return "local";
+  if (label === "Local Mongo" || label === "Local readonly backup" || label === "local") return "local";
   return null;
 }
 
@@ -97,10 +103,11 @@ export function parseHostPort(hostPort: string): { host: string; port: string } 
 }
 
 export function buildChadDataSourceActiveView(input: {
-  probeOk: boolean;
+  probeOk?: boolean | null;
   probeError?: string;
   cpItemsCount?: number;
   chadEnvironment?: string;
+  connectionStatusOverride?: string;
 }): ChadDataSourceActiveView {
   const source = getPostgresSource();
   const target = describeEffectivePostgresTarget();
@@ -108,6 +115,18 @@ export function buildChadDataSourceActiveView(input: {
   const mode = postgresSourceToMode(source);
   const meta = readOfflineReadonlyBackupMetadata();
   const offline = source === "offline-readonly-backup";
+  const probing = input.probeOk == null && !input.connectionStatusOverride;
+
+  let connectionStatus: string;
+  if (input.connectionStatusOverride) {
+    connectionStatus = input.connectionStatusOverride;
+  } else if (probing) {
+    connectionStatus = "checking";
+  } else if (offline) {
+    connectionStatus = input.probeOk ? "local snapshot" : `snapshot error: ${input.probeError ?? "unknown"}`;
+  } else {
+    connectionStatus = input.probeOk ? "connected" : `disconnected: ${input.probeError ?? "unknown"}`;
+  }
 
   return {
     chadDataSource: chadPostgresSourceToLabel(source),
@@ -119,13 +138,7 @@ export function buildChadDataSourceActiveView(input: {
     database: offline ? OFFLINE_READONLY_BACKUP_DATABASE : process.env.POSTGRES_DB || "chad",
     readAccess: "enabled",
     writeAccess: offline ? "blocked" : "enabled",
-    connectionStatus: offline
-      ? input.probeOk
-        ? "local snapshot"
-        : `snapshot error: ${input.probeError ?? "unknown"}`
-      : input.probeOk
-        ? "connected"
-        : `disconnected: ${input.probeError ?? "unknown"}`,
+    connectionStatus,
     cpItemsCount: input.probeOk ? (input.cpItemsCount ?? null) : null,
     lastChecked: new Date().toISOString(),
     snapshotDate: meta?.restoreTimestamp,
@@ -137,21 +150,34 @@ export function buildChadDataSourceActiveView(input: {
 }
 
 export function buildBeeperMongoActiveView(input: {
-  probeOk: boolean;
+  probeOk?: boolean | null;
   probeError?: string;
   contactsCount?: number;
   messagesCount?: number;
   databaseName?: string;
   chadEnvironment?: string;
+  connectionStatusOverride?: string;
 }): BeeperMongoActiveView {
   const source = getMongoSource();
   const target = describeEffectiveBeeperMongoTarget();
   const { host, port } = parseHostPort(target.hostPort);
   const readonly = source === "local";
+  const probing = input.probeOk == null && !input.connectionStatusOverride;
+
+  let connectionStatus: string;
+  if (input.connectionStatusOverride) {
+    connectionStatus = input.connectionStatusOverride;
+  } else if (probing) {
+    connectionStatus = "checking";
+  } else if (readonly) {
+    connectionStatus = input.probeOk ? "local mongo" : `local error: ${input.probeError ?? "unknown"}`;
+  } else {
+    connectionStatus = input.probeOk ? "connected" : `disconnected: ${input.probeError ?? "unknown"}`;
+  }
 
   return {
     beeperDataSource: beeperMongoSourceToLabel(source),
-    mode: readonly ? "offline read-only backup" : "remote-primary",
+    mode: readonly ? "local offline" : "remote-primary",
     environment: input.chadEnvironment ?? process.env.CHAD_ENVIRONMENT ?? "(unset)",
     backend: "MongoDB",
     host: readonly ? (host || "mongodb") : host || QNAP_TAILSCALE_HOST,
@@ -159,13 +185,7 @@ export function buildBeeperMongoActiveView(input: {
     database: input.databaseName ?? "(beeper_<repoGuid>)",
     readAccess: "enabled",
     writeAccess: readonly ? "blocked" : "enabled",
-    connectionStatus: readonly
-      ? input.probeOk
-        ? "local readonly backup"
-        : `backup error: ${input.probeError ?? "unknown"}`
-      : input.probeOk
-        ? "connected"
-        : `disconnected: ${input.probeError ?? "unknown"}`,
+    connectionStatus,
     contactsCount: input.probeOk ? (input.contactsCount ?? null) : null,
     messagesCount: input.probeOk ? (input.messagesCount ?? null) : null,
     lastChecked: new Date().toISOString(),
