@@ -31,6 +31,7 @@ import { ObjectId } from "mongodb";
 import { getBeeperMongoDb } from "./mongo.js";
 import { getCurrentRepoGuid } from "./repo-context.js";
 import { ensureLeadBeeperLinksIndexes } from "./lead-beeper-links.js";
+import { assertBeeperWriteAllowed } from "./chad-data-mode.js";
 
 // ── Collections ────────────────────────────────────────────────────────────
 
@@ -62,6 +63,7 @@ async function timelineEventsCol() {
  * the dashboard alone is enough to bootstrap a fresh database.
  */
 export async function ensureBeeperIndexes(repoGuid: string): Promise<void> {
+  assertBeeperWriteAllowed();
   const db = await getBeeperMongoDb(repoGuid);
   const [contacts, channels, messages, timelineEvents] = [
     db.collection<any>("contacts"),
@@ -405,6 +407,7 @@ export async function listBeeperContacts(opts?: {
  * Existing contacts → include=true, exclude=false (no sync regression).
  */
 export async function ensureBeeperSyncPermissionsMigrated(): Promise<{ updated: number }> {
+  assertBeeperWriteAllowed();
   const contacts = await contactsCol();
   const missingInclude = await contacts.updateMany(
     { include: { $exists: false } },
@@ -427,6 +430,7 @@ export async function updateBeeperContactSyncPermissions(
   id: string,
   input: { include: boolean; exclude: boolean }
 ): Promise<{ ok: true; include: boolean; exclude: boolean }> {
+  assertBeeperWriteAllowed();
   const { include, exclude } = normalizeBeeperPermissions(input.include, input.exclude);
   const contacts = await contactsCol();
   const contactId = toObjectId(id);
@@ -637,6 +641,7 @@ export async function updateBeeperContactProfile(
   id: string,
   patch: BeeperContactProfilePatch
 ): Promise<{ updated: string[] }> {
+  assertBeeperWriteAllowed();
   const contacts = await contactsCol();
   const _id = toObjectId(id);
 
@@ -674,6 +679,7 @@ export async function updateBeeperContactProfile(
 const ALLOWED_TAGS = new Set<BeeperTag>(["business", "romantic", "friends", "spam"]);
 
 export async function addBeeperContactTag(id: string, tag: BeeperTag): Promise<void> {
+  assertBeeperWriteAllowed();
   if (!ALLOWED_TAGS.has(tag)) throw new Error(`Invalid tag: ${tag}`);
   const contacts = await contactsCol();
   const _id = toObjectId(id);
@@ -685,6 +691,7 @@ export async function addBeeperContactTag(id: string, tag: BeeperTag): Promise<v
 }
 
 export async function removeBeeperContactTag(id: string, tag: BeeperTag): Promise<void> {
+  assertBeeperWriteAllowed();
   if (!ALLOWED_TAGS.has(tag)) throw new Error(`Invalid tag: ${tag}`);
   const contacts = await contactsCol();
   const _id = toObjectId(id);
@@ -715,6 +722,7 @@ export async function addBeeperContactEvent(
   id: string,
   input: { type?: string; timestamp?: string; title: string; description?: string }
 ): Promise<BeeperTimelineEventView> {
+  assertBeeperWriteAllowed();
   const contacts = await contactsCol();
   const timelineEvents = await timelineEventsCol();
   const contactID = toObjectId(id);
@@ -752,6 +760,7 @@ export async function addBeeperContactEvent(
 }
 
 export async function deleteBeeperContactEvent(id: string, eventId: string): Promise<void> {
+  assertBeeperWriteAllowed();
   const timelineEvents = await timelineEventsCol();
   const result = await timelineEvents.deleteOne({
     _id: toObjectId(eventId),
@@ -766,6 +775,7 @@ export async function mergeBeeperContacts(
   primaryIdStr: string,
   secondaryIdStr: string
 ): Promise<{ mergedIdentities: number; message: string }> {
+  assertBeeperWriteAllowed();
   const contacts = await contactsCol();
   const channels = await channelsCol();
   const messages = await messagesCol();

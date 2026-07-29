@@ -1,10 +1,11 @@
-import { getPostgresSource, type ChadPostgresSource } from "./dev-db-override.js";
+import { getMongoSource, getPostgresSource, type ChadPostgresSource } from "./dev-db-override.js";
 import {
   CHAD_DATA_MODE_OFFLINE_READONLY_BACKUP,
   CHAD_DATA_MODE_REMOTE_PRIMARY,
 } from "./offline-readonly-backup/constants.js";
 
 export const OFFLINE_READONLY_BACKUP_WRITE_FORBIDDEN = "OFFLINE_READONLY_BACKUP_WRITE_FORBIDDEN" as const;
+export const BEEPER_MONGO_READONLY_WRITE_FORBIDDEN = "BEEPER_MONGO_READONLY_WRITE_FORBIDDEN" as const;
 
 export type ChadDataMode =
   | typeof CHAD_DATA_MODE_REMOTE_PRIMARY
@@ -16,6 +17,15 @@ export class OfflineReadonlyBackupWriteForbiddenError extends Error {
   constructor(message = "Writes are forbidden in offline-readonly-backup mode.") {
     super(message);
     this.name = "OfflineReadonlyBackupWriteForbiddenError";
+  }
+}
+
+export class BeeperMongoReadonlyWriteForbiddenError extends Error {
+  readonly code = BEEPER_MONGO_READONLY_WRITE_FORBIDDEN;
+
+  constructor(message = "Writes are forbidden against Local readonly backup Mongo.") {
+    super(message);
+    this.name = "BeeperMongoReadonlyWriteForbiddenError";
   }
 }
 
@@ -40,6 +50,17 @@ export function isOfflineReadonlyBackupMode(): boolean {
 export function assertChadWriteAllowed(): void {
   if (isOfflineReadonlyBackupMode()) {
     throw new OfflineReadonlyBackupWriteForbiddenError();
+  }
+}
+
+/** Local Beeper Mongo is an offline readonly backup — Server Mongo (qnap) is read/write. */
+export function isBeeperMongoReadonlyMode(): boolean {
+  return getMongoSource() === "local";
+}
+
+export function assertBeeperWriteAllowed(): void {
+  if (isBeeperMongoReadonlyMode()) {
+    throw new BeeperMongoReadonlyWriteForbiddenError();
   }
 }
 
