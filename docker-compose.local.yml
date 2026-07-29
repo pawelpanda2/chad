@@ -179,7 +179,10 @@ services:
       # AES key for decrypting per-repo `secrets` Text items (Google viewer
       # login shown on History -> Google Sheets when viewer env vars are unset).
       - OFFLINE_READONLY_BACKUP_READER_PASSWORD=${OFFLINE_READONLY_BACKUP_READER_PASSWORD:-}
-      - OFFLINE_READONLY_BACKUP_POSTGRES_PORT=${OFFLINE_READONLY_BACKUP_POSTGRES_PORT:-55432}
+      # Same-network emergency container (see infrastructure/offline-readonly-backup).
+      # Host-published :55432 is for bare tools; in-compose use service hostname:5432.
+      - OFFLINE_READONLY_BACKUP_POSTGRES_HOST=${OFFLINE_READONLY_BACKUP_POSTGRES_HOST:-chad-postgres-offline-readonly-backup}
+      - OFFLINE_READONLY_BACKUP_POSTGRES_PORT=${OFFLINE_READONLY_BACKUP_POSTGRES_PORT:-5432}
       # Inside the container the host backup root is mounted at this path so
       # Dev Panel can read metadata/latest.json without Tailscale / internet.
       - CHAD_OFFLINE_READONLY_BACKUP_ROOT=/offline-readonly-backup

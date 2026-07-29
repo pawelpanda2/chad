@@ -254,12 +254,21 @@ function requireOfflineReaderCredentials(): { user: string; pass: string; db: st
     );
   }
   const inLocalDocker = process.env.CHAD_ENVIRONMENT === "local" && process.env.NODE_ENV === "production";
+  // Prefer explicit host (compose service / container on the same network).
+  // Local Docker default: emergency container hostname + internal 5432.
+  // Bare next / host tools: 127.0.0.1:55432 (published port).
+  const host =
+    process.env.OFFLINE_READONLY_BACKUP_POSTGRES_HOST ||
+    (inLocalDocker ? "chad-postgres-offline-readonly-backup" : "127.0.0.1");
+  const port =
+    process.env.OFFLINE_READONLY_BACKUP_POSTGRES_PORT ||
+    (inLocalDocker ? "5432" : DEFAULT_OFFLINE_READONLY_BACKUP_PORT);
   return {
     user: OFFLINE_READONLY_BACKUP_READER_ROLE,
     pass,
     db: OFFLINE_READONLY_BACKUP_DATABASE,
-    host: inLocalDocker ? "host.docker.internal" : "127.0.0.1",
-    port: process.env.OFFLINE_READONLY_BACKUP_POSTGRES_PORT || DEFAULT_OFFLINE_READONLY_BACKUP_PORT,
+    host,
+    port,
   };
 }
 
