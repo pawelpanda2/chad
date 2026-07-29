@@ -83,16 +83,20 @@ osobno dla Mongo:
 - GET Settings **nie wisi** na martwym Tailscale (probe ≤ ~2.5s)
 - przełączenie na offline **nie wymaga** remote probe — tylko lokalny snapshot
 - powrót na Server wymaga udanego krótkiego probe; inaczej zostaje offline
-- wybór persistowany w `/app/data/dev-db-source.json` (Docker) lub
-  `.runtime/dev-data-source.json` (bare) — atomic write; TEST/PROD nie
+- wybór persistowany w `.runtime/dev-data-source.json` (bare + local Docker
+  bind-mount → `/app/runtime/…`) — atomic write temp→rename; TEST/PROD nie
   pozwalają na runtime switching (`CHAD_ENVIRONMENT` ≠ `local`)
 
 ### Root cause (2026-07-29, café / no internet)
 
-GET `/api/dev-settings/db-source` wołał `probePostgres()` bez timeoutu na
-aktywnym Server PostgreSQL. Bez Tailscale request wisiał → Settings w
-„Ładowanie…” i brak możliwości Apply offline. Naprawione: krótkie
-`connectionTimeoutMillis` + probe-before-commit dla Server.
+1. GET `/api/dev-settings/db-source` wołał `probePostgres()` bez timeoutu na
+   aktywnym Server PostgreSQL. Bez Tailscale request wisiał → Settings w
+   „Ładowanie…” i brak możliwości Apply offline. Naprawione: krótkie
+   `connectionTimeoutMillis` + probe-before-commit dla Server.
+2. Persist po Apply zapisywał do root-owned `/app/data` (named volume) —
+   `USER nextjs` nie mógł utworzyć pliku `.tmp` → catch połykał błąd → po
+   restarcie wracał Server. Naprawione: bind-mount `.runtime` +
+   `DEV_DB_SOURCE_PREF_PATH`.
 
 ## Switch w aplikacji
 

@@ -133,8 +133,12 @@ export function buildChadDataSourceActiveView(input: {
     mode: mode === "offline-readonly-backup" ? "emergency read-only" : "remote-primary",
     environment: input.chadEnvironment ?? process.env.CHAD_ENVIRONMENT ?? "(unset)",
     backend: "PostgreSQL",
-    host: offline ? "127.0.0.1" : host || QNAP_TAILSCALE_HOST,
-    port: offline ? process.env.OFFLINE_READONLY_BACKUP_POSTGRES_PORT || "55432" : port || QNAP_POSTGRES_PORT,
+    host: host || (offline ? "127.0.0.1" : QNAP_TAILSCALE_HOST),
+    port:
+      port ||
+      (offline
+        ? process.env.OFFLINE_READONLY_BACKUP_POSTGRES_PORT || "55432"
+        : QNAP_POSTGRES_PORT),
     database: offline ? OFFLINE_READONLY_BACKUP_DATABASE : process.env.POSTGRES_DB || "chad",
     readAccess: "enabled",
     writeAccess: offline ? "blocked" : "enabled",
