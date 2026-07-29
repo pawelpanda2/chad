@@ -186,8 +186,17 @@ services:
       # Inside the container the host backup root is mounted at this path so
       # Dev Panel can read metadata/latest.json without Tailscale / internet.
       - CHAD_OFFLINE_READONLY_BACKUP_ROOT=/offline-readonly-backup
+      # Writable prefs (Server↔Offline / Server↔Local Mongo). Do NOT use
+      # /app/data alone: the named volume is root-owned and USER nextjs cannot
+      # create the atomic .tmp file — café persistence silently failed.
+      - DEV_DB_SOURCE_PREF_PATH=/app/runtime/dev-data-source.json
     volumes:
       - chad-dashboard-local-mac-docker-data:/app/data
+      - type: bind
+        source: ${CHAD_DEV_DB_SOURCE_DIR:-./.runtime}
+        target: /app/runtime
+        bind:
+          create_host_path: true
       - type: bind
         source: ${CHAD_OFFLINE_READONLY_BACKUP_ROOT:-${HOME}/04_chad_offline_readonly_backup}
         target: /offline-readonly-backup
