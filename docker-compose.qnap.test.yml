@@ -116,8 +116,15 @@ services:
       - GOOGLE_SHEETS_VIEWER_ACCOUNT_PASSWORD=${GOOGLE_SHEETS_VIEWER_ACCOUNT_PASSWORD:-}
       # Decrypt per-repo `secrets` Text (History -> Google Sheets viewer card).
       - SECRETS_ENCRYPTION_KEY=${SECRETS_ENCRYPTION_KEY:-}
+      # Forms → Add recording (Story 93).
+      - CHAD_AUDIO_RECORDINGS_DIR=/app/audio-recordings
     volumes:
       - chad-dashboard-test-data:/app/data
+      - type: bind
+        source: ${CHAD_AUDIO_RECORDINGS_HOST_PATH:-/share/cp_1/02_files_refrenced/10_files_audio}
+        target: /app/audio-recordings
+        bind:
+          create_host_path: true
     logging:
       driver: "json-file"
       options:

@@ -3,6 +3,11 @@
 Status: first implementation, Story 55 (2026-07-14); UI/flow rebuilt and a
 real append bug fixed, Story 56 (2026-07-14).
 
+**Not binary file capture.** Forms → Add recording (Story 93) saves a real
+audio file via MediaRecorder — see
+`human-docs/dashboard/forms/features/add-recording.md`. This document is
+only about speech-to-text in Reports.
+
 ## Cel
 
 Let the user dictate a report's body by voice instead of typing it, without

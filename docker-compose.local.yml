@@ -190,6 +190,8 @@ services:
       # /app/data alone: the named volume is root-owned and USER nextjs cannot
       # create the atomic .tmp file — café persistence silently failed.
       - DEV_DB_SOURCE_PREF_PATH=/app/runtime/dev-data-source.json
+      # Forms → Add recording (Story 93). Container path; host bind below.
+      - CHAD_AUDIO_RECORDINGS_DIR=/app/audio-recordings
     volumes:
       - chad-dashboard-local-mac-docker-data:/app/data
       - type: bind
@@ -201,6 +203,11 @@ services:
         source: ${CHAD_OFFLINE_READONLY_BACKUP_ROOT:-${HOME}/04_chad_offline_readonly_backup}
         target: /offline-readonly-backup
         read_only: true
+        bind:
+          create_host_path: true
+      - type: bind
+        source: ${CHAD_AUDIO_RECORDINGS_HOST_PATH:-/Volumes/cp_1/02_files_refrenced/10_files_audio}
+        target: /app/audio-recordings
         bind:
           create_host_path: true
     logging:
