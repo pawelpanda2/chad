@@ -1,5 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import {
   QNAP_TAILSCALE_HOST,
   QNAP_MONGO_PORT,
@@ -27,7 +27,11 @@ export type DbSource = "local" | "qnap";
 export type MongoSource = DbSource;
 
 function prefPath(): string {
-  return process.env.DEV_DB_SOURCE_PREF_PATH || "/app/data/dev-db-source.json";
+  if (process.env.DEV_DB_SOURCE_PREF_PATH) return process.env.DEV_DB_SOURCE_PREF_PATH;
+  // Local Docker volume persists across container restart.
+  if (existsSync("/app/data")) return "/app/data/dev-db-source.json";
+  // Bare next / host tools — gitignored .runtime/
+  return join(process.cwd(), ".runtime/dev-data-source.json");
 }
 
 function normalizePersistedPostgres(raw: unknown): ChadPostgresSource | undefined {
@@ -57,19 +61,20 @@ function persistSources(postgres: ChadPostgresSource, mongo: DbSource): void {
   try {
     const path = prefPath();
     mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(
-      path,
-      JSON.stringify(
-        {
-          postgres,
-          mongo,
-          chadDataMode: postgresSourceToMode(postgres),
-          updatedAt: new Date().toISOString(),
-        },
-        null,
-        2
-      )
+    const body = JSON.stringify(
+      {
+        postgres,
+        mongo,
+        chadDataMode: postgresSourceToMode(postgres),
+        updatedAt: new Date().toISOString(),
+      },
+      null,
+      2
     );
+    // Atomic write: temp → rename (survives crash mid-write; no secrets in file).
+    const tmp = `${path}.tmp.${process.pid}.${Date.now()}`;
+    writeFileSync(tmp, body, "utf8");
+    renameSync(tmp, path);
   } catch {
     // Preference is best-effort — volume may be missing on bare next dev.
   }
@@ -258,6 +263,48 @@ function requireOfflineReaderCredentials(): { user: string; pass: string; db: st
   };
 }
 
+/** Build Postgres URI for a source without mutating the active override. */
+export function buildPostgresUriForSource(source: ChadPostgresSource): string {
+  if (source === "offline-readonly-backup") {
+    const { user, pass, db, host, port } = requireOfflineReaderCredentials();
+    return `postgres://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@${host}:${port}/${db}`;
+  }
+  // "server" — real shared QNAP Postgres (red-rules Rule 1). Never silently
+  // redirect to a local mirror.
+  const envUri = process.env.POSTGRES_URI;
+  if (envUri && isQnapPostgresUri(envUri) && !process.env.POSTGRES_QNAP_PASSWORD) {
+    return envUri;
+  }
+  const { user, pass, db } = requirePostgresCredentials(true);
+  return `postgres://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@${QNAP_TAILSCALE_HOST}:${QNAP_POSTGRES_PORT}/${db}`;
+}
+
+/** Build Beeper Mongo URI for a source without mutating the active override. */
+export function buildBeeperMongoUriForSource(source: DbSource): string {
+  if (source === "qnap") {
+    if (process.env.BEEPER_MONGO_ROOT_USERNAME && process.env.BEEPER_MONGO_ROOT_PASSWORD) {
+      const { user, pass } = requireQnapBeeperMongoCredentials();
+      return `mongodb://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@${QNAP_TAILSCALE_HOST}:${QNAP_BEEPER_MONGO_PORT}?authSource=admin&directConnection=true`;
+    }
+    const envUri = process.env.BEEPER_MONGODB_URI;
+    if (envUri && isQnapBeeperMongoUri(envUri)) return envUri;
+    const { user, pass } = requireQnapBeeperMongoCredentials();
+    return `mongodb://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@${QNAP_TAILSCALE_HOST}:${QNAP_BEEPER_MONGO_PORT}?authSource=admin&directConnection=true`;
+  }
+  const uri = process.env.BEEPER_MONGODB_URI;
+  if (!uri) throw new Error("BEEPER_MONGODB_URI environment variable is not set");
+  if (!isQnapBeeperMongoUri(uri) && !uri.includes(QNAP_TAILSCALE_HOST) && !uri.includes(`:${QNAP_MONGO_PORT}`)) {
+    return uri;
+  }
+  const inLocalDocker = process.env.CHAD_ENVIRONMENT === "local" && process.env.NODE_ENV === "production";
+  if (inLocalDocker) {
+    const user = process.env.MONGO_ROOT_USERNAME || "change_me";
+    const pass = process.env.MONGO_ROOT_PASSWORD || "change_me";
+    return `mongodb://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@mongodb:27017?authSource=admin`;
+  }
+  return uri;
+}
+
 export function getEffectiveMongoUri(): string {
   if (currentMongoSource === "qnap") {
     const envUri = process.env.MONGODB_URI;
@@ -278,61 +325,11 @@ export function getEffectiveMongoUri(): string {
 }
 
 export function getEffectiveBeeperMongoUri(): string {
-  if (currentMongoSource === "qnap") {
-    // Prefer dedicated Beeper credentials so a stale :12040 env URI cannot win
-    // and password special characters are always encoded.
-    if (process.env.BEEPER_MONGO_ROOT_USERNAME && process.env.BEEPER_MONGO_ROOT_PASSWORD) {
-      const { user, pass } = requireQnapBeeperMongoCredentials();
-      return `mongodb://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@${QNAP_TAILSCALE_HOST}:${QNAP_BEEPER_MONGO_PORT}?authSource=admin&directConnection=true`;
-    }
-    const envUri = process.env.BEEPER_MONGODB_URI;
-    if (envUri && isQnapBeeperMongoUri(envUri)) return envUri;
-    const { user, pass } = requireQnapBeeperMongoCredentials();
-    return `mongodb://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@${QNAP_TAILSCALE_HOST}:${QNAP_BEEPER_MONGO_PORT}?authSource=admin&directConnection=true`;
-  }
-  const uri = process.env.BEEPER_MONGODB_URI;
-  if (!uri) throw new Error("BEEPER_MONGODB_URI environment variable is not set");
-  // Local readonly backup = sibling compose mongo (or any non-server URI).
-  if (!isQnapBeeperMongoUri(uri) && !uri.includes(QNAP_TAILSCALE_HOST) && !uri.includes(`:${QNAP_MONGO_PORT}`)) {
-    return uri;
-  }
-  const inLocalDocker = process.env.CHAD_ENVIRONMENT === "local" && process.env.NODE_ENV === "production";
-  if (inLocalDocker) {
-    // Sibling `mongodb` uses MONGO_ROOT_* only — BEEPER_MONGO_ROOT_* are for
-    // QNAP beeper-mongodb (:12041) and will Authentication-fail locally.
-    const user = process.env.MONGO_ROOT_USERNAME || "change_me";
-    const pass = process.env.MONGO_ROOT_PASSWORD || "change_me";
-    return `mongodb://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@mongodb:27017?authSource=admin`;
-  }
-  return uri;
+  return buildBeeperMongoUriForSource(currentMongoSource);
 }
 
 export function getEffectivePostgresUri(): string {
-  if (currentPostgresSource === "offline-readonly-backup") {
-    const { user, pass, db, host, port } = requireOfflineReaderCredentials();
-    return `postgres://${user}:${pass}@${host}:${port}/${db}`;
-  }
-
-  // "server" is the only other source — CHAD's own real, shared PostgreSQL,
-  // always the QNAP server (see ai-docs/databases/red-rules.md Rule 1: this
-  // is an explicit selected mode, never a silent fallback to something
-  // else). A prior version of this function returned ANY non-QNAP-shaped
-  // POSTGRES_URI as-is (added for local-mac-docker's own `postgres:5432`
-  // mirror) — that made "server" mode silently inert on local-mac-docker:
-  // the Dev Panel said "Server PostgreSQL" but every read actually hit the
-  // local mirror, which only ever carries a minimal `test3` seed (see
-  // seed-local-postgres-login.mjs), never the real users-list — breaking
-  // login for every real account (found 2026-07-28). There is no "local"
-  // ChadPostgresSource anymore (see the type above) — don't reintroduce
-  // one via a URI-shape guess.
-  const envUri = process.env.POSTGRES_URI;
-  if (envUri && isQnapPostgresUri(envUri) && !process.env.POSTGRES_QNAP_PASSWORD) {
-    // Process already started pointed at QNAP with a working URI (TEST/PROD
-    // containers, e.g. chad-postgres:5432 or a direct Tailscale URI) — keep it.
-    return envUri;
-  }
-  const { user, pass, db } = requirePostgresCredentials(true);
-  return `postgres://${user}:${pass}@${QNAP_TAILSCALE_HOST}:${QNAP_POSTGRES_PORT}/${db}`;
+  return buildPostgresUriForSource(currentPostgresSource);
 }
 
 function describeUriHostPort(uri: string): string {

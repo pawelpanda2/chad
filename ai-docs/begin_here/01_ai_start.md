@@ -58,8 +58,11 @@ backup/restore/integrity). Przeczytaj oba PRZED jakąkolwiek zmianą w
   do odczytu (`infrastructure/offline-readonly-backup/`).
 - Agent **nie może** używać jej jako development database, test database,
   migration target ani fallbacku do zapisu.
-- Dev Panel: `Server PostgreSQL` (primary) vs `offline-readonly-backup`
-  (emergency read-only). Regresja: `pnpm test:offline-readonly-backup`.
+- Dev Panel: `Server PostgreSQL` (primary) vs `Offline backup — read only`
+  (emergency read-only) — native radio + Apply; Mongo: `Server Mongo` /
+  `Local Mongo` osobno. Regresja: `pnpm test:offline-readonly-backup`.
+- **Bez internetu:** Settings nie może wisieć na remote probe — short timeout;
+  switch → offline nie wymaga QNAP.
 
 ### Lokalny Postgres mirror (legacy, opt-in) — NIE rób śmietnika (Story 89)
 
