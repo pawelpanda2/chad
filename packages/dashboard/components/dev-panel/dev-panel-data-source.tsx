@@ -23,6 +23,14 @@ interface PostgresActiveView {
   verificationStatus?: string;
 }
 
+interface BeeperLocalMirrorStatus {
+  lastCheckedAt: string | null;
+  lastSuccessAt: string | null;
+  age: string | null;
+  result: string;
+  lastError?: string;
+}
+
 interface BeeperActiveView {
   beeperDataSource: string;
   mode: string;
@@ -37,6 +45,7 @@ interface BeeperActiveView {
   contactsCount: number | null;
   messagesCount: number | null;
   lastChecked: string;
+  localMirror: BeeperLocalMirrorStatus;
 }
 
 interface DataSourceState {
@@ -59,6 +68,11 @@ interface DataSourceState {
     changeOptions: {
       current: BeeperMongoOption;
       options: BeeperMongoOption[];
+      localMirror: {
+        available: boolean;
+        status: BeeperLocalMirrorStatus;
+        error?: string;
+      };
     };
   };
 }
@@ -387,6 +401,20 @@ export function DevPanelDataSourceTab() {
               <ActiveRow testIdPrefix="dev-panel-mongo-active" label="contacts count" value={beeperActive.contactsCount} />
               <ActiveRow testIdPrefix="dev-panel-mongo-active" label="messages count" value={beeperActive.messagesCount} />
               <ActiveRow testIdPrefix="dev-panel-mongo-active" label="Last checked" value={beeperActive.lastChecked} />
+              <ActiveRow
+                testIdPrefix="dev-panel-mongo-active"
+                label="local mirror last successful sync"
+                value={beeperActive.localMirror.lastSuccessAt}
+              />
+              <ActiveRow
+                testIdPrefix="dev-panel-mongo-active"
+                label="local mirror age/status"
+                value={
+                  beeperActive.localMirror.result === 'never run'
+                    ? 'never run'
+                    : `${beeperActive.localMirror.age ?? '—'} / ${beeperActive.localMirror.result}`
+                }
+              />
             </div>
           )}
         </div>
@@ -413,11 +441,39 @@ export function DevPanelDataSourceTab() {
               value="local"
               checked={selectedMongo === 'Local Mongo'}
               disabled={loading || switchingMongo}
-              label="Local Mongo"
+              label="Local Mongo — read only"
               testId="dev-panel-radio-mongo-local"
               onChange={() => setSelectedMongo('Local Mongo')}
             />
           </fieldset>
+
+          {selectedMongo === 'Local Mongo' && (
+            <div
+              data-testid="dev-panel-mongo-local-warning"
+              style={{
+                background: '#5c0000',
+                border: '1px solid #ff5252',
+                color: '#fff',
+                padding: '8px',
+                margin: '8px 0',
+                fontSize: '11px',
+                lineHeight: 1.35,
+              }}
+            >
+              <div>Tryb awaryjny: tylko odczyt.</div>
+              <div>Dane mogą być nieaktualne. Zapisy są zablokowane.</div>
+              {state?.beeper.changeOptions.localMirror.available ? (
+                <div style={{ marginTop: '6px', opacity: 0.9 }}>
+                  <div>Last successful sync: {state.beeper.changeOptions.localMirror.status.lastSuccessAt ?? '—'}</div>
+                  <div>Age: {state.beeper.changeOptions.localMirror.status.age ?? '—'}</div>
+                </div>
+              ) : (
+                <div style={{ marginTop: '6px', color: '#ffcdd2' }}>
+                  {state?.beeper.changeOptions.localMirror.error ?? 'Local mirror not available'}
+                </div>
+              )}
+            </div>
+          )}
 
           <button
             type="button"
@@ -428,7 +484,8 @@ export function DevPanelDataSourceTab() {
               loading ||
               switchingMongo ||
               !state ||
-              selectedMongo === state.beeper.changeOptions.current
+              selectedMongo === state.beeper.changeOptions.current ||
+              (selectedMongo === 'Local Mongo' && !state.beeper.changeOptions.localMirror.available)
             }
             onClick={handleMongoApply}
           >

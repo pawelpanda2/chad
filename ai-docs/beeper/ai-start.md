@@ -106,6 +106,27 @@ Konkretnie:
   (`com.chad.beeper-synch`) do auto-startu po zalogowaniu; `.env.mac-beeper`
   od tej Story wskazuje realnie na QNAP-owe `beeper-mongodb`
   (`100.117.139.83:12041` przez Tailscale), nie na starą lokalną bazę.
+- **Local Mongo mirror (Story 92, 2026-07-30)** — `plugins/beeper-synch`
+  odświeża co 5 minut jednokierunkową, wyłącznie-do-odczytu kopię QNAP
+  `beeper-mongodb` w lokalnym Mongo (`packages/dba/src/
+  beeper-mongo-mirror/{metadata,refresh}.ts`, stage→verify→swap przez
+  `renameCollection`, nigdy nie dotyka źródła). **Writerzy
+  (`beeper-synch`/`beeper-ws`/`beeper-sync`) nadal piszą wyłącznie na
+  QNAP** — lokalna kopia to wyłącznie awaryjny fallback wybierany ręcznie w
+  Dev Panelu (`Local Mongo — read only`), domyślnie zawsze `Server Mongo`.
+  `isBeeperMongoReadonlyMode()`/`assertBeeperWriteAllowed()`
+  (`chad-data-mode.ts`, sprzed Story 91) blokują każdą mutację
+  `beeper-crm.ts` w trybie local — **ale uważaj**: `listBeeperContacts`
+  kiedyś też odpalał to na czystym odczycie (przez lazy-migration
+  `ensureBeeperSyncPermissionsMigrated`), co dawało HTTP 500 zamiast
+  danych — naprawione (`isBeeperMongoReadonlyMode()` guard), ale to
+  pokazuje: każda NOWA funkcja odczytu w `beeper-crm.ts` musi jawnie
+  sprawdzić, czy przypadkiem nie wywołuje czegoś zagwardowanego jako
+  write. Trzy osobne zmienne, nigdy nie mieszać: `MONGODB_URI`
+  (`.env.mac-beeper`, target writerów, QNAP), `BEEPER_LOCAL_MIRROR_MONGODB_URI`
+  (`.env.mac-beeper`, target mirrora, lokalny Mongo),
+  `BEEPER_MONGODB_URI` (`.env.local`, co czyta Dashboard — QNAP lub
+  lokalny, zależnie od wyboru w Dev Panelu).
 
 ## 3. Powiązana dokumentacja poza tym katalogiem
 

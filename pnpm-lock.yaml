@@ -440,6 +440,9 @@ importers:
 
   plugins/beeper-synch:
     dependencies:
+      dba:
+        specifier: workspace:*
+        version: link:../../packages/dba
       dotenv:
         specifier: ^17.4.0
         version: 17.4.2
