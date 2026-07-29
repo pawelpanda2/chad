@@ -9,13 +9,13 @@
  * `process.env.OPENAI_API_KEY` — never accepted as a parameter, never
  * echoed back in a result.
  *
- * Mirrors the one existing OpenAI integration in the repo,
+ * OpenAI stored-prompt request shape mirrors
  * `packages/console/src/openai/askOpenAiAboutGirl.ts`'s
- * `callOpenAiPreparedPrompt` (Responses API, `openai.responses.create`).
+ * `callOpenAiPreparedPrompt` (Responses API).
  */
 
 import OpenAI from "openai";
-import type { AiPromptDefinition, AiPromptMessage } from "./ai-prompts.js";
+import type { AiPromptDefinition, AiPromptMessage, AiPromptSettings } from "./ai-prompts.js";
 
 export type AiPromptExecutionStatus = "complete" | "error" | "provider-not-configured";
 
@@ -39,6 +39,65 @@ function buildInputMessages(
     .map((m) => ({ role: m.role, content: substituteVariables(m.content, variables) }));
 }
 
+/** First substituted user message content, or empty string. */
+export function resolveAiPromptUserContent(
+  promptDefinition: AiPromptDefinition,
+  variables: Record<string, string>,
+): string {
+  const userMessage = buildInputMessages(promptDefinition.messages, variables).find(
+    (m) => m.role === "user",
+  );
+  return userMessage?.content ?? "";
+}
+
+export type OpenAiStoredPromptCreateParams = {
+  prompt: { id: string; version?: string };
+  input: Array<{ role: "user"; content: string }>;
+  reasoning: { summary: "auto" | "concise" | "detailed" };
+  store: boolean;
+  include: Array<"web_search_call.action.sources" | "reasoning.encrypted_content">;
+};
+
+/**
+ * Builds the OpenAI Responses create payload for a **stored** prompt —
+ * pure, no network, no API key. Used by execute + unit tests.
+ *
+ * Matches console `callOpenAiPreparedPrompt`: message-array `input`,
+ * `reasoning.summary`, `store`, and web_search sources in `include`
+ * (no encrypted reasoning content by default).
+ */
+export function buildOpenAiStoredPromptCreateParams(
+  promptDefinition: AiPromptDefinition,
+  variables: Record<string, string>,
+): OpenAiStoredPromptCreateParams {
+  const openaiPromptId = promptDefinition.providerBindings?.openaiPromptId?.trim();
+  if (!openaiPromptId) {
+    throw new Error("openaiPromptId is required for stored-prompt request");
+  }
+  const settings: AiPromptSettings | undefined = promptDefinition.settings;
+  const summaryRaw = settings?.summary;
+  const summary: "auto" | "concise" | "detailed" =
+    summaryRaw === "concise" || summaryRaw === "detailed" || summaryRaw === "auto"
+      ? summaryRaw
+      : "auto";
+
+  return {
+    prompt: {
+      id: openaiPromptId,
+      version: promptDefinition.providerBindings?.openaiPromptVersion?.trim() || undefined,
+    },
+    input: [
+      {
+        role: "user",
+        content: resolveAiPromptUserContent(promptDefinition, variables),
+      },
+    ],
+    reasoning: { summary },
+    store: settings?.storeLogs !== false,
+    include: ["web_search_call.action.sources"],
+  };
+}
+
 async function executeOpenAiPrompt(
   promptDefinition: AiPromptDefinition,
   variables: Record<string, string>,
@@ -51,18 +110,9 @@ async function executeOpenAiPrompt(
   const openai = new OpenAI({ apiKey });
 
   try {
-    if (promptDefinition.providerBindings?.openaiPromptId) {
-      // Variant B — a prompt already saved/versioned on OpenAI's side.
-      const userMessage = buildInputMessages(promptDefinition.messages, variables).find(
-        (m) => m.role === "user",
-      );
-      const response = await openai.responses.create({
-        prompt: {
-          id: promptDefinition.providerBindings.openaiPromptId,
-          version: promptDefinition.providerBindings.openaiPromptVersion,
-        },
-        input: userMessage?.content ?? "",
-      });
+    if (promptDefinition.providerBindings?.openaiPromptId?.trim()) {
+      const params = buildOpenAiStoredPromptCreateParams(promptDefinition, variables);
+      const response = await openai.responses.create(params);
       return { status: "complete", outputText: response.output_text || undefined };
     }
 
@@ -84,7 +134,12 @@ async function executeOpenAiPrompt(
           }
         : {}),
       ...(settings?.reasoningEffort
-        ? { reasoning: { effort: settings.reasoningEffort as "low" | "medium" | "high", summary: (settings.summary as "auto" | "concise" | "detailed") ?? "auto" } }
+        ? {
+            reasoning: {
+              effort: settings.reasoningEffort as "low" | "medium" | "high",
+              summary: (settings.summary as "auto" | "concise" | "detailed") ?? "auto",
+            },
+          }
         : {}),
     });
     return { status: "complete", outputText: response.output_text || undefined };

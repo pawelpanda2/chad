@@ -129,9 +129,13 @@ See Story 88's `02_plan.md` for the full reasoning.
   `{{variable}}` substitution) and calls `openai.responses.create({ model,
   input, text?, reasoning? })`.
 - **OpenAI stored prompt** (`providerBindings.openaiPromptId` set): calls
-  `openai.responses.create({ prompt: { id, version }, input })` — mirrors
-  the one pre-existing OpenAI integration in the repo,
-  `packages/console/src/openai/askOpenAiAboutGirl.ts`.
+  `openai.responses.create` with `prompt: { id, version }`,
+  `input: [{ role: "user", content }]`, plus `reasoning.summary` / `store` /
+  web_search `include` from definition settings — same shape as console
+  `callOpenAiPreparedPrompt`.
+- Optional idempotent draft import of the console girl stored prompt
+  (same fields as GUI managed create):  
+  `pnpm --filter dba exec node scripts/import-console-openai-girl-prompt.mjs`
 - Any other `provider` value returns `{ status: "provider-not-configured"
   }` — an honest boundary, never a faked response.
 - No request is ever sent automatically on render or on save — only when
@@ -150,11 +154,8 @@ See Story 88's `02_plan.md` for the full reasoning.
 
 ## Tests
 
-- `packages/dba/src/ai-prompts.test.ts` (19 tests, Vitest, listed in
-  `vitest.config.mjs`) — empty registry, lazy folder/item creation, create/
-  read round-trip, isolated updates across siblings, duplicate-slug
-  blocking, corrupt-JSON guard, draft/published filtering +
-  `findPublishedAiPrompt`, version increment on publish.
-- `pnpm --filter dba build` / `npx tsc --noEmit` — clean.
-- `pnpm --filter dashboard build` — clean (`next build`, full typecheck,
-  all new routes present in the route table).
+- `packages/dba/src/ai-prompts.test.ts` — registry CRUD / publish / corrupt
+  guard / `findPublishedAiPrompt`.
+- `packages/dba/src/ai-prompts-openai.test.ts` — stored-prompt Responses
+  payload (id/version/message-array input/settings; no API key in result).
+- `pnpm --filter dba build` / `pnpm --filter dashboard build`.
