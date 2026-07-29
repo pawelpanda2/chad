@@ -11,12 +11,24 @@
 Status: aktualne (Story 70, 2026-07-17) — dodany **równoległy** mechanizm
 GHCR: build+push z Maca lub GitHub Actions, QNAP `docker pull`uje i
 restartuje (patrz sekcja "Registry flow (GHCR) — Story 70" niżej), przez
-NOWE katalogi `09_registry_prod`/`08_registry_test`. To jest opcja
-dodatkowa, nie zamiennik — `04_qnap_test/{02_build,06_deploy}.sh` i
-`06_qnap_test_ssh/06_deploy.sh` (build na QNAP) działają dokładnie tak jak
-przed Story 70, bez zmian, i pozostają w pełni poprawną drogą deploymentu
-TEST. Wybór między "buduj na QNAP" (`04_qnap_test`/`06_qnap_test_ssh`) a
-"buduj przez GHCR" (`08_registry_test`) należy do użytkownika. Poprzedni
+NOWE katalogi `09_registry_prod`/`08_registry_test`.
+
+### Domyślna droga deployu (obowiązująca praktyka, 2026-07-29)
+
+1. **TEST:** `bash-scripts/dashboard/08_registry_test/deploy.sh` —
+   buduje lokalnie na Macu, push do GHCR, QNAP tylko pull + restart.
+   Jest **szybciej** niż budowanie na QNAP — **używaj tego domyślnie**.
+2. **PROD:** `bash-scripts/dashboard/07_qnap_prod_ssh/06_last_from_test.sh` —
+   wyłącznie przekierowanie PROD na ten sam obraz co TEST (bez buildu).
+
+`04_qnap_test/{02_build,06_deploy}.sh` i `06_qnap_test_ssh/06_deploy.sh`
+(build na QNAP) nadal działają jako awaryjna/równoległa droga, ale **nie
+są domyślnym wyborem** przy deployu z Maca. Wybór między "buduj na QNAP"
+a "buduj przez GHCR" należy do użytkownika tylko gdy GHCR jest niedostępny;
+w normalnym workflow agent ma brać `08_registry_test/deploy.sh` +
+`07_qnap_prod_ssh/06_last_from_test.sh`.
+
+Poprzedni
 stan (Story 63, 2026-07-16/17): jeden stały, globalny kontrakt numeracji
 operacji dla wszystkich środowisk, `restart` (bez myślnika) jako jedyna
 nazwa dla tej operacji w całym repo, `06_qnap_ssh` zastąpiony przez dwa
@@ -526,17 +538,19 @@ duplikowana): `ghcr_image_ref`, `ghcr_docker_login` (zawsze
 udanym buildzie), `ghcr_pull_and_retag` (pull + retag na lokalną,
 compose-kompatybilną nazwę).
 
-### `08_registry_test/` — pełny deployment TEST przez GHCR
+### `08_registry_test/` — pełny deployment TEST przez GHCR (**domyślna droga**)
+
+Punkt wejścia: **`deploy.sh`** (nie numerowany `06_deploy.sh` — w tym
+katalogu żyją `config.sh` + `deploy.sh`).
 
 | Plik | Gdzie działa | Co robi |
 |---|---|---|
-| `01_config.sh` | — | stałe: `GHCR_REGISTRY`/`GHCR_OWNER`/`GHCR_IMAGE` (niesekretne) |
-| `02_build.sh` | **lokalnie (Mac)** | build + tag + push do GHCR; wymaga `.env.local`'s `GHCR_PUSH_USERNAME`/`GHCR_PUSH_TOKEN` |
-| `03_re-start.sh` | SSH → QNAP | login (read token) + pull + retag lokalny + zapis tagu + woła `04_qnap_test/03_re-start.sh` |
-| `04_end.sh` / `05_status.sh` | SSH → QNAP | cienki passthrough do `04_qnap_test/{04_end,05_status}.sh` (identyczne jak `06_qnap_test_ssh`'s) |
-| `06_deploy.sh` | lokalnie + SSH | git preflight → `02_build.sh` → `03_re-start.sh` → `05_status.sh` — nowy główny punkt wejścia, zastępuje rolę `06_qnap_test_ssh/06_deploy.sh` |
+| `config.sh` | — | stałe: `GHCR_REGISTRY`/`GHCR_OWNER`/`GHCR_IMAGE` (niesekretne) |
+| `deploy.sh` | lokalnie (Mac) + SSH → QNAP | git preflight → build+tag+push do GHCR na Macu → SSH: pull + retag + `04_qnap_test/03_re-start.sh` + `05_status.sh` |
 
-Brak `07_logs.sh` — `04_qnap_test` go nie ma, nie ma czego owijać.
+Dlaczego domyślnie: build na Macu + push/pull GHCR jest **szybszy** niż
+`docker compose build` na QNAP (`06_qnap_test_ssh/06_deploy.sh`). QNAP w
+tej ścieżce **nigdy nie buduje** obrazu dashboardu — tylko pobiera.
 
 ### `09_registry_prod/` — promocja PROD przez GHCR
 
