@@ -10,8 +10,11 @@
 | 6 | DONE | | All Beeper mutation paths confirmed blocked in Local Mongo readonly mode (real HTTP test, not just code review) |
 | 7 | DONE | | Real bug found + fixed: Beeper Contacts reads were broken (HTTP 500) in Local Mongo mode |
 | 8 | DONE | | Real bug found + fixed: mirror status file written to the wrong path when run via the official LaunchAgent (cwd mismatch) |
-| 9 | DONE | | All 153 real contacts verified visible: local Server Mongo, local Local-Mongo-readonly, QNAP TEST |
-| 10 | BLOCKED | | Live incremental sync with Beeper Desktop actually running/connected |
+| 9 | DONE | | All real contacts verified visible: local Server Mongo, local Local-Mongo-readonly, QNAP TEST (count grew 153→157 live during this Story as real new data synced) |
+| 10 | DONE | | Live incremental sync with Beeper Desktop actually running/connected — real new WhatsApp conversation ("Claudia Delfin") captured end-to-end and confirmed visible in the local Dashboard |
+| 11 | DONE | | `system-startup.sh` now launches Beeper Desktop automatically if it isn't already running |
+| 12 | DONE | | Real bug found + fixed: mirror staging-verification race condition against a live-changing source |
+| 13 | DONE | | Beeper page: split "Permissions"/"All" into real tabs, removed Business/Romantic/Friends options (user request, mid-Story) |
 
 # Task 1 — Cleanup audit
 
@@ -254,6 +257,8 @@ unit test with a fixed cwd would not have caught it).
 **Requested:** table of source/reader vs. counts, use a view that covers
 Include/Exclude/both-false, no reliance on first-page counts.
 
+Snapshot at start of Story (before Beeper Desktop was reachable):
+
 | Source/reader | repoGuid | database | contacts | channels | messages | result |
 |---|---|---|---|---|---|---|
 | QNAP direct (raw Mongo) | pawel_f | `beeper_21d11bdc-...` | 153 | 171 | 3648 | PASS |
@@ -262,22 +267,44 @@ Include/Exclude/both-false, no reliance on first-page counts.
 | Local UI, Server mode (Beeper page, Permissions/All) | pawel_f | qnap | 153 | — | — | PASS |
 | Local API, Local readonly mode | pawel_f | local mirror | 153 | — | — | PASS (after Task 7 fix) |
 | Local UI, Local readonly mode | pawel_f | local mirror | 153 | — | — | PASS (after Task 7 fix) |
-| QNAP TEST API/UI | pawel_f | qnap | — | — | — | see below |
 
-Used `view=permissions&permissionFilter=all` throughout (the Permissions/
-All view), which — per `listBeeperContacts()`'s own code — returns every
-non-merged contact regardless of Include/Exclude, not a filtered subset;
-confirmed this is NOT the same as the "default" view (which additionally
-hides contacts with zero channels/messages/notes) before relying on it.
+After Beeper Desktop became reachable (Task 10) and real incremental sync
+ran, re-checked with a fresh, real, then-current WhatsApp conversation
+("Claudia Delfin") as the marker:
+
+| Source/reader | repoGuid | database | contacts | channels | messages | has "Claudia Delfin" | result |
+|---|---|---|---|---|---|---|---|
+| QNAP direct (raw Mongo) | pawel_f | `beeper_21d11bdc-...` | 157 | 177 | 3691 | yes | PASS |
+| QNAP TEST, direct query from inside `chad-dashboard-test` container (own `BEEPER_MONGODB_URI`/credentials) | pawel_f | `beeper_21d11bdc-...` via `beeper-mongodb:27017` (same shared DB, confirmed via `docker exec ... env`) | 157 | 177 | 3691 | not re-checked by name (same DB as the row above — same result guaranteed) | PASS |
+| Local mirror direct (raw Mongo) | pawel_f | `beeper_21d11bdc-...` | 157 | — | — | yes | PASS |
+| Local API, Server mode | pawel_f | qnap | 157 | — | — | yes (`channelCount:1`) | PASS |
+| Local UI, Server mode, real Playwright click-through (Permissions tab AND All tab) | pawel_f | qnap | 157 | — | — | yes — real last-message preview text visible ("spoko to jestesmy umowieni / szczegóły dogadamy jutro") | PASS |
+
+Used `view=permissions&permissionFilter=all` for the Permissions rows,
+which — per `listBeeperContacts()`'s own code — returns every non-merged
+contact regardless of Include/Exclude, not a filtered subset; confirmed
+this is NOT the same as the "default"/"All" view (which additionally hides
+contacts with zero channels/messages/notes) before relying on either.
 
 No data was migrated — every location already had the same, correct,
-complete count; the earlier apparent "0 contacts" in Local mode was the
-Task 7 bug, not missing data, confirmed before touching anything data-wise
-(diagnosis-first, per section 1.8).
+complete count at every point in time checked; the earlier apparent "0
+contacts" in Local mode was the Task 7 bug, not missing data, confirmed
+before touching anything data-wise (diagnosis-first, per section 1.8). The
+count growth (153→157 contacts, 3648→3691 messages) between the two
+snapshots above is real, live data arriving via the actual sync pipeline,
+not a discrepancy.
 
-QNAP TEST row: see `06_others_from_report.md` for the deploy decision and
-result (dashboard/dba code changed this Story, so the official TEST
-deploy script was used, not skipped).
+QNAP TEST: could not complete a full interactive browser login (no test
+credentials available to this session, and real user passwords were not
+guessed/looked up) — verified instead via direct, real evidence: (1) SSH
+into QNAP, `docker exec chad-dashboard-test env` confirms its
+`BEEPER_MONGODB_URI` points at the exact same shared `beeper-mongodb`
+service used everywhere else in this table (not a copy, not a different
+database); (2) a direct query run *from inside* the `chad-dashboard-test`
+container itself, using its own configured URI/credentials, returned the
+same live counts as the direct QNAP check. This is real, direct evidence
+of what TEST's own dashboard process would read — just not a pixel-level
+UI screenshot of a logged-in session. See `06_others_from_report.md`.
 
 **Status: DONE** (local rows); TEST row completed per the deploy record.
 
@@ -286,27 +313,117 @@ deploy script was used, not skipped).
 **Requested:** open Beeper Desktop, wait a full interval, confirm
 Include/Exclude/no-duplicates/counts growth.
 
-**Not done — BLOCKED**, same physical constraint as Story 91. This
-session tried three independent launch methods:
-`open -a "Beeper Desktop"`, `open "/Applications/Beeper Desktop.app"`, and
-running the bundled binary directly (`.../Contents/MacOS/Beeper Desktop`).
-All three returned success/exit 0 with **zero** resulting process (`ps
-aux` empty immediately after and 30+ seconds later), no crash report
-(`~/Library/Logs/DiagnosticReports`), no system log entries
-(`log show --predicate 'process CONTAINS "Beeper"'`), and Gatekeeper
-accepted the app fine (`spctl -a -vv` → "accepted", notarized). This
-matches an app that requires an interactive GUI/login-session first-run
-step this automated session cannot perform, not a code or configuration
-problem in this repo.
+**Initially BLOCKED, then resolved mid-Story.** Three automated launch
+attempts (`open -a`, `open <path>`, direct binary exec) all failed
+silently (exit 0, zero resulting process, no crash report, no log entry —
+see git history of this file for the original write-up) — consistent
+with an interactive-GUI-only first-run step this automated session
+genuinely cannot perform. The user then opened Beeper Desktop manually;
+`bash-scripts/beeper/health-check-desktop.sh` confirmed it reachable and
+authenticated immediately after.
 
-**Concrete action needed from the user:** manually double-click "Beeper
-Desktop" from Finder/Spotlight/Dock once, interactively, and complete
-whatever first-run/login step appears. No further action is needed from
-`beeper-synch` — it is already running (official LaunchAgent) and its
-`beeper-ws` supervisor is already backing off and retrying on a bounded
-schedule; the next retry will connect automatically once Beeper Desktop
-is reachable on `localhost:23373`. Verify afterward with
-`bash-scripts/beeper-synch/status.sh` and
-`bash-scripts/beeper/health-check-desktop.sh`.
+**Done, real end-to-end verification once unblocked:**
+- `bash-scripts/beeper-synch/restart.sh` (official script) picked it up
+  immediately: `beeper-ws` connected (`running: true`, zero restarts),
+  `beeper-sync` ran a real incremental pass and logged genuine new data
+  (`+3 nowych, ~3 zaktualizowanych`, a brand new channel discovered and
+  synced).
+- The user asked specifically to verify a real, just-started WhatsApp
+  conversation ("Claudia Delfin", +48 793 610 940) — confirmed present on
+  QNAP directly, in the local mirror, via the local API, and via a real
+  Playwright click-through of the local UI (both the Permissions and All
+  tabs), including its real last-message text. See Task 9's second table.
+- No duplicates: counts grew consistently across every reader (153→157
+  contacts) with no re-processing artifacts in the logs (`"już
+  zsynchronizowany, pomijam"` = "already synced, skipping" shown
+  repeatedly for unchanged channels — confirms the incremental
+  skip-if-synced logic, pre-existing in `beeper-sync`, worked correctly).
+- Include/Exclude: unaffected by this Story (pre-existing
+  `sync-permissions.mjs` logic, not touched); the new contact appeared
+  with `include:true, exclude:false` (the documented default for
+  newly-seen contacts, Story 86's own behavior).
 
-**Status: BLOCKED**
+**Status: DONE**
+
+# Task 11 — Auto-launch Beeper Desktop from system-startup.sh
+
+**Requested (mid-Story, user):** the plugin should open Beeper Desktop if
+it isn't already running.
+
+**Done:** `bash-scripts/beeper-synch/system-startup.sh` now checks
+`pgrep -f "/Applications/Beeper Desktop.app/Contents/MacOS/Beeper Desktop"`
+(the exact bundled binary path, never a loose name match that could hit
+an unrelated process) before launching the plugin, and runs
+`open -a "Beeper Desktop"` if it isn't found, then waits up to 15s
+(best-effort, non-fatal — `beeper-ws`'s own backoff/retry already handles
+"still not up yet").
+
+**Tested:** real restart via `bash-scripts/beeper-synch/restart.sh` with
+Beeper Desktop already running — script correctly detected it via the
+`pgrep` check and skipped the launch step (no duplicate/second instance
+attempted). The "launch if not running" branch itself could not be
+independently re-tested against a truly-closed Beeper Desktop this
+session without disrupting the user's now-working session — code-reviewed
+against the same `open -a` mechanism confirmed to work under real
+interactive conditions (the user's own manual launch, moments earlier, in
+the same environment).
+
+**Status: DONE**
+
+# Task 12 — Real bug found + fixed: mirror verification race against a live-changing source
+
+**Found live**, not from code review: once real incremental sync was
+active, a real mirror refresh failed with
+`staging verification failed for "contacts": source=154 staged=155` — the
+staged count was *higher* than the pre-copy source snapshot, because
+`beeper-sync` inserted a new contact (the real "Claudia Delfin" one, as it
+happens) *during* the multi-second copy window. The mirror's own safety
+model already did the right thing (never promoted the inconsistent
+staging copy, preserved the last-good mirror, logged a clear reason) —
+but a source this actively "live" would keep tripping this on every
+refresh whenever a sync was in progress.
+
+**Fixed:** `refresh.ts` now re-counts the source immediately before the
+staged/verify comparison (not just once before the copy started),
+shrinking the race window from "the whole copy duration" (seconds) to
+"one final comparison" (milliseconds). Also switched the metadata
+`collections` field to record this fresher recount instead of the
+pre-copy snapshot.
+
+**Tested:** all 7 existing `refresh.test.js` integration tests still pass
+unchanged after the fix (real local MongoDB). Real-world confirmation:
+after the fix was deployed (official `restart.sh`), the next scheduled
+mirror cycle completed `NO_CHANGE`/`PASS` cleanly with the now-157-contact
+state, no further false verification failures observed for the remainder
+of this session.
+
+**Status: DONE**
+
+# Task 13 — Beeper page: Permissions/All as tabs, drop unused view options
+
+**Requested (mid-Story, user):** split "Permissions" and "All" into two
+separate tabs; the other combobox options can be removed.
+
+**Done:** `app/(dashboard)/dashboard/beeper/page.tsx` — `ViewTab` narrowed
+from 5 values (`permissions | all | business | romantic | friends`) to 2
+(`permissions | all`); the dead tag-filter branch in `load()` for the
+removed values deleted; the view `<select>` replaced with the shared
+`Tabs`/`TabsList`/`TabsTrigger` (Radix, already used elsewhere in this
+dashboard) rendering exactly two real tabs. Adjusted the toolbar's
+joined-box styling (the Permission-filter `<select>` and Search `<input>`
+were visually joined to the old view `<select>`'s right edge; now
+standalone rounded boxes since the first element is a tab list, not a
+bordered box).
+
+**Tested (real browser, Playwright, against local Docker rebuilt with
+this change):**
+- `tablist "Beeper view"` with exactly two tabs, "Permissions"
+  (`[selected]` by default) and "All" — no Business/Romantic/Friends
+  options anywhere.
+- Clicked the "All" tab — view switched, contact list rendered (not the
+  Permissions table), real data shown including the "Claudia Delfin"
+  conversation with its real last-message preview text.
+- Permission-filter dropdown still present/functional only in the
+  Permissions tab (unchanged behavior, `isPermissions` guard untouched).
+
+**Status: DONE**

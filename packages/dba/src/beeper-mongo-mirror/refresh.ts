@@ -177,13 +177,29 @@ export async function refreshBeeperMongoMirror(opts: RefreshBeeperMirrorOptions)
       if (batch.length) await dstCol.insertMany(batch, { ordered: false });
     }
 
+    // Re-count the SOURCE right now (not the pre-copy snapshot) before
+    // comparing — the source is a live target (beeper-ws/beeper-sync keep
+    // writing to it concurrently), so a count captured before a
+    // multi-second copy can legitimately be stale by the time the copy
+    // finishes. Re-checking here narrows the race window from "whole copy
+    // duration" to "a few ms", which is enough in practice (found for real
+    // during Story 92 live verification: a genuine new WhatsApp
+    // conversation arrived mid-copy and tripped the pre-copy-snapshot
+    // comparison even though nothing was actually wrong).
+    const verifyCounts: Record<string, number> = {};
+    for (const c of collections) {
+      verifyCounts[c.name] = await sourceDb.collection(c.name).countDocuments({});
+    }
     const stagedCounts: Record<string, number> = {};
     for (const c of collections) {
       stagedCounts[c.name] = await stagingDb.collection(c.name).countDocuments({});
     }
-    for (const [name, count] of Object.entries(sourceCounts)) {
+    for (const [name, count] of Object.entries(verifyCounts)) {
       if (stagedCounts[name] !== count) {
-        throw new Error(`staging verification failed for "${name}": source=${count} staged=${stagedCounts[name]}`);
+        throw new Error(
+          `staging verification failed for "${name}": source=${count} staged=${stagedCounts[name]} ` +
+            `(source changed during copy — will retry on the next scheduled run)`
+        );
       }
     }
 
@@ -206,7 +222,7 @@ export async function refreshBeeperMongoMirror(opts: RefreshBeeperMirrorOptions)
       lastCheckedAt: checkedAt,
       lastSuccessAt: checkedAt,
       result: "PASS",
-      collections: sourceCounts,
+      collections: verifyCounts,
     };
     writeBeeperMirrorMetadata(meta);
     return meta;
