@@ -263,14 +263,13 @@ export default function BeeperContactDetailPage({ params }: { params: Promise<{ 
 	let lastDay = "";
 
 	return (
-		<DashboardPageShell
-			scroll={false}
-			upLevel={{ href: "/dashboard/beeper" }}
-			title="Beeper"
-		>
+		// Default scroll={true}: ONE scrollbar on the outer DashboardPageShell
+		// frame (Story 62 Task 31 / responsive-layout-standard). Do NOT put
+		// overflow-y-auto on inner Cards — that traps conversation scroll.
+		<DashboardPageShell upLevel={{ href: "/dashboard/beeper" }} title="Beeper">
 			{/* Second row inside the outer frame — see backlog/stories/60. Contact
 			    name shown here since the shell's own title stays page-level. */}
-			<div className="flex shrink-0 flex-wrap items-center gap-2 border-b pb-3 mb-3">
+			<div className="flex flex-wrap items-center gap-2 border-b pb-3 mb-3">
 				<span className="font-semibold">{contact.displayName}</span>
 				<Button variant="outline" size="sm" className="gap-1 h-7 px-2 text-xs" onClick={copyForAI}>
 					<Copy className="h-3 w-3" /> Copy for AI
@@ -296,9 +295,9 @@ export default function BeeperContactDetailPage({ params }: { params: Promise<{ 
 				</Button>
 			</div>
 
-			<div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-3">
-				{/* Profile column */}
-				<Card className="lg:col-span-1 overflow-y-auto">
+			<div className="grid gap-4 lg:grid-cols-3">
+				{/* Profile column — sizes to content; outer frame scrolls. */}
+				<Card className="lg:col-span-1">
 					<CardContent className="space-y-4 p-4">
 						<div className="flex flex-col items-center gap-2 text-center">
 							<Avatar className="h-20 w-20">
@@ -372,12 +371,12 @@ export default function BeeperContactDetailPage({ params }: { params: Promise<{ 
 					</CardContent>
 				</Card>
 
-				{/* Timeline column */}
-				<Card className="lg:col-span-2 flex min-h-0 flex-col">
+				{/* Timeline column — no inner overflow-y; outer shell scrolls. */}
+				<Card className="lg:col-span-2">
 					<CardHeader className="border-b pb-3">
 						<span className="font-semibold">Conversation & timeline</span>
 					</CardHeader>
-					<CardContent className="flex-1 space-y-3 overflow-y-auto p-4">
+					<CardContent className="space-y-3 p-4">
 						{timeline.length === 0 && (
 							<p className="py-12 text-center text-sm text-muted-foreground">No messages or events yet.</p>
 						)}
