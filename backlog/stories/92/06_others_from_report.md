@@ -14,11 +14,18 @@
    was in play. Found by comparing the real LaunchAgent's own status
    output against the Dev Panel's live API response and noticing they
    disagreed. Fixed by anchoring to `config.repoRoot`.
+3. **Mirror staging-verification race condition** (Task 12) — once real
+   sync traffic was flowing, the pre-copy source-count snapshot could go
+   stale by the time the multi-second copy finished, since the source is
+   a genuinely live target. Found the moment real sync started producing
+   real new data mid-copy. Fixed by re-counting the source immediately
+   before the final comparison instead of reusing the pre-copy snapshot.
 
-Both are exactly the kind of bug that only surfaces under real,
-end-to-end, cross-process verification — neither would have been caught
-by typecheck/build/unit-tests alone, which is why this Story's checklist
-insists on distinguishing those from real PASS.
+All three are exactly the kind of bug that only surfaces under real,
+end-to-end, cross-process verification against a genuinely live system —
+none would have been caught by typecheck/build/unit-tests alone, which is
+why this Story's checklist insists on distinguishing those from real
+PASS.
 
 ## Architectural notes
 
@@ -38,18 +45,41 @@ insists on distinguishing those from real PASS.
 
 Dashboard/DBA code changed this Story (`beeper-crm.ts`,
 `dev-data-source.ts`, `dev-panel-data-source.tsx`,
-`app/api/dev-settings/db-source/route.ts`) — not Mac-only, so per this
-Story's own default (`bash-scripts/dashboard/08_registry_test/deploy.sh`)
-a real TEST deploy was performed rather than skipped. Note: the Dev
-Panel's Server/Local Mongo switch UI is itself local-only
-(`assertDevOnly()` returns 403 outside `CHAD_ENVIRONMENT=local`), and
-`isBeeperMongoReadonlyMode()` can never be true on TEST (no persisted
-"local" preference exists there) — so the Task 7 fix is a functional
-no-op on TEST itself; the deploy was still warranted because the same
-compiled `dba`/`dashboard` code ships to TEST regardless, and skipping a
-real deploy to avoid "wasted" verification would violate the "don't fake
-a skip" spirit of this Story's own rules. See the final report for the
-real TEST outcome.
+`app/api/dev-settings/db-source/route.ts`, plus the mid-Story
+`app/(dashboard)/dashboard/beeper/page.tsx` tabs change) — not Mac-only,
+so per this Story's own default
+(`bash-scripts/dashboard/08_registry_test/deploy.sh`) a real TEST deploy
+was performed rather than skipped. Note: the Dev Panel's Server/Local
+Mongo switch UI is itself local-only (`assertDevOnly()` returns 403
+outside `CHAD_ENVIRONMENT=local`), and `isBeeperMongoReadonlyMode()` can
+never be true on TEST (no persisted "local" preference exists there) — so
+the Task 7 fix is a functional no-op on TEST itself; the deploy was still
+warranted because the same compiled `dba`/`dashboard` code ships to TEST
+regardless.
+
+**Real result:** `bash-scripts/dashboard/08_registry_test/deploy.sh`
+(build on Mac → push `chad-dashboard:260730_005848-2f5dee4` to GHCR → SSH
+pull+retag+restart on QNAP) completed cleanly — image tag includes commit
+`2f5dee4` confirming the exact right code shipped. Only the
+`chad-dashboard-test` container was replaced (stopped/removed/recreated);
+`chad-mongodb`/`beeper-mongodb`/`chad-postgres`/`chad-dashboard-prod` were
+never touched (confirmed via the script's own log: "Shared services
+(mongo) untouched"). Post-deploy: `05_status.sh` showed the container
+healthy and responding within seconds.
+
+**Verification method actually used (documented honestly — not a full
+login click-through):** no test credentials for `pawel_f` on QNAP TEST
+were available to this session, and real production passwords were
+deliberately not guessed or searched for. Instead: (1) SSH to QNAP,
+`docker exec chad-dashboard-test env | grep BEEPER_MONGODB_URI` confirmed
+the container's own configured target is the exact same shared
+`beeper-mongodb:27017` service (not a copy); (2) a direct query run *from
+inside* that same container, using its own env/credentials via
+`docker exec chad-dashboard-test node -e "..."`, returned live counts
+(157 contacts / 177 channels / 3691 messages) identical to every other
+reader in Task 9's table. This is real evidence of what TEST's dashboard
+process itself would read on any authenticated request — just not a
+screenshot of a logged-in browser session.
 
 ## Follow-ups (not this Story's scope)
 

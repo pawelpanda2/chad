@@ -7,6 +7,7 @@ import { LIST_ROW_CLASS, LIST_ROW_WRAPPER_CLASS } from "@/components/shared/layo
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Search, MessageCircle, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -24,15 +25,12 @@ interface BeeperContactListItem {
 	exclude: boolean;
 }
 
-type ViewTab = "permissions" | "all" | "business" | "romantic" | "friends";
+type ViewTab = "permissions" | "all";
 type PermissionFilter = "all" | "include" | "exclude" | "permission";
 
 const VIEW_OPTIONS: Array<{ value: ViewTab; label: string }> = [
 	{ value: "permissions", label: "Permissions" },
 	{ value: "all", label: "All" },
-	{ value: "business", label: "Business" },
-	{ value: "romantic", label: "Romantic" },
-	{ value: "friends", label: "Friends" },
 ];
 
 const PERM_FILTER_OPTIONS: Array<{ value: PermissionFilter; label: string }> = [
@@ -57,8 +55,6 @@ export default function BeeperContactsPage() {
 			if (view === "permissions") {
 				params.set("view", "permissions");
 				params.set("permissionFilter", permFilter);
-			} else if (view !== "all") {
-				params.set("tag", view);
 			}
 			const qs = params.toString();
 			const res = await fetch(`/api/beeper-crm/contacts${qs ? `?${qs}` : ""}`);
@@ -135,23 +131,20 @@ export default function BeeperContactsPage() {
 				Story 86 — compact joined toolbar: view | permission filter | search
 				(mockup: examples/beeper_permissions_mockup_v7.html)
 			*/}
-			<div className="mb-3.5 grid grid-cols-[88px_92px_90px_1fr] items-center gap-0 max-[900px]:grid-cols-2 max-[900px]:gap-2">
-				<select
-					className="h-10 w-[88px] rounded-l-[9px] rounded-r-none border border-border bg-background px-2 text-sm"
-					value={view}
-					onChange={(e) => setView(e.target.value as ViewTab)}
-					aria-label="Beeper view"
-				>
-					{VIEW_OPTIONS.map((opt) => (
-						<option key={opt.value} value={opt.value}>
-							{opt.label}
-						</option>
-					))}
-				</select>
+			<div className="mb-3.5 flex flex-wrap items-center gap-2">
+				<Tabs value={view} onValueChange={(v) => setView(v as ViewTab)}>
+					<TabsList aria-label="Beeper view">
+						{VIEW_OPTIONS.map((opt) => (
+							<TabsTrigger key={opt.value} value={opt.value}>
+								{opt.label}
+							</TabsTrigger>
+						))}
+					</TabsList>
+				</Tabs>
 
-				{isPermissions ? (
+				{isPermissions && (
 					<select
-						className="h-10 w-[92px] rounded-none border border-l-0 border-border bg-background px-2 text-sm"
+						className="h-10 w-[92px] rounded-[9px] border border-border bg-background px-2 text-sm"
 						value={permFilter}
 						onChange={(e) => setPermFilter(e.target.value as PermissionFilter)}
 						aria-label="Permission filter"
@@ -162,21 +155,19 @@ export default function BeeperContactsPage() {
 							</option>
 						))}
 					</select>
-				) : (
-					<div className="h-10 w-[92px] border border-l-0 border-border bg-muted/30" />
 				)}
 
 				<div className="relative">
 					<Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
 					<Input
 						placeholder="Search"
-						className="h-10 w-[90px] rounded-l-none rounded-r-[9px] border-l-0 pl-7 text-sm"
+						className="h-10 w-[140px] rounded-[9px] pl-7 text-sm"
 						value={query}
 						onChange={(e) => setQuery(e.target.value)}
 					/>
 				</div>
 
-				<span className="justify-self-end pr-1 text-sm text-muted-foreground max-[900px]:justify-self-start">
+				<span className="ml-auto pr-1 text-sm text-muted-foreground">
 					{filtered.length} contacts
 				</span>
 			</div>
