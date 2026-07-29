@@ -1,22 +1,29 @@
 import { NextResponse } from "next/server";
 import {
+  buildBeeperMongoActiveView,
   buildChadDataSourceActiveView,
   buildOfflineBackupOptionDetails,
+  beeperMongoSourceToLabel,
   chadPostgresSourceToLabel,
+  closeMongoConnection,
+  closePostgresConnection,
   describeEffectiveBeeperMongoTarget,
+  getBeeperMongoDb,
   getMongoSource,
   getPostgresSource,
+  labelToBeeperMongoSource,
   labelToChadPostgresSource,
+  runWithRepoContext,
   setMongoSource,
   setPostgresSource,
-  closePostgresConnection,
-  withPostgresClient,
   verifyPostgresReadonlyRole,
+  withPostgresClient,
   type ChadPostgresSource,
   type DbSource,
 } from "dba";
 import { invalidateUsersCache } from "@/lib/user-service";
 import { appendDevDataSourceAudit } from "@/lib/dev-panel/data-source-audit";
+import { getCurrentUserFromCookies } from "@/lib/session";
 
 function assertDevOnly(): NextResponse | null {
   const chadEnv = process.env.CHAD_ENVIRONMENT;
@@ -41,16 +48,59 @@ async function probePostgres(): Promise<{ ok: boolean; itemCount?: number; error
   }
 }
 
+async function probeBeeper(repoGuid?: string): Promise<{
+  ok: boolean;
+  contactsCount?: number;
+  messagesCount?: number;
+  databaseName?: string;
+  error?: string;
+}> {
+  try {
+    await closeMongoConnection();
+    if (!repoGuid) {
+      // Connection target must still resolve — describeEffectiveBeeperMongoTarget catches URI errors.
+      const target = describeEffectiveBeeperMongoTarget();
+      if (target.error) return { ok: false, error: target.error };
+      return { ok: true, databaseName: "(sign in for beeper_<repoGuid> counts)" };
+    }
+    const db = await getBeeperMongoDb(repoGuid);
+    const [contactsCount, messagesCount] = await Promise.all([
+      db.collection("contacts").countDocuments({}),
+      db.collection("messages").countDocuments({}),
+    ]);
+    return {
+      ok: true,
+      contactsCount,
+      messagesCount,
+      databaseName: `beeper_${repoGuid}`,
+    };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 async function snapshot() {
+  const user = await getCurrentUserFromCookies();
   const postgresProbe = await probePostgres();
+  const beeperProbe = user
+    ? await runWithRepoContext(user, () => probeBeeper(user.repoGuid))
+    : await probeBeeper();
+
   const active = buildChadDataSourceActiveView({
     probeOk: postgresProbe.ok,
     probeError: postgresProbe.error,
     cpItemsCount: postgresProbe.itemCount,
     chadEnvironment: process.env.CHAD_ENVIRONMENT,
   });
+  const beeperActive = buildBeeperMongoActiveView({
+    probeOk: beeperProbe.ok,
+    probeError: beeperProbe.error,
+    contactsCount: beeperProbe.contactsCount,
+    messagesCount: beeperProbe.messagesCount,
+    databaseName: beeperProbe.databaseName,
+    chadEnvironment: process.env.CHAD_ENVIRONMENT,
+  });
   const backupOption = buildOfflineBackupOptionDetails();
-  const mongoTarget = describeEffectiveBeeperMongoTarget();
 
   return {
     active,
@@ -60,14 +110,21 @@ async function snapshot() {
       offlineReadonlyBackup: backupOption,
     },
     beeper: {
-      label: "Beeper CRM",
-      backend: "MongoDB",
-      source: mongoTarget.source === "qnap" ? "Server Mongo" : "Local Mongo",
-      status: mongoTarget.error ? `error: ${mongoTarget.error}` : "informational",
-      hostPort: mongoTarget.hostPort,
+      active: beeperActive,
+      changeOptions: {
+        current: beeperMongoSourceToLabel(getMongoSource()),
+        options: ["Server Mongo", "Local readonly backup"] as const,
+      },
+      // Legacy flat fields — kept so older clients don't break mid-deploy.
+      label: "MongoDB (Beeper CRM)",
+      backend: beeperActive.backend,
+      source: beeperActive.beeperDataSource,
+      status: beeperActive.connectionStatus,
+      hostPort: `${beeperActive.host}:${beeperActive.port}`,
       current: getMongoSource(),
     },
     postgresProbe,
+    beeperProbe,
   };
 }
 
@@ -85,6 +142,7 @@ export async function POST(request: Request) {
     chadPostgres?: unknown;
     postgres?: unknown;
     mongo?: unknown;
+    beeperMongo?: unknown;
     confirmOfflineReadonly?: unknown;
   };
   try {
@@ -94,16 +152,20 @@ export async function POST(request: Request) {
   }
 
   const chadPostgresRaw = payload.chadPostgres ?? payload.postgres;
-  const mongo = payload.mongo;
+  const mongoRaw = payload.beeperMongo ?? payload.mongo;
 
-  if (chadPostgresRaw === undefined && mongo === undefined) {
+  if (chadPostgresRaw === undefined && mongoRaw === undefined) {
     return NextResponse.json(
-      { error: 'Provide "chadPostgres" ("Server PostgreSQL" | "offline-readonly-backup") and/or "mongo" ("local" | "qnap")' },
+      {
+        error:
+          'Provide "chadPostgres" ("Server PostgreSQL" | "offline-readonly-backup") and/or "beeperMongo" ("Server Mongo" | "Local readonly backup")',
+      },
       { status: 400 }
     );
   }
 
-  const previous = getPostgresSource();
+  const previousPostgres = getPostgresSource();
+  const previousMongo = getMongoSource();
 
   try {
     if (chadPostgresRaw !== undefined) {
@@ -137,7 +199,7 @@ export async function POST(request: Request) {
       if (mapped === "offline-readonly-backup") {
         const readonlyCheck = await withPostgresClient(async (client) => verifyPostgresReadonlyRole(client));
         if (!readonlyCheck.ok) {
-          setPostgresSource(previous);
+          setPostgresSource(previousPostgres);
           await closePostgresConnection();
           return NextResponse.json(
             { error: "OFFLINE_READONLY_VERIFICATION_FAILED", checks: readonlyCheck.checks, ...(await snapshot()) },
@@ -147,11 +209,19 @@ export async function POST(request: Request) {
       }
     }
 
-    if (mongo !== undefined) {
-      if (mongo !== "local" && mongo !== "qnap") {
-        return NextResponse.json({ error: 'Invalid "mongo" (must be "local" or "qnap")' }, { status: 400 });
+    if (mongoRaw !== undefined) {
+      const mapped =
+        typeof mongoRaw === "string"
+          ? labelToBeeperMongoSource(mongoRaw)
+          : (mongoRaw as DbSource | null);
+      if (!mapped) {
+        return NextResponse.json(
+          { error: 'Invalid beeperMongo (must be "Server Mongo" or "Local readonly backup")' },
+          { status: 400 }
+        );
       }
-      setMongoSource(mongo as DbSource);
+      setMongoSource(mapped);
+      await closeMongoConnection();
     }
   } catch (err) {
     return NextResponse.json(
@@ -166,8 +236,16 @@ export async function POST(request: Request) {
   if (chadPostgresRaw !== undefined) {
     const next = getPostgresSource();
     appendDevDataSourceAudit({
-      from: previous,
+      from: previousPostgres,
       to: next,
+      at: new Date().toISOString(),
+    });
+  }
+
+  if (mongoRaw !== undefined) {
+    appendDevDataSourceAudit({
+      from: `mongo:${previousMongo}`,
+      to: `mongo:${getMongoSource()}`,
       at: new Date().toISOString(),
     });
   }
@@ -176,6 +254,16 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error: `Postgres switch applied but connection failed: ${snap.postgresProbe.error}`,
+        ...snap,
+      },
+      { status: 502 }
+    );
+  }
+
+  if (mongoRaw !== undefined && snap.beeperProbe && !snap.beeperProbe.ok) {
+    return NextResponse.json(
+      {
+        error: `Mongo switch applied but connection failed: ${snap.beeperProbe.error}`,
         ...snap,
       },
       { status: 502 }

@@ -99,7 +99,9 @@ function isQnapPostgresUri(uri: string): boolean {
 function defaultMongoSource(): DbSource {
   const persisted = loadPersistedSources();
   if (persisted?.mongo) return persisted.mongo;
-  return process.env.DBA_MONGO_MODE === "qnap" ? "qnap" : "local";
+  // Red rules Rule 2: LOCAL reaches live Beeper Mongo over Tailscale by
+  // default. "local" is the offline readonly backup opt-in only.
+  return process.env.DBA_MONGO_MODE === "local" ? "local" : "qnap";
 }
 
 function defaultPostgresSource(): ChadPostgresSource {
@@ -183,10 +185,21 @@ export function setPostgresSource(source: ChadPostgresSource): void {
   persistSources(currentPostgresSource, currentMongoSource);
 }
 
+/** Legacy CHAD Mongo shape (dead port 12040) — kept for getEffectiveMongoUri only. */
 function isQnapMongoUri(uri: string): boolean {
   return (
     uri.includes(QNAP_TAILSCALE_HOST) || uri.includes(`:${QNAP_MONGO_PORT}`) || uri.includes(`:${QNAP_BEEPER_MONGO_PORT}`)
   );
+}
+
+/**
+ * Beeper Server Mongo only — port 12041 (`beeper-mongodb`). Never treat the
+ * removed chad-mongodb port 12040 (or any Tailscale URI without :12041) as
+ * Beeper: that was the "No contacts found" root cause (env pointed at a
+ * dead listener while Dev Panel showed Server Mongo).
+ */
+function isQnapBeeperMongoUri(uri: string): boolean {
+  return uri.includes(`:${QNAP_BEEPER_MONGO_PORT}`);
 }
 
 /** @deprecated CHAD's own legacy Mongo credentials — no active connection uses these anymore (removed 2026-07-27). Kept only for `getEffectiveMongoUri()`'s dead-but-not-deleted code path. */
@@ -266,24 +279,30 @@ export function getEffectiveMongoUri(): string {
 
 export function getEffectiveBeeperMongoUri(): string {
   if (currentMongoSource === "qnap") {
+    // Prefer dedicated Beeper credentials so a stale :12040 env URI cannot win
+    // and password special characters are always encoded.
+    if (process.env.BEEPER_MONGO_ROOT_USERNAME && process.env.BEEPER_MONGO_ROOT_PASSWORD) {
+      const { user, pass } = requireQnapBeeperMongoCredentials();
+      return `mongodb://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@${QNAP_TAILSCALE_HOST}:${QNAP_BEEPER_MONGO_PORT}?authSource=admin&directConnection=true`;
+    }
     const envUri = process.env.BEEPER_MONGODB_URI;
-    if (envUri && isQnapMongoUri(envUri)) return envUri;
-    // Beeper's OWN credentials/port — never CHAD's (requireQnapMongoCredentials/
-    // QNAP_MONGO_PORT), which is a different, now-removed Mongo instance.
-    // This branch previously reused those by copy-paste mistake; fixed
-    // 2026-07-27 while separating CHAD/Beeper Mongo (see
-    // ai-docs/databases/red-rules.md).
+    if (envUri && isQnapBeeperMongoUri(envUri)) return envUri;
     const { user, pass } = requireQnapBeeperMongoCredentials();
-    return `mongodb://${user}:${pass}@${QNAP_TAILSCALE_HOST}:${QNAP_BEEPER_MONGO_PORT}?authSource=admin&directConnection=true`;
+    return `mongodb://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@${QNAP_TAILSCALE_HOST}:${QNAP_BEEPER_MONGO_PORT}?authSource=admin&directConnection=true`;
   }
   const uri = process.env.BEEPER_MONGODB_URI;
   if (!uri) throw new Error("BEEPER_MONGODB_URI environment variable is not set");
-  if (!isQnapMongoUri(uri)) return uri;
+  // Local readonly backup = sibling compose mongo (or any non-server URI).
+  if (!isQnapBeeperMongoUri(uri) && !uri.includes(QNAP_TAILSCALE_HOST) && !uri.includes(`:${QNAP_MONGO_PORT}`)) {
+    return uri;
+  }
   const inLocalDocker = process.env.CHAD_ENVIRONMENT === "local" && process.env.NODE_ENV === "production";
   if (inLocalDocker) {
+    // Sibling `mongodb` uses MONGO_ROOT_* only — BEEPER_MONGO_ROOT_* are for
+    // QNAP beeper-mongodb (:12041) and will Authentication-fail locally.
     const user = process.env.MONGO_ROOT_USERNAME || "change_me";
     const pass = process.env.MONGO_ROOT_PASSWORD || "change_me";
-    return `mongodb://${user}:${pass}@mongodb:27017?authSource=admin`;
+    return `mongodb://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@mongodb:27017?authSource=admin`;
   }
   return uri;
 }

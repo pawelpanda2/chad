@@ -3,8 +3,9 @@
 import React, { useCallback, useEffect, useState } from 'react';
 
 type ChadPostgresOption = 'Server PostgreSQL' | 'offline-readonly-backup';
+type BeeperMongoOption = 'Server Mongo' | 'Local readonly backup';
 
-interface ActiveView {
+interface PostgresActiveView {
   chadDataSource: string;
   mode: string;
   environment: string;
@@ -24,8 +25,24 @@ interface ActiveView {
   lastRefresh?: string;
 }
 
+interface BeeperActiveView {
+  beeperDataSource: string;
+  mode: string;
+  environment: string;
+  backend: string;
+  host: string;
+  port: string;
+  database: string;
+  readAccess: string;
+  writeAccess: string;
+  connectionStatus: string;
+  contactsCount: number | null;
+  messagesCount: number | null;
+  lastChecked: string;
+}
+
 interface DataSourceState {
-  active: ActiveView;
+  active: PostgresActiveView;
   changeOptions: {
     current: ChadPostgresOption;
     options: ChadPostgresOption[];
@@ -42,6 +59,11 @@ interface DataSourceState {
     };
   };
   beeper: {
+    active: BeeperActiveView;
+    changeOptions: {
+      current: BeeperMongoOption;
+      options: BeeperMongoOption[];
+    };
     label: string;
     backend: string;
     source: string;
@@ -51,22 +73,25 @@ interface DataSourceState {
   };
 }
 
-function ActiveRow({ label, value }: { label: string; value: string | number | null | undefined }) {
+function ActiveRow({ label, value, testIdPrefix }: { label: string; value: string | number | null | undefined; testIdPrefix: string }) {
   return (
     <div style={{ display: 'flex', gap: '8px', marginBottom: '4px', fontSize: '12px' }}>
       <span style={{ minWidth: '140px', opacity: 0.75 }}>{label}:</span>
-      <span data-testid={`dev-panel-active-${label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}>{value ?? '—'}</span>
+      <span data-testid={`${testIdPrefix}-${label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}>{value ?? '—'}</span>
     </div>
   );
 }
 
-/** Settings tab — ACTIVE / CHANGE OPTIONS two-column data source panel. */
+/** Settings tab — ACTIVE / CHANGE OPTIONS for PostgreSQL and MongoDB. */
 export function DevPanelDataSourceTab() {
   const [state, setState] = useState<DataSourceState | null>(null);
-  const [selected, setSelected] = useState<ChadPostgresOption>('Server PostgreSQL');
+  const [selectedPostgres, setSelectedPostgres] = useState<ChadPostgresOption>('Server PostgreSQL');
+  const [selectedMongo, setSelectedMongo] = useState<BeeperMongoOption>('Server Mongo');
   const [loading, setLoading] = useState(true);
-  const [switching, setSwitching] = useState(false);
+  const [switchingPostgres, setSwitchingPostgres] = useState(false);
+  const [switchingMongo, setSwitchingMongo] = useState(false);
   const [confirmOffline, setConfirmOffline] = useState(false);
+  const [confirmMongoLocal, setConfirmMongoLocal] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -80,7 +105,8 @@ export function DevPanelDataSourceTab() {
         return;
       }
       setState(data);
-      setSelected(data.changeOptions.current);
+      setSelectedPostgres(data.changeOptions.current);
+      setSelectedMongo(data.beeper?.changeOptions?.current ?? data.beeper?.source ?? 'Server Mongo');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to reach server');
     } finally {
@@ -93,12 +119,12 @@ export function DevPanelDataSourceTab() {
   }, [load]);
 
   const backupUnavailable = Boolean(
-    selected === 'offline-readonly-backup' && state && !state.changeOptions.offlineReadonlyBackup.available
+    selectedPostgres === 'offline-readonly-backup' && state && !state.changeOptions.offlineReadonlyBackup.available
   );
 
-  async function handleSwitch() {
-    if (!state || selected === state.changeOptions.current) return;
-    setSwitching(true);
+  async function handlePostgresSwitch() {
+    if (!state || selectedPostgres === state.changeOptions.current) return;
+    setSwitchingPostgres(true);
     setError(null);
     try {
       const res = await fetch('/api/dev-settings/db-source', {
@@ -106,8 +132,8 @@ export function DevPanelDataSourceTab() {
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          chadPostgres: selected,
-          confirmOfflineReadonly: selected === 'offline-readonly-backup' ? confirmOffline : undefined,
+          chadPostgres: selectedPostgres,
+          confirmOfflineReadonly: selectedPostgres === 'offline-readonly-backup' ? confirmOffline : undefined,
         }),
       });
       const data = await res.json();
@@ -117,42 +143,74 @@ export function DevPanelDataSourceTab() {
         return;
       }
       setState(data);
-      setSelected(data.changeOptions.current);
+      setSelectedPostgres(data.changeOptions.current);
       setConfirmOffline(false);
       window.dispatchEvent(new Event('chad-data-source-changed'));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Switch failed');
     } finally {
-      setSwitching(false);
+      setSwitchingPostgres(false);
+    }
+  }
+
+  async function handleMongoSwitch() {
+    if (!state || selectedMongo === state.beeper.changeOptions.current) return;
+    setSwitchingMongo(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/dev-settings/db-source', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ beeperMongo: selectedMongo }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? `Request failed (${res.status})`);
+        if (data.beeper) setState(data);
+        return;
+      }
+      setState(data);
+      setSelectedMongo(data.beeper.changeOptions.current);
+      setConfirmMongoLocal(false);
+      window.dispatchEvent(new Event('chad-data-source-changed'));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Switch failed');
+    } finally {
+      setSwitchingMongo(false);
     }
   }
 
   const active = state?.active;
+  const beeperActive = state?.beeper?.active;
   const backupMeta = state?.changeOptions.offlineReadonlyBackup.metadata;
 
   return (
     <div className="dev-tab-section">
-      <div className="dev-section-title">⚙️ Settings — CHAD data source</div>
+      <div className="dev-section-title">⚙️ Settings — data sources</div>
 
+      <div className="dev-section-subtitle" style={{ marginBottom: '8px', fontSize: '13px', fontWeight: 600 }}>
+        PostgreSQL (CHAD)
+      </div>
       <div className="dev-data-source-grid" data-testid="dev-panel-data-source-grid">
         <div className="dev-data-source-column" data-testid="dev-panel-active-column">
           <div className="dev-data-source-heading">ACTIVE</div>
           {loading && <div className="dev-no-logs">Ładowanie…</div>}
           {!loading && active && (
             <div data-testid="dev-panel-active-status">
-              <ActiveRow label="CHAD data source" value={active.chadDataSource} />
-              <ActiveRow label="Mode" value={active.mode} />
-              <ActiveRow label="Environment" value={active.environment} />
-              <ActiveRow label="Backend" value={active.backend} />
-              <ActiveRow label="Host" value={active.host} />
-              <ActiveRow label="Port" value={active.port} />
-              <ActiveRow label="Database" value={active.database} />
-              <ActiveRow label="Read access" value={active.readAccess} />
-              <ActiveRow label="Write access" value={active.writeAccess} />
-              <ActiveRow label="Connection status" value={active.connectionStatus} />
-              <ActiveRow label="cp_items count" value={active.cpItemsCount} />
-              <ActiveRow label="Last checked" value={active.lastChecked} />
-              {active.snapshotDate && <ActiveRow label="Snapshot date" value={active.snapshotDate} />}
+              <ActiveRow testIdPrefix="dev-panel-active" label="CHAD data source" value={active.chadDataSource} />
+              <ActiveRow testIdPrefix="dev-panel-active" label="Mode" value={active.mode} />
+              <ActiveRow testIdPrefix="dev-panel-active" label="Environment" value={active.environment} />
+              <ActiveRow testIdPrefix="dev-panel-active" label="Backend" value={active.backend} />
+              <ActiveRow testIdPrefix="dev-panel-active" label="Host" value={active.host} />
+              <ActiveRow testIdPrefix="dev-panel-active" label="Port" value={active.port} />
+              <ActiveRow testIdPrefix="dev-panel-active" label="Database" value={active.database} />
+              <ActiveRow testIdPrefix="dev-panel-active" label="Read access" value={active.readAccess} />
+              <ActiveRow testIdPrefix="dev-panel-active" label="Write access" value={active.writeAccess} />
+              <ActiveRow testIdPrefix="dev-panel-active" label="Connection status" value={active.connectionStatus} />
+              <ActiveRow testIdPrefix="dev-panel-active" label="cp_items count" value={active.cpItemsCount} />
+              <ActiveRow testIdPrefix="dev-panel-active" label="Last checked" value={active.lastChecked} />
+              {active.snapshotDate && <ActiveRow testIdPrefix="dev-panel-active" label="Snapshot date" value={active.snapshotDate} />}
             </div>
           )}
         </div>
@@ -165,10 +223,10 @@ export function DevPanelDataSourceTab() {
           <select
             id="dev-panel-chad-source-select"
             data-testid="dev-panel-chad-source-select"
-            value={selected}
-            disabled={loading || switching}
+            value={selectedPostgres}
+            disabled={loading || switchingPostgres}
             onChange={(e) => {
-              setSelected(e.target.value as ChadPostgresOption);
+              setSelectedPostgres(e.target.value as ChadPostgresOption);
               setConfirmOffline(false);
             }}
             style={{ width: '100%', marginBottom: '10px' }}
@@ -177,7 +235,7 @@ export function DevPanelDataSourceTab() {
             <option value="offline-readonly-backup">offline-readonly-backup</option>
           </select>
 
-          {selected === 'offline-readonly-backup' && (
+          {selectedPostgres === 'offline-readonly-backup' && (
             <div
               data-testid="dev-panel-offline-warning"
               style={{
@@ -230,31 +288,116 @@ export function DevPanelDataSourceTab() {
             data-testid="dev-panel-switch-button"
             disabled={
               loading ||
-              switching ||
+              switchingPostgres ||
               !state ||
-              selected === state.changeOptions.current ||
+              selectedPostgres === state.changeOptions.current ||
               backupUnavailable ||
-              (selected === 'offline-readonly-backup' && !confirmOffline)
+              (selectedPostgres === 'offline-readonly-backup' && !confirmOffline)
             }
-            onClick={handleSwitch}
+            onClick={handlePostgresSwitch}
           >
-            {switching ? 'Switching…' : 'Switch'}
+            {switchingPostgres ? 'Switching…' : 'Switch'}
           </button>
         </div>
       </div>
 
-      {state?.beeper && (
-        <div style={{ marginTop: '20px', paddingTop: '12px', borderTop: '1px solid #3e3e42' }} data-testid="dev-panel-beeper-info">
-          <div style={{ fontWeight: 600, marginBottom: '6px' }}>{state.beeper.label}</div>
-          <ActiveRow label="Backend" value={state.beeper.backend} />
-          <ActiveRow label="Source" value={state.beeper.source} />
-          <ActiveRow label="Status" value={state.beeper.status} />
-          <ActiveRow label="Host" value={state.beeper.hostPort} />
-          <p style={{ fontSize: '11px', opacity: 0.75, marginTop: '8px' }}>
-            Beeper CRM nie jest źródłem danych CHAD — tylko informacja.
-          </p>
+      <div
+        className="dev-section-subtitle"
+        style={{ marginTop: '24px', marginBottom: '8px', fontSize: '13px', fontWeight: 600 }}
+        data-testid="dev-panel-mongo-section-title"
+      >
+        MongoDB (Beeper CRM)
+      </div>
+      <div className="dev-data-source-grid" data-testid="dev-panel-mongo-data-source-grid">
+        <div className="dev-data-source-column" data-testid="dev-panel-mongo-active-column">
+          <div className="dev-data-source-heading">ACTIVE</div>
+          {loading && <div className="dev-no-logs">Ładowanie…</div>}
+          {!loading && beeperActive && (
+            <div data-testid="dev-panel-mongo-active-status">
+              <ActiveRow testIdPrefix="dev-panel-mongo-active" label="Beeper data source" value={beeperActive.beeperDataSource} />
+              <ActiveRow testIdPrefix="dev-panel-mongo-active" label="Mode" value={beeperActive.mode} />
+              <ActiveRow testIdPrefix="dev-panel-mongo-active" label="Environment" value={beeperActive.environment} />
+              <ActiveRow testIdPrefix="dev-panel-mongo-active" label="Backend" value={beeperActive.backend} />
+              <ActiveRow testIdPrefix="dev-panel-mongo-active" label="Host" value={beeperActive.host} />
+              <ActiveRow testIdPrefix="dev-panel-mongo-active" label="Port" value={beeperActive.port} />
+              <ActiveRow testIdPrefix="dev-panel-mongo-active" label="Database" value={beeperActive.database} />
+              <ActiveRow testIdPrefix="dev-panel-mongo-active" label="Read access" value={beeperActive.readAccess} />
+              <ActiveRow testIdPrefix="dev-panel-mongo-active" label="Write access" value={beeperActive.writeAccess} />
+              <ActiveRow testIdPrefix="dev-panel-mongo-active" label="Connection status" value={beeperActive.connectionStatus} />
+              <ActiveRow testIdPrefix="dev-panel-mongo-active" label="contacts count" value={beeperActive.contactsCount} />
+              <ActiveRow testIdPrefix="dev-panel-mongo-active" label="messages count" value={beeperActive.messagesCount} />
+              <ActiveRow testIdPrefix="dev-panel-mongo-active" label="Last checked" value={beeperActive.lastChecked} />
+            </div>
+          )}
         </div>
-      )}
+
+        <div className="dev-data-source-column" data-testid="dev-panel-mongo-change-options-column">
+          <div className="dev-data-source-heading">CHANGE OPTIONS</div>
+          <label htmlFor="dev-panel-mongo-source-select" style={{ fontSize: '12px', display: 'block', marginBottom: '6px' }}>
+            Beeper MongoDB source
+          </label>
+          <select
+            id="dev-panel-mongo-source-select"
+            data-testid="dev-panel-mongo-source-select"
+            value={selectedMongo}
+            disabled={loading || switchingMongo}
+            onChange={(e) => {
+              setSelectedMongo(e.target.value as BeeperMongoOption);
+              setConfirmMongoLocal(false);
+            }}
+            style={{ width: '100%', marginBottom: '10px' }}
+          >
+            <option value="Server Mongo">Server Mongo</option>
+            <option value="Local readonly backup">Local readonly backup</option>
+          </select>
+
+          {selectedMongo === 'Local readonly backup' && (
+            <div
+              data-testid="dev-panel-mongo-local-warning"
+              style={{
+                background: '#5c0000',
+                border: '2px solid #ff5252',
+                color: '#fff',
+                padding: '12px',
+                marginBottom: '10px',
+                fontSize: '12px',
+                lineHeight: 1.45,
+              }}
+            >
+              <strong>OSTRZEŻENIE — LOKALNY BACKUP MONGO TYLKO DO ODCZYTU</strong>
+              <p style={{ margin: '8px 0' }}>
+                Local readonly backup to offline snapshot Beeper CRM. Wszystkie zapisy (edycja kontaktów, tagi,
+                merge, eventy) są zablokowane. Używaj tylko gdy Server Mongo jest niedostępny.
+              </p>
+              <label style={{ display: 'flex', gap: '8px', marginTop: '10px', alignItems: 'flex-start' }}>
+                <input
+                  type="checkbox"
+                  data-testid="dev-panel-mongo-local-confirm"
+                  checked={confirmMongoLocal}
+                  onChange={(e) => setConfirmMongoLocal(e.target.checked)}
+                />
+                <span>Rozumiem, że to tryb tylko do odczytu</span>
+              </label>
+            </div>
+          )}
+
+          <button
+            type="button"
+            className="dev-btn"
+            data-testid="dev-panel-mongo-switch-button"
+            disabled={
+              loading ||
+              switchingMongo ||
+              !state ||
+              selectedMongo === state.beeper.changeOptions.current ||
+              (selectedMongo === 'Local readonly backup' && !confirmMongoLocal)
+            }
+            onClick={handleMongoSwitch}
+          >
+            {switchingMongo ? 'Switching…' : 'Switch'}
+          </button>
+        </div>
+      </div>
 
       {error && (
         <div className="dev-request-detail dev-request-error" style={{ marginTop: '12px' }}>
