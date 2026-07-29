@@ -14,10 +14,12 @@
 
 ## Tests run
 
-- `pnpm exec vitest run packages/dba/src/audio-recordings.test.ts`
-- `pnpm --filter dba build`
-- `pnpm --filter dashboard build` (or typecheck)
+- `pnpm exec vitest run packages/dba/src/audio-recordings.test.ts` — **8 passed** (temp dir only)
+- `pnpm --filter dba build` — OK
+- `pnpm --filter dashboard build` — OK
+- One-off `saveAudioRecording` to real
+  `/Volumes/cp_1/02_files_refrenced/10_files_audio/` — OK (smoke bytes; file removed after)
+- Real microphone / browser Record UI — **not** automated
 
-Real microphone / live browser Record not automated (MediaRecorder mock
-would not prove hardware). Optional one-off write to real host path may
-be noted in report if performed.
+Commit: `c22e439`
+
