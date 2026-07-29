@@ -26,6 +26,7 @@ export default defineConfig({
       // fake-ops-based, no real DB needed.
       "packages/dba/src/ai-prompts.test.ts",
       "packages/dba/src/ai-prompts-openai.test.ts",
+      "packages/dba/src/audio-recordings.test.ts",
       // Msg Auto AI Prompts — kind labels / Category mapping (mockup v4).
       "packages/dashboard/components/msg-automation/ai-prompt-kind.test.ts",
       // Story 90 — Lead ↔ Beeper Links (phone match / save validation).

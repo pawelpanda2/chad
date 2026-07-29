@@ -138,7 +138,11 @@ przez Message Creator), `leads/`, `forms/`, `views/`, `settings/`, `users/`,
   architektura nagrywania raportów głosem: interfejs `SpeechToTextEngine`
   (silnik wymienny), pierwsza implementacja Web Speech API (tylko Chrome/
   Edge, obsłużone jako normalny stan, nie błąd), `VoiceRecordButton`
-  podpięty pod Reports przez `toolbarExtra`.
+  podpięty pod Reports przez `toolbarExtra`. **Speech-to-text only — not
+  binary audio file save.**
+- `forms/features/add-recording.md` (Story 93, 2026-07-30) — Forms →
+  Add recording: MediaRecorder → serwerowy zapis binarki do
+  `CHAD_AUDIO_RECORDINGS_DIR` (host: `…/02_files_refrenced/10_files_audio`).
 - `common/features/compile-time-flags-and-error-box.md` — flagi
   `NEXT_PUBLIC_ENABLE_DEV_PANEL`/`NEXT_PUBLIC_ENABLE_DIAGNOSTICS`,
   standardowy `ErrorBox` (bezpieczeństwo: co jest widoczne na test/prod).
