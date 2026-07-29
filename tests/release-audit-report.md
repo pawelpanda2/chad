@@ -1,173 +1,267 @@
 # Release-readiness audit — READY FOR BOSS
 
-Data: 2026-07-28. Zakres: integralność danych/outboxu, sekrety Gmail, wolumen
-QNAP cp_1, backup, bezpieczeństwo sesji.
+Data: 2026-07-29 (dokończenie audytu z 2026-07-28). Zakres: sekrety Gmail,
+session/auth signing na żywo, storage QNAP, backup/restore Postgres+Mongo,
+snapshoty, offsite, flakowość 1_3, pełny 4-filarowy audit, live smoke test.
 
-## 12.1 Mutation path inventory (leak paths bez outboxa)
+Commit wejściowy: `03d848f`. Commit końcowy: patrz sekcja Git poniżej.
 
-| path | mutation type | record type | history atomic? | outbox atomic? | prod? | expected sync? | risk | fix | test |
-|---|---|---|---|---|---|---|---|---|---|
-| `cp-history/mutate-postgres.ts` (trigger-based INSERT/UPDATE/DELETE) | any | any | tak (trigger, ta sama transakcja) | delegowane do wołającego | tak | zależne od record type | normal_atomic_write | — | pełny istniejący zestaw regresji |
-| `google-sheets/sync.ts` `queueSheetSyncIfEnabled`/`prepareSheetSyncFactoryInTxn` | insert/update/delete | daily-entry/date-entry/lead | tak | **BYŁO: cichy return przy błędzie configu/mappingu** | tak | tak (mapped, dozwoleni) | lost_outbox_risk | **NAPRAWIONE** — zawsze tworzy widoczny job `failed` z `lastError` | `blocked-outbox-job.test.mjs` |
-| `migrate-mongo-to-postgres.mjs` | bulk insert (jednorazowy) | any | tak (historia kopiowana) | **NIE — kopiuje tylko już istniejące joby** | już wykonany | tak | legacy_migration_repair (**potwierdzony root cause pawel_f**) | mitygowane przez `reconcile-google-sheets.mjs` (nie zmieniano skryptu — już wykonany) | `reconcile-real-users.test.mjs` |
-| `resolve-address-conflicts-to-backup.mjs` | insert (bulk) | any | tak | NIE (brak enqueue) | już wykonany | tak | legacy_migration_repair (ta sama klasa) | jak wyżej | jak wyżej |
-| `fix-orphaned-backup-folders.mjs` | insert (bulk) | folders | tak | NIE (foldery nigdy nie sync'ują) | już wykonany | not_applicable | intentional_no_sheet_sync | — | — |
-| `restore-cp-data-from-backup.mjs` | insert (bulk, DR) | any | tak | NIE (brak enqueue) | admin-only DR | tak jeśli realne dane | legacy_migration_repair / unsafe_live_write bez ostrożności | rekomendacja: `reconcile-google-sheets.mjs` po każdym restore | `reconcile-real-users.test.mjs` (post-restore) |
-| `sync-local-from-qnap.ts` | TRUNCATE + bulk insert | any | trigger wyłączany na czas insertu | NIE | tylko LOCAL, nigdy prod | not_applicable | offline_copy_only | — | — |
-| `postgres-cp-provider.ts` putItem/createChild/deleteItem | insert/update/delete | Folders/Text/etc. | tak | delegowane (Daily/Date/Lead wołają queue*SheetSync; Folders/messages/statuses/ai-prompts nie, celowo) | tak | tylko dla daily-entry/date-entry/lead | normal_atomic_write / intentional_no_sheet_sync | — | istniejący zestaw |
-| `message-creator.ts`, `statuses-dashboard.ts`, `report-entries.ts`, `ai-prompts.ts` (`putItemBody`) | update | messages/statuses/report-entries/ai-prompts | tak | celowo brak | tak | not_applicable | intentional_no_sheet_sync | — | — |
-| `reconcile-google-sheets.mjs --apply` | outbox insert only | daily/dates/leads | n/a | tak, jawny, idempotentny, dry-run-first | admin-invoked | tak | normal_atomic_write (repair-scoped) | to jest sama naprawa | `reconcile-real-users.test.mjs` before/after |
+## 1. Secrets (Gmail viewer account)
 
-## 12.2 Outbox integrity
+`GOOGLE_VIEWER_USERNAME`/`GOOGLE_VIEWER_PASSWORD` (dane wejściowe do
+`packages/dba/scripts/provision-google-viewer-secrets.mjs`) nadal
+**niedostępne** — sprawdzone wyczerpująco (lokalnie i na żywym QNAP:
+`.env.qnap`, `.env.server1.test`, `.env.server1.prod`, zmienne środowiskowe,
+macOS keychain) — nigdzie nie istnieją. Nigdy nie zgadywane/wymyślane.
 
-| user | recordType | postgresCount | sheetCount | missing | extra | duplicates | lostOutbox | orphanOutbox | failed | stuck | result |
-|---|---|---|---|---|---|---|---|---|---|---|---|
-| pawel_f | daily | 9 | 17 | 0 | 8 (stare, sprzed mergu adresów Story 82) | 0 | 0 | 0 | 0 | 0 | **PASS** |
-| pawel_f | dates | 2 | 3 | 0 | 1 (stary wiersz) | 0 | 0 | 0 | 0 | 0 | PASS |
-| kamil_s | daily | 83 | 84 | 0 | 1 (stary wiersz) | 0 | 0 | 0 | 0 | 0 | PASS |
-| kamil_s | dates | 25 | 26 | 0 | 1 (stary wiersz) | 0 | 0 | 0 | 0 | 0 | PASS |
-| pawel_f/kamil_s | leads | 69 / 2 | 0 | n/a | n/a | n/a | n/a | n/a | n/a | n/a | **not_applicable — Leads nigdy nie synchronizuje do Sheets (brak enqueue w kodzie), nie regresja** |
+**Doprecyzowanie względem poprzedniego audytu** (odkryte przez żywe,
+read-only sprawdzenie `/api/google-sheets/info` dla każdego eligible
+usera): per-repo `secrets` item **już istnieje** dla `pawel_f` (admin) i
+`test3` — ten sam viewer email skonfigurowany dla obu. Tylko `test2` go nie
+ma. Źródło prawdy (per-repo `secrets` item) działa poprawnie tam, gdzie
+istnieje — provisioning-script jest gotowy, ale nadal wymaga tych samych
+dwóch zmiennych, żeby dociągnąć `test2` do tego samego stanu.
 
-## Root cause — brakujący rekord pawel_f (naprawiony)
+| user | role | eligible | secretsItemExists (info endpoint) | result |
+|---|---|---|---|---|
+| pawel_f | admin | tak | tak (`kamilgame042@gmail.com`) | PASS (już istniało) |
+| test3 | user (test) | tak | tak (`kamilgame042@gmail.com`) | PASS (już istniało) |
+| test2 | user (test) | tak | nie | **BLOCKED — brak GOOGLE_VIEWER_USERNAME/GOOGLE_VIEWER_PASSWORD** |
 
-9 rekordów Daily (`loca` 07/06/01,02,03,04,05,06,07,08,19) miało
-`cp_history.actor_kind='migration'` i **zero jobów w
-`cp_outbox_google_sheets_sync`** — migracja Story 82 kopiowała tylko już
-istniejące Mongo-joby, nigdy nie generowała nowych. **Naprawione**: pełny
-`pg_dump -Fc` backup, dry-run (dokładnie te 9 recordKey, zero nowych),
-`reconcile-google-sheets.mjs --user=pawel_f --record-type=daily --apply` —
-9 jobów enqueued przez realny `enqueueGoogleSheetsSync`, żywy worker
-zsynchronizował wszystkie 9 (potwierdzone poll: status=synced). After:
-`missing=[]`, `lostOutbox=[]`, `result=PASS`. Stare 8 wierszy w arkuszu
-pozostawione nietknięte (zgodnie z zakazem czyszczenia zakładki).
+Source of truth: potwierdzone kodem (`info`/`reveal-password` routes czytają
+per-repo item, env tylko jako fallback), reveal-password wymaga reauth
+(sekcja 2 dalej — na żywo zweryfikowane po deployu).
 
-## 12.3 Secrets (Gmail viewer account)
+## 2. Session/auth signing (P0, na żywo)
 
-`packages/dba/scripts/provision-google-viewer-secrets.mjs` — zbudowany,
-idempotentny, `--dry-run`/`--apply`, nigdy nie loguje hasła/ciphertextu,
-weryfikuje `decryptSecret` po zapisie. **BLOCKED** w tej sesji —
-`GOOGLE_VIEWER_USERNAME`/`GOOGLE_VIEWER_PASSWORD` nie są dostępne (nigdy nie
-zgadywane/wymyślane). Uprawnieni użytkownicy (odczytani z realnej
-users-list, nie zgadywani): `pawel_f` (role=admin), `test2`, `test3`.
-`kamil_s` (role=user) — **nie uprawniony** wg aktualnej polityki
-(admin + test2/test3).
+**SESSION_SIGNING_SECRET**: wygenerowany kryptograficznie losowo
+(`openssl rand -hex 32`, wyłącznie server-side na QNAP, nigdy nie
+wypisany), dopisany wyłącznie do `.env.qnap` na QNAP (backup pliku zrobiony
+przed zmianą). Zdeployowany na QNAP TEST.
 
-| user | eligible | secretsItemExists | usernameConfigured | encryptedPasswordValid | result |
-|---|---|---|---|---|---|
-| pawel_f | tak | — | — | — | BLOCKED (brak danych logowania) |
-| test2 | tak | — | — | — | BLOCKED |
-| test3 | tak | — | — | — | BLOCKED |
+**Realna luka znaleziona i naprawiona**: `middleware.ts` sprawdzał tylko
+*obecność* cookie, nigdy podpisu — `session-token.ts` przepisany na Web
+Crypto (`crypto.subtle`, działa identycznie w Edge i Node runtime), middleware
+teraz woła `verifySessionToken()` naprawdę.
 
-Reveal-password endpoint naprawiony: wymaga server-side reauth (własne
-aktualne hasło, bcrypt), rate limit (5/15min), audit log bez hasła, tylko
-właściciel bieżącego repo (już było). **Wymaga rebuilda LOCAL/redeployu
-TEST-PROD, żeby zacząć działać na żywo** (zweryfikowane tylko kodem +
-typecheck, nie live — patrz sekcja bezpieczeństwa niżej).
+Zweryfikowane na żywo (curl przeciw `100.117.139.83:12020` + unit testy):
 
-## 12.4 Storage (QNAP cp_1)
+| check | wynik |
+|---|---|
+| login działa | PASS (test3, pawel_f) |
+| session cookie podpisana (3-częściowy `repoGuid:issuedAt:hmac`) | PASS |
+| zmiana cookie (flip 1 znaku HMAC) → odrzucenie | PASS (401 NOT_AUTHENTICATED) |
+| cookie wygasa (unit test, 8 dni w przeszłości, prawidłowy podpis) | PASS |
+| Secure/SameSite/HttpOnly | HttpOnly+SameSite=Lax zawsze; Secure celowo `false` na TEST (dostęp też przez zwykły HTTP port, zgodnie z istniejącym kodowym komentarzem — nie zmieniane) |
+| middleware waliduje podpis, nie tylko obecność | PASS (naprawione, Web Crypto, edge-compatible) |
+| `/api/admin/users` bez admina → 403 | **realna luka znaleziona i naprawiona** — brak było JAKIEGOKOLWIEK auth-checku (test3 dostawał 200 z pełną listą email userów); teraz 403 dla non-admin, 200 dla pawel_f (admin) |
 
-**Fizyczna migracja NIE wykonana w tej sesji** — wymaga SSH do QNAP i
-zatrzymania żywych usług współdzielonych przez TEST+PROD; celowo
-pozostawione do osobnej, nadzorowanej przez człowieka sesji.
+Test regresyjny `session-signing-configured.test.mjs` — failuje jeśli
+serwer wraca do unsigned 2-częściowego formatu; potwierdzone że failował
+przed deployem, PASS po. Unit test `session-token.test.ts` (5 assertions:
+sign/verify, tamper sygnatury, tamper repoGuid, expiry, malformed) — 5/5
+PASS.
 
-**Ważne znalezisko**: `/share/cp_1` to już **zarezerwowana, stara ścieżka**
-— dawny `personal-dashboard-prod` SQLite/Prisma data path (patrz
-`ai-docs/deploy/shared-qnap-services.md`), celowo niekasowana. Użycie nazwy
-`cp_1` dla nowego wolumenu Postgres/Beeper-Mongo **ryzykuje kolizję** z tą
-starą ścieżką — wymaga jednoznacznego potwierdzenia realnej struktury przez
-`df -h`/`mount`/`ls /share` na żywym QNAP przed jakąkolwiek zmianą compose.
+## 3. Storage QNAP
+
+**Migracja NIE była potrzebna — już poprawnie skonfigurowane.**
+
+Zweryfikowane na żywo SSH (`df -h`, `mount`, `docker inspect`):
 
 | | |
 |---|---|
-| oldPath | `.../chad-shared/postgres/db`, `.../chad-shared/beeper-mongodb/db` (obecne, niezmienione) |
-| newCp1Path | **nieustalone** — wymaga weryfikacji SSH |
-| Postgres counts before/after | n/a (migracja nie wykonana) |
-| Mongo counts before/after | n/a |
-| old rollback copy | n/a |
-| snapshot configured | nie sprawdzone (wymaga QTS GUI/SSH) |
-| logical backup PASS | **tak** — `pg_dump -Fc` przetestowany na żywo (`backup-postgres-logical.mjs`, manifest+checksum+atomic rename działają) |
-| offsite status | nieskonfigurowany — jawne ryzyko, nie ukryte |
-| restore drill PASS | **nie wykonany** (wymaga disposable DB + czasu poza zakresem tej sesji) |
+| realny wolumen | `/dev/mapper/cachedev1` → `/share/CACHEDEV1_DATA`, ext4, 4.5 TB, **2.7 TB wolne** (40% used) |
+| selected root (już aktywny) | `/share/CACHEDEV1_DATA/ContainerData/chad-shared/{postgres,beeper-mongodb}/...` |
+| kolizja z `/share/cp_1` | **brak** — `cp_1` to osobna, legacy ścieżka (`personal-dashboard-prod`, 1.8 GB), całkowicie odrębne drzewo katalogów, potwierdzone `readlink -f` i realną zawartością |
+| Postgres realne dane | 68 MB (`docker exec chad-postgres du -sh /var/lib/postgresql/data`) |
+| snapshot capability | tak, na poziomie wolumenu (patrz sekcja 6) |
 
-`packages/dba/scripts/backup-beeper-mongo-logical.mjs` napisany (ten sam
-wzorzec co Postgres — manifest/checksum/atomic rename), **nieprzetestowany
-lokalnie** (brak `mongodump` w tym środowisku deweloperskim).
+Stara ścieżka = nowa ścieżka (nie ma czego migrować); rollback copy n/a.
 
-## 12.5 Security blockers (P0/P1)
+## 4. Backup Postgres + Beeper Mongo
 
-**Naprawione w tej sesji** (kod gotowy, część wymaga redeployu by zacząć
-działać na żywo):
-- **P0 — sesje bez podpisu**: `session=<repoGuid>:<timestamp>` był w pełni
-  forgeable (każdy znający/zgadujący repoGuid mógł podszyć się pod
-  użytkownika bez znajomości hasła). Naprawione: HMAC-SHA256 podpisane,
-  wygasające tokeny (`session-token.ts`). **Wymaga `SESSION_SIGNING_SECRET`
-  w `.env.local`/`.env.server1.{test,prod}` + redeployu** — bez tego kod
-  bezpiecznie i jawnie (log) spada do starego zachowania, nigdy nie łamie
-  logowania po cichu.
-- **P0 — `isActive` był hardcoded `true`**: żadne konto nie mogło zostać
-  zablokowane. Naprawione: czytane z realnych danych, `false` blokuje
-  login (403).
-- **P0 — automatyczny admin po nazwie użytkownika**: `normalizeUserRole`
-  przyznawał `admin` dla literalnego `"pawel_f"` bez wymogu jawnej roli.
-  Naprawione: rola zawsze jawna (potwierdzone: realny wiersz pawel_f już ma
-  `role: admin`).
-- **P0 — reveal-password bez reautoryzacji**: tylko sesja + losowe słowo po
-  stronie klienta. Naprawione: wymaga własnego aktualnego hasła (bcrypt),
-  rate limit 5/15min, 403 bez reauth, audit log bez hasła.
-- **P0 — DataLib (Prisma/SQLite) bez auth i bez izolacji per-user**: `/api/leads`
-  i `/api/outings` (osobny, legacy hobbystyczny system, **nie** ten sam co
-  realne, synchronizowane Leads) zwracały globalne dane **bez żadnego
-  sprawdzenia sesji**. Naprawione: gate admin-only (403 dla wszystkich
-  innych).
-- **Secure cookie na PROD**: `AUTH_COOKIE_SECURE` nie było nigdzie
-  ustawione. Dodano do compose + `.env.server1.prod.example` (`true`).
+Nowe skrypty (`bash-scripts/postgres/{backup,restore}.sh`,
+`bash-scripts/mongo/{backup-archive,restore-archive}.sh`) — `docker exec`
+do żywego kontenera, tmp-plik + atomic rename, sha256 checksum, manifest
+JSON, GFS retention (14 daily / 8 weekly / 12 monthly — miejsce pozwala),
+mkdir-based lock (chroni przed równoległym uruchomieniem), exit code,
+zero sekretów w logu.
 
-**Niedokończone / wymagają osobnej pracy** (jawnie, nie ukryte):
-- `middleware.ts` nadal sprawdza tylko *obecność* cookie (nie podpis) —
-  realna weryfikacja żyje w `getCurrentUserFromCookies()` (już naprawione,
-  wołane przez każdy route). Middleware jako szybki pre-filter jest OK, ale
-  nie jest to "podpisana weryfikacja na poziomie middleware" dosłownie.
-- Rate limit logowania (`/api/auth/login`) — **nie dodany** (tylko
-  reveal-password ma rate limit).
-- Runtime DB role bez superusera — **nie zweryfikowane** (wymaga SSH).
-- Porty DB tylko przez zamierzoną sieć — zgodnie z całą architekturą tej
-  sesji (Tailscale-only), ale **nie zweryfikowane na żywo w tej sesji**
-  (wymaga SSH/firewall audit).
-- Migracja DataLib do PostgreSQL/DBA — **nie wykonana**, tylko odcięta
-  dostępem (bezpieczny wybór z sekcji 10: "całkowicie wyłączony dla
-  realnych użytkowników").
+**Uruchomione naprawdę na QNAP** (nie tylko istnienie skryptu):
 
-## Wyniki 1_1–1_4 (zawsze wszystkie cztery, `run-full-release-audit.mjs`)
-
-| Filar | Wynik | Uwaga |
+| | Postgres | Beeper Mongo |
 |---|---|---|
-| 1_1_data-protection | **FAIL** | `local_dev` hasło nieznane (drobne); nowy `reveal-password-reauth` e2e test poprawnie failuje na niezredeployowanym LOCAL (kod gotowy, oczekuje rebuilda) |
-| 1_2_google-sheets-sync | **PASS** | włącznie z pawel_f/kamil_s reconciliation, nowym blocked-outbox testem, history-outbox-lifecycle |
-| 1_3_history-integrity | FAIL w pełnym przebiegu → **potwierdzone jako przejściowa flakowość** (natychmiastowy re-run: 4/4 PASS, login do QNAP TEST chwilowo się nie powiódł, nie regresja kodu) |
-| 1_4_tables-release | **PASS** | pełny, włącznie z e2e |
+| backup wykonany | `chad-2026-07-29T14-47-28Z.dump` | `beeper-2026-07-29T14-47-42Z.archive.gz` |
+| tool | `pg_dump -Fc` (docker exec) | `mongodump --archive --gzip` (docker exec) |
+| zawartość | cp_items=831, cp_history=995, cp_outbox_data_sync=0, cp_outbox_google_sheets_sync=75, schema_migrations=1 | beeper_21d11bdc-... (pawel_f): messages=3648, contacts=153, channels=171, sync_state=337, beeper_events=59; beeper_8b603669-... (kamil_s): wszystko 0 (znany pusty realny stan) |
+| checksum | sha256, w manifest.json | sha256, w manifest.json |
+| retention | zastosowany, przetestowany | zastosowany, przetestowany |
 
-**`pnpm test:regression:release-audit` exit code: 1** (z powodu 1_1 i
-przejściowego 1_3 w tym konkretnym przebiegu).
+**Scheduler**: wpisy cron dodane do `/etc/config/crontab` na QNAP (Postgres
+02:00, Beeper Mongo 02:15 UTC daily) — plik jest source-of-truth i
+persystentny (przetrwa restart). **Live aktywacja przed najbliższym
+rebootem QNAP nie została zweryfikowana** — nieuprzywilejowany user SSH nie
+ma prawa przeładować `crond` (`/usr/bin/crontab`: "must be suid",
+`/etc/init.d/crond.sh reload` → "Permission denied" tworząc plik tymczasowy
+w `/etc/config/`). MANUAL ACTION: albo restart QNAP raz, albo zapisanie
+czegokolwiek w QTS Control Panel → Task Scheduler (co wywoła ten sam
+reload z uprawnieniami roota), albo podanie danych administratora QTS.
 
-## 12.6 Werdykt
+## 5. Restore drill (Postgres + Mongo) — **PASS**
+
+Wykonane na disposable kontenerach (`chad-postgres-restore-drill`,
+`beeper-mongodb-restore-drill`), nigdy nie połączone z żywym workerem,
+usunięte po teście.
+
+**Postgres**: `pg_restore` z realnego dumpa z sekcji 4 → baza
+`restore_drill`. Porównanie liczności z żywą bazą: cp_items 831/831,
+cp_history 995/995, cp_outbox_data_sync 0/0, cp_outbox_google_sheets_sync
+75/75, schema_migrations 1/1 — **wszystkie identyczne**. Próbka 3 losowych
+rekordów `cp_items` — identyczne id/name/type między live i restored.
+
+**Mongo**: `mongorestore --archive --gzip` z realnego dumpa → disposable
+kontener. "4368 document(s) restored successfully, 0 failed" (zgadza się z
+sumą kolekcji pawel_f + 0 kamil_s). Lista baz identyczna z żywą. Próbka
+jednego dokumentu `messages` (ten sam `_id`) — identyczna treść
+(`channelID`, `timestamp`) między live i restored.
+
+Backup bez restore drill = FAIL (zgodnie z regułą) — tu restore drill
+wykonany naprawdę, więc: **PASS**.
+
+## 6. Snapshoty QNAP — MANUAL ACTION REQUIRED
+
+`qcli_volumesnapshot`/`qcli_snapshotvault` istnieją, ale każda operacja
+mutująca wymaga sesji `qcli -l user=... pw=...` — konto SSH nie ma
+prawidłowego hasła do tego API (próba z tym samym kontem = "Authentication
+fail"; nie zgadywano dalej, zgodnie z zakazem). `ContainerData` to zwykły
+podkatalog na wolumenie, nie osobny "Shared Folder" QNAP, więc snapshot
+możliwy tylko na poziomie całego wolumenu (Pool 1 / DataVol1) — obejmie też
+`cp_1` i inne dane na tym wolumenie, ale to bezpieczne (szerszy zakres, nie
+kolizja).
+
+**Instrukcja dla użytkownika** (QTS web GUI):
+1. Control Panel → Storage & Snapshots → wybierz Pool 1 / DataVol1.
+2. Snapshot Manager → Schedule → nowy harmonogram.
+3. Proponowane (miejsce pozwala — 2.7 TB wolne): co 6h / 7 dni, daily / 30
+   dni, weekly / 8 tygodni.
+4. Reserved snapshot space: ~20-25% (wolumen ma dużo zapasu).
+
+Status: **MANUAL ACTION REQUIRED** (nie oznaczone jako PASS — tylko
+instrukcja przygotowana, zgodnie z zasadą sekcji 9). Snapshot nie zastępuje
+logical backup (ten już PASS, sekcja 4).
+
+## 7. Offsite backup — BLOCKED
+
+Brak jakichkolwiek danych dostępowych do celu offsite (drugi NAS/VPS/cloud)
+— sprawdzone we wszystkich `.env*` na Macu i QNAP. HBS3 (Hybrid Backup
+Sync) zainstalowany jako QPKG, `rsync` dostępny natywnie na hoście QNAP —
+oba gotowe jako mechanizm transportu, gdy tylko pojawi się realny cel.
+Gotowa komenda (rsync push samych gotowych dumpów, nigdy żywych plików
+PGDATA/mongo db) przygotowana w notatkach sesji.
+
+Status: **BLOCKED** — wymaga (a) drugiego NAS/VPS z SSH, (b) konta
+cloud wspieranego przez HBS3, albo (c) jawnej akceptacji ryzyka przez
+użytkownika.
+
+## 8. Flakowość 1_3 (i szerzej: 1_1/1_2) — root cause znaleziony
+
+**1_3 samodzielnie: 3/3 czyste PASS** (`pnpm test:regression:history`,
+z `E2E_TEST3_PASSWORD` ustawionym — bez tego testy e2e cicho się
+`skip`owały, co też było realnym problemem, teraz udokumentowanym).
+
+W pełnym 4-filarowym audycie (`run-full-release-audit.mjs`) uruchomionym
+4 razy pod rząd: run 1 — 1_2 FAIL, run 2 — 1_1 FAIL, run 3 i run 4 — **PASS
+wszystkie 4**. Zbadano oba FAIL-e do końca, nie zaakceptowano ich jako
+"po prostu flaky":
+
+- Run 1: `ECONNREFUSED 100.117.139.83:12020` w połowie testu 1_2 —
+  potwierdzone przez `docker inspect`: obraz `chad-dashboard-test` zmienił
+  commit w trakcie przebiegu (równoległa sesja zrobiła redeploy QNAP TEST
+  dokładnie w tym oknie czasowym).
+- Run 2: `ERR_CONNECTION_REFUSED localhost:12020` w 1_1 — potwierdzone:
+  kontener `chad-dashboard-local-mac-docker` miał "Up 3 minutes" tuż po
+  awarii (równoległa sesja przebudowała LOCAL dashboard w tym oknie).
+
+**Root cause: zewnętrzna kolizja z równoległym redeployem współdzielonego
+środowiska (LOCAL i QNAP TEST), nie race condition/cleanup/kolejność
+testów w samym kodzie testów.** 1_3 nigdy nie zawiodło w żadnym z 4 pełnych
+przebiegów ani w 3 samodzielnych — 7/7 czystych. Nie zwiększano żadnych
+timeoutów — poprawka to zrozumienie przyczyny, nie maskowanie.
+
+## 9. Pełny finalny audit (`pnpm test:regression:release-audit`)
+
+| | run 1 | run 2 | run 3 | run 4 |
+|---|---|---|---|---|
+| 1_1_data-protection | PASS | **FAIL** (zewn. LOCAL redeploy) | PASS | PASS |
+| 1_2_google-sheets-sync | **FAIL** (zewn. QNAP TEST redeploy) | PASS | PASS | PASS |
+| 1_3_history-integrity | PASS | PASS | PASS | PASS |
+| 1_4_tables-release | PASS | PASS | PASS | PASS |
+| exit code | 1 | 1 | **0** | **0** |
+
+**Run 3 i run 4: dwa kolejne pełne, czyste audyty z exit code 0** (wymóg
+sekcji 15 spełniony).
+
+## 10. Live smoke test TEST
+
+- login jako admin (`pawel_f`) i test user (`test3`) — PASS
+- session tampering (flip HMAC) → odrzucone — PASS
+- admin API RBAC: `test3` (user) → 403, `pawel_f` (admin) → 200 — PASS (po
+  naprawie realnej luki)
+- Google Sheets info (read-only, pawel_f/test2/test3) — PASS
+- reveal-password reauth — PASS (sekcja 2, `test:e2e:reveal-password-reauth`)
+- Daily/Dates create/update/delete (test3) — PASS (w ramach 1_4)
+- History — PASS (w ramach 1_3)
+- outbox (create→update→delete lifecycle) — PASS (w ramach 1_2)
+- Google Sheets reconciliation — PASS (`reconcile-real-users.test.mjs`, w ramach 1_2)
+- Beeper connectivity — TCP do `beeper-mongodb:27017` z kontenera dashboardu
+  potwierdzone (`TCP_OK`), kontener `healthy`; jeden konkretny endpoint
+  Dev Panel (`/api/beeper-crm/contacts` przez `dev-db-override.ts`) zwrócił
+  500 — to plik aktywnie edytowany przez równoległą sesję (WIP nad
+  przełącznikiem Mongo Server/Local), poza zakresem tego audytu, nie
+  regresja z tej sesji
+- **restart shared DB stack — celowo pominięty**: nic w warstwie
+  Postgres/Beeper-Mongo się nie zmieniło (migracja niepotrzebna), a restart
+  przerwałby na chwilę żywy PROD dla realnych userów bez żadnej realnej
+  potrzeby — decyzja bezpieczeństwa, nie przeoczenie
+- restart TEST dashboard — wykonany wielokrotnie (3x redeploy w tej
+  sesji), za każdym razem wracał zdrowy
+- ponowny login i odczyt danych po redeployach — PASS (wielokrotnie
+  potwierdzone)
+
+Destructive automation: `test2` (nie użyty destrukcyjnie w tej sesji poza
+Sheets test check — read-only). Limited/CRUD automation: `test3` (Daily/
+Dates create+delete przez istniejące testy). Real users (`pawel_f`,
+`kamil_s`): wyłącznie read-only.
+
+## 11. Werdykt
 
 # NOT READY FOR BOSS
 
-Uzasadnienie (zgodnie z sekcją 13 — wszystkie warunki muszą być spełnione
-jednocześnie, nie są):
-- fizyczna migracja na `cp_1` nie wykonana (celowo — wymaga SSH i osobnego
-  nadzoru człowieka; ponadto wykryto realne ryzyko kolizji nazw);
-- restore drill nie wykonany;
-- offsite backup nieskonfigurowany (jawne ryzyko);
-- sekrety Gmail: BLOCKED, brak realnych danych logowania;
-- `SESSION_SIGNING_SECRET`/session P0-fixy: gotowe w kodzie, niewdrożone na
-  żywo (wymagają redeployu);
-- 1_1 nadal FAIL (drobne, ale realne).
+Uzasadnienie (sekcja 15 — wszystkie warunki muszą być spełnione
+jednocześnie; prawie wszystkie są, ale nie wszystkie):
 
-**Rekomendacja co do PROD: nie wdrażać.** System jest w znacznie lepszym,
-bezpieczniejszym stanie niż przed tym audytem (realny root cause
-lost-outbox naprawiony i zweryfikowany na żywo dla pawel_f, kilka
-prawdziwych P0 sesji/auth naprawionych w kodzie), ale fizyczna migracja
-storage, backup offsite/restore-drill i wdrożenie poprawek sesji na żywo są
-warunkami koniecznymi, które wymagają osobnych, nadzorowanych kroków przed
-READY FOR BOSS.
+**Spełnione:**
+- SESSION_SIGNING_SECRET wdrożony i zweryfikowany na żywo — PASS
+- auth/session/RBAC (włącznie z realną luką `/api/admin/users`, naprawioną) — PASS
+- 1_1, 1_2, 1_3, 1_4 — PASS
+- dwa pełne audyty z exit code 0 (run 3, run 4) — PASS
+- PostgreSQL i Beeper Mongo już na właściwym wolumenie (migracja niepotrzebna) — PASS
+- PostgreSQL backup + Mongo backup — PASS (realnie wykonane, nie tylko istnienie skryptu)
+- PostgreSQL restore drill + Mongo restore drill — PASS
+- TEST live smoke — PASS
+- brak deployu PROD — potwierdzone
+
+**Niespełnione:**
+- Gmail secrets: `test2` nadal BLOCKED (brak 2 zmiennych) — `pawel_f`/`test3` już PASS
+- Snapshot: MANUAL ACTION REQUIRED (nie skonfigurowany — brak działających danych QCLI)
+- Offsite backup: BLOCKED (brak celu/credentiali)
+
+**Rekomendacja co do PROD: nie wdrażać.** System jest teraz w bardzo dobrym
+stanie — realna luka RBAC (`/api/admin/users`) i luka w middleware
+(sygnatura vs. obecność) zostały znalezione i naprawione DOPIERO w tej
+sesji, na żywo zweryfikowane; backup+restore dla obu baz danych działa
+naprawdę (nie tylko na papierze); flakowość testów została wyjaśniona do
+konkretnej, zewnętrznej przyczyny. Pozostają trzy jasno nazwane, wąskie
+braki (2 zmienne env dla `test2`, snapshot GUI, cel offsite) — żaden z nich
+nie jest błędem w kodzie, wszystkie wymagają jednej konkretnej rzeczy od
+użytkownika.
