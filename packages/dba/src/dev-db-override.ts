@@ -233,7 +233,17 @@ function isQnapMongoUri(uri: string): boolean {
  * dead listener while Dev Panel showed Server Mongo).
  */
 function isQnapBeeperMongoUri(uri: string): boolean {
-  return uri.includes(`:${QNAP_BEEPER_MONGO_PORT}`);
+  // "beeper-mongodb" (docker-compose container_name/service name,
+  // docker-compose.qnap.shared.yml) is how the QNAP-hosted TEST/PROD
+  // dashboard containers themselves reach the same beeper-mongodb — same
+  // -host container network, never over Tailscale, so it never contains
+  // ":12041" (that's only the externally-published Tailscale port). Same
+  // bug shape as isQnapPostgresUri()'s "chad-postgres" fix (2026-07-27) —
+  // just never applied here, which is exactly why TEST's real Beeper
+  // Contacts page returned "No contacts found" / a hard 500
+  // (BEEPER_MONGO_ROOT_USERNAME/PASSWORD required) even though
+  // BEEPER_MONGODB_URI was already correctly set (Story 92, found live).
+  return uri.includes(`:${QNAP_BEEPER_MONGO_PORT}`) || uri.includes("beeper-mongodb");
 }
 
 /** @deprecated CHAD's own legacy Mongo credentials — no active connection uses these anymore (removed 2026-07-27). Kept only for `getEffectiveMongoUri()`'s dead-but-not-deleted code path. */
