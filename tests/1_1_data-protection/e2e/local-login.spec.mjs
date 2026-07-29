@@ -11,7 +11,11 @@ import { test, expect } from "@playwright/test";
 const BASE = process.env.LOCAL_DASHBOARD_BASE_URL || "http://localhost:12020";
 const PASSWORD = process.env.E2E_LOGIN_PASSWORD || "changeme";
 
-const LOCAL_USERS = ["pawel_f", "test3", "local_dev"];
+// Story 89: test3 is the one sanctioned disposable fixture (deterministic
+// seed password) — `local_dev` dropped, it's a manually-managed real account
+// with an unknown/unowned password, not a controlled test fixture (see
+// tests/release-audit-report.md, READY FOR BOSS audit section 4).
+const LOCAL_USERS = ["pawel_f", "test3"];
 
 test.describe("Local Docker — login panel regression", () => {
   test.use({ baseURL: BASE });
