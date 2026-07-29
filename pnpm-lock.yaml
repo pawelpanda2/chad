@@ -438,6 +438,25 @@ importers:
         specifier: ^17.4.0
         version: 17.4.2
 
+  plugins/beeper-synch:
+    dependencies:
+      dotenv:
+        specifier: ^17.4.0
+        version: 17.4.2
+      mongodb:
+        specifier: ^7.1.1
+        version: 7.5.0
+    devDependencies:
+      '@types/node':
+        specifier: ^20.11.0
+        version: 20.19.43
+      tsx:
+        specifier: ^4.19.0
+        version: 4.23.0
+      typescript:
+        specifier: ^5.3.3
+        version: 5.8.3
+
 packages:
 
   '@alloc/quick-lru@5.2.0':

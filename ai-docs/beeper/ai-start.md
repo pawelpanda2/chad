@@ -97,6 +97,15 @@ Konkretnie:
   `bash-scripts/mongo/backup-beeper-json.mjs` (JSON-owy fallback backupu,
   gdy `bash-scripts/mongo/backup.sh`'owy `docker exec mongodump` nie jest
   możliwy — np. QNAP bez dostępu SSH/docker z bieżącej sesji).
+- `plugins/beeper-synch` (Story 91, 2026-07-29) — Mac-only supervisor:
+  spawns `beeper-ws` (backoff-restarted) i harmonogramuje `beeper-sync`
+  (okresowy incremental REST run), plus single-instance lock, graceful
+  shutdown, Mongo preflight. **Nie duplikuje logiki** — cienki
+  runtime/orchestrator, patrz `plugins/beeper-synch/README.md`.
+  `bash-scripts/beeper-synch/install-startup.sh` instaluje LaunchAgent
+  (`com.chad.beeper-synch`) do auto-startu po zalogowaniu; `.env.mac-beeper`
+  od tej Story wskazuje realnie na QNAP-owe `beeper-mongodb`
+  (`100.117.139.83:12041` przez Tailscale), nie na starą lokalną bazę.
 
 ## 3. Powiązana dokumentacja poza tym katalogiem
 

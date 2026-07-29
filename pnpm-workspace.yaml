@@ -5,3 +5,7 @@ packages:
   # Does NOT match packages/net-content-provider (no root package.json
   # there) or packages/cp-gui, packages/cp-plugin (those are packages/* already).
   - 'packages/content-provider/*'
+  # Story 91 — standalone Mac-only runtime plugins (beeper-synch and any
+  # future ones), distinct from packages/* (shared libraries/apps) and from
+  # bash-scripts/ (plain shell, no package.json).
+  - 'plugins/*'
