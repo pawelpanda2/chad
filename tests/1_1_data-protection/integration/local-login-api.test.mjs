@@ -37,12 +37,15 @@ describe("Local Docker — login API (panel backend)", () => {
     expect(body.user?.repoGuid).toBe("21d11bdc-f1f4-44d1-b61a-3fa6b039c641");
   });
 
-  it("test3 and local_dev also sign in", async () => {
-    for (const username of ["test3", "local_dev"]) {
-      const { status, body } = await login(username, PASSWORD);
-      expect(status).toBe(200);
-      expect(body.user?.username).toBe(username);
-    }
+  it("test3 also signs in", async () => {
+    // Story 89: test3 is the one sanctioned disposable fixture (deterministic
+    // seed password, isolated from real data) — automated tests never depend
+    // on `local_dev` here, since it's a manually-managed real account with an
+    // unknown/unowned password, not a controlled test fixture (see
+    // tests/release-audit-report.md, READY FOR BOSS audit section 4).
+    const { status, body } = await login("test3", PASSWORD);
+    expect(status).toBe(200);
+    expect(body.user?.username).toBe("test3");
   });
 
   it("unknown user and wrong password return Invalid credentials", async () => {

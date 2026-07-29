@@ -13,6 +13,13 @@
  * `hmacHex = HMAC-SHA256(SESSION_SIGNING_SECRET, "repoGuid:issuedAtMs")`.
  * `verifySessionToken` rejects a tampered signature or an expired token.
  *
+ * Uses the Web Crypto API (`crypto.subtle`), not `node:crypto` — this same
+ * module is imported directly by `middleware.ts`, which runs on the Edge
+ * runtime (no `node:crypto`) as well as by Node-runtime route handlers.
+ * `crypto.subtle` is available in both, and HMAC-SHA256 output is identical
+ * either way, so tokens verify the same regardless of which runtime issued
+ * or checks them.
+ *
  * Backward-compatible rollout: if `SESSION_SIGNING_SECRET` isn't set yet in
  * this environment's compose (not deployed everywhere in one commit), this
  * module falls back to the old unsigned/unexpiring behavior so login
@@ -22,19 +29,42 @@
  * in `.env.local`/`.env.qnap` and redeploy to activate real signing.
  */
 
-import { createHmac, timingSafeEqual } from "node:crypto";
-
 const SESSION_LIFETIME_MS = 1000 * 60 * 60 * 24 * 7; // 7 days — matches the cookie's own Max-Age.
+
+const encoder = new TextEncoder();
 
 function getSigningSecret(): string | null {
   return process.env.SESSION_SIGNING_SECRET || null;
 }
 
-function sign(repoGuid: string, issuedAtMs: number, secret: string): string {
-  return createHmac("sha256", secret).update(`${repoGuid}:${issuedAtMs}`).digest("hex");
+async function getHmacKey(secret: string, usage: "sign" | "verify"): Promise<CryptoKey> {
+  return crypto.subtle.importKey("raw", encoder.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, [usage]);
 }
 
-export function createSessionToken(repoGuid: string): string {
+function hexToBytes(hex: string): Uint8Array | null {
+  if (hex.length === 0 || hex.length % 2 !== 0) return null;
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < bytes.length; i++) {
+    const byte = Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+    if (Number.isNaN(byte)) return null;
+    bytes[i] = byte;
+  }
+  return bytes;
+}
+
+function bytesToHex(bytes: ArrayBuffer): string {
+  return Array.from(new Uint8Array(bytes))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+async function sign(repoGuid: string, issuedAtMs: number, secret: string): Promise<string> {
+  const key = await getHmacKey(secret, "sign");
+  const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(`${repoGuid}:${issuedAtMs}`));
+  return bytesToHex(signature);
+}
+
+export async function createSessionToken(repoGuid: string): Promise<string> {
   const issuedAtMs = Date.now();
   const secret = getSigningSecret();
   if (!secret) {
@@ -45,11 +75,11 @@ export function createSessionToken(repoGuid: string): string {
     );
     return `${repoGuid}:${issuedAtMs}`;
   }
-  return `${repoGuid}:${issuedAtMs}:${sign(repoGuid, issuedAtMs, secret)}`;
+  return `${repoGuid}:${issuedAtMs}:${await sign(repoGuid, issuedAtMs, secret)}`;
 }
 
 /** Returns the repoGuid if the token is validly signed and not expired, else null. */
-export function verifySessionToken(token: string): string | null {
+export async function verifySessionToken(token: string): Promise<string | null> {
   const parts = token.split(":");
   const secret = getSigningSecret();
 
@@ -62,15 +92,15 @@ export function verifySessionToken(token: string): string | null {
   }
 
   if (parts.length !== 3) return null; // malformed, or an old-format unsigned token from before this fix — reject, force re-login.
-  const [repoGuid, issuedAtStr, signature] = parts;
+  const [repoGuid, issuedAtStr, signatureHex] = parts;
   const issuedAtMs = Number(issuedAtStr);
   if (!repoGuid || !Number.isFinite(issuedAtMs)) return null;
   if (Date.now() - issuedAtMs > SESSION_LIFETIME_MS) return null; // expired — server-side, not just the cookie's Max-Age.
 
-  const expected = sign(repoGuid, issuedAtMs, secret);
-  const expectedBuf = Buffer.from(expected, "hex");
-  const actualBuf = Buffer.from(signature, "hex");
-  if (expectedBuf.length !== actualBuf.length || !timingSafeEqual(expectedBuf, actualBuf)) return null;
+  const signatureBytes = hexToBytes(signatureHex);
+  if (!signatureBytes) return null;
 
-  return repoGuid;
+  const key = await getHmacKey(secret, "verify");
+  const valid = await crypto.subtle.verify("HMAC", key, signatureBytes, encoder.encode(`${repoGuid}:${issuedAtMs}`));
+  return valid ? repoGuid : null;
 }

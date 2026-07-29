@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
 		// Signed, expiring session token (2026-07-28 P0 fix) — see
 		// lib/session-token.ts's own doc comment for why the previous plain
 		// `${repoGuid}:${timestamp}` was forgeable.
-		const sessionToken = createSessionToken(user.repoGuid);
+		const sessionToken = await createSessionToken(user.repoGuid);
 		const cookieOptions = [
 			"session=" + encodeURIComponent(sessionToken),
 			"HttpOnly",

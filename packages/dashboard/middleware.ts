@@ -1,5 +1,26 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { verifySessionToken } from "./lib/session-token";
+
+// Previously this middleware only checked cookie *presence*, never its
+// signature — a forged/tampered cookie would pass this pre-filter and only
+// get caught deeper in each route (or not at all for any route that forgot
+// to call getCurrentUserFromCookies()). Now calls the same
+// verifySessionToken() every route uses. It's Web-Crypto-based (see
+// session-token.ts's own doc comment), so it works on the Edge runtime this
+// middleware already runs on — no runtime change needed.
+export const config = {
+	matcher: [
+		/*
+		 * Match all request paths except for the ones starting with:
+		 * - api/auth (public auth endpoints)
+		 * - _next/static (static files)
+		 * - _next/image (image optimization files)
+		 * - favicon.ico (favicon file)
+		 */
+		"/((?!api/auth|_next/static|_next/image|favicon.ico).*)",
+	],
+};
 
 // Routes that don't require authentication
 const publicRoutes = ["/login", "/api/auth/login", "/api/auth/logout", "/api/auth/session"];
@@ -7,9 +28,14 @@ const publicRoutes = ["/login", "/api/auth/login", "/api/auth/logout", "/api/aut
 // Routes that are API routes and should be protected
 const protectedApiRoutes = ["/api"];
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
 	const { pathname } = request.nextUrl;
-	const session = request.cookies.get("session");
+	const sessionCookie = request.cookies.get("session");
+	// Signature + expiry check (not just presence) — a tampered or expired
+	// cookie is treated identically to no cookie at all. See
+	// verifySessionToken()'s own doc comment for the unsigned-fallback
+	// behavior when SESSION_SIGNING_SECRET isn't configured yet.
+	const session = sessionCookie && (await verifySessionToken(sessionCookie.value)) ? sessionCookie : undefined;
 	const method = request.method;
 
 	if (
@@ -81,16 +107,3 @@ export function middleware(request: NextRequest) {
 
 	return NextResponse.next();
 }
-
-export const config = {
-	matcher: [
-		/*
-		 * Match all request paths except for the ones starting with:
-		 * - api/auth (public auth endpoints)
-		 * - _next/static (static files)
-		 * - _next/image (image optimization files)
-		 * - favicon.ico (favicon file)
-		 */
-		"/((?!api/auth|_next/static|_next/image|favicon.ico).*)",
-	],
-};

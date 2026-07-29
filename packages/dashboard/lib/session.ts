@@ -27,7 +27,7 @@ export async function getCurrentUserFromCookies(): Promise<CurrentUser | null> {
     return null;
   }
 
-  const repoGuidFromCookie = verifySessionToken(sessionCookie.value);
+  const repoGuidFromCookie = await verifySessionToken(sessionCookie.value);
   if (!repoGuidFromCookie) {
     return null;
   }
