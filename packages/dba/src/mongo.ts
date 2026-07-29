@@ -148,14 +148,29 @@ export async function getBeeperMongoDb(repoGuid: string): Promise<Db> {
  * should never call this.
  */
 export async function closeMongoConnection(): Promise<void> {
+  // Null the promise *before* awaiting so a rejected prior connect() cannot
+  // leave a sticky failure that makes the next Dev Panel switch throw
+  // "Authentication failed" from close itself (instead of a fresh reconnect).
   if (clientPromise) {
-    const client = await clientPromise;
-    await client.close();
+    const pending = clientPromise;
     clientPromise = null;
+    connectedGeneration = -1;
+    try {
+      const client = await pending;
+      await client.close();
+    } catch {
+      // Previous connect failed — nothing to close.
+    }
   }
   if (beeperClientPromise) {
-    const client = await beeperClientPromise;
-    await client.close();
+    const pending = beeperClientPromise;
     beeperClientPromise = null;
+    beeperConnectedGeneration = -1;
+    try {
+      const client = await pending;
+      await client.close();
+    } catch {
+      // Previous connect failed — nothing to close.
+    }
   }
 }

@@ -29,8 +29,6 @@ services:
   # is unaffected by this Story) — CHAD's own data no longer needs it once
   # DBA_PRIMARY_BACKEND=postgres (see the dashboard service's env below).
   postgres:
-    profiles:
-      - local-postgres-mirror
     image: postgres:17
     container_name: chad-postgres-local-mac-docker
     restart: unless-stopped
@@ -89,6 +87,8 @@ services:
     container_name: chad-dashboard-local-mac-docker
     restart: unless-stopped
     depends_on:
+      postgres:
+        condition: service_healthy
       mongodb:
         condition: service_healthy
     ports:
@@ -111,9 +111,13 @@ services:
       - POSTGRES_QNAP_PASSWORD=${POSTGRES_QNAP_PASSWORD:-}
       - MONGO_ROOT_USERNAME=${MONGO_ROOT_USERNAME:-}
       - MONGO_ROOT_PASSWORD=${MONGO_ROOT_PASSWORD:-}
+      # Beeper Server Mongo credentials — required for Dev Panel → Server Mongo
+      # (runtime rebuild of :12041 URI). Never reuse MONGO_ROOT_* (legacy CHAD).
+      - BEEPER_MONGO_ROOT_USERNAME=${BEEPER_MONGO_ROOT_USERNAME:-}
+      - BEEPER_MONGO_ROOT_PASSWORD=${BEEPER_MONGO_ROOT_PASSWORD:-}
       # From .env.local (DBA_MONGO_MODE=local, default) or overridden by
-      # 01_config.sh (DBA_MONGO_MODE=qnap — points at QNAP's chad-mongodb
-      # over Tailscale instead, see that file). Must use host.docker.internal
+      # 01_config.sh (DBA_MONGO_MODE=qnap — points at QNAP's beeper-mongodb
+      # over Tailscale :12041, see that file). Must use host.docker.internal
       # (not localhost) if ever pointed at a MongoDB published on the host
       # directly, since this runs inside the container's own network
       # namespace — not needed for either DBA_MONGO_MODE today (local mode
@@ -123,13 +127,13 @@ services:
       # this once DBA_PRIMARY_BACKEND=postgres.
       - MONGODB_URI=${MONGODB_URI:-mongodb://mongodb:27017/chad}
       # Beeper CRM's Mongo *server* URI — same physical mongo server as
-      # MONGODB_URI. Story 73: each CHAD user gets their own
+      # MONGODB_URI in local mode; on Server Mongo mode this must be :12041
+      # with BEEPER_MONGO_ROOT_*. Story 73: each CHAD user gets their own
       # `beeper_<repoGuid>` database (contacts/channels/messages/
-      # timeline_events/..., predates this monorepo — ported from the
-      # standalone `contacts` repo), computed by dba's getBeeperMongoDb(),
+      # timeline_events/...), computed by dba's getBeeperMongoDb(),
       # never a database segment on this URI. Never merged into `chad`
       # alongside CP items. This is the ONLY thing `mongodb` above is still
-      # needed for locally, post-Story-80.
+      # needed for locally, post-Story-80 (Local readonly backup).
       - BEEPER_MONGODB_URI=${BEEPER_MONGODB_URI:-mongodb://mongodb:27017}
       # Story 80 data-providers config (packages/dba/src/data-providers/
       # config.ts) — PostgreSQL is now the primary/only backend for CHAD's
