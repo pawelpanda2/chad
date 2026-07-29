@@ -110,8 +110,15 @@ services:
       # if unset — never breaks login, but never silently stays insecure.
       - SESSION_SIGNING_SECRET=${SESSION_SIGNING_SECRET:-}
       - AUTH_COOKIE_SECURE=${AUTH_COOKIE_SECURE:-false}
+      # Forms → Add recording (Story 93).
+      - CHAD_AUDIO_RECORDINGS_DIR=/app/audio-recordings
     volumes:
       - dashboard-data:/app/data
+      - type: bind
+        source: ${CHAD_AUDIO_RECORDINGS_HOST_PATH:-/share/cp_1/02_files_refrenced/10_files_audio}
+        target: /app/audio-recordings
+        bind:
+          create_host_path: true
     logging:
       driver: "json-file"
       options:

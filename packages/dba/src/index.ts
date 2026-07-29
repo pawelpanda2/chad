@@ -31,6 +31,7 @@ export * from './path-resolver.js';
 export * from './ai-answer.js';
 export * from './ai-prompts.js';
 export * from './ai-prompts-openai.js';
+export * from './audio-recordings.js';
 export * from './message-creator.js';
 export * from './lead-beeper-links.js';
 export * from './statuses-dashboard.js';

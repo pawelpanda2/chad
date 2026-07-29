@@ -22,6 +22,7 @@ import {
 import { toast } from "sonner";
 import { Plus, X, CheckCircle2, AlertCircle } from "lucide-react";
 import { PromptForm } from "@/components/msg-automation/prompt-form";
+import { AudioRecordingForm } from "@/components/forms/audio-recording-form";
 
 // ============================================================================
 // Constants & Mappings
@@ -121,7 +122,15 @@ interface DateEntryFormData {
   jakosc: string;
 }
 
-type FormType = null | "action" | "lead" | "add_action" | "date_entry" | "reports" | "add_prompt";
+type FormType =
+  | null
+  | "action"
+  | "lead"
+  | "add_action"
+  | "date_entry"
+  | "reports"
+  | "add_prompt"
+  | "add_recording";
 
 // ============================================================================
 // Helper Functions
@@ -250,7 +259,8 @@ function FormsPageContent() {
     formParam === "add_action" ||
     formParam === "date_entry" ||
     formParam === "reports" ||
-    formParam === "add_prompt"
+    formParam === "add_prompt" ||
+    formParam === "add_recording"
       ? formParam
       : null;
 
@@ -892,7 +902,30 @@ function FormsPageContent() {
           >
             <span className="font-semibold text-sm">ADD PROMPT</span>
           </button>
+          <button
+            type="button"
+            onClick={() => handleFormSelect("add_recording")}
+            className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
+          >
+            <span className="font-semibold text-sm">ADD RECORDING</span>
+          </button>
         </div>
+      </DashboardPageShell>
+    );
+  }
+
+  // ============================================================================
+  // Render: Add Recording (binary MediaRecorder — not speech-to-text)
+  // ============================================================================
+
+  if (selectedForm === "add_recording") {
+    return (
+      <DashboardPageShell
+        contentClassName={FRAME_SECTION_GAP_CLASS}
+        upLevel={{ onClick: handleFormBack }}
+        title="Add Recording"
+      >
+        <AudioRecordingForm />
       </DashboardPageShell>
     );
   }
