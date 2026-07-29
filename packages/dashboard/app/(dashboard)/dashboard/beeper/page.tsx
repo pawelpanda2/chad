@@ -196,9 +196,9 @@ export default function BeeperContactsPage() {
 						<table className="w-full min-w-[640px] text-left text-sm">
 							<thead>
 								<tr className="border-b bg-muted/40 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-									<th className="px-3 py-2">Name</th>
 									<th className="px-3 py-2 text-center">Include</th>
 									<th className="px-3 py-2 text-center">Exclude</th>
+									<th className="px-3 py-2">Name</th>
 									<th className="px-3 py-2">Updated</th>
 								</tr>
 							</thead>
@@ -208,9 +208,6 @@ export default function BeeperContactsPage() {
 										key={c._id}
 										className={cn("hover:bg-accent", savingId === c._id && "opacity-70")}
 									>
-										<td className="px-3 py-2.5">
-											<div className="font-medium">{c.displayName}</div>
-										</td>
 										<td className="px-3 py-2.5 text-center">
 											<input
 												type="checkbox"
@@ -230,6 +227,9 @@ export default function BeeperContactsPage() {
 												onChange={(e) => onExcludeChange(c, e.target.checked)}
 												aria-label={`Exclude ${c.displayName}`}
 											/>
+										</td>
+										<td className="px-3 py-2.5">
+											<div className="font-medium">{c.displayName}</div>
 										</td>
 										<td className="px-3 py-2.5 text-muted-foreground">
 											{c.lastMessage?.timestamp

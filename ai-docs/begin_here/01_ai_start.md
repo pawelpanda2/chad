@@ -14,13 +14,14 @@ PROD tak, jakby to była ryzykowna, osobna operacja budowania — mimo że
 odpowiedź jest już opisana w `04_deployment-rules.md` i
 `deploy/ai-start.md`, tylko AI ich nie zastosowało w praktyce.)**
 
-- **Obraz Dockera buduje się WYŁĄCZNIE podczas deployu na TEST**
-  (`bash-scripts/dashboard/08_registry_test/deploy.sh` albo
-  `06_qnap_test_ssh/06_deploy.sh`). **Deploy na PROD nigdy nie buduje
-  niczego od nowa** — to wyłącznie promocja/przełączenie na TEN SAM,
-  już zbudowany i zweryfikowany na TEST obraz
-  (`07_qnap_prod_ssh/06_last_from_test.sh`). Nie ma czegoś takiego jak
-  "osobny build dla PROD".
+- **Domyślny deploy TEST (szybszy):** buduj lokalnie na Macu i wyślij obraz
+  przez GHCR — `bash-scripts/dashboard/08_registry_test/deploy.sh`
+  (build+push na Macu → QNAP tylko `docker pull` + restart). **Nie używaj
+  domyślnie** `06_qnap_test_ssh/06_deploy.sh` (build na QNAP jest wolniejszy);
+  ta ścieżka zostaje tylko jako awaryjna/równoległa.
+- **Deploy PROD:** wyłącznie przekierowanie na TEN SAM obraz, który już
+  działa na TEST — `bash-scripts/dashboard/07_qnap_prod_ssh/06_last_from_test.sh`.
+  **Nigdy nie buduje** niczego od nowa. Nie ma „osobnego buildu dla PROD”.
 - TEST i PROD to **osobne kontenery** (celowo — żeby oddzielić GUI/proces
   dashboardu i najpierw zweryfikować na TEST, zanim ten sam obraz trafi na
   PROD), ale **współdzielą te same, prawdziwe dane** przez
