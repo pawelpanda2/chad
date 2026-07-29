@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import {
   QNAP_TAILSCALE_HOST,
@@ -28,10 +28,18 @@ export type MongoSource = DbSource;
 
 function prefPath(): string {
   if (process.env.DEV_DB_SOURCE_PREF_PATH) return process.env.DEV_DB_SOURCE_PREF_PATH;
-  // Local Docker volume persists across container restart.
+  // Local Docker: bind-mounted writable dir (nextjs uid cannot create files in
+  // root-owned named volume /app/data — that silently broke café persistence).
+  if (existsSync("/app/runtime")) return "/app/runtime/dev-data-source.json";
+  // Legacy Docker path (may be readable even when not writable).
   if (existsSync("/app/data")) return "/app/data/dev-db-source.json";
   // Bare next / host tools — gitignored .runtime/
   return join(process.cwd(), ".runtime/dev-data-source.json");
+}
+
+function legacyPrefPaths(primary: string): string[] {
+  const legacy = ["/app/data/dev-db-source.json", join(process.cwd(), ".runtime/dev-data-source.json")];
+  return legacy.filter((p) => p !== primary);
 }
 
 function normalizePersistedPostgres(raw: unknown): ChadPostgresSource | undefined {
@@ -42,16 +50,26 @@ function normalizePersistedPostgres(raw: unknown): ChadPostgresSource | undefine
   return undefined;
 }
 
+function parsePersistedFile(path: string): { postgres?: ChadPostgresSource; mongo?: DbSource } | null {
+  if (!existsSync(path)) return null;
+  const raw = JSON.parse(readFileSync(path, "utf8")) as { postgres?: unknown; mongo?: unknown };
+  const out: { postgres?: ChadPostgresSource; mongo?: DbSource } = {};
+  const postgres = normalizePersistedPostgres(raw.postgres);
+  if (postgres) out.postgres = postgres;
+  if (raw.mongo === "local" || raw.mongo === "qnap") out.mongo = raw.mongo;
+  return out.postgres || out.mongo ? out : null;
+}
+
 function loadPersistedSources(): { postgres?: ChadPostgresSource; mongo?: DbSource } | null {
   try {
-    const path = prefPath();
-    if (!existsSync(path)) return null;
-    const raw = JSON.parse(readFileSync(path, "utf8")) as { postgres?: unknown; mongo?: unknown };
-    const out: { postgres?: ChadPostgresSource; mongo?: DbSource } = {};
-    const postgres = normalizePersistedPostgres(raw.postgres);
-    if (postgres) out.postgres = postgres;
-    if (raw.mongo === "local" || raw.mongo === "qnap") out.mongo = raw.mongo;
-    return out;
+    const primary = prefPath();
+    const fromPrimary = parsePersistedFile(primary);
+    if (fromPrimary) return fromPrimary;
+    for (const legacy of legacyPrefPaths(primary)) {
+      const fromLegacy = parsePersistedFile(legacy);
+      if (fromLegacy) return fromLegacy;
+    }
+    return null;
   } catch {
     return null;
   }
@@ -72,9 +90,20 @@ function persistSources(postgres: ChadPostgresSource, mongo: DbSource): void {
       2
     );
     // Atomic write: temp → rename (survives crash mid-write; no secrets in file).
+    // Fallback: in-place overwrite when the directory forbids creating new files
+    // (root-owned Docker volume) but the existing file is writable.
     const tmp = `${path}.tmp.${process.pid}.${Date.now()}`;
-    writeFileSync(tmp, body, "utf8");
-    renameSync(tmp, path);
+    try {
+      writeFileSync(tmp, body, "utf8");
+      renameSync(tmp, path);
+    } catch {
+      try {
+        if (existsSync(tmp)) unlinkSync(tmp);
+      } catch {
+        /* ignore */
+      }
+      writeFileSync(path, body, "utf8");
+    }
   } catch {
     // Preference is best-effort — volume may be missing on bare next dev.
   }
