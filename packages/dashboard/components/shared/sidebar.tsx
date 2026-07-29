@@ -17,6 +17,7 @@ import {
 	LogOut,
 	Table,
 	History,
+	BookOpen,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -55,6 +56,16 @@ const sidebarGroups: Array<{ title: string; items: SidebarItem[] }> = [
 				],
 				// "/dashboard/msg-automation" prefix (above) already covers
 				// "/dashboard/msg-automation/ai-prompts" and its child routes.
+			},
+			{
+				title: "Knowledge",
+				href: "/dashboard/knowledge",
+				icon: BookOpen,
+				badge: null,
+				// Hub page today has a single entry (Verbal game); more knowledge
+				// categories are expected in later stories, same hub+subpage shape
+				// as "Msg Auto" above.
+				activePrefixes: ["/dashboard/knowledge"],
 			},
 		],
 	},

@@ -117,6 +117,19 @@ export async function syncLocalPostgresFromQnap(): Promise<SyncLocalFromQnapResu
   await src.connect();
   await dst.connect();
 
+  const [{ rows: srcCountRows }, { rows: destCountRows }] = await Promise.all([
+    src.query<{ count: string }>("SELECT count(*)::text AS count FROM cp_items"),
+    dst.query<{ count: string }>("SELECT count(*)::text AS count FROM cp_items"),
+  ]);
+  const srcCount = Number(srcCountRows[0]?.count ?? 0);
+  const destCount = Number(destCountRows[0]?.count ?? 0);
+  if (srcCount < destCount) {
+    throw new Error(
+      `Refusing QNAP→local Postgres sync: source has ${srcCount} cp_items but destination has ${destCount} ` +
+        `(would destroy newer local data). Use migrate-mongo-to-postgres or refresh offline-readonly-backup instead.`
+    );
+  }
+
   try {
     await dst.query("BEGIN");
     // Stop history trigger + immutability while we bulk-load a mirror.
