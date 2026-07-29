@@ -30,16 +30,16 @@ interface AiPromptSummary {
 const ROW = "flex w-full items-stretch text-left";
 
 const VER_CELL =
-  "flex w-12 shrink-0 items-center border-border px-[3px] py-0.5 pl-[3px] border-r";
+  "flex w-12 shrink-0 items-center border-border border-r px-[3px] py-[1px]";
 
 const NAME_CELL =
-  "flex w-[9.5rem] shrink-0 items-center border-border px-[3px] py-0.5 border-r sm:w-[14rem]";
+  "flex w-[9.5rem] shrink-0 items-center border-border border-r px-[3px] py-[1px] sm:w-[14rem]";
 
 const CATEGORY_CELL =
-  "flex w-[10.75rem] shrink-0 items-center border-border px-[3px] py-0.5 border-r sm:w-[12.5rem]";
+  "flex w-[10.75rem] shrink-0 items-center border-border border-r px-[3px] py-[1px] sm:w-[12.5rem]";
 
 const DESCRIPTION_CELL =
-  "flex w-[8rem] shrink-0 items-center border-border px-[3px] py-0.5 border-r sm:w-[12rem]";
+  "flex w-[8rem] shrink-0 items-center border-border border-r px-[3px] py-[1px] sm:w-[12rem]";
 
 const SPACER_CELL = "min-w-0 flex-1";
 
@@ -94,16 +94,16 @@ export default function AiPromptsListPage() {
 
       <ErrorBox message={error} className="shrink-0" />
 
-      <div className="min-h-0 flex-1 overflow-auto rounded-lg border bg-muted/10 p-3">
+      <div className="min-h-0 flex-1 overflow-auto rounded-lg border bg-muted/10 px-[3px] py-[2px]">
         {loading ? (
-          <div className="flex items-center gap-2 p-4 text-sm text-muted-foreground">
+          <div className="flex items-center gap-2 px-[3px] py-[2px] text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
             Loading prompts…
           </div>
         ) : prompts.length === 0 ? (
-          <div className="p-6 text-sm text-muted-foreground">No prompts yet</div>
+          <div className="px-[3px] py-[2px] text-sm text-muted-foreground">No prompts yet</div>
         ) : (
-          <div className="space-y-0.5">
+          <div className="space-y-px">
             {/* Transparent border matches row box model so columns line up. */}
             <div
               className={cn(
@@ -141,7 +141,7 @@ export default function AiPromptsListPage() {
                   <div className={CATEGORY_CELL}>
                     <span
                       className={cn(
-                        "inline-flex max-w-full truncate rounded-full px-2.5 py-1 text-xs font-semibold",
+                        "inline-flex max-w-full truncate rounded-full px-[3px] py-0 text-xs font-semibold",
                         kind === "openai_managed"
                           ? "bg-blue-50 text-blue-800 dark:bg-blue-950/40 dark:text-blue-200"
                           : "bg-violet-50 text-violet-800 dark:bg-violet-950/40 dark:text-violet-200"
