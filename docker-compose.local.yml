@@ -177,9 +177,17 @@ services:
       # login shown on History -> Google Sheets when viewer env vars are unset).
       - OFFLINE_READONLY_BACKUP_READER_PASSWORD=${OFFLINE_READONLY_BACKUP_READER_PASSWORD:-}
       - OFFLINE_READONLY_BACKUP_POSTGRES_PORT=${OFFLINE_READONLY_BACKUP_POSTGRES_PORT:-55432}
-      - CHAD_OFFLINE_READONLY_BACKUP_ROOT=${CHAD_OFFLINE_READONLY_BACKUP_ROOT:-}
+      # Inside the container the host backup root is mounted at this path so
+      # Dev Panel can read metadata/latest.json without Tailscale / internet.
+      - CHAD_OFFLINE_READONLY_BACKUP_ROOT=/offline-readonly-backup
     volumes:
       - chad-dashboard-local-mac-docker-data:/app/data
+      - type: bind
+        source: ${CHAD_OFFLINE_READONLY_BACKUP_ROOT:-${HOME}/04_chad_offline_readonly_backup}
+        target: /offline-readonly-backup
+        read_only: true
+        bind:
+          create_host_path: true
     logging:
       driver: "json-file"
       options:

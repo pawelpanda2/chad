@@ -19,17 +19,21 @@ import {
 import {
   getEffectiveBeeperMongoUri,
   getMongoSource,
+  getPostgresSource,
   setMongoSource,
+  setPostgresSource,
 } from "../../../packages/dba/src/dev-db-override.js";
+import { DEV_DB_PROBE_TIMEOUT_MS } from "../../../packages/dba/src/offline-readonly-backup/constants.js";
 
 describe("offline-readonly-backup — source mapping", () => {
-  it("maps postgres sources to labels", () => {
+  it("maps postgres sources to Dev Panel labels", () => {
     expect(chadPostgresSourceToLabel("server")).toBe("Server PostgreSQL");
-    expect(chadPostgresSourceToLabel("offline-readonly-backup")).toBe("offline-readonly-backup");
+    expect(chadPostgresSourceToLabel("offline-readonly-backup")).toBe("Offline backup — read only");
   });
 
   it("parses labels back to sources", () => {
     expect(labelToChadPostgresSource("Server PostgreSQL")).toBe("server");
+    expect(labelToChadPostgresSource("Offline backup — read only")).toBe("offline-readonly-backup");
     expect(labelToChadPostgresSource("offline-readonly-backup")).toBe("offline-readonly-backup");
     expect(labelToChadPostgresSource("local")).toBeNull();
   });
@@ -38,11 +42,12 @@ describe("offline-readonly-backup — source mapping", () => {
 describe("beeper mongo — source mapping", () => {
   it("maps mongo sources to Dev Panel labels", () => {
     expect(beeperMongoSourceToLabel("qnap")).toBe("Server Mongo");
-    expect(beeperMongoSourceToLabel("local")).toBe("Local readonly backup");
+    expect(beeperMongoSourceToLabel("local")).toBe("Local Mongo");
   });
 
   it("parses labels back to sources", () => {
     expect(labelToBeeperMongoSource("Server Mongo")).toBe("qnap");
+    expect(labelToBeeperMongoSource("Local Mongo")).toBe("local");
     expect(labelToBeeperMongoSource("Local readonly backup")).toBe("local");
     expect(labelToBeeperMongoSource("qnap")).toBe("qnap");
     expect(labelToBeeperMongoSource("local")).toBe("local");
@@ -135,7 +140,7 @@ describe("beeper mongo — local readonly write guard", () => {
       process.env.DEV_DB_SOURCE_PREF_PATH = `/tmp/chad-dev-db-source-test-reset-${Date.now()}.json`;
       setMongoSource("qnap");
     } catch {
-      // ignore if assertLocalDev fails in CI without local env
+      // ignore
     }
   });
 
@@ -153,5 +158,25 @@ describe("beeper mongo — local readonly write guard", () => {
     setMongoSource("qnap");
     expect(isBeeperMongoReadonlyMode()).toBe(false);
     expect(() => assertBeeperWriteAllowed()).not.toThrow();
+  });
+});
+
+describe("dev panel — persistence + probe timeout constant", () => {
+  it("exposes a short probe timeout for offline café scenarios", () => {
+    expect(DEV_DB_PROBE_TIMEOUT_MS).toBeLessThanOrEqual(3000);
+  });
+
+  it("persists postgres+mongo independently across setSource calls", () => {
+    process.env.CHAD_ENVIRONMENT = "local";
+    const path = `/tmp/chad-dev-db-source-persist-${Date.now()}.json`;
+    process.env.DEV_DB_SOURCE_PREF_PATH = path;
+    setPostgresSource("offline-readonly-backup");
+    setMongoSource("local");
+    expect(getPostgresSource()).toBe("offline-readonly-backup");
+    expect(getMongoSource()).toBe("local");
+    // Reload from disk via a fresh preference read path: set again same values.
+    setPostgresSource("server");
+    expect(getPostgresSource()).toBe("server");
+    expect(getMongoSource()).toBe("local");
   });
 });

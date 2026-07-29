@@ -72,12 +72,27 @@ oraz `default_transaction_read_only = on`.
 
 ## Dev Panel
 
-Settings → dwie kolumny **ACTIVE** / **CHANGE OPTIONS**:
+Settings → dwie kolumny **ACTIVE** / **CHANGE OPTIONS** dla PostgreSQL i
+osobno dla Mongo:
 
-- combobox: `Server PostgreSQL` | `offline-readonly-backup`
-- czerwone ostrzeżenie przy backupie
-- Switch wymaga potwierdzenia dla backupu
-- Mongo Beeper — osobny blok informacyjny (nie źródło CHAD)
+- natywne **radio buttons** (nie combobox):
+  - CHAD PostgreSQL: `Server PostgreSQL` | `Offline backup — read only`
+  - Beeper Mongo: `Server Mongo` | `Local Mongo`
+- osobne przyciski **Apply PostgreSQL source** / **Apply Mongo source**
+- krótki warning przy offline Postgres (+ checkbox potwierdzenia)
+- GET Settings **nie wisi** na martwym Tailscale (probe ≤ ~2.5s)
+- przełączenie na offline **nie wymaga** remote probe — tylko lokalny snapshot
+- powrót na Server wymaga udanego krótkiego probe; inaczej zostaje offline
+- wybór persistowany w `/app/data/dev-db-source.json` (Docker) lub
+  `.runtime/dev-data-source.json` (bare) — atomic write; TEST/PROD nie
+  pozwalają na runtime switching (`CHAD_ENVIRONMENT` ≠ `local`)
+
+### Root cause (2026-07-29, café / no internet)
+
+GET `/api/dev-settings/db-source` wołał `probePostgres()` bez timeoutu na
+aktywnym Server PostgreSQL. Bez Tailscale request wisiał → Settings w
+„Ładowanie…” i brak możliwości Apply offline. Naprawione: krótkie
+`connectionTimeoutMillis` + probe-before-commit dla Server.
 
 ## Switch w aplikacji
 

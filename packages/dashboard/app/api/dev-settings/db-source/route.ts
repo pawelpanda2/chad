@@ -7,13 +7,14 @@ import {
   chadPostgresSourceToLabel,
   closeMongoConnection,
   closePostgresConnection,
-  describeEffectiveBeeperMongoTarget,
-  getBeeperMongoDb,
+  DEV_DB_PROBE_TIMEOUT_MS,
+  formatSnapshotAge,
   getMongoSource,
   getPostgresSource,
   labelToBeeperMongoSource,
   labelToChadPostgresSource,
-  runWithRepoContext,
+  probeBeeperMongoSource,
+  probePostgresSource,
   setMongoSource,
   setPostgresSource,
   verifyPostgresReadonlyRole,
@@ -27,6 +28,7 @@ import { getCurrentUserFromCookies } from "@/lib/session";
 
 function assertDevOnly(): NextResponse | null {
   const chadEnv = process.env.CHAD_ENVIRONMENT;
+  // Local Docker runs NODE_ENV=production — still allowed when CHAD_ENVIRONMENT=local.
   const allowed =
     chadEnv === "local" || (chadEnv !== "test" && chadEnv !== "prod" && process.env.NODE_ENV !== "production");
   if (!allowed) {
@@ -35,87 +37,74 @@ function assertDevOnly(): NextResponse | null {
   return null;
 }
 
-async function probePostgres(): Promise<{ ok: boolean; itemCount?: number; error?: string }> {
-  try {
-    await closePostgresConnection();
-    const itemCount = await withPostgresClient(async (client) => {
-      const { rows } = await client.query<{ count: string }>("SELECT count(*)::text AS count FROM cp_items");
-      return Number(rows[0]?.count ?? 0);
-    });
-    return { ok: true, itemCount };
-  } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) };
-  }
-}
-
-async function probeBeeper(repoGuid?: string): Promise<{
+type ProbeResult = { ok: boolean; itemCount?: number; error?: string };
+type BeeperProbeResult = {
   ok: boolean;
   contactsCount?: number;
   messagesCount?: number;
   databaseName?: string;
   error?: string;
-}> {
-  try {
-    await closeMongoConnection();
-    if (!repoGuid) {
-      // Connection target must still resolve — describeEffectiveBeeperMongoTarget catches URI errors.
-      const target = describeEffectiveBeeperMongoTarget();
-      if (target.error) return { ok: false, error: target.error };
-      return { ok: true, databaseName: "(sign in for beeper_<repoGuid> counts)" };
-    }
-    const db = await getBeeperMongoDb(repoGuid);
-    const [contactsCount, messagesCount] = await Promise.all([
-      db.collection("contacts").countDocuments({}),
-      db.collection("messages").countDocuments({}),
-    ]);
-    return {
-      ok: true,
-      contactsCount,
-      messagesCount,
-      databaseName: `beeper_${repoGuid}`,
-    };
-  } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) };
-  }
-}
+};
 
-async function snapshot() {
+async function buildSnapshot(opts?: {
+  postgresProbe?: ProbeResult | null;
+  beeperProbe?: BeeperProbeResult | null;
+  skipProbes?: boolean;
+}) {
   const user = await getCurrentUserFromCookies();
-  const postgresProbe = await probePostgres();
-  const beeperProbe = user
-    ? await runWithRepoContext(user, () => probeBeeper(user.repoGuid))
-    : await probeBeeper();
+  const backupOption = buildOfflineBackupOptionDetails();
+  const age = formatSnapshotAge(backupOption.metadata?.restoreTimestamp ?? undefined);
+
+  let postgresProbe = opts?.postgresProbe;
+  let beeperProbe = opts?.beeperProbe;
+
+  if (!opts?.skipProbes) {
+    if (postgresProbe === undefined) {
+      postgresProbe = await probePostgresSource(getPostgresSource(), DEV_DB_PROBE_TIMEOUT_MS);
+    }
+    if (beeperProbe === undefined) {
+      beeperProbe = await probeBeeperMongoSource(getMongoSource(), {
+        repoGuid: user?.repoGuid,
+        timeoutMs: DEV_DB_PROBE_TIMEOUT_MS,
+      });
+    }
+  }
 
   const active = buildChadDataSourceActiveView({
-    probeOk: postgresProbe.ok,
-    probeError: postgresProbe.error,
-    cpItemsCount: postgresProbe.itemCount,
+    probeOk: postgresProbe == null ? null : postgresProbe.ok,
+    probeError: postgresProbe?.error,
+    cpItemsCount: postgresProbe?.itemCount,
     chadEnvironment: process.env.CHAD_ENVIRONMENT,
+    connectionStatusOverride: postgresProbe == null ? "checking" : undefined,
   });
   const beeperActive = buildBeeperMongoActiveView({
-    probeOk: beeperProbe.ok,
-    probeError: beeperProbe.error,
-    contactsCount: beeperProbe.contactsCount,
-    messagesCount: beeperProbe.messagesCount,
-    databaseName: beeperProbe.databaseName,
+    probeOk: beeperProbe == null ? null : beeperProbe.ok,
+    probeError: beeperProbe?.error,
+    contactsCount: beeperProbe?.contactsCount,
+    messagesCount: beeperProbe?.messagesCount,
+    databaseName: beeperProbe?.databaseName,
     chadEnvironment: process.env.CHAD_ENVIRONMENT,
+    connectionStatusOverride: beeperProbe == null ? "checking" : undefined,
   });
-  const backupOption = buildOfflineBackupOptionDetails();
 
   return {
     active,
     changeOptions: {
       current: chadPostgresSourceToLabel(getPostgresSource()),
-      options: ["Server PostgreSQL", "offline-readonly-backup"] as const,
-      offlineReadonlyBackup: backupOption,
+      currentValue: getPostgresSource(),
+      options: ["Server PostgreSQL", "Offline backup — read only"] as const,
+      offlineReadonlyBackup: {
+        ...backupOption,
+        age,
+      },
     },
     beeper: {
       active: beeperActive,
       changeOptions: {
         current: beeperMongoSourceToLabel(getMongoSource()),
-        options: ["Server Mongo", "Local readonly backup"] as const,
+        currentValue: getMongoSource(),
+        options: ["Server Mongo", "Local Mongo"] as const,
       },
-      // Legacy flat fields — kept so older clients don't break mid-deploy.
       label: "MongoDB (Beeper CRM)",
       backend: beeperActive.backend,
       source: beeperActive.beeperDataSource,
@@ -123,15 +112,34 @@ async function snapshot() {
       hostPort: `${beeperActive.host}:${beeperActive.port}`,
       current: getMongoSource(),
     },
-    postgresProbe,
-    beeperProbe,
+    postgresProbe: postgresProbe ?? null,
+    beeperProbe: beeperProbe ?? null,
   };
 }
 
+/** Fast config for Dev Panel — never blocks on a dead remote forever. */
 export async function GET() {
   const blocked = assertDevOnly();
   if (blocked) return blocked;
-  return NextResponse.json(await snapshot());
+
+  const [postgresProbe, beeperProbe] = await Promise.all([
+    probePostgresSource(getPostgresSource(), DEV_DB_PROBE_TIMEOUT_MS),
+    (async () => {
+      const user = await getCurrentUserFromCookies();
+      return probeBeeperMongoSource(getMongoSource(), {
+        repoGuid: user?.repoGuid,
+        timeoutMs: DEV_DB_PROBE_TIMEOUT_MS,
+      });
+    })(),
+  ]);
+
+  return NextResponse.json(
+    await buildSnapshot({
+      skipProbes: true,
+      postgresProbe,
+      beeperProbe,
+    })
+  );
 }
 
 export async function POST(request: Request) {
@@ -158,8 +166,16 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error:
-          'Provide "chadPostgres" ("Server PostgreSQL" | "offline-readonly-backup") and/or "beeperMongo" ("Server Mongo" | "Local readonly backup")',
+          'Provide "chadPostgres" ("Server PostgreSQL" | "Offline backup — read only") and/or "beeperMongo" ("Server Mongo" | "Local Mongo")',
       },
+      { status: 400 }
+    );
+  }
+
+  // Only one family per request preferred — still allow either.
+  if (chadPostgresRaw !== undefined && mongoRaw !== undefined) {
+    return NextResponse.json(
+      { error: "Send PostgreSQL or Mongo in separate requests (Apply PostgreSQL / Apply Mongo)." },
       { status: 400 }
     );
   }
@@ -175,7 +191,7 @@ export async function POST(request: Request) {
           : (chadPostgresRaw as ChadPostgresSource | null);
       if (!mapped) {
         return NextResponse.json(
-          { error: 'Invalid chadPostgres (must be "Server PostgreSQL" or "offline-readonly-backup")' },
+          { error: 'Invalid chadPostgres (must be "Server PostgreSQL" or "Offline backup — read only")' },
           { status: 400 }
         );
       }
@@ -183,30 +199,80 @@ export async function POST(request: Request) {
       if (mapped === "offline-readonly-backup") {
         if (payload.confirmOfflineReadonly !== true) {
           return NextResponse.json(
-            { error: "CONFIRM_OFFLINE_READONLY_REQUIRED", ...(await snapshot()) },
+            { error: "CONFIRM_OFFLINE_READONLY_REQUIRED", ...(await buildSnapshot({ skipProbes: true })) },
             { status: 400 }
           );
         }
         const backup = buildOfflineBackupOptionDetails();
         if (!backup.available) {
-          return NextResponse.json({ error: backup.error ?? "BACKUP_UNAVAILABLE", ...(await snapshot()) }, { status: 400 });
-        }
-      }
-
-      setPostgresSource(mapped);
-      await closePostgresConnection();
-
-      if (mapped === "offline-readonly-backup") {
-        const readonlyCheck = await withPostgresClient(async (client) => verifyPostgresReadonlyRole(client));
-        if (!readonlyCheck.ok) {
-          setPostgresSource(previousPostgres);
-          await closePostgresConnection();
           return NextResponse.json(
-            { error: "OFFLINE_READONLY_VERIFICATION_FAILED", checks: readonlyCheck.checks, ...(await snapshot()) },
-            { status: 502 }
+            { error: backup.error ?? "BACKUP_UNAVAILABLE", ...(await buildSnapshot({ skipProbes: true })) },
+            { status: 400 }
           );
         }
+
+        // Switch to local snapshot WITHOUT probing the (possibly dead) server.
+        setPostgresSource(mapped);
+        await closePostgresConnection();
+        try {
+          const readonlyCheck = await withPostgresClient(async (client) => verifyPostgresReadonlyRole(client));
+          if (!readonlyCheck.ok) {
+            setPostgresSource(previousPostgres);
+            await closePostgresConnection();
+            return NextResponse.json(
+              {
+                error: "OFFLINE_READONLY_VERIFICATION_FAILED",
+                checks: readonlyCheck.checks,
+                ...(await buildSnapshot({ skipProbes: true })),
+              },
+              { status: 502 }
+            );
+          }
+          const localProbe = await probePostgresSource("offline-readonly-backup", DEV_DB_PROBE_TIMEOUT_MS);
+          if (!localProbe.ok) {
+            setPostgresSource(previousPostgres);
+            await closePostgresConnection();
+            return NextResponse.json(
+              {
+                error: `Offline backup connect failed: ${localProbe.error}`,
+                ...(await buildSnapshot({ skipProbes: true })),
+              },
+              { status: 502 }
+            );
+          }
+          invalidateUsersCache();
+          appendDevDataSourceAudit({ from: previousPostgres, to: mapped, at: new Date().toISOString() });
+          return NextResponse.json(
+            await buildSnapshot({ skipProbes: true, postgresProbe: localProbe, beeperProbe: null })
+          );
+        } catch (err) {
+          setPostgresSource(previousPostgres);
+          await closePostgresConnection();
+          throw err;
+        }
       }
+
+      // → Server PostgreSQL: probe FIRST, commit only on success.
+      const serverProbe = await probePostgresSource("server", DEV_DB_PROBE_TIMEOUT_MS);
+      if (!serverProbe.ok) {
+        return NextResponse.json(
+          {
+            error: `Server PostgreSQL unreachable: ${serverProbe.error}`,
+            ...(await buildSnapshot({
+              skipProbes: true,
+              postgresProbe: await probePostgresSource(previousPostgres, DEV_DB_PROBE_TIMEOUT_MS),
+            })),
+          },
+          { status: 502 }
+        );
+      }
+      setPostgresSource(mapped);
+      await closePostgresConnection();
+      invalidateUsersCache();
+      appendDevDataSourceAudit({ from: previousPostgres, to: mapped, at: new Date().toISOString() });
+      return NextResponse.json(
+        await buildSnapshot({ skipProbes: true, postgresProbe: serverProbe, beeperProbe: null })
+      );
     }
 
     if (mongoRaw !== undefined) {
@@ -216,59 +282,78 @@ export async function POST(request: Request) {
           : (mongoRaw as DbSource | null);
       if (!mapped) {
         return NextResponse.json(
-          { error: 'Invalid beeperMongo (must be "Server Mongo" or "Local readonly backup")' },
+          { error: 'Invalid beeperMongo (must be "Server Mongo" or "Local Mongo")' },
           { status: 400 }
+        );
+      }
+
+      const user = await getCurrentUserFromCookies();
+
+      if (mapped === "local") {
+        setMongoSource(mapped);
+        await closeMongoConnection();
+        const localProbe = await probeBeeperMongoSource("local", {
+          repoGuid: user?.repoGuid,
+          timeoutMs: DEV_DB_PROBE_TIMEOUT_MS,
+        });
+        if (!localProbe.ok) {
+          setMongoSource(previousMongo);
+          await closeMongoConnection();
+          return NextResponse.json(
+            {
+              error: `Local Mongo unreachable: ${localProbe.error}`,
+              ...(await buildSnapshot({ skipProbes: true })),
+            },
+            { status: 502 }
+          );
+        }
+        appendDevDataSourceAudit({
+          from: `mongo:${previousMongo}`,
+          to: `mongo:${mapped}`,
+          at: new Date().toISOString(),
+        });
+        return NextResponse.json(
+          await buildSnapshot({ skipProbes: true, beeperProbe: localProbe, postgresProbe: null })
+        );
+      }
+
+      // → Server Mongo: probe first.
+      const serverProbe = await probeBeeperMongoSource("qnap", {
+        repoGuid: user?.repoGuid,
+        timeoutMs: DEV_DB_PROBE_TIMEOUT_MS,
+      });
+      if (!serverProbe.ok) {
+        return NextResponse.json(
+          {
+            error: `Server Mongo unreachable: ${serverProbe.error}`,
+            ...(await buildSnapshot({
+              skipProbes: true,
+              beeperProbe: await probeBeeperMongoSource(previousMongo, {
+                repoGuid: user?.repoGuid,
+                timeoutMs: DEV_DB_PROBE_TIMEOUT_MS,
+              }),
+            })),
+          },
+          { status: 502 }
         );
       }
       setMongoSource(mapped);
       await closeMongoConnection();
+      appendDevDataSourceAudit({
+        from: `mongo:${previousMongo}`,
+        to: `mongo:${mapped}`,
+        at: new Date().toISOString(),
+      });
+      return NextResponse.json(
+        await buildSnapshot({ skipProbes: true, beeperProbe: serverProbe, postgresProbe: null })
+      );
     }
   } catch (err) {
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : "UNKNOWN_ERROR" },
+      { error: err instanceof Error ? err.message : "UNKNOWN_ERROR", ...(await buildSnapshot({ skipProbes: true })) },
       { status: 500 }
     );
   }
 
-  invalidateUsersCache();
-  const snap = await snapshot();
-
-  if (chadPostgresRaw !== undefined) {
-    const next = getPostgresSource();
-    appendDevDataSourceAudit({
-      from: previousPostgres,
-      to: next,
-      at: new Date().toISOString(),
-    });
-  }
-
-  if (mongoRaw !== undefined) {
-    appendDevDataSourceAudit({
-      from: `mongo:${previousMongo}`,
-      to: `mongo:${getMongoSource()}`,
-      at: new Date().toISOString(),
-    });
-  }
-
-  if (chadPostgresRaw !== undefined && snap.postgresProbe && !snap.postgresProbe.ok) {
-    return NextResponse.json(
-      {
-        error: `Postgres switch applied but connection failed: ${snap.postgresProbe.error}`,
-        ...snap,
-      },
-      { status: 502 }
-    );
-  }
-
-  if (mongoRaw !== undefined && snap.beeperProbe && !snap.beeperProbe.ok) {
-    return NextResponse.json(
-      {
-        error: `Mongo switch applied but connection failed: ${snap.beeperProbe.error}`,
-        ...snap,
-      },
-      { status: 502 }
-    );
-  }
-
-  return NextResponse.json(snap);
+  return NextResponse.json({ error: "UNREACHABLE" }, { status: 500 });
 }

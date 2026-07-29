@@ -12,8 +12,16 @@
  * Postgres without a process restart.
  */
 
-import { Pool, type PoolClient } from "pg";
-import { getEffectivePostgresUri, getPostgresOverrideGeneration } from "./dev-db-override.js";
+import { Client, Pool, type PoolClient } from "pg";
+import {
+  buildPostgresUriForSource,
+  getEffectivePostgresUri,
+  getPostgresOverrideGeneration,
+  type ChadPostgresSource,
+} from "./dev-db-override.js";
+import { DEV_DB_PROBE_TIMEOUT_MS } from "./offline-readonly-backup/constants.js";
+
+export { DEV_DB_PROBE_TIMEOUT_MS };
 
 function getPostgresUri(): string {
   return getEffectivePostgresUri();
@@ -31,7 +39,12 @@ function getPool(): Pool {
   }
   if (!pool) {
     poolGeneration = generation;
-    pool = new Pool({ connectionString: getPostgresUri() });
+    // Short connect timeout so a dead Tailscale/QNAP host cannot hang the
+    // Dev Panel forever (café / offline emergency switch).
+    pool = new Pool({
+      connectionString: getPostgresUri(),
+      connectionTimeoutMillis: DEV_DB_PROBE_TIMEOUT_MS,
+    });
   }
   return pool;
 }
@@ -43,6 +56,47 @@ export async function withPostgresClient<T>(fn: (client: PoolClient) => Promise<
     return await fn(client);
   } finally {
     client.release();
+  }
+}
+
+/**
+ * One-shot probe against an explicit URI — does NOT mutate the live pool /
+ * active Dev Panel source. Used to verify Server PostgreSQL before committing
+ * a switch away from offline-readonly-backup.
+ */
+export async function probePostgresUri(
+  uri: string,
+  timeoutMs: number = DEV_DB_PROBE_TIMEOUT_MS
+): Promise<{ ok: boolean; itemCount?: number; error?: string }> {
+  const client = new Client({
+    connectionString: uri,
+    connectionTimeoutMillis: timeoutMs,
+    query_timeout: timeoutMs,
+  });
+  const timer = setTimeout(() => {
+    client.end().catch(() => {});
+  }, timeoutMs + 250);
+  try {
+    await client.connect();
+    const { rows } = await client.query<{ count: string }>("SELECT count(*)::text AS count FROM cp_items");
+    return { ok: true, itemCount: Number(rows[0]?.count ?? 0) };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  } finally {
+    clearTimeout(timer);
+    await client.end().catch(() => {});
+  }
+}
+
+/** Probe the URI for a source without changing the active override. */
+export async function probePostgresSource(
+  source: ChadPostgresSource,
+  timeoutMs: number = DEV_DB_PROBE_TIMEOUT_MS
+): Promise<{ ok: boolean; itemCount?: number; error?: string }> {
+  try {
+    return await probePostgresUri(buildPostgresUriForSource(source), timeoutMs);
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
 

@@ -24,7 +24,14 @@
  */
 
 import { MongoClient, type Db } from "mongodb";
-import { getEffectiveMongoUri, getEffectiveBeeperMongoUri, getDevDbOverrideGeneration } from "./dev-db-override.js";
+import {
+  buildBeeperMongoUriForSource,
+  getEffectiveMongoUri,
+  getEffectiveBeeperMongoUri,
+  getDevDbOverrideGeneration,
+  type DbSource,
+} from "./dev-db-override.js";
+import { DEV_DB_PROBE_TIMEOUT_MS } from "./offline-readonly-backup/constants.js";
 
 // Read lazily (not at module load) — same reason as client.ts's
 // getContentProviderApiUrl(): Next.js imports this module while collecting
@@ -140,6 +147,51 @@ export async function getBeeperMongoDb(repoGuid: string): Promise<Db> {
   assertValidRepoGuid(repoGuid);
   const client = await connectBeeperServer();
   return client.db(`beeper_${repoGuid}`);
+}
+
+/**
+ * One-shot Beeper probe against a source URI — does NOT mutate the live
+ * Beeper client / Dev Panel mongo source. Used before committing Server Mongo.
+ */
+export async function probeBeeperMongoSource(
+  source: DbSource,
+  opts?: { repoGuid?: string; timeoutMs?: number }
+): Promise<{
+  ok: boolean;
+  contactsCount?: number;
+  messagesCount?: number;
+  databaseName?: string;
+  error?: string;
+}> {
+  const timeoutMs = opts?.timeoutMs ?? DEV_DB_PROBE_TIMEOUT_MS;
+  let client: MongoClient | null = null;
+  try {
+    const uri = buildBeeperMongoUriForSource(source);
+    client = new MongoClient(uri, {
+      serverSelectionTimeoutMS: timeoutMs,
+      connectTimeoutMS: timeoutMs,
+    });
+    await client.connect();
+    if (!opts?.repoGuid) {
+      return { ok: true, databaseName: "(beeper_<repoGuid>)" };
+    }
+    assertValidRepoGuid(opts.repoGuid);
+    const db = client.db(`beeper_${opts.repoGuid}`);
+    const [contactsCount, messagesCount] = await Promise.all([
+      db.collection("contacts").countDocuments({}),
+      db.collection("messages").countDocuments({}),
+    ]);
+    return {
+      ok: true,
+      contactsCount,
+      messagesCount,
+      databaseName: `beeper_${opts.repoGuid}`,
+    };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  } finally {
+    if (client) await client.close().catch(() => {});
+  }
 }
 
 /**

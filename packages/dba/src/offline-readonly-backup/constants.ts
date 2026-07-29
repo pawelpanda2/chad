@@ -13,3 +13,6 @@ export const DEFAULT_OFFLINE_READONLY_BACKUP_ROOT =
     : "/tmp/chad_offline_readonly_backup";
 
 export const DEFAULT_OFFLINE_READONLY_BACKUP_PORT = "55432";
+
+/** Short timeout for Dev Panel probes — dead Tailscale must not hang Settings. */
+export const DEV_DB_PROBE_TIMEOUT_MS = 2_500;
