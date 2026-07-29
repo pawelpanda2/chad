@@ -23,6 +23,8 @@ export * from './offline-readonly-backup/constants.js';
 export * from './offline-readonly-backup/metadata.js';
 export * from './offline-readonly-backup/verify-readonly.js';
 export * from './sync-local-from-qnap.js';
+export * from './beeper-mongo-mirror/metadata.js';
+export * from './beeper-mongo-mirror/refresh.js';
 export * from './secrets-crypto.js';
 export * from './beeper-crm.js';
 export * from './path-resolver.js';

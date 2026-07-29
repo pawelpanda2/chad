@@ -31,7 +31,7 @@ import { ObjectId } from "mongodb";
 import { getBeeperMongoDb } from "./mongo.js";
 import { getCurrentRepoGuid } from "./repo-context.js";
 import { ensureLeadBeeperLinksIndexes } from "./lead-beeper-links.js";
-import { assertBeeperWriteAllowed } from "./chad-data-mode.js";
+import { assertBeeperWriteAllowed, isBeeperMongoReadonlyMode } from "./chad-data-mode.js";
 
 // ── Collections ────────────────────────────────────────────────────────────
 
@@ -322,7 +322,13 @@ export async function listBeeperContacts(opts?: {
   view?: "default" | "permissions";
   permissionFilter?: BeeperPermissionFilter;
 }): Promise<BeeperContactListItem[]> {
-  if (opts?.view === "permissions") {
+  // Story 92: this lazy auto-heal is a write (assertBeeperWriteAllowed
+  // inside ensureBeeperSyncPermissionsMigrated) — must never block a read
+  // in Local Mongo readonly mode. The mirror already reflects whatever
+  // Include/Exclude state the source has; skipping the migration here just
+  // means an unmigrated contact shows without those fields, same as any
+  // other read-only view.
+  if (opts?.view === "permissions" && !isBeeperMongoReadonlyMode()) {
     await ensureBeeperSyncPermissionsMigrated();
   }
 

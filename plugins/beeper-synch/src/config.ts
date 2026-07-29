@@ -26,6 +26,13 @@ export interface Config {
   maxBackoffMs: number;
   logLevel: string;
   instanceId: string;
+  /** Local Mongo mirror target (Story 92) — deliberately a SEPARATE env var
+   * from the Dashboard's own BEEPER_MONGODB_URI (.env.local): that one's
+   * value depends on in-container-vs-host resolution logic that doesn't
+   * apply to this plain Mac-host process. Never used for writes other than
+   * the mirror refresh itself. */
+  localMirrorMongoUri: string;
+  mirrorIntervalMs: number;
 }
 
 function readNumber(env: NodeJS.ProcessEnv, name: string, fallback: number): number {
@@ -85,6 +92,14 @@ export function loadConfig(
 
   const ownerRepoGuid = resolveOwnerRepoGuid(env);
 
+  const localMirrorMongoUri = env.BEEPER_LOCAL_MIRROR_MONGODB_URI || "mongodb://localhost:27017/?directConnection=true";
+  if (hostPortOf(localMirrorMongoUri) === hostPortOf(mongodbUri)) {
+    throw new ConfigError(
+      `BEEPER_LOCAL_MIRROR_MONGODB_URI resolves to the same host as MONGODB_URI (${hostPortOf(mongodbUri)}) — ` +
+        "refusing to configure a mirror that would target its own source."
+    );
+  }
+
   const runtimeDir = resolve(REPO_ROOT, ".runtime/beeper-synch");
 
   return {
@@ -102,5 +117,16 @@ export function loadConfig(
     maxBackoffMs: readNumber(env, "BEEPER_SYNCH_MAX_BACKOFF_MS", 5 * 60 * 1000),
     logLevel: env.BEEPER_SYNCH_LOG_LEVEL || "info",
     instanceId: env.BEEPER_SYNCH_INSTANCE_ID || "mac-default",
+    localMirrorMongoUri,
+    mirrorIntervalMs: readNumber(env, "BEEPER_SYNCH_MIRROR_INTERVAL_MS", 5 * 60 * 1000),
   };
+}
+
+/** host:port only — never credentials. Used only for the same-host sanity check above. */
+function hostPortOf(uri: string): string {
+  try {
+    return new URL(uri.replace(/^mongodb(\+srv)?:\/\//, "http://")).host;
+  } catch {
+    return "(unresolved)";
+  }
 }

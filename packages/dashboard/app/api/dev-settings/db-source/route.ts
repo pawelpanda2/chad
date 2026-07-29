@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import {
+  buildBeeperLocalMirrorOptionDetails,
   buildBeeperMongoActiveView,
   buildChadDataSourceActiveView,
   buildOfflineBackupOptionDetails,
@@ -85,7 +86,9 @@ async function buildSnapshot(opts?: {
     databaseName: beeperProbe?.databaseName,
     chadEnvironment: process.env.CHAD_ENVIRONMENT,
     connectionStatusOverride: beeperProbe == null ? "checking" : undefined,
+    repoGuid: user?.repoGuid,
   });
+  const localMirrorOption = buildBeeperLocalMirrorOptionDetails(user?.repoGuid);
 
   return {
     active,
@@ -104,6 +107,7 @@ async function buildSnapshot(opts?: {
         current: beeperMongoSourceToLabel(getMongoSource()),
         currentValue: getMongoSource(),
         options: ["Server Mongo", "Local Mongo"] as const,
+        localMirror: localMirrorOption,
       },
       label: "MongoDB (Beeper CRM)",
       backend: beeperActive.backend,
@@ -290,6 +294,16 @@ export async function POST(request: Request) {
       const user = await getCurrentUserFromCookies();
 
       if (mapped === "local") {
+        const mirrorOption = buildBeeperLocalMirrorOptionDetails(user?.repoGuid);
+        if (!mirrorOption.available) {
+          return NextResponse.json(
+            {
+              error: mirrorOption.error ?? "LOCAL_MIRROR_UNAVAILABLE",
+              ...(await buildSnapshot({ skipProbes: true })),
+            },
+            { status: 400 }
+          );
+        }
         setMongoSource(mapped);
         await closeMongoConnection();
         const localProbe = await probeBeeperMongoSource("local", {
