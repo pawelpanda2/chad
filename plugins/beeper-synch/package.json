@@ -1,7 +1,7 @@
 {
   "name": "beeper-synch",
   "version": "1.0.0",
-  "description": "Mac-only supervisor for the existing Beeper sync pipeline: spawns packages/beeper-ws (long-lived, backoff-restarted) and schedules packages/beeper-sync (periodic incremental REST sync, serialized) as one process with a single-instance lock and graceful shutdown. No Beeper/Mongo sync logic of its own — see README.md.",
+  "description": "Mac-only supervisor for the existing Beeper sync pipeline: spawns packages/beeper-ws (long-lived, backoff-restarted), schedules packages/beeper-sync (periodic incremental REST sync, serialized) and refreshes the local Mongo readonly mirror (dba's refreshBeeperMongoMirror), all as one process with a single-instance lock and graceful shutdown. No Beeper/Mongo sync logic of its own — see README.md.",
   "main": "dist/index.js",
   "type": "module",
   "scripts": {
@@ -9,9 +9,10 @@
     "dev": "tsx src/index.ts",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
-    "test": "tsx src/config.test.ts && tsx src/lock.test.ts && tsx src/backoff.test.ts"
+    "test": "tsx src/config.test.ts && tsx src/lock.test.ts && tsx src/backoff.test.ts && tsx src/mirror-scheduler.test.ts"
   },
   "dependencies": {
+    "dba": "workspace:*",
     "dotenv": "^17.4.0",
     "mongodb": "^7.1.1"
   },

@@ -1,6 +1,8 @@
 import { resolve } from "node:path";
+import { refreshBeeperMongoMirror } from "dba";
 import { ConfigError, loadConfig } from "./config.js";
 import { acquireLock, LockHeldError, releaseLock } from "./lock.js";
+import { MirrorRunner } from "./mirror-scheduler.js";
 import { preflightMongo } from "./mongo-preflight.js";
 import { redactMongoUri } from "./owner-db.js";
 import { SupervisedProcess } from "./process-manager.js";
@@ -66,6 +68,33 @@ async function main(): Promise<void> {
     config.syncIntervalMs
   );
 
+  // dba's beeperMirrorStatusRoot() falls back to `process.cwd()` when not
+  // running in Docker (see packages/dba/src/beeper-mongo-mirror/metadata.ts)
+  // — but system-startup.sh `cd`s into plugins/beeper-synch before exec'ing
+  // this process, so an unset override would silently write mirror status
+  // under plugins/beeper-synch/.runtime/ instead of the repo root's
+  // .runtime/, which is the ONLY place the Dashboard's Dev Panel (and
+  // status.sh) ever reads from — found for real during Story 92 manual
+  // verification (Dev Panel showed a stale FAIL from an earlier ad-hoc test
+  // run while the real LaunchAgent-managed refresh kept succeeding into the
+  // wrong file). Pin it explicitly, anchored to config.repoRoot (which is
+  // computed from import.meta.url, never cwd) so both processes always
+  // agree on one file.
+  process.env.BEEPER_MIRROR_STATUS_ROOT = resolve(config.repoRoot, ".runtime/beeper-mongo-mirror");
+
+  // Local Mongo readonly mirror (Story 92) — independent of Beeper Desktop,
+  // so it keeps refreshing even while beeper-ws/beeper-sync are stuck
+  // waiting for Beeper Desktop to come back. Same QNAP source the writers
+  // use (config.mongodbUri); a SEPARATE local target
+  // (config.localMirrorMongoUri, never the Dashboard's own env).
+  const mirror = new MirrorRunner(
+    config.ownerRepoGuid,
+    config.mongodbUri,
+    config.localMirrorMongoUri,
+    config.mirrorIntervalMs,
+    refreshBeeperMongoMirror
+  );
+
   const startedAt = new Date().toISOString();
   const refreshStatus = () => {
     writeStatus(config.statusFile, {
@@ -74,21 +103,24 @@ async function main(): Promise<void> {
       ready: ws.isRunning,
       beeperWs: ws.snapshot(),
       beeperSync: sync.snapshot(),
+      beeperMongoMirror: mirror.snapshot(),
     });
   };
 
   ws.on("change", refreshStatus);
   sync.on("change", refreshStatus);
+  mirror.on("change", refreshStatus);
 
   ws.start();
   sync.start();
+  mirror.start();
   refreshStatus();
 
   const shutdown = async (signal: string) => {
     if (shuttingDown) return;
     shuttingDown = true;
     console.log(`[beeper-synch] received ${signal} — shutting down...`);
-    await Promise.all([ws.stop(), sync.stop()]);
+    await Promise.all([ws.stop(), sync.stop(), mirror.stop()]);
     writeStatus(config.statusFile, { pid: process.pid, ready: false, stoppedAt: new Date().toISOString() });
     releaseLock(config.lockFile);
     console.log("[beeper-synch] shutdown complete");

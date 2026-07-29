@@ -20,6 +20,7 @@ import {
   OFFLINE_READONLY_BACKUP_DATABASE,
   OFFLINE_READONLY_BACKUP_READER_ROLE,
 } from "./offline-readonly-backup/constants.js";
+import { readBeeperMirrorMetadata, type BeeperMirrorMetadata } from "./beeper-mongo-mirror/metadata.js";
 
 export type ChadDataSourceLabel = "Server PostgreSQL" | "Offline backup — read only";
 export type BeeperMongoSourceLabel = "Server Mongo" | "Local Mongo";
@@ -44,6 +45,14 @@ export interface ChadDataSourceActiveView {
   lastRefresh?: string;
 }
 
+export interface BeeperLocalMirrorStatusView {
+  lastCheckedAt: string | null;
+  lastSuccessAt: string | null;
+  age: string | null;
+  result: BeeperMirrorMetadata["result"] | "never run";
+  lastError?: string;
+}
+
 export interface BeeperMongoActiveView {
   beeperDataSource: BeeperMongoSourceLabel;
   mode: string;
@@ -58,6 +67,55 @@ export interface BeeperMongoActiveView {
   contactsCount: number | null;
   messagesCount: number | null;
   lastChecked: string;
+  /** Local mirror refresh status (Story 92) — always present so the Dev Panel can show it regardless of which source is currently active. */
+  localMirror: BeeperLocalMirrorStatusView;
+}
+
+export function buildBeeperLocalMirrorStatusView(repoGuid: string | undefined): BeeperLocalMirrorStatusView {
+  const meta = repoGuid ? readBeeperMirrorMetadata(repoGuid) : null;
+  if (!meta) {
+    return { lastCheckedAt: null, lastSuccessAt: null, age: null, result: "never run" };
+  }
+  return {
+    lastCheckedAt: meta.lastCheckedAt,
+    lastSuccessAt: meta.lastSuccessAt ?? null,
+    age: formatSnapshotAge(meta.lastSuccessAt),
+    result: meta.result,
+    lastError: meta.result === "FAIL" ? meta.lastError : undefined,
+  };
+}
+
+/**
+ * Gate for switching the Dev Panel to "Local Mongo — read only" (mirrors
+ * buildOfflineBackupOptionDetails() for Postgres) — refuses the switch with
+ * a clear reason when no local mirror has ever completed successfully for
+ * this user, instead of silently allowing a switch to an empty/never-synced
+ * database.
+ */
+export function buildBeeperLocalMirrorOptionDetails(repoGuid: string | undefined): {
+  available: boolean;
+  status: BeeperLocalMirrorStatusView;
+  error?: string;
+} {
+  const status = buildBeeperLocalMirrorStatusView(repoGuid);
+  if (!repoGuid) {
+    return { available: false, status, error: "No signed-in user — cannot resolve a local mirror database." };
+  }
+  if (status.result === "never run") {
+    return {
+      available: false,
+      status,
+      error: "No local mirror snapshot found yet. The mirror refreshes automatically every few minutes while beeper-synch is running on the Mac — wait for its first successful run, or check bash-scripts/beeper-synch/status.sh.",
+    };
+  }
+  if (status.lastSuccessAt == null) {
+    return {
+      available: false,
+      status,
+      error: "Local mirror has never completed a successful refresh yet (last attempt failed) — check bash-scripts/beeper-synch/logs.sh.",
+    };
+  }
+  return { available: true, status };
 }
 
 export function chadPostgresSourceToLabel(source: ChadPostgresSource): ChadDataSourceLabel {
@@ -161,6 +219,7 @@ export function buildBeeperMongoActiveView(input: {
   databaseName?: string;
   chadEnvironment?: string;
   connectionStatusOverride?: string;
+  repoGuid?: string;
 }): BeeperMongoActiveView {
   const source = getMongoSource();
   const target = describeEffectiveBeeperMongoTarget();
@@ -193,6 +252,7 @@ export function buildBeeperMongoActiveView(input: {
     contactsCount: input.probeOk ? (input.contactsCount ?? null) : null,
     messagesCount: input.probeOk ? (input.messagesCount ?? null) : null,
     lastChecked: new Date().toISOString(),
+    localMirror: buildBeeperLocalMirrorStatusView(input.repoGuid),
   };
 }
 

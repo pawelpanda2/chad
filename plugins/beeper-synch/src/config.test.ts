@@ -111,6 +111,33 @@ test("invalid BEEPER_SYNCH_SYNC_INTERVAL_MS (non-numeric) throws ConfigError", (
   assertTrue(threw, "expected ConfigError for a non-numeric interval override");
 });
 
+test("localMirrorMongoUri defaults to local Mongo, separate from MONGODB_URI", () => {
+  const config = loadConfig(baseEnv(), NO_FILE);
+  assertTrue(
+    config.localMirrorMongoUri === "mongodb://localhost:27017/?directConnection=true",
+    `unexpected default localMirrorMongoUri: ${config.localMirrorMongoUri}`
+  );
+  assertTrue(config.mirrorIntervalMs === 5 * 60 * 1000, `expected default mirror interval 300000, got ${config.mirrorIntervalMs}`);
+});
+
+test("refuses to start when the local mirror target resolves to the same host as MONGODB_URI", () => {
+  let threw = false;
+  try {
+    loadConfig(
+      baseEnv({ BEEPER_LOCAL_MIRROR_MONGODB_URI: "mongodb://x:y@100.117.139.83:12041/?authSource=admin" }),
+      NO_FILE
+    );
+  } catch (err) {
+    threw = err instanceof ConfigError;
+  }
+  assertTrue(threw, "expected ConfigError when local mirror target == source host");
+});
+
+test("BEEPER_SYNCH_MIRROR_INTERVAL_MS override is honored", () => {
+  const config = loadConfig(baseEnv({ BEEPER_SYNCH_MIRROR_INTERVAL_MS: "45000" }), NO_FILE);
+  assertTrue(config.mirrorIntervalMs === 45_000, `expected 45000, got ${config.mirrorIntervalMs}`);
+});
+
 test("config never carries the raw BEEPER_API_KEY into a loggable field", () => {
   const config = loadConfig(baseEnv(), NO_FILE);
   const serialized = JSON.stringify(config);
