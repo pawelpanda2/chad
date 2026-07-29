@@ -1,34 +1,40 @@
 #!/usr/bin/env node
 /**
- * Idempotent import of the console OpenAI stored prompt
- * (`askOpenAiAboutGirl.ts`) into the current user's AI Prompts registry.
+ * Idempotent import of the console OpenAI stored prompt into the current
+ * user's AI Prompts registry — same shape as Msg Auto → AI Prompts →
+ * OpenAI Managed Prompt created via GUI (openai_managed + bindings),
+ * plus the user-message template the stored prompt expects as `input`.
  *
- * Creates a **draft** `openai_managed` prompt with actionType `full-analysis`
- * (does NOT auto-publish). Re-running is a no-op when the same
- * openaiPromptId or slug already exists.
+ * Creates a **draft** (does NOT auto-publish). Re-run is a no-op when the
+ * same slug or openaiPromptId already exists.
  *
- * Usage (from repo root, with session env / POSTGRES or CP access as usual):
+ * Usage (repo context / env as for other DBA writes):
+ *   pnpm --filter dba build
  *   pnpm --filter dba exec node scripts/import-console-openai-girl-prompt.mjs
- *
- * Requires CHAD repo context — typically run via a thin dashboard-authenticated
- * path or with the same env the dashboard uses for DBA writes. This script
- * alone does not invent a user; prefer creating via GUI when possible.
- *
- * Prefer GUI: Msg Auto → AI Prompts → New → OpenAI Managed Prompt, then set
- * ID/version and actionType full-analysis, Save, Publish.
  */
 
-import {
-  createAiPrompt,
-  getAiPrompt,
-  listAiPrompts,
-  DEFAULT_CURRENT_CASE_USER_TEMPLATE,
-} from "../dist/index.js";
+import { createAiPrompt, getAiPrompt, listAiPrompts } from "../dist/index.js";
 
 const CONSOLE_OPENAI_PROMPT_ID =
   "pmpt_6a2d9932e7708197bf9a60767e94dcfb07c8292b52f64217";
 const CONSOLE_OPENAI_PROMPT_VERSION = "1";
-const SLUG = "console-girl-full-analysis";
+const SLUG = "console-girl-openai-managed";
+
+/** Same user-input template the console builds for this stored prompt. */
+const USER_INPUT_TEMPLATE = `<current_case>
+
+name: {{leadName}}
+
+report:
+{{report}}
+
+conversation:
+{{conversation}}
+
+my_question:
+{{question}}
+
+</current_case>`;
 
 async function main() {
   const existing = await listAiPrompts();
@@ -46,15 +52,17 @@ async function main() {
     }
   }
 
+  // Mirrors AiPromptManagedForm create payload (actionType "custom") plus
+  // the input template and settings the Responses call needs.
   const created = await createAiPrompt({
     slug: SLUG,
-    name: "Console girl full analysis (OpenAI stored)",
+    name: "Console girl (OpenAI managed)",
     description:
-      "Imported from packages/console askOpenAiAboutGirl — OpenAI stored prompt. Publish after review.",
-    actionType: "full-analysis",
+      "OpenAI stored prompt from console askOpenAiAboutGirl. Same fields as GUI managed prompt.",
+    actionType: "custom",
     promptKind: "openai_managed",
     provider: "openai",
-    messages: [{ role: "user", content: DEFAULT_CURRENT_CASE_USER_TEMPLATE }],
+    messages: [{ role: "user", content: USER_INPUT_TEMPLATE }],
     variables: [
       { key: "leadName", required: true },
       { key: "report", required: false },

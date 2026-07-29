@@ -70,9 +70,6 @@ export function AiPromptCustomEditor({ promptId }: AiPromptCustomEditorProps) {
     Object.fromEntries(HOSTED_TOOLS.map((t) => [t, false]))
   );
   const [composer, setComposer] = useState("");
-  const [testOutput, setTestOutput] = useState<string | null>(null);
-  const [testError, setTestError] = useState<string | null>(null);
-  const [testing, setTesting] = useState(false);
 
   const load = useCallback(async () => {
     if (!promptId) return;
@@ -468,76 +465,19 @@ export function AiPromptCustomEditor({ promptId }: AiPromptCustomEditorProps) {
         </aside>
 
         <section className="flex min-h-0 flex-col bg-background">
-          <div className="flex flex-1 flex-col gap-2 overflow-y-auto p-4">
-            {testOutput && (
-              <pre className="whitespace-pre-wrap rounded-lg border bg-muted/20 p-3 text-xs">{testOutput}</pre>
-            )}
-            {testError && (
-              <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-xs text-destructive">
-                {testError}
-              </div>
-            )}
-            {!testOutput && !testError && (
-              <div className="flex flex-1 flex-col items-center justify-center gap-2 text-muted-foreground">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted">
-                  <MessageSquare className="h-5 w-5" />
-                </div>
-                <div className="text-lg font-semibold text-foreground">Test result</div>
-                <p className="max-w-sm text-center text-xs">
-                  Runs the current draft via the server (does not publish, does not save an analysis
-                  run).
-                </p>
-              </div>
-            )}
+          <div className="flex flex-1 flex-col items-center justify-center gap-2 text-muted-foreground">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted">
+              <MessageSquare className="h-5 w-5" />
+            </div>
+            <div className="text-lg font-semibold text-foreground">Your conversation will appear here</div>
           </div>
           <div className="mx-auto mb-6 w-[min(670px,calc(100%-3rem))] rounded-3xl border p-4 shadow-sm">
             <Textarea
               value={composer}
               onChange={(e) => setComposer(e.target.value)}
-              placeholder="Optional question / user_input for {{question}}"
+              placeholder="Ask anything"
               className="min-h-[60px] resize-none border-0 p-0 shadow-none focus-visible:ring-0"
             />
-            <div className="mt-2 flex justify-end">
-              <Button
-                type="button"
-                size="sm"
-                disabled={!promptId || testing}
-                onClick={async () => {
-                  if (!promptId) return;
-                  setTesting(true);
-                  setTestError(null);
-                  setTestOutput(null);
-                  try {
-                    const res = await fetch(
-                      `/api/msg-automation/ai-prompts/${encodeURIComponent(promptId)}/test`,
-                      {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                          variables: {
-                            leadName: "test-lead",
-                            report: "[test report]",
-                            conversation: "[test conversation]",
-                            question: composer.trim() || "Test question",
-                          },
-                        }),
-                      },
-                    );
-                    const json = await res.json();
-                    if (!res.ok || json.status === "error" || json.status === "provider-not-configured") {
-                      throw new Error(json.error || `Test failed (${res.status})`);
-                    }
-                    setTestOutput(json.outputText || "(empty output)");
-                  } catch (err) {
-                    setTestError(err instanceof Error ? err.message : String(err));
-                  } finally {
-                    setTesting(false);
-                  }
-                }}
-              >
-                {testing ? "Running…" : "Run test"}
-              </Button>
-            </div>
           </div>
         </section>
 

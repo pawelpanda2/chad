@@ -25,11 +25,9 @@ export const PROMPT_KIND_OPTIONS = AI_PROMPT_KIND_OPTIONS.map(({ value, label })
   label,
 }));
 
-/** Category / actionType for Msg Creator resolution (`actionType + schoolId`). */
+/** Category — for now a single Msg Creator option (Our Custom Prompt only). */
 export const PROMPT_CATEGORY_OPTIONS = [
-  { value: "full-analysis", label: "Full analysis" },
-  { value: "next-message", label: "Next message" },
-  { value: "custom", label: "Custom" },
+  { value: "custom", label: "Msg Creator" },
 ] as const;
 
 export interface PromptFormState {
@@ -37,7 +35,6 @@ export interface PromptFormState {
   promptKind: AiPromptKind;
   category: string;
   openaiPromptId: string;
-  openaiPromptVersion: string;
   slug: string;
 }
 
@@ -46,7 +43,6 @@ const EMPTY: PromptFormState = {
   promptKind: "our_custom",
   category: "custom",
   openaiPromptId: "",
-  openaiPromptVersion: "",
   slug: "",
 };
 
@@ -89,7 +85,7 @@ export function PromptForm({
         name: string;
         promptKind?: AiPromptKind | "chad_custom";
         actionType: string;
-        providerBindings?: { openaiPromptId?: string; openaiPromptVersion?: string };
+        providerBindings?: { openaiPromptId?: string };
         slug: string;
       };
       setState({
@@ -97,7 +93,6 @@ export function PromptForm({
         promptKind: p.promptKind === "openai_managed" ? "openai_managed" : "our_custom",
         category: p.actionType || "custom",
         openaiPromptId: p.providerBindings?.openaiPromptId ?? "",
-        openaiPromptVersion: p.providerBindings?.openaiPromptVersion ?? "",
         slug: p.slug ?? "",
       });
     } catch (err) {
@@ -122,17 +117,15 @@ export function PromptForm({
     setError(null);
     try {
       const slug = state.slug.trim() || slugifyPromptName(state.name);
-      const category = PROMPT_CATEGORY_OPTIONS.some((o) => o.value === state.category)
-        ? state.category
-        : state.promptKind === "openai_managed"
-          ? "full-analysis"
+      const category =
+        state.promptKind === "our_custom"
+          ? PROMPT_CATEGORY_OPTIONS.some((o) => o.value === state.category)
+            ? state.category
+            : PROMPT_CATEGORY_OPTIONS[0].value
           : "custom";
       const providerBindings =
         state.promptKind === "openai_managed"
-          ? {
-              openaiPromptId: state.openaiPromptId.trim(),
-              openaiPromptVersion: state.openaiPromptVersion.trim() || undefined,
-            }
+          ? { openaiPromptId: state.openaiPromptId.trim() }
           : undefined;
 
       const payload = {
@@ -238,17 +231,7 @@ export function PromptForm({
               <td className={fieldCell}>
                 <select
                   value={state.promptKind}
-                  onChange={(e) => {
-                    const kind = e.target.value as AiPromptKind;
-                    setState((prev) => ({
-                      ...prev,
-                      promptKind: kind,
-                      category:
-                        kind === "openai_managed" && prev.category === "custom"
-                          ? "full-analysis"
-                          : prev.category,
-                    }));
-                  }}
+                  onChange={(e) => setField("promptKind", e.target.value as AiPromptKind)}
                   disabled={loading}
                   className="h-8 w-full border-0 bg-transparent text-sm focus:outline-none focus:ring-1"
                   aria-label="Prompt type"
@@ -261,57 +244,43 @@ export function PromptForm({
                 </select>
               </td>
             </tr>
-            <tr>
-              <td className={labelCell}>Action type</td>
-              <td className={fieldCell}>
-                <select
-                  value={
-                    PROMPT_CATEGORY_OPTIONS.some((o) => o.value === state.category)
-                      ? state.category
-                      : state.promptKind === "openai_managed"
-                        ? "full-analysis"
-                        : "custom"
-                  }
-                  onChange={(e) => setField("category", e.target.value)}
-                  disabled={loading}
-                  className="h-8 w-full border-0 bg-transparent text-sm focus:outline-none focus:ring-1"
-                  aria-label="Action type"
-                >
-                  {PROMPT_CATEGORY_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-              </td>
-            </tr>
+            {state.promptKind === "our_custom" && (
+              <tr>
+                <td className={labelCell}>Category</td>
+                <td className={fieldCell}>
+                  <select
+                    value={
+                      PROMPT_CATEGORY_OPTIONS.some((o) => o.value === state.category)
+                        ? state.category
+                        : PROMPT_CATEGORY_OPTIONS[0].value
+                    }
+                    onChange={(e) => setField("category", e.target.value)}
+                    disabled={loading}
+                    className="h-8 w-full border-0 bg-transparent text-sm focus:outline-none focus:ring-1"
+                    aria-label="Category"
+                  >
+                    {PROMPT_CATEGORY_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </td>
+              </tr>
+            )}
             {state.promptKind === "openai_managed" && (
-              <>
-                <tr>
-                  <td className={labelCell}>Prompt ID</td>
-                  <td className={fieldCell}>
-                    <Input
-                      value={state.openaiPromptId}
-                      onChange={(e) => setField("openaiPromptId", e.target.value)}
-                      disabled={loading}
-                      required
-                      className="h-8 border-0 bg-transparent shadow-none font-mono focus-visible:ring-1"
-                    />
-                  </td>
-                </tr>
-                <tr>
-                  <td className={labelCell}>Version</td>
-                  <td className={fieldCell}>
-                    <Input
-                      value={state.openaiPromptVersion}
-                      onChange={(e) => setField("openaiPromptVersion", e.target.value)}
-                      disabled={loading}
-                      placeholder="1"
-                      className="h-8 border-0 bg-transparent shadow-none font-mono focus-visible:ring-1"
-                    />
-                  </td>
-                </tr>
-              </>
+              <tr>
+                <td className={labelCell}>Prompt ID</td>
+                <td className={fieldCell}>
+                  <Input
+                    value={state.openaiPromptId}
+                    onChange={(e) => setField("openaiPromptId", e.target.value)}
+                    disabled={loading}
+                    required
+                    className="h-8 border-0 bg-transparent shadow-none font-mono focus-visible:ring-1"
+                  />
+                </td>
+              </tr>
             )}
           </tbody>
         </table>
