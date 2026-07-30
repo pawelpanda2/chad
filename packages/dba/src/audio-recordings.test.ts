@@ -1,19 +1,20 @@
-/**
- * Unit tests for Forms → Add recording filesystem save helpers.
- * Uses a temp directory — never /Volumes/cp_1.
- */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
-  saveAudioRecording,
-  buildAudioRecordingFileName,
-  resolveAudioExtension,
-  assertSafeResolvedPath,
+  assertValidAudioRecordingId,
   AudioRecordingError,
   AUDIO_RECORDING_MAX_BYTES,
+  buildAudioRecordingFileName,
+  assertSafeResolvedPath,
+  getAudioRecordingReadInfo,
+  listAudioRecordings,
+  normalizeAudioRecordingDisplayName,
+  resolveAudioExtension,
+  saveAudioRecording,
 } from "./audio-recordings.js";
+import { runWithRepoContext } from "./repo-context.js";
 
 describe("audio-recordings helpers", () => {
   it("maps supported MIME types to extensions", () => {
@@ -35,70 +36,173 @@ describe("audio-recordings helpers", () => {
     );
     expect(() => assertSafeResolvedPath("/tmp/audio", "ok.webm")).not.toThrow();
   });
+
+  it("normalizes display names without turning them into paths", () => {
+    expect(normalizeAudioRecordingDisplayName("  a \n b \t c  ")).toBe("a b c");
+  });
+
+  it("rejects traversal-like ids", () => {
+    expect(() => assertValidAudioRecordingId("../x")).toThrow(AudioRecordingError);
+    expect(() => assertValidAudioRecordingId("safe-file.webm")).not.toThrow();
+  });
 });
 
 describe("saveAudioRecording", () => {
-  let dir: string;
+  let rootDir: string;
 
   beforeEach(async () => {
-    dir = await mkdtemp(path.join(tmpdir(), "chad-audio-"));
+    rootDir = await mkdtemp(path.join(tmpdir(), "chad-audio-"));
   });
 
   afterEach(async () => {
-    await rm(dir, { recursive: true, force: true });
+    await rm(rootDir, { recursive: true, force: true });
   });
 
-  it("writes bytes under the temp directory with generated name", async () => {
+  it("writes file + metadata under the current repo directory", async () => {
     const bytes = new TextEncoder().encode("fake-webm-bytes");
-    const result = await saveAudioRecording({
-      bytes,
-      mimeType: "audio/webm",
-      directory: dir,
-    });
+    const result = await runWithRepoContext({ repoGuid: "repo-a", username: "a" }, () =>
+      saveAudioRecording({
+        bytes,
+        mimeType: "audio/webm",
+        displayName: "2026-07-30_trening-verbal-game",
+        recordedDate: "2026-07-30",
+        durationMs: 12_345,
+        rootDirectory: rootDir,
+      }),
+    );
     expect(result.fileName).toMatch(/\.webm$/);
     expect(result.sizeBytes).toBe(bytes.byteLength);
-    const onDisk = await readFile(path.join(dir, result.fileName));
+    const repoDir = path.join(rootDir, "repo-a");
+    const onDisk = await readFile(path.join(repoDir, result.fileName));
     expect(Buffer.compare(onDisk, Buffer.from(bytes))).toBe(0);
+    const readInfo = await runWithRepoContext({ repoGuid: "repo-a", username: "a" }, () =>
+      getAudioRecordingReadInfo(result.id, { rootDirectory: rootDir }),
+    );
+    expect(readInfo?.displayName).toBe("2026-07-30_trening-verbal-game");
+    expect(readInfo?.durationMs).toBe(12_345);
+  });
+
+  it("lists recordings and isolates repos by repoGuid", async () => {
+    await runWithRepoContext({ repoGuid: "repo-a", username: "a" }, () =>
+      saveAudioRecording({
+        bytes: new TextEncoder().encode("a"),
+        mimeType: "audio/webm",
+        displayName: "2026-07-30_a",
+        recordedDate: "2026-07-30",
+        rootDirectory: rootDir,
+      }),
+    );
+    await runWithRepoContext({ repoGuid: "repo-b", username: "b" }, () =>
+      saveAudioRecording({
+        bytes: new TextEncoder().encode("b"),
+        mimeType: "audio/ogg",
+        displayName: "2026-07-31_b",
+        recordedDate: "2026-07-31",
+        rootDirectory: rootDir,
+      }),
+    );
+    const listA = await runWithRepoContext({ repoGuid: "repo-a", username: "a" }, () =>
+      listAudioRecordings({ rootDirectory: rootDir }),
+    );
+    const listB = await runWithRepoContext({ repoGuid: "repo-b", username: "b" }, () =>
+      listAudioRecordings({ rootDirectory: rootDir }),
+    );
+    expect(listA).toHaveLength(1);
+    expect(listA[0]?.displayName).toBe("2026-07-30_a");
+    expect(listB).toHaveLength(1);
+    expect(listB[0]?.displayName).toBe("2026-07-31_b");
+  });
+
+  it("returns an empty list when the repo has no recordings", async () => {
+    const list = await runWithRepoContext({ repoGuid: "repo-empty", username: "empty" }, () =>
+      listAudioRecordings({ rootDirectory: rootDir }),
+    );
+    expect(list).toEqual([]);
   });
 
   it("rejects invalid MIME", async () => {
     await expect(
-      saveAudioRecording({
-        bytes: new Uint8Array([1, 2, 3]),
-        mimeType: "text/plain",
-        directory: dir,
-      }),
+      runWithRepoContext({ repoGuid: "repo-a", username: "a" }, () =>
+        saveAudioRecording({
+          bytes: new Uint8Array([1, 2, 3]),
+          mimeType: "text/plain",
+          displayName: "2026-07-30_bad",
+          recordedDate: "2026-07-30",
+          rootDirectory: rootDir,
+        }),
+      ),
     ).rejects.toMatchObject({ code: "INVALID_MIME" });
   });
 
   it("rejects empty payload", async () => {
     await expect(
-      saveAudioRecording({
-        bytes: new Uint8Array(),
-        mimeType: "audio/webm",
-        directory: dir,
-      }),
+      runWithRepoContext({ repoGuid: "repo-a", username: "a" }, () =>
+        saveAudioRecording({
+          bytes: new Uint8Array(),
+          mimeType: "audio/webm",
+          displayName: "2026-07-30_empty",
+          recordedDate: "2026-07-30",
+          rootDirectory: rootDir,
+        }),
+      ),
     ).rejects.toMatchObject({ code: "EMPTY" });
   });
 
   it("rejects oversized payload", async () => {
     const bytes = new Uint8Array(AUDIO_RECORDING_MAX_BYTES + 1);
     await expect(
-      saveAudioRecording({
-        bytes,
-        mimeType: "audio/ogg",
-        directory: dir,
-      }),
+      runWithRepoContext({ repoGuid: "repo-a", username: "a" }, () =>
+        saveAudioRecording({
+          bytes,
+          mimeType: "audio/ogg",
+          displayName: "2026-07-30_big",
+          recordedDate: "2026-07-30",
+          rootDirectory: rootDir,
+        }),
+      ),
     ).rejects.toMatchObject({ code: "TOO_LARGE" });
   });
 
-  it("does not accept a client-supplied absolute path as directory escape", async () => {
-    // directory override is test-only; assertSafeResolvedPath still contains writes.
-    const result = await saveAudioRecording({
-      bytes: new Uint8Array([9]),
-      mimeType: "audio/webm",
-      directory: dir,
-    });
-    expect(path.dirname(path.join(dir, result.fileName))).toBe(path.resolve(dir));
+  it("rejects invalid recordedDate", async () => {
+    await expect(
+      runWithRepoContext({ repoGuid: "repo-a", username: "a" }, () =>
+        saveAudioRecording({
+          bytes: new Uint8Array([1]),
+          mimeType: "audio/webm",
+          displayName: "2026-07-99_bad-date",
+          recordedDate: "2026-07-99",
+          rootDirectory: rootDir,
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "INVALID_DATE" });
+  });
+
+  it("rejects empty displayName", async () => {
+    await expect(
+      runWithRepoContext({ repoGuid: "repo-a", username: "a" }, () =>
+        saveAudioRecording({
+          bytes: new Uint8Array([1]),
+          mimeType: "audio/webm",
+          displayName: "   ",
+          recordedDate: "2026-07-30",
+          rootDirectory: rootDir,
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "INVALID_DISPLAY_NAME" });
+  });
+
+  it("blocks traversal when reading a recording id", async () => {
+    await expect(
+      runWithRepoContext({ repoGuid: "repo-a", username: "a" }, () =>
+        getAudioRecordingReadInfo("../nope", { rootDirectory: rootDir }),
+      ),
+    ).rejects.toMatchObject({ code: "INVALID_ID" });
+  });
+
+  it("returns null when a recording does not exist", async () => {
+    const result = await runWithRepoContext({ repoGuid: "repo-a", username: "a" }, () =>
+      getAudioRecordingReadInfo("missing.webm", { rootDirectory: rootDir }),
+    );
+    expect(result).toBeNull();
   });
 });

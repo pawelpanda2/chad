@@ -12,25 +12,31 @@ binarny** na dysku — nie transkrypcję. Osobne od speech-to-text
 
 Forms → **ADD RECORDING** → `?form=add_recording`:
 
+- local date field + auto-prefixed display name
 - Record / Stop / timer
 - preview (`<audio controls>`)
 - Save / Discard / Record again
 - status sukcesu lub błędu
 
-Bez AI, tagów, listy nagrań, edycji.
+Bez AI, tagów ani edycji. Przeglądanie listy jest w
+`Views → Recordings`, nie w Forms.
 
 ## Zapis
 
 ```
-Browser → POST /api/forms/audio-recording (multipart `file`)
+Browser → POST /api/forms/audio-recording (multipart `file` + metadata)
        → packages/dba/src/audio-recordings.ts → saveAudioRecording
-       → process.env.CHAD_AUDIO_RECORDINGS_DIR
+       → process.env.CHAD_AUDIO_RECORDINGS_DIR/<repoGuid>/
+       → audio file + `<id>.json` sidecar metadata
 ```
 
-- Sesja wymagana; klient **nie** wysyła ścieżki ani nazwy docelowej.
+- Sesja wymagana; klient **nie** wysyła ścieżki ani nazwy fizycznego pliku.
 - Nazwa serwerowa: `YYYY-MM-DD_HH-mm-ss_<uuid>.<ext>` (`wx`, bez overwrite).
+- Widoczna nazwa (`displayName`) jest osobną metadanychą pochodzącą z
+  formularza (`YYYY-MM-DD_<namePart>`).
 - MIME allowlist: webm / ogg / mp4 / mpeg / wav (max 50 MiB).
 - Błędy nie ujawniają pełnej ścieżki hosta.
+- Izolacja użytkowników: podkatalog `repoGuid` ustalany z sesji, nie z requestu.
 
 ## Konfiguracja środowisk
 

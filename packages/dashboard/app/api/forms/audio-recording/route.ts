@@ -10,6 +10,7 @@ import {
   saveAudioRecording,
   AudioRecordingError,
   AUDIO_RECORDING_MAX_BYTES,
+  runWithRepoContext,
 } from "dba";
 import { getCurrentUserFromCookies } from "@/lib/session";
 
@@ -41,14 +42,24 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: false, error: "Recording exceeds size limit" }, { status: 413 });
   }
 
-  // Client-supplied name/path are ignored — only mime + bytes.
+  const displayName = form.get("displayName")?.toString() ?? "";
+  const recordedDate = form.get("recordedDate")?.toString() ?? "";
+  const durationMsRaw = form.get("durationMs")?.toString();
+  const durationMs =
+    durationMsRaw && /^\d+$/.test(durationMsRaw) ? Number(durationMsRaw) : undefined;
+
+  // Client-supplied path/file name are ignored — only blob + metadata.
   const mimeType = (blob.type || form.get("mimeType")?.toString() || "").trim();
   const buffer = new Uint8Array(await blob.arrayBuffer());
 
   try {
-    const result = await saveAudioRecording({ bytes: buffer, mimeType });
+    const result = await runWithRepoContext(user, () =>
+      saveAudioRecording({ bytes: buffer, mimeType, displayName, recordedDate, durationMs }),
+    );
     return NextResponse.json({
       success: true,
+      id: result.id,
+      displayName: result.displayName,
       fileName: result.fileName,
       sizeBytes: result.sizeBytes,
     });

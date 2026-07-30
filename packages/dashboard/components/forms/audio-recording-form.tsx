@@ -1,7 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { ErrorBox } from "@/components/shared/error-box";
 import {
   FRAME_SECTION_GAP_CLASS,
@@ -9,7 +11,12 @@ import {
   SAVE_FRAME_PADDING_CLASS,
 } from "@/components/shared/layout-tokens";
 import { cn } from "@/lib/utils";
-import { CheckCircle2, AlertCircle } from "lucide-react";
+import { AlertCircle, CheckCircle2 } from "lucide-react";
+import {
+  buildRecordingDisplayName,
+  formatDurationClock,
+  getLocalDateInputValue,
+} from "@/components/forms/audio-recording-utils";
 
 type Phase = "idle" | "recording" | "preview" | "saving" | "saved";
 
@@ -25,13 +32,6 @@ function pickRecorderMime(): string | undefined {
   return candidates.find((t) => MediaRecorder.isTypeSupported(t));
 }
 
-function formatElapsed(ms: number): string {
-  const totalSec = Math.floor(ms / 1000);
-  const m = Math.floor(totalSec / 60);
-  const s = totalSec % 60;
-  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-}
-
 function stopTracks(stream: MediaStream | null) {
   if (!stream) return;
   for (const track of stream.getTracks()) {
@@ -43,14 +43,20 @@ function stopTracks(stream: MediaStream | null) {
   }
 }
 
-/**
- * Forms → Add recording: MediaRecorder binary capture (not speech-to-text).
- */
-export function AudioRecordingForm() {
+interface AudioRecordingFormProps {
+  returnTo?: string;
+}
+
+export function AudioRecordingForm({
+  returnTo = "/dashboard/views?view=recordings",
+}: AudioRecordingFormProps) {
+  const router = useRouter();
   const [phase, setPhase] = useState<Phase>("idle");
+  const [recordedDate, setRecordedDate] = useState(getLocalDateInputValue());
+  const [namePart, setNamePart] = useState("");
   const [elapsedMs, setElapsedMs] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [result, setResult] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [mimeType, setMimeType] = useState<string>("");
 
@@ -61,6 +67,11 @@ export function AudioRecordingForm() {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startedAtRef = useRef<number>(0);
   const savingLockRef = useRef(false);
+
+  const displayName = useMemo(
+    () => buildRecordingDisplayName(recordedDate, namePart),
+    [recordedDate, namePart],
+  );
 
   const clearTimer = useCallback(() => {
     if (timerRef.current) {
@@ -87,7 +98,7 @@ export function AudioRecordingForm() {
     chunksRef.current = [];
     revokePreview();
     setElapsedMs(0);
-    setSaveMessage(null);
+    setResult(null);
   }, [revokePreview]);
 
   useEffect(() => {
@@ -107,7 +118,7 @@ export function AudioRecordingForm() {
 
   const handleRecord = async () => {
     setError(null);
-    setSaveMessage(null);
+    setResult(null);
     if (typeof window === "undefined" || !navigator.mediaDevices?.getUserMedia) {
       setError("This browser cannot access the microphone.");
       return;
@@ -122,9 +133,7 @@ export function AudioRecordingForm() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
-      const recorder = mime
-        ? new MediaRecorder(stream, { mimeType: mime })
-        : new MediaRecorder(stream);
+      const recorder = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
       recorderRef.current = recorder;
       chunksRef.current = [];
       setMimeType(recorder.mimeType || mime || "audio/webm");
@@ -150,8 +159,7 @@ export function AudioRecordingForm() {
           discardBlob();
           return;
         }
-        const url = URL.createObjectURL(blob);
-        setPreviewUrl(url);
+        setPreviewUrl(URL.createObjectURL(blob));
         setMimeType(type);
         setPhase("preview");
       };
@@ -191,7 +199,10 @@ export function AudioRecordingForm() {
   };
 
   const handleDiscard = () => {
-    if (phase === "recording") handleStop();
+    if (phase === "recording") {
+      handleStop();
+      return;
+    }
     discardBlob();
     setPhase("idle");
     setError(null);
@@ -204,22 +215,34 @@ export function AudioRecordingForm() {
       setError("Nothing to save.");
       return;
     }
+    if (!namePart.trim()) {
+      setError("Recording name is required.");
+      return;
+    }
+
     savingLockRef.current = true;
     setPhase("saving");
     setError(null);
-    setSaveMessage(null);
+    setResult(null);
     try {
       const body = new FormData();
       body.append("file", blob, `recording.${mimeType.includes("ogg") ? "ogg" : "webm"}`);
+      body.append("displayName", displayName);
+      body.append("recordedDate", recordedDate);
+      body.append("durationMs", String(elapsedMs));
       const res = await fetch("/api/forms/audio-recording", { method: "POST", body });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json.success) {
         throw new Error(json.error || `Save failed (${res.status})`);
       }
-      setSaveMessage(`Saved as ${json.fileName}`);
+      setResult({ type: "success", message: `Saved as ${json.displayName ?? displayName}` });
       setPhase("saved");
+      window.setTimeout(() => {
+        router.push(returnTo);
+      }, 800);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Save failed");
+      setResult({ type: "error", message: err instanceof Error ? err.message : "Save failed" });
       setPhase("preview");
     } finally {
       savingLockRef.current = false;
@@ -230,6 +253,9 @@ export function AudioRecordingForm() {
     typeof window === "undefined" ||
     (typeof MediaRecorder !== "undefined" && !!navigator.mediaDevices?.getUserMedia);
 
+  const fieldCell = "border bg-background px-2 py-1.5";
+  const labelCell = "whitespace-nowrap border bg-background px-3 py-2 font-semibold";
+
   return (
     <div className={cn(FRAME_SECTION_SPACE_Y_CLASS, FRAME_SECTION_GAP_CLASS)}>
       <div
@@ -238,21 +264,89 @@ export function AudioRecordingForm() {
           SAVE_FRAME_PADDING_CLASS,
         )}
       >
-        {phase === "idle" || phase === "saved" ? (
+        <Button
+          type="button"
+          onClick={handleSave}
+          disabled={phase !== "preview" || !namePart.trim() || !apiSupported}
+        >
+          {phase === "saving" ? "Saving..." : "Save"}
+        </Button>
+        <Button type="button" variant="outline" onClick={() => router.push(returnTo)}>
+          Full View
+        </Button>
+        <Input
+          value={displayName}
+          readOnly
+          tabIndex={-1}
+          aria-label="Recording name"
+          placeholder="Recording name"
+          className="h-9 min-w-[160px] flex-1 bg-muted font-mono"
+        />
+        {result && (
+          <span
+            className={`flex items-center gap-1 text-sm ${
+              result.type === "success" ? "text-green-600" : "text-red-600"
+            }`}
+          >
+            {result.type === "success" ? (
+              <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
+            ) : (
+              <AlertCircle className="h-4 w-4 flex-shrink-0" />
+            )}
+            {result.message}
+          </span>
+        )}
+      </div>
+
+      <ErrorBox message={error} />
+
+      <div className="max-w-[460px] rounded-lg border bg-muted/10 p-2">
+        <table className="w-full border-collapse text-sm">
+          <tbody>
+            <tr>
+              <td className={labelCell}>Date</td>
+              <td className={fieldCell}>
+                <Input
+                  type="date"
+                  value={recordedDate}
+                  onChange={(e) => setRecordedDate(e.target.value)}
+                  className="h-8 border-0 bg-transparent shadow-none focus-visible:ring-1"
+                />
+              </td>
+            </tr>
+            <tr>
+              <td className={labelCell}>Name</td>
+              <td className={fieldCell}>
+                <Input
+                  value={namePart}
+                  onChange={(e) => setNamePart(e.target.value)}
+                  placeholder="e.g. trening-verbal-game"
+                  className="h-8 border-0 bg-transparent shadow-none focus-visible:ring-1"
+                />
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div
+        className={cn(
+          "flex max-w-[500px] flex-wrap items-center gap-3 rounded-lg border bg-muted/10",
+          SAVE_FRAME_PADDING_CLASS,
+        )}
+      >
+        {(phase === "idle" || phase === "saved") && (
           <Button type="button" onClick={handleRecord} disabled={!apiSupported}>
             Record
           </Button>
-        ) : null}
-        {phase === "recording" ? (
+        )}
+        {phase === "recording" && (
           <Button type="button" variant="destructive" onClick={handleStop}>
             Stop
           </Button>
-        ) : null}
-        {phase === "preview" ? (
+        )}
+        {(phase === "preview" || phase === "saved") && (
           <>
-            <Button type="button" onClick={handleSave}>
-              Save
-            </Button>
             <Button type="button" variant="outline" onClick={handleDiscard}>
               Discard
             </Button>
@@ -260,30 +354,11 @@ export function AudioRecordingForm() {
               Record again
             </Button>
           </>
-        ) : null}
-        {phase === "saving" ? (
-          <Button type="button" disabled>
-            Saving…
-          </Button>
-        ) : null}
+        )}
         <span className="font-mono text-sm tabular-nums text-muted-foreground">
-          {formatElapsed(elapsedMs)}
+          {formatDurationClock(elapsedMs) ?? "00:00"}
         </span>
-        {saveMessage && (
-          <span className="flex items-center gap-1 text-sm text-green-600">
-            <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
-            {saveMessage}
-          </span>
-        )}
-        {error && phase !== "idle" && (
-          <span className="flex items-center gap-1 text-sm text-red-600">
-            <AlertCircle className="h-4 w-4 flex-shrink-0" />
-            {error}
-          </span>
-        )}
       </div>
-
-      <ErrorBox message={phase === "idle" ? error : null} />
 
       {!apiSupported && (
         <p className="text-sm text-muted-foreground">
@@ -291,7 +366,7 @@ export function AudioRecordingForm() {
         </p>
       )}
 
-      {previewUrl && (phase === "preview" || phase === "saving" || phase === "saved") && (
+      {previewUrl && (
         <div className="max-w-[500px] rounded-lg border bg-muted/10 p-3">
           <audio controls src={previewUrl} className="w-full" />
         </div>
