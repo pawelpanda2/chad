@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { DATE_ENTRY_DOMAIN_COLUMNS, DAILY_ENTRY_DOMAIN_COLUMNS, ITEM_NUMBER_COLUMN, type SheetColumnGroup } from "dba/table-columns";
+import { formatDurationClock } from "@/components/forms/audio-recording-utils";
 
 // Fields computed server-side on every read (computeDailyAutoFieldsByDate in
 // dba) — never editable, never sent back on save. Kept as a Set so the edit
@@ -68,7 +69,17 @@ interface ReportEntry {
   body?: string;
 }
 
-type ViewType = null | "tracker" | "dates" | "leads" | "reports";
+interface AudioRecordingListItem {
+  id: string;
+  displayName: string;
+  date: string;
+  createdAt: string;
+  durationMs?: number;
+  mimeType: string;
+  sizeBytes: number;
+}
+
+type ViewType = null | "tracker" | "dates" | "leads" | "reports" | "recordings";
 type SortDir = "asc" | "desc";
 
 // ============================================================================
@@ -127,7 +138,7 @@ function ViewsPageContent() {
   // uses router.push (a new history entry), never replace.
   const viewParam = searchParams.get("view");
   const selectedView: ViewType =
-    viewParam === "tracker" || viewParam === "dates" || viewParam === "leads" || viewParam === "reports"
+    viewParam === "tracker" || viewParam === "dates" || viewParam === "leads" || viewParam === "reports" || viewParam === "recordings"
       ? viewParam
       : null;
   const returnTo = searchParams.toString() ? `${pathname}?${searchParams.toString()}` : pathname;
@@ -136,8 +147,11 @@ function ViewsPageContent() {
   const [dailyEntries, setDailyEntries] = useState<DailyEntryRecord[]>([]);
   const [leads, setLeads] = useState<LeadDashboardItem[]>([]);
   const [reports, setReports] = useState<ReportEntry[]>([]);
+  const [recordings, setRecordings] = useState<AudioRecordingListItem[]>([]);
   const [reportsError, setReportsError] = useState<string | null>(null);
+  const [recordingsError, setRecordingsError] = useState<string | null>(null);
   const [selectedReportLoca, setSelectedReportLoca] = useState<string | null>(null);
+  const [selectedRecordingId, setSelectedRecordingId] = useState<string | null>(null);
   // Local editable copy of the selected report's body, plus its own
   // save state — Views/Reports is editable (Story 56), reusing the same
   // /api/forms/reports update endpoint Forms uses (no new route, no
@@ -183,15 +197,18 @@ function ViewsPageContent() {
     setDateEntriesError(null);
     setDailyEntriesError(null);
     setReportsError(null);
+    setRecordingsError(null);
     try {
-      const [viewsRes, leadsRes, reportsRes] = await Promise.all([
+      const [viewsRes, leadsRes, reportsRes, recordingsRes] = await Promise.all([
         fetch("/api/views"),
         fetch("/api/leads-dashboard"),
         fetch("/api/views/reports"),
+        fetch("/api/views/recordings"),
       ]);
       const viewsResult = await viewsRes.json();
       const leadsResult = await leadsRes.json();
       const reportsResult = await reportsRes.json();
+      const recordingsResult = await recordingsRes.json();
 
       if (viewsResult.success) {
         setDateEntries(viewsResult.dateEntries || []);
@@ -225,6 +242,13 @@ function ViewsPageContent() {
         setReportsError(reportsResult.error || "Failed to fetch reports");
         setReports([]);
       }
+
+      if (recordingsResult.success) {
+        setRecordings(recordingsResult.recordings || []);
+      } else {
+        setRecordingsError(recordingsResult.error || "Failed to fetch recordings");
+        setRecordings([]);
+      }
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : "Unknown error";
       setError(errorMsg);
@@ -248,6 +272,7 @@ function ViewsPageContent() {
     // reset by this effect).
     setSortDir("desc");
     setSelectedReportLoca(null);
+    setSelectedRecordingId(null);
     setIsTrackerEditMode(false);
     setIsRawMode(false);
     setEditedRows({});
@@ -431,6 +456,10 @@ function ViewsPageContent() {
     () => reports.find((r) => r.loca === selectedReportLoca) || null,
     [reports, selectedReportLoca]
   );
+  const selectedRecording = useMemo(
+    () => recordings.find((r) => r.id === selectedRecordingId) || null,
+    [recordings, selectedRecordingId],
+  );
 
   // Sync the editable copy when a (different) report is selected — keyed on
   // the loca, not on `selectedReport` itself, so an in-progress edit isn't
@@ -517,6 +546,13 @@ function ViewsPageContent() {
             className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
           >
             <span className="font-semibold text-sm">REPORTS</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => handleViewSelect("recordings")}
+            className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
+          >
+            <span className="font-semibold text-sm">RECORDINGS</span>
           </button>
         </div>
       </DashboardPageShell>
@@ -706,6 +742,121 @@ function ViewsPageContent() {
                 ))}
               </div>
             )}
+            </div>
+          </>
+        )}
+      </DashboardPageShell>
+    );
+  }
+
+  // ============================================================================
+  // Render: Recordings
+  // ============================================================================
+
+  if (selectedView === "recordings") {
+    return (
+      <DashboardPageShell
+        scroll={!selectedRecording}
+        padded={!selectedRecording}
+        contentClassName={!selectedRecording ? FRAME_SECTION_GAP_CLASS : undefined}
+        upLevel={{
+          onClick: selectedRecording ? () => setSelectedRecordingId(null) : handleBack,
+          label: selectedRecording ? "Back to recordings list" : "Back to Views menu",
+        }}
+        title="Recordings"
+      >
+        {selectedRecording ? (
+          <div className={cn(FRAME_SECTION_GAP_CLASS, "max-w-[720px]")}>
+            <div className="rounded-lg border bg-muted/10 p-4">
+              <div className="space-y-1">
+                <h2 className="text-lg font-semibold">{selectedRecording.displayName}</h2>
+                <p className="text-sm text-muted-foreground">
+                  {selectedRecording.date}
+                  {" · "}
+                  {new Date(selectedRecording.createdAt).toLocaleString()}
+                  {selectedRecording.durationMs ? ` · ${formatDurationClock(selectedRecording.durationMs)}` : ""}
+                  {` · ${selectedRecording.mimeType}`}
+                </p>
+              </div>
+            </div>
+            <div className="rounded-lg border bg-muted/10 p-4">
+              <audio
+                controls
+                preload="metadata"
+                src={`/api/views/recordings/${encodeURIComponent(selectedRecording.id)}/audio`}
+                className="w-full"
+              />
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="flex shrink-0 flex-wrap items-center gap-3">
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2 h-7 text-xs"
+                onClick={() =>
+                  router.push(
+                    `/dashboard/forms?form=add_recording&returnTo=${encodeURIComponent("/dashboard/views?view=recordings")}`,
+                  )
+                }
+              >
+                <Plus className="h-3 w-3" />
+                Add
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleRefresh}
+                disabled={isLoading}
+                className="gap-2 h-7 text-xs"
+              >
+                <RefreshCw className={`h-3 w-3 ${isLoading ? "animate-spin" : ""}`} />
+                Refresh
+              </Button>
+              <span className="text-xs text-muted-foreground">
+                {recordings.length} recordings
+              </span>
+            </div>
+
+            <ErrorBox message={recordingsError} className="mb-2" />
+            <div className={LIST_ROW_WRAPPER_CLASS}>
+              {isLoading ? (
+                <div className="flex items-center gap-2 py-4 text-muted-foreground">
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                  <span>Loading recordings...</span>
+                </div>
+              ) : recordingsError ? null : recordings.length === 0 ? (
+                <div className="flex items-center gap-3 py-4 text-muted-foreground">
+                  <History className="h-8 w-8 opacity-20" />
+                  <span className="text-sm">No recordings yet. Use Add to create one.</span>
+                </div>
+              ) : (
+                <div className="divide-y">
+                  {recordings.map((recording) => (
+                    <button
+                      key={recording.id}
+                      type="button"
+                      onClick={() => setSelectedRecordingId(recording.id)}
+                      className={`flex w-full items-center gap-3 text-left ${LIST_ROW_CLASS}`}
+                    >
+                      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-primary">
+                        <History className="h-3.5 w-3.5" />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate font-medium text-sm">{recording.displayName}</div>
+                        <div className="truncate text-xs text-muted-foreground">
+                          {recording.date}
+                          {" · "}
+                          {new Date(recording.createdAt).toLocaleString()}
+                          {recording.durationMs ? ` · ${formatDurationClock(recording.durationMs)}` : ""}
+                          {` · ${recording.mimeType}`}
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </>
         )}

@@ -919,13 +919,14 @@ function FormsPageContent() {
   // ============================================================================
 
   if (selectedForm === "add_recording") {
+    const returnTo = searchParams.get("returnTo") || "/dashboard/views?view=recordings";
     return (
       <DashboardPageShell
         contentClassName={FRAME_SECTION_GAP_CLASS}
         upLevel={{ onClick: handleFormBack }}
         title="Add Recording"
       >
-        <AudioRecordingForm />
+        <AudioRecordingForm returnTo={returnTo} />
       </DashboardPageShell>
     );
   }

@@ -143,6 +143,9 @@ przez Message Creator), `leads/`, `forms/`, `views/`, `settings/`, `users/`,
 - `forms/features/add-recording.md` (Story 93, 2026-07-30) — Forms →
   Add recording: MediaRecorder → serwerowy zapis binarki do
   `CHAD_AUDIO_RECORDINGS_DIR` (host: `…/02_files_refrenced/10_files_audio`).
+- `views/features/recordings.md` (Story 93 follow-up, 2026-07-30) —
+  Views → Recordings: lista realnych nagrań audio, `+ Add`, bezpieczny
+  odsłuch przez kontrolowany endpoint, izolacja po `repoGuid`.
 - `common/features/compile-time-flags-and-error-box.md` — flagi
   `NEXT_PUBLIC_ENABLE_DEV_PANEL`/`NEXT_PUBLIC_ENABLE_DIAGNOSTICS`,
   standardowy `ErrorBox` (bezpieczeństwo: co jest widoczne na test/prod).
