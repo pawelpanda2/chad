@@ -104,6 +104,38 @@ export function parseWhatsAppMessages(content: string): ParsedWhatsAppMessage[] 
   return messages;
 }
 
+/** DD/MM/YYYY, HH:MM:SS — the exact shape parseWhatsAppMessages() expects inside `[...]`. */
+export function formatTimestampForWhatsAppExport(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}, ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+/**
+ * Renders live Beeper CRM messages into the same plain-text WhatsApp-export
+ * shape the legacy Content-Provider path produces, so parseWhatsAppMessages()
+ * needs no changes to consume either source (Story 92 follow-up).
+ */
+export function formatBeeperMessagesForExport(
+  messages: { isSelf: boolean; text: string; timestamp: string | null }[]
+): string {
+  return messages
+    .filter((m): m is { isSelf: boolean; text: string; timestamp: string } => Boolean(m.text?.trim() && m.timestamp))
+    .map((m) => `[${formatTimestampForWhatsAppExport(m.timestamp)}] ${m.isSelf ? "You" : "She"}: ${m.text}`)
+    .join("\n");
+}
+
+/**
+ * Live Beeper CRM messages -> pre-parsed ParsedWhatsAppMessage[], via the
+ * same format+parse round-trip as formatBeeperMessagesForExport() ->
+ * parseWhatsAppMessages(), so callers never need their own parser (Story 94).
+ */
+export function beeperMessagesToParsedMessages(
+  messages: { isSelf: boolean; text: string; timestamp: string | null }[]
+): ParsedWhatsAppMessage[] {
+  return parseWhatsAppMessages(formatBeeperMessagesForExport(messages));
+}
+
 /**
  * Message IDs included in the Analysis red context frame for a target message.
  */
