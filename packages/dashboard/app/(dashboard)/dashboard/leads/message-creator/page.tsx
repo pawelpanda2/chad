@@ -710,8 +710,8 @@ function MessageCreatorPageContent() {
           className={cn(
             "rounded-lg border px-3.5 py-2 text-[13px]",
             mode === "beeper"
-              ? "border-[#111] bg-[#111] font-semibold text-white"
-              : "border-border bg-white text-muted-foreground"
+              ? "border-foreground bg-foreground font-semibold text-background"
+              : "border-border bg-background text-muted-foreground"
           )}
           onClick={() => setMode("beeper")}
         >
@@ -724,8 +724,8 @@ function MessageCreatorPageContent() {
           className={cn(
             "rounded-lg border px-3.5 py-2 text-[13px]",
             mode === "analysis"
-              ? "border-[#111] bg-[#111] font-semibold text-white"
-              : "border-border bg-white text-muted-foreground",
+              ? "border-foreground bg-foreground font-semibold text-background"
+              : "border-border bg-background text-muted-foreground",
             !analysisEnabled && "pointer-events-none opacity-35"
           )}
           onClick={tryActivateAnalysis}
@@ -734,7 +734,7 @@ function MessageCreatorPageContent() {
         </button>
         {selectedMessageId && (
           <select
-            className="h-[34px] min-w-[190px] rounded-lg border bg-white px-2.5 text-[13px]"
+            className="h-[34px] min-w-[190px] rounded-lg border bg-background px-2.5 text-[13px]"
             value={topPromptValue || OPEN_VALUE}
             onChange={(e) => handleTopPromptChange(e.target.value)}
             aria-label="Select prompt version"
@@ -775,7 +775,7 @@ function MessageCreatorPageContent() {
         <div className="flex min-h-0 min-w-0 flex-col">
           {mode === "beeper" ? (
             <>
-              <div className="min-h-0 flex-1 overflow-y-auto bg-[#fafafa]">
+              <div className="min-h-0 flex-1 overflow-y-auto bg-muted/40">
                 <BeeperConversationView
                   messages={messages}
                   content={bootstrap?.conversation.body}
@@ -793,7 +793,7 @@ function MessageCreatorPageContent() {
                     }
                     return (
                       <select
-                        className="h-8 w-full max-w-[180px] rounded-lg border bg-white px-2 text-xs"
+                        className="h-8 w-full max-w-[180px] rounded-lg border bg-background px-2 text-xs"
                         value=""
                         aria-label={`Analyses for message`}
                         onClick={(e) => e.stopPropagation()}
@@ -814,7 +814,7 @@ function MessageCreatorPageContent() {
                   }}
                 />
               </div>
-              <div className="shrink-0 border-t bg-white">
+              <div className="shrink-0 border-t bg-background">
                 <button
                   type="button"
                   className="flex w-full items-center justify-between border-b px-3.5 py-2 text-xs text-muted-foreground"
@@ -828,7 +828,7 @@ function MessageCreatorPageContent() {
                   )}
                 </button>
                 {proposalsOpen && (
-                  <div className="max-h-48 space-y-3 overflow-y-auto border-b bg-[#fafafa] px-3.5 py-2.5">
+                  <div className="max-h-48 space-y-3 overflow-y-auto border-b bg-muted/40 px-3.5 py-2.5">
                     {proposalGroups.map((g) =>
                       g.items.length === 0 && g.title !== "You" ? null : (
                         <div key={g.title}>
@@ -841,11 +841,11 @@ function MessageCreatorPageContent() {
                             g.items.map((text, i) => (
                               <div
                                 key={`${g.title}-${i}`}
-                                className="mb-1.5 grid grid-cols-[auto_1fr] items-center gap-2.5 rounded-lg border bg-white px-2.5 py-2 text-xs"
+                                className="mb-1.5 grid grid-cols-[auto_1fr] items-center gap-2.5 rounded-lg border bg-background px-2.5 py-2 text-xs"
                               >
                                 <Button
                                   size="sm"
-                                  className="h-7 bg-[#111] px-2 text-[11px] font-semibold text-white hover:bg-[#111]/90"
+                                  className="h-7 bg-foreground px-2 text-[11px] font-semibold text-background hover:bg-foreground/90"
                                   disabled
                                   title="Not configured"
                                 >
@@ -868,7 +868,7 @@ function MessageCreatorPageContent() {
                     className="min-h-[58px] resize-none text-[13px]"
                   />
                   <Button
-                    className="h-auto bg-[#111] px-4 text-[13px] font-semibold leading-tight text-white hover:bg-[#111]/90"
+                    className="h-auto bg-foreground px-4 text-[13px] font-semibold leading-tight text-background hover:bg-foreground/90"
                     disabled={proposalsSaving || !draftProposal.trim()}
                     onClick={saveDraftProposal}
                   >
@@ -893,13 +893,13 @@ function MessageCreatorPageContent() {
                 </div>
               ) : (
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                  <div className="rounded-[11px] border bg-white p-3.5 shadow-sm md:col-span-2">
+                  <div className="rounded-[11px] border bg-background p-3.5 shadow-sm md:col-span-2">
                     <h3 className="mb-1.5 text-sm font-semibold">Recommended directions</h3>
                     <p className="text-[13px] leading-snug text-muted-foreground">
                       {recommended ?? "No data in this run."}
                     </p>
                   </div>
-                  <div className="rounded-[11px] border bg-white p-3.5 shadow-sm">
+                  <div className="rounded-[11px] border bg-background p-3.5 shadow-sm">
                     <h3 className="mb-1.5 text-sm font-semibold">Mistakes</h3>
                     {mistakes.length === 0 ? (
                       <p className="text-[13px] text-muted-foreground">No data in this run.</p>
@@ -908,7 +908,7 @@ function MessageCreatorPageContent() {
                         {mistakes.map((m, i) => (
                           <div
                             key={i}
-                            className="rounded-lg border bg-[#fafafa] px-2.5 py-2 text-xs"
+                            className="rounded-lg border bg-muted/40 px-2.5 py-2 text-xs"
                           >
                             <strong className="mb-0.5 block">{m.title}</strong>
                             {m.body}
@@ -917,20 +917,20 @@ function MessageCreatorPageContent() {
                       </div>
                     )}
                   </div>
-                  <div className="rounded-[11px] border bg-white p-3.5 shadow-sm">
+                  <div className="rounded-[11px] border bg-background p-3.5 shadow-sm">
                     <h3 className="mb-1.5 text-sm font-semibold">Proposal score</h3>
                     <p className="text-[13px] text-muted-foreground">
                       {proposalScore ?? "No data in this run."}
                     </p>
                   </div>
-                  <div className="rounded-[11px] border bg-white p-3.5 shadow-sm md:col-span-2">
+                  <div className="rounded-[11px] border bg-background p-3.5 shadow-sm md:col-span-2">
                     <h3 className="mb-1.5 text-sm font-semibold">Previous messages score</h3>
                     <p className="text-[13px] text-muted-foreground">
                       {previousScore ?? "No data in this run."}
                     </p>
                   </div>
                   {activeRun.status === "not-configured" && (
-                    <div className="rounded-[11px] border border-amber-500/40 bg-amber-50 p-3.5 text-sm text-amber-900 md:col-span-2">
+                    <div className="rounded-[11px] border border-amber-500/40 bg-amber-500/10 p-3.5 text-sm text-amber-900 dark:text-amber-200 md:col-span-2">
                       Not configured — mentor prompts are not wired yet. No scores were invented.
                     </div>
                   )}
@@ -944,7 +944,7 @@ function MessageCreatorPageContent() {
         </div>
 
         {mode === "analysis" && (
-          <aside className="relative flex min-h-[50vh] min-w-0 flex-col border-t bg-white md:grid md:min-h-0 md:grid-rows-2 md:border-l md:border-t-0">
+          <aside className="relative flex min-h-[50vh] min-w-0 flex-col border-t bg-background md:grid md:min-h-0 md:grid-rows-2 md:border-l md:border-t-0">
             <div
               role="separator"
               aria-orientation="vertical"
@@ -956,9 +956,9 @@ function MessageCreatorPageContent() {
                 onResizeStart(e.clientX);
               }}
             >
-              <span className="absolute left-[3px] top-0 h-full w-0.5 bg-border hover:bg-[#111]" />
+              <span className="absolute left-[3px] top-0 h-full w-0.5 bg-border hover:bg-foreground" />
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto border-b bg-[#fafafa] md:flex-none">
+            <div className="min-h-0 flex-1 overflow-y-auto border-b bg-muted/40 md:flex-none">
               <BeeperConversationView
                 messages={messages}
                 compact
@@ -967,7 +967,7 @@ function MessageCreatorPageContent() {
             </div>
             <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3 md:flex-none">
               <select
-                className="mb-1 h-[34px] w-full rounded-lg border bg-white px-2 text-xs"
+                className="mb-1 h-[34px] w-full rounded-lg border bg-background px-2 text-xs"
                 value={selectedModelId}
                 onChange={(e) => setSelectedModelId(e.target.value)}
                 aria-label="Select model"
@@ -980,7 +980,7 @@ function MessageCreatorPageContent() {
                 ))}
               </select>
               <Button
-                className="mb-1 h-10 w-full bg-[#111] text-xs font-semibold text-white hover:bg-[#111]/90"
+                className="mb-1 h-10 w-full bg-foreground text-xs font-semibold text-background hover:bg-foreground/90"
                 disabled={!canSendNew || aiBusy}
                 onClick={sendNew}
                 title={
@@ -1017,7 +1017,7 @@ function MessageCreatorPageContent() {
                     type="button"
                     className={cn(
                       "mb-1.5 w-full rounded-lg border px-2.5 py-2 text-left text-xs",
-                      active ? "bg-[#eef0f3]" : "bg-white hover:bg-[#eef0f3]"
+                      active ? "bg-accent" : "bg-background hover:bg-accent"
                     )}
                     onClick={() => setActiveRunLoca(run.loca)}
                     title={run.modelId ? `Model: ${run.modelId}` : undefined}
