@@ -4,7 +4,10 @@
 import { describe, expect, it } from "vitest";
 import {
   buildPhoneMatchProposals,
+  extractPersonNameFromLeadName,
+  levenshteinDistance,
   mergeAutoMatchLinks,
+  normalizeNameForMatch,
   normalizePhoneDigits,
   validateLinksForSave,
   LeadBeeperLinksError,
@@ -48,11 +51,13 @@ describe("buildPhoneMatchProposals", () => {
     {
       conversationId: "c-exact",
       conversationName: "WhatsApp · Exact",
+      displayName: "Exact",
       phones: ["48501234567"],
     },
     {
       conversationId: "c-partial",
       conversationName: "WhatsApp · Partial",
+      displayName: "Partial",
       phones: ["48501234567"],
     },
   ];
@@ -134,5 +139,39 @@ describe("validateLinksForSave", () => {
     const out = validateLinksForSave([manualLink()]);
     expect(out).toHaveLength(1);
     expect(out[0].leadName).toBe("lead-a");
+  });
+});
+
+describe("extractPersonNameFromLeadName", () => {
+  it("extracts the person name after the 2nd underscore, real lead-name shape", () => {
+    expect(extractPersonNameFromLeadName("26-07-27_pn_Klaudia_delfin")).toBe("Klaudia delfin");
+    expect(extractPersonNameFromLeadName("26-05-11_pn_Luba")).toBe("Luba");
+  });
+
+  it("returns null for names that don't match the YY-MM-DD_code_name shape", () => {
+    expect(extractPersonNameFromLeadName("no-underscores-here")).toBeNull();
+    expect(extractPersonNameFromLeadName("only_one")).toBeNull();
+  });
+});
+
+describe("normalizeNameForMatch", () => {
+  it("lowercases, strips diacritics and punctuation", () => {
+    expect(normalizeNameForMatch("Klaudia delfin")).toBe("klaudia delfin");
+    expect(normalizeNameForMatch("Łukasz Żółć-Kowalski")).toBe("lukasz zolc kowalski");
+  });
+});
+
+describe("levenshteinDistance", () => {
+  it("real case this Story fixed: Klaudia vs Claudia (lead vs real Beeper contact name)", () => {
+    expect(levenshteinDistance("klaudia delfin", "claudia delfin")).toBe(1);
+  });
+
+  it("is 0 for identical strings, len for empty-vs-full", () => {
+    expect(levenshteinDistance("abc", "abc")).toBe(0);
+    expect(levenshteinDistance("", "abc")).toBe(3);
+  });
+
+  it("is large for genuinely unrelated names (must not false-match)", () => {
+    expect(levenshteinDistance("klaudia delfin", "roza kowalska")).toBeGreaterThan(2);
   });
 });
