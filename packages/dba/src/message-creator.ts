@@ -32,6 +32,7 @@ import { findPublishedAiPrompt, type AiPromptActionType } from "./ai-prompts.js"
 import { executeAiPrompt } from "./ai-prompts-openai.js";
 import {
   buildMessagePromptVersionOptions,
+  formatBeeperMessagesForExport,
   parseWhatsAppMessages,
   type ParsedWhatsAppMessage,
   type PromptVersionOption,
@@ -39,6 +40,7 @@ import {
 
 export {
   analysisContextMessageIds,
+  beeperMessagesToParsedMessages,
   buildMessagePromptVersionOptions,
   fnv1aHex,
   parseWhatsAppMessages,
@@ -496,28 +498,9 @@ export async function saveMyProposals(leadLoca: string, text: string): Promise<{
 // ---------------------------------------------------------------------------
 // Conversation / reports
 // ---------------------------------------------------------------------------
-
-/** DD/MM/YYYY, HH:MM:SS — the exact shape whatsapp-messages.ts's parseWhatsAppMessages() expects inside `[...]`. */
-function formatTimestampForExport(iso: string): string {
-  const d = new Date(iso);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}, ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-}
-
-/**
- * Renders live Beeper CRM messages into the same plain-text WhatsApp-export
- * shape the legacy Content-Provider path (chad_FindConversationByLeadName)
- * produces, so parseWhatsAppMessages()/the rest of Message Creator needs no
- * changes to consume either source.
- */
-function formatBeeperMessagesAsExport(
-  messages: { isSelf: boolean; text: string; timestamp: string | null }[]
-): string {
-  return messages
-    .filter((m): m is { isSelf: boolean; text: string; timestamp: string } => Boolean(m.text?.trim() && m.timestamp))
-    .map((m) => `[${formatTimestampForExport(m.timestamp)}] ${m.isSelf ? "You" : "She"}: ${m.text}`)
-    .join("\n");
-}
+// formatBeeperMessagesForExport() moved to whatsapp-messages.ts (Story 94) so
+// beeper-crm's own contact-detail route can reuse it without importing this
+// module (message-creator already depends on beeper-crm, not vice versa).
 
 /**
  * Story 92 follow-up: prefer the live Beeper CRM conversation (a saved
@@ -549,7 +532,7 @@ export async function getLeadConversationForCreator(
 
       if (match) {
         const contact = await getBeeperContact(match.conversationId);
-        const body = contact ? formatBeeperMessagesAsExport(contact.messages) : "";
+        const body = contact ? formatBeeperMessagesForExport(contact.messages) : "";
         if (body) {
           return {
             found: true,

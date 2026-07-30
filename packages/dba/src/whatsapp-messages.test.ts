@@ -5,8 +5,10 @@
 
 import {
   analysisContextMessageIds,
+  beeperMessagesToParsedMessages,
   buildMessagePromptVersionOptions,
   fnv1aHex,
+  formatBeeperMessagesForExport,
   parseWhatsAppMessages,
   stableWhatsAppMessageId,
 } from "./whatsapp-messages.js";
@@ -102,6 +104,35 @@ test("analysisContextMessageIds for you after she streak", () => {
 [24/06/2026, 12:02:00] you: reply`);
   const framed = analysisContextMessageIds(msgs, msgs[2].id);
   assertEquals(framed, [msgs[0].id, msgs[1].id, msgs[2].id]);
+});
+
+test("formatBeeperMessagesForExport skips messages with no text/timestamp", () => {
+  const body = formatBeeperMessagesForExport([
+    { isSelf: true, text: "hi", timestamp: "2026-07-24T12:15:00.000Z" },
+    { isSelf: false, text: "", timestamp: "2026-07-24T12:16:00.000Z" },
+    { isSelf: false, text: "hello back", timestamp: null },
+    { isSelf: false, text: "world", timestamp: "2026-07-24T14:10:00.000Z" },
+  ]);
+  assertEquals(body.split("\n").length, 2, "only the two valid messages are exported");
+  assert(body.includes("You: hi"), "self message maps to You");
+  assert(body.includes("She: world"), "other message maps to She");
+});
+
+test("beeperMessagesToParsedMessages round-trips through parseWhatsAppMessages", () => {
+  const parsed = beeperMessagesToParsedMessages([
+    { isSelf: false, text: "hello", timestamp: "2026-06-24T12:15:00.000Z" },
+    { isSelf: true, text: "world", timestamp: "2026-06-24T14:10:00.000Z" },
+  ]);
+  assertEquals(parsed.length, 2);
+  assertEquals(parsed[0].sender, "she");
+  assertEquals(parsed[0].isOwn, false);
+  assertEquals(parsed[1].sender, "you");
+  assertEquals(parsed[1].isOwn, true);
+  assert(parsed[0].id.length > 0, "stable id assigned");
+});
+
+test("beeperMessagesToParsedMessages empty input yields empty output (no empty-state icon dependency)", () => {
+  assertEquals(beeperMessagesToParsedMessages([]), []);
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

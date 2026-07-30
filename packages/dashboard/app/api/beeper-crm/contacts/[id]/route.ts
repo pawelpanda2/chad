@@ -1,9 +1,15 @@
 /**
  * GET /api/beeper-crm/contacts/[id]
  * Full contact detail: profile, channels, merged message timeline, timeline events.
+ *
+ * Story 94: also includes `conversationMessages`, the same messages
+ * pre-parsed into ParsedWhatsAppMessage[] (via beeperMessagesToParsedMessages,
+ * the same format+parse round-trip Message Creator's live-Beeper path
+ * already uses) so the Beeper Conversations split-view can feed
+ * BeeperConversationView directly without its own parser.
  */
 import { NextResponse } from "next/server";
-import { getBeeperContact, runWithRepoContext } from "dba";
+import { beeperMessagesToParsedMessages, getBeeperContact, runWithRepoContext } from "dba";
 import { getCurrentUserFromCookies } from "@/lib/session";
 
 interface RouteParams {
@@ -23,7 +29,10 @@ export async function GET(_request: Request, { params }: RouteParams) {
       if (!detail) {
         return NextResponse.json({ ok: false, error: "Contact not found" }, { status: 404 });
       }
-      return NextResponse.json(detail);
+      return NextResponse.json({
+        ...detail,
+        conversationMessages: beeperMessagesToParsedMessages(detail.messages),
+      });
     } catch (error) {
       console.error(`Error fetching beeper contact ${id}:`, error);
       return NextResponse.json({ ok: false, error: String(error) }, { status: 500 });
