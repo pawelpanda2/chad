@@ -17,6 +17,8 @@ import {
   chad_FindReportsByLeadName,
   type ReportResult,
 } from "./beeper.js";
+import { getBeeperContact } from "./beeper-crm.js";
+import { findLiveBeeperMatchForLead, listLeadBeeperLinks } from "./lead-beeper-links.js";
 import { addressToRepoAndLoca, repoAndLocaToAddress } from "./cp-model.js";
 import {
   createOrGetChild,
@@ -495,13 +497,74 @@ export async function saveMyProposals(leadLoca: string, text: string): Promise<{
 // Conversation / reports
 // ---------------------------------------------------------------------------
 
-export async function getLeadConversationForCreator(leadName: string): Promise<{
+/** DD/MM/YYYY, HH:MM:SS — the exact shape whatsapp-messages.ts's parseWhatsAppMessages() expects inside `[...]`. */
+function formatTimestampForExport(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}, ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+/**
+ * Renders live Beeper CRM messages into the same plain-text WhatsApp-export
+ * shape the legacy Content-Provider path (chad_FindConversationByLeadName)
+ * produces, so parseWhatsAppMessages()/the rest of Message Creator needs no
+ * changes to consume either source.
+ */
+function formatBeeperMessagesAsExport(
+  messages: { isSelf: boolean; text: string; timestamp: string | null }[]
+): string {
+  return messages
+    .filter((m): m is { isSelf: boolean; text: string; timestamp: string } => Boolean(m.text?.trim() && m.timestamp))
+    .map((m) => `[${formatTimestampForExport(m.timestamp)}] ${m.isSelf ? "You" : "She"}: ${m.text}`)
+    .join("\n");
+}
+
+/**
+ * Story 92 follow-up: prefer the live Beeper CRM conversation (a saved
+ * Msg Auto -> Links entry, or — since that page's Save step is rarely
+ * used in practice — a live phone-number match via
+ * findLiveBeeperMatchForLead(), same matching rules as the Links page's
+ * own auto-match) over the legacy Content-Provider-stored WhatsApp export
+ * tree. Falls back to the legacy path for leads that predate live Beeper
+ * sync or have no phone number to match on — never a regression for
+ * those, only an upgrade for leads that do have live data.
+ */
+export async function getLeadConversationForCreator(
+  leadName: string,
+  leadLoca?: string
+): Promise<{
   found: boolean;
   body: string | null;
   channel: string | null;
   hash: string | null;
   error?: string;
 }> {
+  if (leadLoca) {
+    try {
+      const links = await listLeadBeeperLinks();
+      const saved = links.find((l) => l.leadName === leadName);
+      const match = saved
+        ? { conversationId: saved.conversationId, conversationName: saved.conversationName, channel: saved.channel }
+        : await findLiveBeeperMatchForLead(leadName, leadLoca);
+
+      if (match) {
+        const contact = await getBeeperContact(match.conversationId);
+        const body = contact ? formatBeeperMessagesAsExport(contact.messages) : "";
+        if (body) {
+          return {
+            found: true,
+            body,
+            channel: match.channel ?? contact?.channels[0]?.title ?? null,
+            hash: hashConversationContent(body),
+          };
+        }
+      }
+    } catch (err) {
+      // Never let a live-match error hide the legacy fallback below.
+      console.error(`[message-creator] live Beeper match failed for lead "${leadName}":`, err);
+    }
+  }
+
   const result = await chad_FindConversationByLeadName(leadName);
   const body = result.body;
   return {
@@ -715,7 +778,7 @@ export async function runMessageCreatorAiAction(
     return { status: "ERROR", message: `Unknown model: ${input.modelId}` };
   }
 
-  const conversation = await getLeadConversationForCreator(input.leadName);
+  const conversation = await getLeadConversationForCreator(input.leadName, input.leadLoca);
   if (!conversation.found || !conversation.body || !conversation.hash) {
     return {
       status: "NO_CONVERSATION",
@@ -833,7 +896,7 @@ export async function getMessageCreatorBootstrap(
     getOrCreateApproachContext(leadLoca),
     getOrCreateMyProposals(leadLoca),
     listLeadReportsForCreator(leadName),
-    getLeadConversationForCreator(leadName),
+    getLeadConversationForCreator(leadName, leadLoca),
     getLeadMsgWorkoutsByLoca(leadLoca).catch(() => ({ workouts: [], error: null, notFound: true })),
   ]);
 

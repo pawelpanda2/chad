@@ -196,8 +196,8 @@ export function BeeperConversationView({
           "rounded-[14px] border px-3 py-2.5 text-sm leading-snug shadow-sm",
           msg.sender === "system" &&
             "mx-auto border-transparent bg-muted text-center text-xs text-muted-foreground",
-          msg.isOwn && "rounded-br-sm border-[#202329] bg-[#1f2329] text-white",
-          !msg.isOwn && msg.sender !== "system" && "rounded-bl-sm border-border bg-white text-foreground",
+          msg.isOwn && "rounded-br-sm border-primary bg-primary text-primary-foreground",
+          !msg.isOwn && msg.sender !== "system" && "rounded-bl-sm border-border bg-card text-card-foreground",
           selected && !compact && "outline outline-[3px] outline-[rgba(30,110,255,0.18)] border-[#4384ff]"
         )}
       >
@@ -206,7 +206,7 @@ export function BeeperConversationView({
           <span
             className={cn(
               "mt-1 block text-[11px] opacity-60",
-              msg.isOwn ? "text-white" : "text-muted-foreground"
+              msg.isOwn ? "text-primary-foreground" : "text-muted-foreground"
             )}
           >
             {msg.timestamp}

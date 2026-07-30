@@ -40,6 +40,8 @@ export interface LeadLinkCandidate {
 export interface ConversationLinkCandidate {
   conversationId: string;
   conversationName: string;
+  /** Raw contact displayName, no channel prefix — for name-based matching (conversationName may be "Whatsapp · X"). */
+  displayName: string;
   channel?: string;
   phones: string[];
 }
@@ -334,6 +336,7 @@ async function loadConversationCandidates(): Promise<ConversationLinkCandidate[]
     return {
       conversationId: String(c._id),
       conversationName: name,
+      displayName,
       channel,
       phones,
     };
@@ -343,6 +346,146 @@ async function loadConversationCandidates(): Promise<ConversationLinkCandidate[]
 export async function listLeadBeeperLinks(): Promise<LeadBeeperLink[]> {
   const col = await linksCol();
   return col.find({}).sort({ updatedAt: -1 }).toArray();
+}
+
+export interface LiveLeadConversationMatch {
+  conversationId: string;
+  conversationName: string;
+  channel?: string;
+}
+
+/**
+ * Lead names follow "YY-MM-DD_<code>_<PersonName...>" (e.g.
+ * "26-07-27_pn_Klaudia_delfin"). The person's name is everything after the
+ * second underscore, with remaining underscores/dashes treated as spaces.
+ * Returns null for anything that doesn't match this shape (never guesses).
+ */
+export function extractPersonNameFromLeadName(leadName: string): string | null {
+  const parts = leadName.split("_");
+  if (parts.length < 3) return null;
+  const name = parts.slice(2).join(" ").replace(/[-_]+/g, " ").trim();
+  return name || null;
+}
+
+/** Lowercase, diacritics-stripped, non-alphanumeric collapsed to single spaces. */
+export function normalizeNameForMatch(name: string): string {
+  return name
+    // Ł/ł don't have an NFD decomposition (unlike ó/ą/ę/ć/ń/ś/ź, which do) —
+    // handle explicitly, since Polish names with it are a real, expected
+    // case for this matcher (e.g. "Michał", "Paweł").
+    .replace(/[Łł]/g, "l")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+/** Classic edit distance — used only for short person-name strings, so O(n*m) is fine. */
+export function levenshteinDistance(a: string, b: string): number {
+  const m = a.length;
+  const n = b.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+  const dp: number[][] = Array.from({ length: m + 1 }, () => new Array<number>(n + 1).fill(0));
+  for (let i = 0; i <= m; i++) dp[i][0] = i;
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] =
+        a[i - 1] === b[j - 1]
+          ? dp[i - 1][j - 1]
+          : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+    }
+  }
+  return dp[m][n];
+}
+
+/**
+ * Resolves a Beeper contact for one lead — without requiring a pre-saved
+ * link from the Msg Auto → Links page. Story 92 follow-up: the Links
+ * page/save workflow existed but nothing downstream (Message Creator) ever
+ * consumed it, so a lead's conversation only ever showed via the legacy
+ * Content-Provider export path.
+ *
+ * Two tiers, phone first (high confidence, same rules as
+ * buildPhoneMatchProposals(): exact normalized phone, else last-9-digits):
+ * 1. Phone match against the lead's own `contacts` YAML (`phone`/`whatsapp`
+ *    fields) — skipped, not an error, if that YAML is missing/unparseable
+ *    (a real, separately-flagged data-quality issue, not this function's
+ *    job to fix).
+ * 2. Name match: the lead-name-derived person name vs. every Beeper
+ *    contact's raw displayName, normalized (diacritics/case/punctuation)
+ *    and compared by edit distance — catches common spelling variants
+ *    (e.g. lead "Klaudia_delfin" vs Beeper contact "Claudia Delfin",
+ *    distance 1) without requiring an exact match. Conservative threshold
+ *    (distance <= 2, normalized length >= 5) to avoid false positives
+ *    across a large contact list; only the single closest contact is used,
+ *    and only when no phone match was found.
+ *
+ * A saved manual/automatic link (if one exists) always wins over both —
+ * callers should check listLeadBeeperLinks() first.
+ */
+export async function findLiveBeeperMatchForLead(
+  leadName: string,
+  leadLoca: string
+): Promise<LiveLeadConversationMatch | null> {
+  let phones: string[] = [];
+  try {
+    const details = await getLeadDetails(leadName, leadLoca);
+    phones = [...firstPhone(details.contacts?.phone), ...firstPhone(details.contacts?.whatsapp)];
+  } catch {
+    phones = [];
+  }
+  const leadPhones = phones.map(normalizePhoneDigits).filter((p): p is string => Boolean(p));
+
+  const conversations = await loadConversationCandidates();
+
+  if (leadPhones.length > 0) {
+    let exact: ConversationLinkCandidate | null = null;
+    let suggested: ConversationLinkCandidate | null = null;
+
+    for (const conv of conversations) {
+      const convPhones = conv.phones.map(normalizePhoneDigits).filter((p): p is string => Boolean(p));
+      for (const lp of leadPhones) {
+        for (const cp of convPhones) {
+          if (lp === cp) {
+            exact = conv;
+            break;
+          }
+          if (!suggested) {
+            const lp9 = lp.slice(-9);
+            const cp9 = cp.slice(-9);
+            if (lp9.length === 9 && lp9 === cp9) suggested = conv;
+          }
+        }
+        if (exact) break;
+      }
+      if (exact) break;
+    }
+
+    const phoneMatch = exact ?? suggested;
+    if (phoneMatch) {
+      return { conversationId: phoneMatch.conversationId, conversationName: phoneMatch.conversationName, channel: phoneMatch.channel };
+    }
+  }
+
+  const personName = extractPersonNameFromLeadName(leadName);
+  if (!personName) return null;
+  const normalizedLeadName = normalizeNameForMatch(personName);
+  if (normalizedLeadName.length < 5) return null;
+
+  let best: { conv: ConversationLinkCandidate; distance: number } | null = null;
+  for (const conv of conversations) {
+    const normalizedContactName = normalizeNameForMatch(conv.displayName);
+    if (normalizedContactName.length < 5) continue;
+    const distance = levenshteinDistance(normalizedLeadName, normalizedContactName);
+    if (distance <= 2 && (!best || distance < best.distance)) {
+      best = { conv, distance };
+    }
+  }
+  if (!best) return null;
+  return { conversationId: best.conv.conversationId, conversationName: best.conv.conversationName, channel: best.conv.channel };
 }
 
 export async function getLeadBeeperLinksPageData(): Promise<LeadBeeperLinksPageData> {
