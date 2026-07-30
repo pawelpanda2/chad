@@ -74,3 +74,33 @@
 **Files changed:** `beeper-permissions-view.tsx` (new, extraction only).
 **Tested:** Browser — Permissions tab still shows all 157 real contacts with working Include/Exclude checkboxes, "All/Include/Exclude/Permission" filter, Search box, and "Updated" column; switched Permissions → Conversations → Permissions repeatedly with no data/layout regression. Checkbox mutation itself was **not** exercised against real production data (per Story's data-safety rule against touching real Include/Exclude state) — the code path is byte-for-byte unchanged from before this Story, so this is a documentation/extraction risk only, not a new behavior.
 **Status: DONE**
+
+# TEST verification (QNAP TEST, `bash-scripts/dashboard/08_registry_test/deploy.sh`)
+
+Deployed `chad-dashboard:260730_224509-8c54aad` to QNAP TEST (first attempt's
+GHCR push hit a transient network timeout — built image never reached the
+registry, QNAP was never touched; retried and the second attempt pushed and
+deployed cleanly, confirmed via `docker compose ps`/health check in the
+script's own output).
+
+Logged in as **test2** and **test3** (per explicit instruction to use
+throwaway accounts, password `changeme`) and re-ran the structural checks:
+
+- Tabs read "Permissions"/"Conversations" — **PASS TEST**.
+- Conversations split view renders correctly: `<aside>`/`<section>` present,
+  handle labeled "Collapse conversation list" → "Expand conversation list"
+  after a click — **PASS TEST**.
+- No banned strings, no count badge, empty right panel is the bare 26-char
+  `<div>` — **PASS TEST**.
+- Permissions tab renders (Include/Exclude columns, filter, Search) with 0
+  contacts for both accounts — **PASS TEST** (structure), consistent with
+  Permissions' own "0 contacts"/"No contacts found" for the same accounts.
+- **NOT independently re-verified on TEST:** real message-content rendering
+  (contact selection swapping conversation content, no-navigation-on-click)
+  and the Local-Mongo-readonly toggle — test2/test3 have **zero** synced
+  Beeper contacts on TEST (their `beeper_<repoGuid>` databases are empty, an
+  environment fact independent of this Story), so there is nothing to select
+  or render. These exact behaviors **were** verified with real data on LOCAL
+  (Task 3, `06_others_from_report.md`) against the real user's live Beeper
+  database. Recorded here explicitly per the Story's honesty rule — this is
+  a data-availability gap on TEST, not a skipped check.
