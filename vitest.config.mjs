@@ -32,6 +32,9 @@ export default defineConfig({
       "packages/dashboard/components/msg-automation/ai-prompt-kind.test.ts",
       // Story 90 — Lead ↔ Beeper Links (phone match / save validation).
       "packages/dba/src/lead-beeper-links.test.ts",
+      // Story 94 — Beeper Conversations split-view pure logic (filter,
+      // handle icon/aria-label, empty-state gate).
+      "packages/dashboard/components/beeper/beeper-conversations-logic.test.ts",
       // tests/ reorg (2026-07-28) — only the Vitest-based files from each
       // pillar's unit/integration dirs; the node:test-based files in the
       // same directories (no-chad-mongo-runtime, config-validator,
