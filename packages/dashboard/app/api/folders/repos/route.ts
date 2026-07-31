@@ -1,21 +1,22 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUserFromCookies } from '@/lib/session';
+import { listSelectableFoldersRepos } from 'dba';
 
 /**
  * GET /api/folders/repos
  *
  * Lists repos for the Folders tab's repo picker (documentation/stories/57,
- * critical fix in documentation/stories/60).
+ * critical fix in documentation/stories/60; Story 96 added the shared
+ * `chad_shared` repo for admin sessions).
  *
- * SECURITY: every user, with no exceptions, gets at most a single-item
- * list: the repo the login session itself already resolved (`user.repoGuid`,
- * set by `resolveCurrentUser()` against the Mongo-backed chad_admin
- * users-list at login time — documentation/dashboard/common/features/
- * chad-user-data-isolation.md). This used to re-derive the repo via a
- * separate direct call to the Content Provider (`resolveOwnRepo()`); now
- * that CP is no longer deployed (Story 72), the session's own repoGuid is
- * the single source of truth — there is no second system to cross-check
- * against, and there never was more than one repo per user anyway.
+ * SECURITY: the list is derived entirely server-side from the session
+ * (`listSelectableFoldersRepos` in dba): every user gets their own repo
+ * (`user.repoGuid`, resolved at login against the chad_admin users-list —
+ * documentation/dashboard/common/features/chad-user-data-isolation.md);
+ * an admin session additionally gets `chad_shared`. Nothing else, ever —
+ * other users' private repos are never listed, and every /api/folders verb
+ * re-validates the selection independently (resolveFoldersRepoAccess), so
+ * this list is UI convenience, not the enforcement point.
  */
 export async function GET() {
   const user = await getCurrentUserFromCookies();
@@ -23,7 +24,5 @@ export async function GET() {
     return NextResponse.json({ error: 'NOT_AUTHENTICATED' }, { status: 401 });
   }
 
-  return NextResponse.json({
-    repos: [{ id: user.repoGuid, name: `chad_${user.username}` }],
-  });
+  return NextResponse.json({ repos: listSelectableFoldersRepos(user) });
 }

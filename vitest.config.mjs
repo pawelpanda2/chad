@@ -21,6 +21,11 @@ export default defineConfig({
       // Story 82 — Folders write path (create child / update Text body):
       // pure, fake-ops-based, no real DB needed.
       "packages/dba/src/folders.test.ts",
+      // Story 96 — Knowledge tree mapper (chad_shared/knowledge → menu/
+      // sections/documents, slug safety) and the Folders shared-repo
+      // selection guard: pure, fake-ops-based, no real DB needed.
+      "packages/dba/src/knowledge.test.ts",
+      "packages/dba/src/shared-repo-access.test.ts",
       // Story 88 — AI Prompts registry (CRUD, validation, corrupt-JSON
       // guard, draft/published filtering, version increment): pure,
       // fake-ops-based, no real DB needed.

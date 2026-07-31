@@ -62,6 +62,8 @@ export * from './data-outbox-bootstrap.js';
 export * from './data-sync-diagnostics.js';
 export * from './item-ops.js';
 export * from './folders.js';
+export * from './knowledge.js';
+export * from './shared-repo-access.js';
 export * from './admin-users.js';
 export * from './cp-history.js';
 export * from './history-pages.js';
