@@ -66,6 +66,22 @@ export default defineConfig({
       "tests/1_1_data-protection/integration/cross-user-data-integrity.test.mjs",
       "tests/1_4_tables-release/daily/integration/qnap-test3-daily-dates.test.mjs",
       "tests/1_4_tables-release/leads/integration/local-msg-auto-links-api.test.mjs",
+      // Story 97 — CHAD MCP server (packages/mcp): unit (config/logging/
+      // cp-output/errors/identity guard rails), a static no-direct-provider-
+      // access check, protocol smoke over an in-memory transport, and real
+      // integration/stdio tests against test3 on QNAP Postgres (both
+      // self-skip via `describe.skipIf` when their real prerequisites — a
+      // built dist/ or a real .env.mcp — aren't present, same convention as
+      // the QNAP-targeted tests above).
+      "packages/mcp/src/config.test.ts",
+      "packages/mcp/src/logging.test.ts",
+      "packages/mcp/src/cp-output.test.ts",
+      "packages/mcp/src/errors.test.ts",
+      "packages/mcp/src/identity.test.ts",
+      "packages/mcp/src/no-direct-provider-access.test.ts",
+      "packages/mcp/src/protocol-smoke.test.ts",
+      "packages/mcp/src/stdio-smoke.test.ts",
+      "packages/mcp/src/integration.test.ts",
     ],
     exclude: ["**/node_modules/**", "**/dist/**"],
     testTimeout: 30_000,
