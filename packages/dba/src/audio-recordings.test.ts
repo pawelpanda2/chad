@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
@@ -58,7 +58,7 @@ describe("saveAudioRecording", () => {
     await rm(rootDir, { recursive: true, force: true });
   });
 
-  it("writes file + metadata under the current repo directory", async () => {
+  it("writes file + metadata into the configured root directory", async () => {
     const bytes = new TextEncoder().encode("fake-webm-bytes");
     const result = await runWithRepoContext({ repoGuid: "repo-a", username: "a" }, () =>
       saveAudioRecording({
@@ -72,8 +72,7 @@ describe("saveAudioRecording", () => {
     );
     expect(result.fileName).toMatch(/\.webm$/);
     expect(result.sizeBytes).toBe(bytes.byteLength);
-    const repoDir = path.join(rootDir, "repo-a");
-    const onDisk = await readFile(path.join(repoDir, result.fileName));
+    const onDisk = await readFile(path.join(rootDir, result.fileName));
     expect(Buffer.compare(onDisk, Buffer.from(bytes))).toBe(0);
     const readInfo = await runWithRepoContext({ repoGuid: "repo-a", username: "a" }, () =>
       getAudioRecordingReadInfo(result.id, { rootDirectory: rootDir }),
@@ -82,7 +81,40 @@ describe("saveAudioRecording", () => {
     expect(readInfo?.durationMs).toBe(12_345);
   });
 
-  it("lists recordings and isolates repos by repoGuid", async () => {
+  it("auto-increments date-only names for subsequent recordings on the same day", async () => {
+    const first = await runWithRepoContext({ repoGuid: "repo-a", username: "a" }, () =>
+      saveAudioRecording({
+        bytes: new TextEncoder().encode("one"),
+        mimeType: "audio/webm",
+        displayName: "2026-07-30",
+        recordedDate: "2026-07-30",
+        rootDirectory: rootDir,
+      }),
+    );
+    const second = await runWithRepoContext({ repoGuid: "repo-a", username: "a" }, () =>
+      saveAudioRecording({
+        bytes: new TextEncoder().encode("two"),
+        mimeType: "audio/webm",
+        displayName: "2026-07-30",
+        recordedDate: "2026-07-30",
+        rootDirectory: rootDir,
+      }),
+    );
+    const third = await runWithRepoContext({ repoGuid: "repo-a", username: "a" }, () =>
+      saveAudioRecording({
+        bytes: new TextEncoder().encode("three"),
+        mimeType: "audio/webm",
+        displayName: "2026-07-30",
+        recordedDate: "2026-07-30",
+        rootDirectory: rootDir,
+      }),
+    );
+    expect(first.displayName).toBe("2026-07-30");
+    expect(second.displayName).toBe("2026-07-30b");
+    expect(third.displayName).toBe("2026-07-30c");
+  });
+
+  it("lists recordings and isolates metadata-backed files by repoGuid", async () => {
     await runWithRepoContext({ repoGuid: "repo-a", username: "a" }, () =>
       saveAudioRecording({
         bytes: new TextEncoder().encode("a"),
@@ -111,6 +143,16 @@ describe("saveAudioRecording", () => {
     expect(listA[0]?.displayName).toBe("2026-07-30_a");
     expect(listB).toHaveLength(1);
     expect(listB[0]?.displayName).toBe("2026-07-31_b");
+  });
+
+  it("lists legacy flat files without metadata as a compatibility fallback", async () => {
+    const legacyPath = path.join(rootDir, "2026-07-30_09-12-33_legacy.webm");
+    await rm(legacyPath, { force: true });
+    await writeFile(legacyPath, new Uint8Array([1, 2, 3]));
+    const list = await runWithRepoContext({ repoGuid: "repo-a", username: "a" }, () =>
+      listAudioRecordings({ rootDirectory: rootDir }),
+    );
+    expect(list.some((item) => item.id === "2026-07-30_09-12-33_legacy.webm")).toBe(true);
   });
 
   it("returns an empty list when the repo has no recordings", async () => {
@@ -204,5 +246,14 @@ describe("saveAudioRecording", () => {
       getAudioRecordingReadInfo("missing.webm", { rootDirectory: rootDir }),
     );
     expect(result).toBeNull();
+  });
+
+  it("reads a legacy flat file without metadata", async () => {
+    const legacyPath = path.join(rootDir, "2026-07-30_09-12-33_legacy.webm");
+    await writeFile(legacyPath, new Uint8Array([1, 2, 3]));
+    const result = await runWithRepoContext({ repoGuid: "repo-a", username: "a" }, () =>
+      getAudioRecordingReadInfo("2026-07-30_09-12-33_legacy.webm", { rootDirectory: rootDir }),
+    );
+    expect(result?.displayName).toBe("2026-07-30_09-12-33_legacy");
   });
 });
