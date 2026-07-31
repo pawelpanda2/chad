@@ -66,10 +66,15 @@ RUN pnpm --filter dashboard build
 # ============================================
 FROM node:20-bookworm-slim AS runner
 
+# mkvtoolnix (+~75 MB): mkvmerge merges draft recording segments into one
+# valid WebM and writes the Duration header + cues MediaRecorder omits —
+# see packages/dba/src/audio-recording-drafts.ts. Chosen over ffmpeg
+# (~196 packages, several hundred MB) as the minimal correct merge tool.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     dumb-init \
     openssl \
     ca-certificates \
+    mkvtoolnix \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

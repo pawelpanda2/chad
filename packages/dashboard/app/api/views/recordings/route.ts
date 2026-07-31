@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { listAudioRecordings, runWithRepoContext } from "dba";
+import { listAudioRecordings, listAudioRecordingDrafts, runWithRepoContext } from "dba";
 import { getCurrentUserFromCookies } from "@/lib/session";
 
 export async function GET() {
@@ -12,8 +12,17 @@ export async function GET() {
   }
 
   try {
-    const recordings = await runWithRepoContext(user, () => listAudioRecordings());
-    return NextResponse.json({ success: true, recordings });
+    const [recordings, drafts] = await runWithRepoContext(user, async () => {
+      const saved = await listAudioRecordings();
+      // Draft listing failure must not hide the saved list (e.g. a draft
+      // directory that an SMB dropout made temporarily unreadable).
+      const draftItems = await listAudioRecordingDrafts().catch((error) => {
+        console.error("Error fetching recording drafts:", error);
+        return [];
+      });
+      return [saved, draftItems] as const;
+    });
+    return NextResponse.json({ success: true, recordings, drafts });
   } catch (error) {
     console.error("Error fetching recordings:", error);
     return NextResponse.json(
