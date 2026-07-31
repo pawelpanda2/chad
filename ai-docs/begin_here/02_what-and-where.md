@@ -369,6 +369,34 @@ funkcje teraz wywołują też tę integrację, patrz architecture.md §1).
 
 ---
 
+## MCP server (`packages/mcp`) — kontrolowany dostęp AI agentów do CpItem
+
+**Opis:** Serwer MCP (Model Context Protocol) udostępniający agentom AI
+(Odyseusz lokalnie, docelowo ChatGPT zdalnie) kontrolowany, izolowany po
+repoGuid dostęp do CpItem — cienka warstwa nad istniejącym `dba`, bez
+nowego modelu danych, bez bezpośredniego dostępu do Postgres/Mongo/plików
+CP. Narzędzia: `chad_mcp_health`, `cp_get_item`, `cp_get_by_names`,
+`cp_get_many_by_name`, `cp_find_recursively` (odczyt), `cp_put_item`,
+`cp_create_item` (zapis — rejestrowane tylko gdy `MCP_ALLOW_MUTATIONS=true`).
+Transport stdio (Odyseusz) i Streamable HTTP (docelowo ChatGPT, auth =
+lokalny bearer token na tym etapie, nie produkcyjny OAuth). Tożsamość
+zablokowana na `test3` (jedyna ustalona, strzeżona tożsamość testowa tego
+repo), rozwiązywana na żywo z `chad_admin/users/users-list`.
+
+**Lokalizacja:** `ai-docs/mcp/` (nowy folder specjalizacji, Story 97,
+2026-07-31 — analogiczny do `ai-docs/beeper/`/`ai-docs/google-sheets/`).
+
+**Zacznij od:** [`ai-docs/mcp/ai-start.md`](../mcp/ai-start.md) →
+[`architecture.md`](../mcp/architecture.md) (pełny design: lista narzędzi +
+kontrakty I/O, identity/repo context, oba transporty, konfiguracja
+Odyseusza, przygotowanie ChatGPT, testy, troubleshooting).
+
+**Czytać gdy:** zadanie dotyczy `packages/mcp`, dodania nowego narzędzia
+MCP, integracji z Odyseuszem/ChatGPT/innym klientem MCP, albo zmiany
+sposobu, w jaki agent AI może odczytać/zapisać CpItem.
+
+---
+
 ## Headers format
 
 **Opis:** Format nagłówków treści (`headers-format`) używany w treściach

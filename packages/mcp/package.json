@@ -1,0 +1,28 @@
+{
+  "name": "mcp",
+  "version": "1.0.0",
+  "description": "MCP (Model Context Protocol) server exposing controlled, repo-isolated CpItem access to AI agents (Odyseusz, ChatGPT) through the existing dba/CP layer — never a new data model or direct DB access.",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "typecheck": "tsc --noEmit",
+    "stdio": "node dist/stdio.js",
+    "stdio:dev": "tsx src/stdio.ts",
+    "http": "node dist/http.js",
+    "http:dev": "tsx src/http.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "dba": "workspace:*",
+    "dotenv": "^17.4.2",
+    "js-yaml": "^4.2.0",
+    "zod": "^3.25.67"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^20.11.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3"
+  }
+}
