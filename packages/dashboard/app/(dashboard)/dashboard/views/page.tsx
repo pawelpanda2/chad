@@ -79,6 +79,19 @@ interface AudioRecordingListItem {
   sizeBytes: number;
 }
 
+interface AudioDraftListItem {
+  id: string;
+  displayName: string;
+  recordedDate: string;
+  createdAt: string;
+  updatedAt: string;
+  status: "draft" | "finalizing" | "error";
+  error?: string;
+  segmentsCount: number;
+  totalDurationMs: number;
+  totalSizeBytes: number;
+}
+
 type ViewType = null | "tracker" | "dates" | "leads" | "reports" | "recordings";
 type SortDir = "asc" | "desc";
 
@@ -141,6 +154,8 @@ function ViewsPageContent() {
     viewParam === "tracker" || viewParam === "dates" || viewParam === "leads" || viewParam === "reports" || viewParam === "recordings"
       ? viewParam
       : null;
+  const selectedReportLoca = searchParams.get("report");
+  const selectedRecordingId = searchParams.get("recording");
   const returnTo = searchParams.toString() ? `${pathname}?${searchParams.toString()}` : pathname;
 
   const [dateEntries, setDateEntries] = useState<DateEntryRecord[]>([]);
@@ -148,10 +163,9 @@ function ViewsPageContent() {
   const [leads, setLeads] = useState<LeadDashboardItem[]>([]);
   const [reports, setReports] = useState<ReportEntry[]>([]);
   const [recordings, setRecordings] = useState<AudioRecordingListItem[]>([]);
+  const [recordingDrafts, setRecordingDrafts] = useState<AudioDraftListItem[]>([]);
   const [reportsError, setReportsError] = useState<string | null>(null);
   const [recordingsError, setRecordingsError] = useState<string | null>(null);
-  const [selectedReportLoca, setSelectedReportLoca] = useState<string | null>(null);
-  const [selectedRecordingId, setSelectedRecordingId] = useState<string | null>(null);
   // Local editable copy of the selected report's body, plus its own
   // save state — Views/Reports is editable (Story 56), reusing the same
   // /api/forms/reports update endpoint Forms uses (no new route, no
@@ -245,9 +259,11 @@ function ViewsPageContent() {
 
       if (recordingsResult.success) {
         setRecordings(recordingsResult.recordings || []);
+        setRecordingDrafts(recordingsResult.drafts || []);
       } else {
         setRecordingsError(recordingsResult.error || "Failed to fetch recordings");
         setRecordings([]);
+        setRecordingDrafts([]);
       }
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : "Unknown error";
@@ -271,8 +287,6 @@ function ViewsPageContent() {
     // clicking the date column (toggleSort flips this per-column, not
     // reset by this effect).
     setSortDir("desc");
-    setSelectedReportLoca(null);
-    setSelectedRecordingId(null);
     setIsTrackerEditMode(false);
     setIsRawMode(false);
     setEditedRows({});
@@ -288,8 +302,21 @@ function ViewsPageContent() {
     router.push(pathname);
   };
 
+  const pushViewState = useCallback(
+    (updates: Record<string, string | null>) => {
+      const next = new URLSearchParams(searchParams.toString());
+      for (const [key, value] of Object.entries(updates)) {
+        if (value) next.set(key, value);
+        else next.delete(key);
+      }
+      const nextSearch = next.toString();
+      router.push(nextSearch ? `${pathname}?${nextSearch}` : pathname);
+    },
+    [pathname, router, searchParams],
+  );
+
   const handleViewSelect = (view: ViewType) => {
-    router.push(`${pathname}?view=${view}`);
+    pushViewState({ view, report: null, recording: null });
   };
 
   const toggleSort = (key: string) => {
@@ -671,7 +698,7 @@ function ViewsPageContent() {
         padded={!selectedReport}
         contentClassName={!selectedReport ? FRAME_SECTION_GAP_CLASS : undefined}
         upLevel={{
-          onClick: selectedReport ? () => setSelectedReportLoca(null) : handleBack,
+          onClick: selectedReport ? () => pushViewState({ report: null }) : handleBack,
           label: selectedReport ? "Back to reports list" : "Back to Views menu",
         }}
         title="Reports"
@@ -731,7 +758,7 @@ function ViewsPageContent() {
                   <button
                     key={report.loca}
                     type="button"
-                    onClick={() => setSelectedReportLoca(report.loca)}
+                    onClick={() => pushViewState({ report: report.loca })}
                     className={`flex w-full items-center gap-3 text-left ${LIST_ROW_CLASS}`}
                   >
                     <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-primary">
@@ -760,7 +787,7 @@ function ViewsPageContent() {
         padded={!selectedRecording}
         contentClassName={!selectedRecording ? FRAME_SECTION_GAP_CLASS : undefined}
         upLevel={{
-          onClick: selectedRecording ? () => setSelectedRecordingId(null) : handleBack,
+          onClick: selectedRecording ? () => pushViewState({ recording: null }) : handleBack,
           label: selectedRecording ? "Back to recordings list" : "Back to Views menu",
         }}
         title="Recordings"
@@ -820,13 +847,58 @@ function ViewsPageContent() {
             </div>
 
             <ErrorBox message={recordingsError} className="mb-2" />
+            {!isLoading && recordingDrafts.length > 0 && (
+              <div className={cn(LIST_ROW_WRAPPER_CLASS, "mb-2")}>
+                <div className="divide-y">
+                  {recordingDrafts.map((draft) => (
+                    <div key={draft.id} className={`flex w-full items-center gap-3 ${LIST_ROW_CLASS}`}>
+                      <span
+                        className={cn(
+                          "flex-shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase",
+                          draft.status === "error"
+                            ? "bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-400"
+                            : draft.status === "finalizing"
+                              ? "bg-blue-100 text-blue-700 dark:bg-blue-950/50 dark:text-blue-400"
+                              : "bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400",
+                        )}
+                      >
+                        {draft.status === "error" ? "Error" : draft.status === "finalizing" ? "Finalizing" : "Draft"}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate font-medium text-sm">
+                          {draft.displayName || draft.recordedDate}
+                        </div>
+                        <div className="truncate text-xs text-muted-foreground">
+                          {draft.recordedDate}
+                          {` · ${formatDurationClock(draft.totalDurationMs) ?? "00:00"}`}
+                          {draft.segmentsCount > 1 ? ` · ${draft.segmentsCount} segments` : ""}
+                          {draft.status === "error" && draft.error ? ` · ${draft.error}` : ""}
+                        </div>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 flex-shrink-0 text-xs"
+                        onClick={() =>
+                          router.push(
+                            `/dashboard/forms?form=add_recording&draft=${encodeURIComponent(draft.id)}&returnTo=${encodeURIComponent("/dashboard/views?view=recordings")}`,
+                          )
+                        }
+                      >
+                        Continue
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className={LIST_ROW_WRAPPER_CLASS}>
               {isLoading ? (
                 <div className="flex items-center gap-2 py-4 text-muted-foreground">
                   <RefreshCw className="h-4 w-4 animate-spin" />
                   <span>Loading recordings...</span>
                 </div>
-              ) : recordingsError ? null : recordings.length === 0 ? (
+              ) : recordingsError ? null : recordings.length === 0 && recordingDrafts.length === 0 ? (
                 <div className="flex items-center gap-3 py-4 text-muted-foreground">
                   <History className="h-8 w-8 opacity-20" />
                   <span className="text-sm">No recordings yet. Use Add to create one.</span>
@@ -837,7 +909,7 @@ function ViewsPageContent() {
                     <button
                       key={recording.id}
                       type="button"
-                      onClick={() => setSelectedRecordingId(recording.id)}
+                    onClick={() => pushViewState({ recording: recording.id })}
                       className={`flex w-full items-center gap-3 text-left ${LIST_ROW_CLASS}`}
                     >
                       <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-primary">

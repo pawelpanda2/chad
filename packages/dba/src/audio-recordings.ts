@@ -1,9 +1,11 @@
 /**
  * Forms / Views → recordings: binary audio files plus minimal sidecar metadata.
  *
- * Not Content Provider / not speech-to-text. Files live under
- * `process.env.CHAD_AUDIO_RECORDINGS_DIR` (path as seen by the Node process),
- * isolated per CHAD repo/user in a `<root>/<repoGuid>/` subdirectory.
+ * Not Content Provider / not speech-to-text. Files live directly under
+ * `process.env.CHAD_AUDIO_RECORDINGS_DIR` (path as seen by the Node process).
+ * New writes store a sibling JSON metadata file that carries `repoGuid` for
+ * per-user filtering; legacy flat audio files without metadata are still
+ * readable as a compatibility fallback.
  *
  * Host Mac root target: `/Volumes/cp_1/02_files_refrenced/10_files_audio/`
  * (spelling `refrenced` is intentional — do not "fix").
@@ -55,13 +57,6 @@ export function getAudioRecordingsDir(): string {
     );
   }
   return path.resolve(dir);
-}
-
-export function getAudioRecordingsRepoDir(
-  repoGuid: string = getCurrentRepoGuid(),
-  rootDir: string = getAudioRecordingsDir(),
-): string {
-  return path.resolve(rootDir, repoGuid);
 }
 
 /** Normalize MIME (strip parameters for lookup when needed). */
@@ -125,6 +120,7 @@ export interface SaveAudioRecordingResult {
 
 export interface AudioRecordingMetadata {
   id: string;
+  repoGuid: string;
   displayName: string;
   recordedDate: string;
   createdAt: string;
@@ -145,6 +141,7 @@ export interface AudioRecordingListItem {
 }
 
 const AUDIO_RECORDING_ID_PATTERN = /^[A-Za-z0-9._-]+$/;
+const AUDIO_RECORDING_FILE_EXTENSIONS = new Set(["webm", "ogg", "m4a", "mp3", "wav"]);
 
 export function normalizeAudioRecordingDisplayName(displayName: string): string {
   return displayName.replace(/\s+/g, " ").replace(/[\u0000-\u001f\u007f]/g, " ").trim();
@@ -175,8 +172,13 @@ export function assertValidAudioRecordingId(id: string): string {
   return trimmed;
 }
 
-function metadataPathForId(id: string, repoDir: string): string {
-  return assertSafeResolvedPath(repoDir, `${assertValidAudioRecordingId(id)}.json`);
+function metadataPathForId(id: string, rootDir: string): string {
+  return assertSafeResolvedPath(rootDir, `${assertValidAudioRecordingId(id)}.json`);
+}
+
+function isAudioRecordingFileName(fileName: string): boolean {
+  const ext = path.extname(fileName).replace(/^\./, "").toLowerCase();
+  return AUDIO_RECORDING_FILE_EXTENSIONS.has(ext);
 }
 
 function parseMetadata(raw: string): AudioRecordingMetadata | null {
@@ -185,6 +187,7 @@ function parseMetadata(raw: string): AudioRecordingMetadata | null {
     if (
       !parsed ||
       typeof parsed.id !== "string" ||
+      typeof parsed.repoGuid !== "string" ||
       typeof parsed.displayName !== "string" ||
       typeof parsed.recordedDate !== "string" ||
       typeof parsed.createdAt !== "string" ||
@@ -196,6 +199,7 @@ function parseMetadata(raw: string): AudioRecordingMetadata | null {
     }
     return {
       id: parsed.id,
+      repoGuid: parsed.repoGuid,
       displayName: parsed.displayName,
       recordedDate: parsed.recordedDate,
       createdAt: parsed.createdAt,
@@ -207,6 +211,52 @@ function parseMetadata(raw: string): AudioRecordingMetadata | null {
   } catch {
     return null;
   }
+}
+
+function buildLegacyListItem(fileName: string, createdAt: string, sizeBytes: number): AudioRecordingListItem {
+  const ext = path.extname(fileName).replace(/^\./, "").toLowerCase();
+  const stem = fileName.slice(0, -1 * (ext.length + 1));
+  const datePrefix = /^(\d{4}-\d{2}-\d{2})/.exec(stem)?.[1] ?? createdAt.slice(0, 10);
+  return {
+    id: fileName,
+    displayName: stem,
+    date: datePrefix,
+    createdAt,
+    mimeType:
+      ext === "ogg" ? "audio/ogg" : ext === "m4a" ? "audio/mp4" : ext === "mp3" ? "audio/mpeg" : ext === "wav" ? "audio/wav" : "audio/webm",
+    sizeBytes,
+  };
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function alphabetSuffixFromIndex(index: number): string {
+  let remaining = index;
+  let result = "";
+  do {
+    result = String.fromCharCode(97 + (remaining % 26)) + result;
+    remaining = Math.floor(remaining / 26) - 1;
+  } while (remaining >= 0);
+  return result;
+}
+
+function buildAutoRecordingDisplayName(recordedDate: string, existingDisplayNames: string[]): string {
+  const matchingPattern = new RegExp(`^${escapeRegExp(recordedDate)}([a-z]+)?$`);
+  const used = new Set(
+    existingDisplayNames
+      .map((name) => name.trim().toLowerCase())
+      .filter((name) => matchingPattern.test(name)),
+  );
+  if (!used.has(recordedDate.toLowerCase())) {
+    return recordedDate;
+  }
+  for (let index = 1; index < 10_000; index += 1) {
+    const candidate = `${recordedDate}${alphabetSuffixFromIndex(index)}`;
+    if (!used.has(candidate.toLowerCase())) return candidate;
+  }
+  return `${recordedDate}${randomUUID().slice(0, 8)}`;
 }
 
 export async function saveAudioRecording(
@@ -223,13 +273,6 @@ export async function saveAudioRecording(
   if (input.bytes.byteLength > AUDIO_RECORDING_MAX_BYTES) {
     throw new AudioRecordingError("TOO_LARGE", "Recording exceeds size limit");
   }
-  const displayName = normalizeAudioRecordingDisplayName(input.displayName);
-  if (!displayName) {
-    throw new AudioRecordingError("INVALID_DISPLAY_NAME", "Recording name is required");
-  }
-  if (displayName.length > 180) {
-    throw new AudioRecordingError("INVALID_DISPLAY_NAME", "Recording name is too long");
-  }
   if (!isValidIsoLocalDate(input.recordedDate)) {
     throw new AudioRecordingError("INVALID_DATE", "Recording date is invalid");
   }
@@ -240,15 +283,30 @@ export async function saveAudioRecording(
     throw new AudioRecordingError("WRITE_FAILED", "Recording duration is invalid");
   }
 
-  const repoDir = getAudioRecordingsRepoDir(
-    input.repoGuid,
-    input.rootDirectory ? path.resolve(input.rootDirectory) : getAudioRecordingsDir(),
-  );
+  const repoGuid = input.repoGuid ?? getCurrentRepoGuid();
+  const rootDir = input.rootDirectory ? path.resolve(input.rootDirectory) : getAudioRecordingsDir();
+  const requestedDisplayName = normalizeAudioRecordingDisplayName(input.displayName);
+  const displayName =
+    requestedDisplayName === input.recordedDate
+      ? buildAutoRecordingDisplayName(
+          input.recordedDate,
+          (await listAudioRecordings({ rootDirectory: rootDir, repoGuid })).map(
+            (item) => item.displayName,
+          ),
+        )
+      : requestedDisplayName;
+  if (!displayName) {
+    throw new AudioRecordingError("INVALID_DISPLAY_NAME", "Recording name is required");
+  }
+  if (displayName.length > 180) {
+    throw new AudioRecordingError("INVALID_DISPLAY_NAME", "Recording name is too long");
+  }
   const fileName = buildAudioRecordingFileName(ext);
-  const fullPath = assertSafeResolvedPath(repoDir, fileName);
+  const fullPath = assertSafeResolvedPath(rootDir, fileName);
   const createdAt = new Date().toISOString();
   const metadata: AudioRecordingMetadata = {
     id: fileName,
+    repoGuid,
     displayName,
     recordedDate: input.recordedDate,
     createdAt,
@@ -257,10 +315,10 @@ export async function saveAudioRecording(
     sizeBytes: input.bytes.byteLength,
     storedFileName: fileName,
   };
-  const metadataPath = metadataPathForId(metadata.id, repoDir);
+  const metadataPath = metadataPathForId(metadata.id, rootDir);
 
   try {
-    await mkdir(repoDir, { recursive: true });
+    await mkdir(rootDir, { recursive: true });
     // wx: fail if exists — never overwrite.
     await writeFile(fullPath, input.bytes, { flag: "wx" });
     await writeFile(metadataPath, JSON.stringify(metadata, null, 2), { flag: "wx" });
@@ -288,19 +346,31 @@ export async function listAudioRecordings(options?: {
   rootDirectory?: string;
   repoGuid?: string;
 }): Promise<AudioRecordingListItem[]> {
-  const repoDir = getAudioRecordingsRepoDir(
-    options?.repoGuid,
-    options?.rootDirectory ? path.resolve(options.rootDirectory) : getAudioRecordingsDir(),
-  );
+  const repoGuid = options?.repoGuid ?? getCurrentRepoGuid();
+  const rootDir = options?.rootDirectory ? path.resolve(options.rootDirectory) : getAudioRecordingsDir();
   try {
-    const entries = await readdir(repoDir, { withFileTypes: true });
-    const items = await Promise.all(
+    const entries = await readdir(rootDir, { withFileTypes: true });
+    // Every per-file read below is individually guarded: the backing volume
+    // is a network share (SMB) that can drop mid-listing, and one unreadable
+    // file must degrade to a missing row, never a failed whole list.
+    const parsedMetadata = await Promise.all(
       entries
         .filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
         .map(async (entry) => {
-          const metadata = parseMetadata(await readFile(assertSafeResolvedPath(repoDir, entry.name), "utf8"));
-          if (!metadata) return null;
-          const filePath = assertSafeResolvedPath(repoDir, metadata.storedFileName);
+          try {
+            return parseMetadata(await readFile(assertSafeResolvedPath(rootDir, entry.name), "utf8"));
+          } catch {
+            return null;
+          }
+        }),
+    );
+    const metadataFileIds = new Set(
+      parsedMetadata.filter((metadata): metadata is AudioRecordingMetadata => metadata !== null).map((metadata) => metadata.storedFileName),
+    );
+    const metadataItems = await Promise.all(
+      parsedMetadata.map(async (metadata) => {
+          if (!metadata || metadata.repoGuid !== repoGuid) return null;
+          const filePath = assertSafeResolvedPath(rootDir, metadata.storedFileName);
           try {
             const st = await stat(filePath);
             if (!st.isFile()) return null;
@@ -321,14 +391,37 @@ export async function listAudioRecordings(options?: {
           return item;
         }),
     );
-    const nonNullItems: AudioRecordingListItem[] = items.filter(
+    const nonNullMetadata: AudioRecordingListItem[] = metadataItems.filter(
       (item): item is AudioRecordingListItem => item !== null,
     );
-    return nonNullItems.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    const legacyItems = await Promise.all(
+      entries
+        .filter((entry) => entry.isFile() && !entry.name.endsWith(".json") && isAudioRecordingFileName(entry.name))
+        .filter((entry) => !metadataFileIds.has(entry.name))
+        .map(async (entry) => {
+          try {
+            const filePath = assertSafeResolvedPath(rootDir, entry.name);
+            const fileStat = await stat(filePath);
+            return buildLegacyListItem(entry.name, fileStat.mtime.toISOString(), fileStat.size);
+          } catch {
+            return null;
+          }
+        }),
+    );
+    const nonNullLegacy: AudioRecordingListItem[] = legacyItems.filter(
+      (item): item is AudioRecordingListItem => item !== null,
+    );
+    return [...nonNullMetadata, ...nonNullLegacy].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   } catch (error) {
     if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
       return [];
     }
+    // Surface the real cause in server logs — "Could not list recordings"
+    // alone made SMB-share dropouts undiagnosable.
+    console.error(
+      "[audio-recordings] listAudioRecordings failed:",
+      error instanceof Error ? `${(error as NodeJS.ErrnoException).code ?? ""} ${error.message}` : error,
+    );
     throw new AudioRecordingError("WRITE_FAILED", "Could not list recordings");
   }
 }
@@ -341,21 +434,39 @@ export async function getAudioRecordingReadInfo(
   id: string,
   options?: { rootDirectory?: string; repoGuid?: string },
 ): Promise<AudioRecordingReadInfo | null> {
-  const repoDir = getAudioRecordingsRepoDir(
-    options?.repoGuid,
-    options?.rootDirectory ? path.resolve(options.rootDirectory) : getAudioRecordingsDir(),
-  );
-  const metadataPath = metadataPathForId(id, repoDir);
+  const repoGuid = options?.repoGuid ?? getCurrentRepoGuid();
+  const rootDir = options?.rootDirectory ? path.resolve(options.rootDirectory) : getAudioRecordingsDir();
+  const safeId = assertValidAudioRecordingId(id);
+  const metadataPath = metadataPathForId(safeId, rootDir);
   try {
     const metadata = parseMetadata(await readFile(metadataPath, "utf8"));
     if (!metadata) return null;
-    const filePath = assertSafeResolvedPath(repoDir, metadata.storedFileName);
+    if (metadata.repoGuid !== repoGuid) return null;
+    const filePath = assertSafeResolvedPath(rootDir, metadata.storedFileName);
     const st = await stat(filePath);
     if (!st.isFile()) return null;
     return { ...metadata, filePath };
   } catch (error) {
     if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
-      return null;
+      const filePath = assertSafeResolvedPath(rootDir, safeId);
+      try {
+        const fileStat = await stat(filePath);
+        if (!fileStat.isFile() || !isAudioRecordingFileName(safeId)) return null;
+        const legacy = buildLegacyListItem(safeId, fileStat.mtime.toISOString(), fileStat.size);
+        return {
+          id: legacy.id,
+          repoGuid,
+          displayName: legacy.displayName,
+          recordedDate: legacy.date,
+          createdAt: legacy.createdAt,
+          mimeType: legacy.mimeType,
+          sizeBytes: legacy.sizeBytes,
+          storedFileName: safeId,
+          filePath,
+        };
+      } catch {
+        return null;
+      }
     }
     if (error instanceof AudioRecordingError && error.code === "INVALID_ID") {
       throw error;

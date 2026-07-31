@@ -27,7 +27,11 @@ export default defineConfig({
       "packages/dba/src/ai-prompts.test.ts",
       "packages/dba/src/ai-prompts-openai.test.ts",
       "packages/dba/src/audio-recordings.test.ts",
+      // Story 93 follow-up — draft recordings (segments, isolation,
+      // idempotent finalize, real-fixture merge via ffmpeg+mkvmerge).
+      "packages/dba/src/audio-recording-drafts.test.ts",
       "packages/dashboard/components/forms/audio-recording-utils.test.ts",
+      "packages/dashboard/components/forms/audio-recorder-session.test.ts",
       // Msg Auto AI Prompts — kind labels / Category mapping (mockup v4).
       "packages/dashboard/components/msg-automation/ai-prompt-kind.test.ts",
       // Story 90 — Lead ↔ Beeper Links (phone match / save validation).
