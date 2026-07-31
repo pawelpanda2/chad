@@ -318,6 +318,44 @@ describe("promptKind mapping + conditional validation", () => {
     expect(created.messages).toEqual([]);
   });
 
+  it("openai_managed prompt keeps openaiPromptId and openaiPromptVersion through create, read, and publish", async () => {
+    const { ops } = fakeOps([]);
+    const created = await createAiPrompt(
+      {
+        ...baseInput,
+        slug: "managed-console-girl",
+        promptKind: "openai_managed",
+        messages: [{ role: "user", content: "hi" }],
+        providerBindings: {
+          openaiPromptId: "pmpt_6a2d9932e7708197bf9a60767e94dcfb07c8292b52f64217",
+          openaiPromptVersion: "1",
+        },
+      },
+      ops,
+    );
+    expect(created.providerBindings?.openaiPromptId).toBe(
+      "pmpt_6a2d9932e7708197bf9a60767e94dcfb07c8292b52f64217",
+    );
+    expect(created.providerBindings?.openaiPromptVersion).toBe("1");
+
+    // list -> full read round-trip (what the API's GET routes do)
+    const rows = await listAiPrompts(ops);
+    const row = rows.find((r) => r.id === created.id);
+    expect(row).toBeDefined();
+    const reread = await getAiPrompt(created.id, ops);
+    expect(reread?.providerBindings?.openaiPromptId).toBe(
+      "pmpt_6a2d9932e7708197bf9a60767e94dcfb07c8292b52f64217",
+    );
+    expect(reread?.providerBindings?.openaiPromptVersion).toBe("1");
+
+    // publish freezes the same binding into publishedSnapshot
+    const published = await publishAiPrompt(created.id, ops);
+    expect(published.publishedSnapshot?.providerBindings?.openaiPromptId).toBe(
+      "pmpt_6a2d9932e7708197bf9a60767e94dcfb07c8292b52f64217",
+    );
+    expect(published.publishedSnapshot?.providerBindings?.openaiPromptVersion).toBe("1");
+  });
+
   it("switching update to openai_managed keeps name and sets binding", async () => {
     const { ops } = fakeOps([]);
     const created = await createAiPrompt(baseInput, ops);
