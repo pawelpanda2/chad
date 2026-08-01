@@ -68,6 +68,24 @@ async function main(): Promise<void> {
     config.syncIntervalMs
   );
 
+  // beeper-oplog — long-lived materializer, beeper_events -> contacts/
+  // channels/messages (polls by _id every 5s internally, own durable
+  // cursor in beeper_oplog_state, see packages/beeper-oplog/index.mjs).
+  // Without this running, beeper-ws's real-time writes sit in raw
+  // beeper_events forever: beeper-sync only performs each channel's ONE
+  // historical backfill (marks it "fully_synced" and skips it on every
+  // later run — it is not an incremental poller), so this is the only
+  // process that turns ongoing Beeper activity into what the
+  // Dashboard/GUI actually reads. Supervised exactly like beeper-ws
+  // (long-lived process with its own SIGINT/SIGTERM handling), not
+  // scheduled like beeper-sync.
+  const oplog = new SupervisedProcess(
+    "beeper-oplog",
+    resolve(config.beeperOplogDir, "index.mjs"),
+    config.beeperOplogDir,
+    { minMs: config.minBackoffMs, maxMs: config.maxBackoffMs }
+  );
+
   // dba's beeperMirrorStatusRoot() falls back to `process.cwd()` when not
   // running in Docker (see packages/dba/src/beeper-mongo-mirror/metadata.ts)
   // — but system-startup.sh `cd`s into plugins/beeper-synch before exec'ing
@@ -103,16 +121,19 @@ async function main(): Promise<void> {
       ready: ws.isRunning,
       beeperWs: ws.snapshot(),
       beeperSync: sync.snapshot(),
+      beeperOplog: oplog.snapshot(),
       beeperMongoMirror: mirror.snapshot(),
     });
   };
 
   ws.on("change", refreshStatus);
   sync.on("change", refreshStatus);
+  oplog.on("change", refreshStatus);
   mirror.on("change", refreshStatus);
 
   ws.start();
   sync.start();
+  oplog.start();
   mirror.start();
   refreshStatus();
 
@@ -120,7 +141,7 @@ async function main(): Promise<void> {
     if (shuttingDown) return;
     shuttingDown = true;
     console.log(`[beeper-synch] received ${signal} — shutting down...`);
-    await Promise.all([ws.stop(), sync.stop(), mirror.stop()]);
+    await Promise.all([ws.stop(), sync.stop(), oplog.stop(), mirror.stop()]);
     writeStatus(config.statusFile, { pid: process.pid, ready: false, stoppedAt: new Date().toISOString() });
     releaseLock(config.lockFile);
     console.log("[beeper-synch] shutdown complete");

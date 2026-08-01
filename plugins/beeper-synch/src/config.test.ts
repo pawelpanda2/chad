@@ -54,6 +54,7 @@ test("valid env loads a Config with expected defaults", () => {
   assertTrue(config.instanceId === "mac-default", "instanceId must default to mac-default");
   assertTrue(config.beeperWsDir.endsWith("packages/beeper-ws"), "beeperWsDir must point at packages/beeper-ws");
   assertTrue(config.beeperSyncDir.endsWith("packages/beeper-sync"), "beeperSyncDir must point at packages/beeper-sync");
+  assertTrue(config.beeperOplogDir.endsWith("packages/beeper-oplog"), "beeperOplogDir must point at packages/beeper-oplog");
 });
 
 test("missing MONGODB_URI throws ConfigError", () => {

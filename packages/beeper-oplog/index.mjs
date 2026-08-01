@@ -38,7 +38,22 @@ const channelsCol = db.collection("channels");
 const messagesCol = db.collection("messages");
 
 // Indeksy (idempotentne)
-await contactsCol.createIndex({ "identities.senderID": 1 });
+// Must match the canonical unique index other writers of this same
+// `contacts` collection already create (packages/beeper-sync/lib/db.mjs,
+// packages/dba/src/beeper-crm.ts, packages/dba/src/beeper-mongo-mirror/
+// refresh.ts) — a plain non-unique index on the same key with a
+// different name/options throws MongoServerError IndexOptionsConflict
+// (code 85) against a database where the canonical index already exists,
+// which is every real deployment (found for real: beeper-oplog had never
+// been run against production before Story 100).
+await contactsCol.createIndex(
+  { "identities.senderID": 1 },
+  {
+    unique: true,
+    partialFilterExpression: { "identities.senderID": { $type: "string" } },
+    name: "identities_senderID_unique",
+  }
+);
 await contactsCol.createIndex({ tags: 1 });
 await channelsCol.createIndex({ beeperChatID: 1 }, { unique: true, sparse: true });
 await channelsCol.createIndex({ participantIDs: 1 });
