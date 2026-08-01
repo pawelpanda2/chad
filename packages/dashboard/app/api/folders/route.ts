@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUserFromCookies } from '@/lib/session';
+import { toApiItem, statusForFoldersError } from '@/lib/folders-api';
 import {
   getItemByAddress,
-  getChildrenOf,
   createFolderChildItem,
   updateFolderTextBody,
   createFolderChildItemAllowingSystemFolderWrite,
@@ -11,52 +11,8 @@ import {
   deleteFolderItemAllowingSystemFolderWrite,
   FoldersOperationError,
   runWithRepoContext,
-  type CpItem,
+  resolveFoldersRepoAccess,
 } from 'dba';
-
-/**
- * Shape returned to the Folders GUI for a single item — same shape GET has
- * always returned, factored out here so POST/PUT can return it too (e.g.
- * "refresh the parent" after a create) without duplicating the
- * Folder-children-map assembly logic.
- */
-async function toApiItem(found: CpItem) {
-  let body = found.body;
-  if (found.config.type === 'Folder') {
-    const children = await getChildrenOf(found.config.address);
-    const childMap: Record<string, string> = {};
-    for (const child of children) {
-      const index = child.config.address.split('/').pop() ?? child.config.address;
-      childMap[index] = child.config.name;
-    }
-    body = JSON.stringify(childMap);
-  }
-  return {
-    Body: body,
-    Config: found.config,
-    Settings: found.config,
-    Address: found.config.address,
-  };
-}
-
-function statusForFoldersError(error: FoldersOperationError): number {
-  switch (error.code) {
-    case 'VALIDATION':
-      return 400;
-    case 'PARENT_NOT_FOUND':
-    case 'ITEM_NOT_FOUND':
-      return 404;
-    case 'PARENT_NOT_FOLDER':
-    case 'NOT_TEXT_ITEM':
-      return 409;
-    case 'SYSTEM_FOLDER_READ_ONLY':
-      return 403;
-    case 'FOLDER_NOT_EMPTY':
-      return 409;
-    default:
-      return 500;
-  }
-}
 
 /**
  * GET /api/folders?loca=<slash-joined loca, omit or "" for repo root>&repoGuid=<optional>
@@ -67,10 +23,11 @@ function statusForFoldersError(error: FoldersOperationError): number {
  * Content Provider is no longer deployed, so this no longer calls it.
  *
  * SECURITY: `repoGuid` is never trusted directly. The repo actually used
- * is always `user.repoGuid` from the login session (resolved once, at
- * login time, against the Mongo-backed chad_admin users-list). If the
- * client also supplies a `repoGuid` query param and it does not match, the
- * request is denied (403) — no exceptions for any username.
+ * is resolved by `resolveFoldersRepoAccess` (dba, Story 96) against the
+ * login session: every user gets their own `user.repoGuid`; an admin
+ * session may additionally select the shared `chad_shared` repo. Any
+ * other requested repo (another user's, a forged GUID) is denied (403) —
+ * no exceptions for any username.
  *
  * A Folder item's children (the `{index: name}` map the frontend renders)
  * are NOT stored as the item's own `body` in Mongo — CP itself computes
@@ -94,11 +51,12 @@ export async function GET(request: Request) {
   const loca = searchParams.get('loca') ?? '';
   const requestedRepoGuid = searchParams.get('repoGuid');
 
-  if (requestedRepoGuid && requestedRepoGuid !== user.repoGuid) {
+  const access = resolveFoldersRepoAccess(user, requestedRepoGuid);
+  if (!access.allowed) {
     return NextResponse.json({ error: 'FORBIDDEN_REPO' }, { status: 403 });
   }
 
-  const address = loca ? `${user.repoGuid}/${loca}` : user.repoGuid;
+  const address = loca ? `${access.repoGuid}/${loca}` : access.repoGuid;
 
   try {
     const found = await getItemByAddress(address);
@@ -107,7 +65,7 @@ export async function GET(request: Request) {
     }
 
     const item = await toApiItem(found);
-    return NextResponse.json({ item, repoGuid: user.repoGuid, username: user.username });
+    return NextResponse.json({ item, repoGuid: access.repoGuid, username: user.username });
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'UNKNOWN_ERROR' },
@@ -138,7 +96,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'NOT_AUTHENTICATED' }, { status: 401 });
   }
 
-  let payload: { parentLoca?: unknown; type?: unknown; name?: unknown; body?: unknown; allowSystemFolderWrite?: unknown };
+  let payload: { parentLoca?: unknown; type?: unknown; name?: unknown; body?: unknown; allowSystemFolderWrite?: unknown; repoGuid?: unknown };
   try {
     payload = await request.json();
   } catch {
@@ -161,7 +119,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Invalid "body" (must be a string if present)' }, { status: 400 });
   }
 
-  const parentAddress = parentLoca ? `${user.repoGuid}/${parentLoca}` : user.repoGuid;
+  const access = resolveFoldersRepoAccess(user, typeof payload.repoGuid === 'string' ? payload.repoGuid : null);
+  if (!access.allowed) {
+    return NextResponse.json({ error: 'FORBIDDEN_REPO' }, { status: 403 });
+  }
+
+  const parentAddress = parentLoca ? `${access.repoGuid}/${parentLoca}` : access.repoGuid;
 
   try {
     const { item: createdOrFound, alreadyExisted } = await runWithRepoContext(user, () =>
@@ -211,7 +174,7 @@ export async function PUT(request: Request) {
     return NextResponse.json({ error: 'NOT_AUTHENTICATED' }, { status: 401 });
   }
 
-  let payload: { loca?: unknown; body?: unknown; allowSystemFolderWrite?: unknown };
+  let payload: { loca?: unknown; body?: unknown; allowSystemFolderWrite?: unknown; repoGuid?: unknown };
   try {
     payload = await request.json();
   } catch {
@@ -229,7 +192,12 @@ export async function PUT(request: Request) {
     return NextResponse.json({ error: 'Missing or invalid "body"' }, { status: 400 });
   }
 
-  const address = `${user.repoGuid}/${loca}`;
+  const access = resolveFoldersRepoAccess(user, typeof payload.repoGuid === 'string' ? payload.repoGuid : null);
+  if (!access.allowed) {
+    return NextResponse.json({ error: 'FORBIDDEN_REPO' }, { status: 403 });
+  }
+
+  const address = `${access.repoGuid}/${loca}`;
 
   try {
     const updated = await runWithRepoContext(user, () =>
@@ -275,9 +243,14 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: 'Missing "loca" — refusing to delete the repo root' }, { status: 400 });
   }
 
-  const address = `${user.repoGuid}/${loca}`;
+  const access = resolveFoldersRepoAccess(user, searchParams.get('repoGuid'));
+  if (!access.allowed) {
+    return NextResponse.json({ error: 'FORBIDDEN_REPO' }, { status: 403 });
+  }
+
+  const address = `${access.repoGuid}/${loca}`;
   const parentLoca = loca.includes('/') ? loca.slice(0, loca.lastIndexOf('/')) : '';
-  const parentAddress = parentLoca ? `${user.repoGuid}/${parentLoca}` : user.repoGuid;
+  const parentAddress = parentLoca ? `${access.repoGuid}/${parentLoca}` : access.repoGuid;
 
   try {
     await runWithRepoContext(user, () =>

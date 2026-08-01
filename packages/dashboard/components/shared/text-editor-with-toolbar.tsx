@@ -23,6 +23,8 @@ export interface TextEditorWithToolbarProps {
   saving: boolean;
   /** Whether content was just saved */
   saved: boolean;
+  /** Extra condition disabling Save beyond `saving` (e.g. invalid JSON, no changes) — defaults to false, so existing callers are unaffected. */
+  saveDisabled?: boolean;
   /** Whether to show the Preview/Editor tabs */
   showPreview?: boolean;
   /** Whether to show the Save button */
@@ -69,6 +71,7 @@ export function TextEditorWithToolbar({
   onSave,
   saving,
   saved,
+  saveDisabled = false,
   showPreview = true,
   showSave = true,
   showWhitespaceToggle = true,
@@ -131,7 +134,7 @@ export function TextEditorWithToolbar({
         {showSave && isEditorMode && (
           <Button
             onClick={onSave}
-            disabled={saving}
+            disabled={saving || saveDisabled}
             size="sm"
             className="h-8 shrink-0"
           >
