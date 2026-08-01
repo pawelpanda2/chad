@@ -10,6 +10,7 @@ import { describe, it, expect } from "vitest";
 import {
   createFolderChildItem,
   updateFolderTextBody,
+  updateFolderItemConfig,
   deleteFolderItem,
   validateChildName,
   validateChildType,
@@ -58,6 +59,12 @@ function fakeOps(seed: CpItem[] = []): { ops: FolderChildOps; items: Map<string,
       if (!existing) throw new Error(`putItemBody: no item at "${address}"`);
       const updated = { ...existing, body };
       items.set(address, updated);
+      return updated;
+    },
+    async putItemConfig(item: CpItem) {
+      const existing = [...items.values()].find((i) => i._id === item._id);
+      const updated = { ...item, body: existing?.body ?? "" };
+      items.set(updated.config.address, updated);
       return updated;
     },
     async deleteItemByAddress(address: string) {
@@ -211,6 +218,150 @@ describe("updateFolderTextBody", () => {
     await expect(updateFolderTextBody(`${REPO}/01`, "x", ops)).rejects.toMatchObject({
       code: "NOT_TEXT_ITEM",
     });
+  });
+});
+
+describe("updateFolderItemConfig", () => {
+  it("updates a safe custom field on a Text item, preserving body", async () => {
+    const item = textItem(`${REPO}/01`, "notes", "existing body");
+    const { ops } = fakeOps([item]);
+
+    const updated = await updateFolderItemConfig(
+      `${REPO}/01`,
+      { ...item.config, tag: "important" },
+      ops
+    );
+
+    expect(updated.config.tag).toBe("important");
+    expect(updated.body).toBe("existing body");
+  });
+
+  it("updates a safe custom field on a Folder item, preserving body", async () => {
+    const item = folderItem(`${REPO}/01`, "sub");
+    const { ops } = fakeOps([item]);
+
+    const updated = await updateFolderItemConfig(`${REPO}/01`, { ...item.config, tag: "x" }, ops);
+
+    expect(updated.config.tag).toBe("x");
+    expect(updated.body).toBe("");
+  });
+
+  it("removing a custom key from the submitted JSON removes it (full-object replace, not a patch)", async () => {
+    const item: CpItem = {
+      _id: `${REPO}/01`,
+      config: { id: `${REPO}/01`, address: `${REPO}/01`, type: "Text", name: "notes", tag: "old" },
+      body: "b",
+    };
+    const { ops } = fakeOps([item]);
+
+    const { tag: _tag, ...withoutTag } = item.config;
+    const updated = await updateFolderItemConfig(`${REPO}/01`, withoutTag, ops);
+
+    expect(updated.config.tag).toBeUndefined();
+  });
+
+  it("rejects a non-object config (array)", async () => {
+    const item = textItem(`${REPO}/01`, "notes");
+    const { ops } = fakeOps([item]);
+    await expect(updateFolderItemConfig(`${REPO}/01`, [], ops)).rejects.toMatchObject({ code: "VALIDATION" });
+  });
+
+  it("rejects a null config", async () => {
+    const item = textItem(`${REPO}/01`, "notes");
+    const { ops } = fakeOps([item]);
+    await expect(updateFolderItemConfig(`${REPO}/01`, null, ops)).rejects.toMatchObject({ code: "VALIDATION" });
+  });
+
+  it("rejects a config missing a required field", async () => {
+    const item = textItem(`${REPO}/01`, "notes");
+    const { ops } = fakeOps([item]);
+    const { name: _name, ...missingName } = item.config;
+    await expect(updateFolderItemConfig(`${REPO}/01`, missingName, ops)).rejects.toMatchObject({
+      code: "VALIDATION",
+    });
+  });
+
+  it("rejects changing id", async () => {
+    const item = textItem(`${REPO}/01`, "notes");
+    const { ops } = fakeOps([item]);
+    await expect(
+      updateFolderItemConfig(`${REPO}/01`, { ...item.config, id: "different" }, ops)
+    ).rejects.toMatchObject({ code: "FORBIDDEN_IDENTITY_CHANGE" });
+  });
+
+  it("rejects changing address", async () => {
+    const item = textItem(`${REPO}/01`, "notes");
+    const { ops } = fakeOps([item]);
+    await expect(
+      updateFolderItemConfig(`${REPO}/01`, { ...item.config, address: `${REPO}/02` }, ops)
+    ).rejects.toMatchObject({ code: "FORBIDDEN_IDENTITY_CHANGE" });
+  });
+
+  it("rejects changing type (Text -> Folder)", async () => {
+    const item = textItem(`${REPO}/01`, "notes");
+    const { ops } = fakeOps([item]);
+    await expect(
+      updateFolderItemConfig(`${REPO}/01`, { ...item.config, type: "Folder" }, ops)
+    ).rejects.toMatchObject({ code: "FORBIDDEN_IDENTITY_CHANGE" });
+  });
+
+  it("allows renaming (name is display identity; address stays put)", async () => {
+    const item = textItem(`${REPO}/01`, "starożytny rzym", "body stays");
+    const parent = folderItem(REPO, "repo");
+    const { ops, items } = fakeOps([parent, item]);
+
+    const updated = await updateFolderItemConfig(
+      `${REPO}/01`,
+      { ...item.config, name: "Starożytny rzym" },
+      ops
+    );
+
+    expect(updated.config.name).toBe("Starożytny rzym");
+    expect(updated.config.address).toBe(`${REPO}/01`);
+    expect(updated.body).toBe("body stays");
+    expect(items.get(`${REPO}/01`)?.config.name).toBe("Starożytny rzym");
+  });
+
+  it("trims the new name on rename", async () => {
+    const item = textItem(`${REPO}/01`, "notes");
+    const parent = folderItem(REPO, "repo");
+    const { ops } = fakeOps([parent, item]);
+
+    const updated = await updateFolderItemConfig(
+      `${REPO}/01`,
+      { ...item.config, name: "  renamed  " },
+      ops
+    );
+
+    expect(updated.config.name).toBe("renamed");
+  });
+
+  it("rejects a rename that collides with a sibling's name", async () => {
+    const parent = folderItem(REPO, "repo");
+    const a = textItem(`${REPO}/01`, "alpha");
+    const b = textItem(`${REPO}/02`, "beta");
+    const { ops } = fakeOps([parent, a, b]);
+
+    await expect(
+      updateFolderItemConfig(`${REPO}/01`, { ...a.config, name: "beta" }, ops)
+    ).rejects.toMatchObject({ code: "VALIDATION" });
+  });
+
+  it("rejects an empty / path-like rename", async () => {
+    const item = textItem(`${REPO}/01`, "notes");
+    const parent = folderItem(REPO, "repo");
+    const { ops } = fakeOps([parent, item]);
+
+    await expect(
+      updateFolderItemConfig(`${REPO}/01`, { ...item.config, name: "a/b" }, ops)
+    ).rejects.toMatchObject({ code: "VALIDATION" });
+  });
+
+  it("rejects updating a non-existent item", async () => {
+    const { ops } = fakeOps([]);
+    await expect(
+      updateFolderItemConfig(`${REPO}/99`, { id: "x", address: `${REPO}/99`, type: "Text", name: "n" }, ops)
+    ).rejects.toMatchObject({ code: "ITEM_NOT_FOUND" });
   });
 });
 

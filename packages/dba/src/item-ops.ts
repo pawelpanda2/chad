@@ -115,6 +115,31 @@ export async function putItem(item: CpItem): Promise<CpItem> {
 }
 
 /**
+ * Config-only write, preserving whatever body is already stored at the
+ * item's address untouched. Bypasses `DbaDataRouter` and calls the primary
+ * provider directly — same convention as `deleteItemByAddress` below:
+ * `CpCompatibleDataProvider.putItemConfig` is intentionally not wired
+ * through the router/outbox (see `MongoCpProvider.putItemConfig`'s doc
+ * comment), so there is no follower-replication path for it to take here
+ * either.
+ */
+export async function putItemConfig(item: CpItem): Promise<CpItem> {
+  const config = loadDataProvidersConfig();
+  const provider =
+    config.primaryBackend === "postgres"
+      ? getPostgresProvider()
+      : config.primaryBackend === "mongo"
+        ? getMongoProvider()
+        : null;
+  if (!provider) {
+    throw new Error(
+      "Item config update requires the Mongo or Postgres backend — putItemConfig has no Content Provider implementation wired here."
+    );
+  }
+  return provider.putItemConfig(item);
+}
+
+/**
  * Permanently removes a single item by address. Bypasses `DbaDataRouter`
  * and calls the primary provider directly — same convention already
  * established by `leads.ts`'s `deleteDailyEntry`/`deleteDateEntry` (the
