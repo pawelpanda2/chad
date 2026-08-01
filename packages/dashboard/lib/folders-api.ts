@@ -43,6 +43,10 @@ export function statusForFoldersError(error: FoldersOperationError): number {
       return 409;
     case 'FORBIDDEN_IDENTITY_CHANGE':
       return 409;
+    case 'ROOT_NOT_FOLDER':
+      return 409;
+    case 'EXPORT_LIMIT_EXCEEDED':
+      return 413;
     default:
       return 500;
   }
