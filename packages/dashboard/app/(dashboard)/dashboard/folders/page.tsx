@@ -47,10 +47,11 @@ const DELETE_CONFIRM_WORDS = ["DELETE", "CONFIRM", "USUN", "PERMANENT"];
  * - Only ONE back button (Wstecz), not Blazor's two (←/↶) — confirmed by
  *   reading the real Blazor source that both call the exact same handler
  *   (dead/duplicate code), not two different features worth replicating.
- * - Folder/Content/Config/Terminal (cp-plugin — local file/terminal
- *   opening) and GoogleDoc/Tts buttons stay disabled — there is no
- *   cp-plugin bridge reachable from this web dashboard's deployment; out of
- *   scope for Story 82.
+ * - Content/Terminal (cp-plugin — local file/terminal opening) and
+ *   Open/Recreate/GoogleDoc/Tts buttons were dropped entirely (Story 95,
+ *   removed rather than kept as disabled stubs) — there is no cp-plugin
+ *   bridge reachable from this web dashboard's deployment, and none of
+ *   them do anything real here.
  * - Text item's "Add" row (Blazor: Up/Down select + input) is REMOVED, not
  *   wired up: reading `TextView.razor`'s real `OnAddClicked` shows it calls
  *   an unrelated operation (`ItemWorker.AppendLine`), not
@@ -61,11 +62,12 @@ const DELETE_CONFIRM_WORDS = ["DELETE", "CONFIRM", "USUN", "PERMANENT"];
  *   misleading disabled stub.
  * - Folder's "Add" type select offers Text/Folder only — Ref is
  *   intentionally excluded (Story 82: no confirmed contract for it here).
- * - Repo picker: a real dropdown over ALL repos, but ONLY for the
- *   `pawel_f` login (see /api/folders/repos) — every other user still
- *   only ever sees their own repo, preserving this dashboard's existing
- *   per-user data isolation model, which has no admin/role flag to gate
- *   this more precisely.
+ * - Repo picker (Story 96): the dropdown holds exactly the repos the
+ *   backend session grants (see /api/folders/repos → dba's
+ *   listSelectableFoldersRepos) — every user's own repo, plus the shared
+ *   `chad_shared` repo for admin sessions only. Every /api/folders verb
+ *   re-validates the selected repo server-side (resolveFoldersRepoAccess),
+ *   so this control is UX, never the enforcement point.
  */
 
 interface CpConfig {
@@ -103,6 +105,15 @@ interface UpdateBodyApiResponse {
   error?: string;
   details?: string;
 }
+
+interface UpdateConfigApiResponse {
+  item?: CpItem;
+  error?: string;
+  details?: string;
+}
+
+/** Which panel the item view shows — independent of item type (Text or Folder), toggled by the Config/Body button next to Delete. */
+type EditorMode = "body" | "config";
 
 interface RepoOption {
   id: string;
@@ -161,15 +172,6 @@ function parseChildNameMap(body: string): Array<{ index: string; name: string }>
   return [];
 }
 
-/** Disabled button matching the Blazor screenshot's layout for an action this dashboard can't perform yet (cp-plugin). */
-function InertButton({ children, title }: { children: React.ReactNode; title: string }) {
-  return (
-    <Button variant="outline" size="sm" disabled title={title}>
-      {children}
-    </Button>
-  );
-}
-
 export default function FoldersPage() {
   const [repos, setRepos] = useState<RepoOption[]>([]);
   const [selectedRepoGuid, setSelectedRepoGuid] = useState<string>("");
@@ -184,6 +186,11 @@ export default function FoldersPage() {
   const [savingBody, setSavingBody] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [bodySaved, setBodySaved] = useState(false);
+  const [editorMode, setEditorMode] = useState<EditorMode>("body");
+  const [configText, setConfigText] = useState("");
+  const [savingConfig, setSavingConfig] = useState(false);
+  const [configSaveError, setConfigSaveError] = useState<string | null>(null);
+  const [configSaved, setConfigSaved] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [readOnlyFolders, setReadOnlyFolders] = useState<ReadOnlyFolderRow[]>([]);
@@ -302,6 +309,10 @@ export default function FoldersPage() {
       setCreateNotice(null);
       setSaveError(null);
       setBodySaved(false);
+      setEditorMode("body");
+      setConfigText(JSON.stringify(currentItem.Config, null, 2));
+      setConfigSaveError(null);
+      setConfigSaved(false);
     }
     // Intentionally keyed on Address, not the whole currentItem object.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -323,6 +334,21 @@ export default function FoldersPage() {
     setLoading(true);
     try {
       const result = await fetchItem(selectedRepoGuid, childLoca);
+      if (result) pushItem(result.item);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  /** Switches to another repo from the session-granted list (own repo, or chad_shared for admins) and loads its root fresh. */
+  async function handleRepoChange(repoGuid: string) {
+    if (repoGuid === selectedRepoGuid) return;
+    setSelectedRepoGuid(repoGuid);
+    setNav({ items: [], index: -1 });
+    setLocaInput("");
+    setLoading(true);
+    try {
+      const result = await fetchItem(repoGuid, "");
       if (result) pushItem(result.item);
     } finally {
       setLoading(false);
@@ -365,6 +391,7 @@ export default function FoldersPage() {
           type: addType,
           name: trimmedName,
           allowSystemFolderWrite: isProtectedWriteUnlocked,
+          repoGuid: selectedRepoGuid,
         }),
       });
       const data: CreateChildApiResponse = await res.json();
@@ -397,7 +424,7 @@ export default function FoldersPage() {
       const res = await fetch("/api/folders", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ loca, body: editorBody, allowSystemFolderWrite: isProtectedWriteUnlocked }),
+        body: JSON.stringify({ loca, body: editorBody, allowSystemFolderWrite: isProtectedWriteUnlocked, repoGuid: selectedRepoGuid }),
       });
       const data: UpdateBodyApiResponse = await res.json();
       if (!res.ok || !data.item) {
@@ -418,6 +445,54 @@ export default function FoldersPage() {
   function handleEditorBodyChange(value: string) {
     setEditorBody(value);
     if (bodySaved) setBodySaved(false);
+  }
+
+  function toggleEditorMode() {
+    setEditorMode((prev) => (prev === "body" ? "config" : "body"));
+  }
+
+  function handleConfigTextChange(value: string) {
+    setConfigText(value);
+    if (configSaved) setConfigSaved(false);
+  }
+
+  /** Saves the Config editor's JSON. Never touches `editorBody`/body-save state — config and body are independent drafts and independent saves. */
+  async function handleSaveConfig() {
+    if (!currentItem || savingConfig || (protectingFolder && !isProtectedWriteUnlocked)) return;
+    const loca = relativeLoca(currentItem.Address, selectedRepoGuid);
+
+    let parsedConfig: unknown;
+    try {
+      parsedConfig = JSON.parse(configText);
+    } catch (err) {
+      setConfigSaveError(err instanceof Error ? `Nieprawidłowy JSON: ${err.message}` : "Nieprawidłowy JSON");
+      return;
+    }
+
+    setSavingConfig(true);
+    setConfigSaveError(null);
+    setConfigSaved(false);
+    try {
+      const res = await fetch("/api/folders/config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ loca, config: parsedConfig, allowSystemFolderWrite: isProtectedWriteUnlocked, repoGuid: selectedRepoGuid }),
+      });
+      const data: UpdateConfigApiResponse = await res.json();
+      if (!res.ok || !data.item) {
+        setConfigSaveError(data.details ?? data.error ?? `Request failed (${res.status})`);
+        return;
+      }
+
+      replaceCurrentItem(data.item);
+      setConfigText(JSON.stringify(data.item.Config, null, 2));
+      setConfigSaved(true);
+      setTimeout(() => setConfigSaved(false), 3000);
+    } catch (err) {
+      setConfigSaveError(err instanceof Error ? err.message : "Nie udało się zapisać");
+    } finally {
+      setSavingConfig(false);
+    }
   }
 
   function toggleProtectedWriteUnlock() {
@@ -454,6 +529,7 @@ export default function FoldersPage() {
     setDeleteError(null);
     try {
       const query = new URLSearchParams({ loca });
+      if (selectedRepoGuid) query.set("repoGuid", selectedRepoGuid);
       if (isProtectedWriteUnlocked) query.set("allowSystemFolderWrite", "true");
       const res = await fetch(`/api/folders?${query}`, { method: "DELETE" });
       const data: { success?: boolean; parent?: CpItem | null; error?: string; details?: string } = await res.json();
@@ -476,6 +552,38 @@ export default function FoldersPage() {
     }
   }
 
+  // Config Save's disabled/error state — computed on every render (cheap,
+  // no I/O) rather than in an effect, since it only derives from already-
+  // in-memory state and must stay in sync with keystrokes immediately.
+  let configParseError: string | null = null;
+  try {
+    JSON.parse(configText);
+  } catch (err) {
+    configParseError = err instanceof Error ? err.message : "Nieprawidłowy JSON";
+  }
+  const configDirty = currentItem ? configText !== JSON.stringify(currentItem.Config, null, 2) : false;
+  const configSaveDisabled =
+    Boolean(configParseError) || !configDirty || savingConfig || Boolean(protectingFolder && !isProtectedWriteUnlocked);
+
+  const configEditorBlock = (
+    <div className="space-y-2">
+      <ErrorBox message={configParseError ?? configSaveError} className="mb-0" />
+      <TextEditorWithToolbar
+        value={configText}
+        onChange={handleConfigTextChange}
+        onSave={handleSaveConfig}
+        saving={savingConfig}
+        saved={configSaved}
+        saveDisabled={configSaveDisabled}
+        showPreview={false}
+        defaultTab="editor"
+        showSave={!protectingFolder || isProtectedWriteUnlocked}
+        placeholder="Enter config JSON..."
+        className="min-h-[360px] h-[50vh]"
+      />
+    </div>
+  );
+
   return (
     <DashboardPageShell title="Folders">
       <ErrorBox message={error} className="mb-3" />
@@ -486,16 +594,20 @@ export default function FoldersPage() {
           <div className="flex items-center gap-2">
             <span className="text-sm text-muted-foreground whitespace-nowrap">Repo::</span>
             {/*
-              Security (backlog/stories/60): this dropdown may only ever
-              show/select the current user's own repo. The backend
-              (/api/folders/repos, via dba's strict resolveOwnRepo()) never
-              returns more than one repo, but the control is ALSO disabled
-              here as defense-in-depth UX — there must be no way to type or
-              pick a different value even if that ever changed. This does
-              NOT replace the server-side enforcement in packages/dba; it is
-              purely a UX safeguard.
+              Security (backlog/stories/60, extended in 96): this dropdown
+              only ever holds the repos the backend session granted
+              (/api/folders/repos) — the user's own repo, plus chad_shared
+              for admin sessions. It stays disabled while there is nothing
+              to switch to, and it is NOT the enforcement point: every
+              /api/folders request re-validates the selected repo
+              server-side (dba's resolveFoldersRepoAccess), so a forged
+              value here cannot reach another repo.
             */}
-            <Select value={selectedRepoGuid} disabled>
+            <Select
+              value={selectedRepoGuid}
+              onValueChange={handleRepoChange}
+              disabled={repos.length <= 1 || loading}
+            >
               <SelectTrigger className="w-[220px]">
                 <SelectValue />
               </SelectTrigger>
@@ -596,34 +708,27 @@ export default function FoldersPage() {
                   <Trash2 className="mr-1 h-3.5 w-3.5" />
                   Delete
                 </Button>
-                <InertButton title="Wymaga cp-plugin — niedostępne w dashboardzie">Content</InertButton>
+                <Button type="button" variant="outline" size="sm" onClick={toggleEditorMode}>
+                  {editorMode === "body" ? "Config" : "Body"}
+                </Button>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Select defaultValue="Open" disabled>
-                  <SelectTrigger className="w-[140px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Open">Open</SelectItem>
-                    <SelectItem value="Recreate">Recreate</SelectItem>
-                  </SelectContent>
-                </Select>
-                <InertButton title="GoogleDoc — niepodłączone w dashboardzie">GoogleDoc</InertButton>
-                <InertButton title="Tts — niepodłączone w dashboardzie">Tts</InertButton>
-              </div>
+              {editorMode === "body" && (
+                <>
+                  <ErrorBox message={saveError} className="mb-0" />
 
-              <ErrorBox message={saveError} className="mb-0" />
-
-              <TextEditorWithToolbar
-                value={editorBody}
-                onChange={handleEditorBodyChange}
-                onSave={handleSaveBody}
-                saving={savingBody}
-                saved={bodySaved}
-                showSave={!protectingFolder || isProtectedWriteUnlocked}
-                placeholder="Enter text body..."
-                className="min-h-[360px] h-[50vh]"
-              />
+                  <TextEditorWithToolbar
+                    value={editorBody}
+                    onChange={handleEditorBodyChange}
+                    onSave={handleSaveBody}
+                    saving={savingBody}
+                    saved={bodySaved}
+                    showSave={!protectingFolder || isProtectedWriteUnlocked}
+                    placeholder="Enter text body..."
+                    className="min-h-[360px] h-[50vh]"
+                  />
+                </>
+              )}
+              {editorMode === "config" && configEditorBlock}
             </div>
           )}
 
@@ -645,65 +750,73 @@ export default function FoldersPage() {
                   <Trash2 className="mr-1 h-3.5 w-3.5" />
                   Delete
                 </Button>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Button
-                  size="sm"
-                  onClick={handleAddChild}
-                  disabled={creating || Boolean(protectingFolder && !isProtectedWriteUnlocked)}
-                  title={
-                    protectingFolder && !isProtectedWriteUnlocked
-                      ? `Managed by ${protectingFolder.managedBy} — read-only here`
-                      : undefined
-                  }
-                >
-                  {creating ? "Dodawanie..." : "Add"}
+                <Button type="button" variant="outline" size="sm" onClick={toggleEditorMode}>
+                  {editorMode === "body" ? "Config" : "Body"}
                 </Button>
-                <Select
-                  value={addType}
-                  onValueChange={setAddType}
-                  disabled={creating || Boolean(protectingFolder && !isProtectedWriteUnlocked)}
-                >
-                  <SelectTrigger className="w-[100px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Text">Text</SelectItem>
-                    <SelectItem value="Folder">Folder</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Input
-                  value={addName}
-                  onChange={(e) => setAddName(e.target.value)}
-                  placeholder="nazwa"
-                  disabled={creating || Boolean(protectingFolder && !isProtectedWriteUnlocked)}
-                  className="w-[200px]"
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") handleAddChild();
-                  }}
-                />
               </div>
-              <ErrorBox message={createError} className="mb-0" />
-              {createNotice && <p className="text-sm text-muted-foreground italic">{createNotice}</p>}
-
-              <div className="space-y-1">
-                {parseChildNameMap(currentItem.Body).map(({ index, name }) => (
-                  <div key={index} className="flex items-center gap-2">
-                    <span className="w-8 shrink-0 font-mono text-xs text-muted-foreground">{index}</span>
+              {editorMode === "body" && (
+                <>
+                  <div className="flex flex-wrap items-center gap-2">
                     <Button
-                      variant="outline"
                       size="sm"
-                      className="justify-start"
-                      onClick={() => handleChildClick(index)}
+                      onClick={handleAddChild}
+                      disabled={creating || Boolean(protectingFolder && !isProtectedWriteUnlocked)}
+                      title={
+                        protectingFolder && !isProtectedWriteUnlocked
+                          ? `Managed by ${protectingFolder.managedBy} — read-only here`
+                          : undefined
+                      }
                     >
-                      {name}
+                      {creating ? "Dodawanie..." : "Add"}
                     </Button>
+                    <Select
+                      value={addType}
+                      onValueChange={setAddType}
+                      disabled={creating || Boolean(protectingFolder && !isProtectedWriteUnlocked)}
+                    >
+                      <SelectTrigger className="w-[100px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Text">Text</SelectItem>
+                        <SelectItem value="Folder">Folder</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Input
+                      value={addName}
+                      onChange={(e) => setAddName(e.target.value)}
+                      placeholder="nazwa"
+                      disabled={creating || Boolean(protectingFolder && !isProtectedWriteUnlocked)}
+                      className="w-[200px]"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleAddChild();
+                      }}
+                    />
                   </div>
-                ))}
-                {parseChildNameMap(currentItem.Body).length === 0 && (
-                  <p className="text-sm italic text-muted-foreground">Brak elementów</p>
-                )}
-              </div>
+                  <ErrorBox message={createError} className="mb-0" />
+                  {createNotice && <p className="text-sm text-muted-foreground italic">{createNotice}</p>}
+
+                  <div className="space-y-1">
+                    {parseChildNameMap(currentItem.Body).map(({ index, name }) => (
+                      <div key={index} className="flex items-center gap-2">
+                        <span className="w-8 shrink-0 font-mono text-xs text-muted-foreground">{index}</span>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="justify-start"
+                          onClick={() => handleChildClick(index)}
+                        >
+                          {name}
+                        </Button>
+                      </div>
+                    ))}
+                    {parseChildNameMap(currentItem.Body).length === 0 && (
+                      <p className="text-sm italic text-muted-foreground">Brak elementów</p>
+                    )}
+                  </div>
+                </>
+              )}
+              {editorMode === "config" && configEditorBlock}
             </div>
           )}
 

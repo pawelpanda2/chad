@@ -16,9 +16,10 @@ import {
   getChildrenOf as realGetChildrenOf,
   createOrGetChild as realCreateOrGetChild,
   putItemBody as realPutItemBody,
+  putItemConfig as realPutItemConfig,
   deleteItemByAddress as realDeleteItemByAddress,
 } from "./item-ops.js";
-import type { CpItem } from "./cp-model.js";
+import type { CpItem, CpItemConfig } from "./cp-model.js";
 import { splitAddress } from "./cp-model.js";
 import {
   assertNotSystemFolderWrite,
@@ -35,7 +36,8 @@ export type FoldersErrorCode =
   | "ITEM_NOT_FOUND"
   | "NOT_TEXT_ITEM"
   | "SYSTEM_FOLDER_READ_ONLY"
-  | "FOLDER_NOT_EMPTY";
+  | "FOLDER_NOT_EMPTY"
+  | "FORBIDDEN_IDENTITY_CHANGE";
 
 export class FoldersOperationError extends Error {
   constructor(
@@ -61,6 +63,7 @@ export interface FolderChildOps {
   getChildrenOf: typeof realGetChildrenOf;
   createOrGetChild: typeof realCreateOrGetChild;
   putItemBody: typeof realPutItemBody;
+  putItemConfig: typeof realPutItemConfig;
   deleteItemByAddress: typeof realDeleteItemByAddress;
 }
 
@@ -73,6 +76,7 @@ const defaultOps: FolderChildOps = {
   getChildrenOf: realGetChildrenOf,
   createOrGetChild: realCreateOrGetChild,
   putItemBody: realPutItemBody,
+  putItemConfig: realPutItemConfig,
   deleteItemByAddress: realDeleteItemByAddress,
 };
 
@@ -252,6 +256,145 @@ export async function updateFolderTextBodyAllowingSystemFolderWrite(
   body: string
 ): Promise<CpItem> {
   return updateFolderTextBodyInternal(address, body, defaultOps, {
+    allowSystemFolderWrite: true,
+  });
+}
+
+/**
+ * Validates a client-supplied config JSON against the item it would
+ * replace: must be a plain object (not null/array/primitive) carrying the
+ * 4 keys CP itself enforces (`cp-model.ts`'s `CpItemConfig`). `id`/
+ * `address`/`type` must stay byte-identical to the existing item —
+ * changing those could silently orphan/duplicate an address, or (for
+ * `type`) corrupt Text/Folder body semantics. `name` MAY change: CP
+ * identity is the numeric address, not the display name, so rename is a
+ * config-only write (no address rewrite, no children move). The caller
+ * must still run the sibling-uniqueness check when the name actually
+ * changes. Every other key round-trips through untouched — this is a
+ * full-object replace, not a patch.
+ */
+function validateItemConfig(rawConfig: unknown, existing: CpItem): CpItemConfig {
+  if (typeof rawConfig !== "object" || rawConfig === null || Array.isArray(rawConfig)) {
+    throw new FoldersOperationError(
+      "VALIDATION",
+      "Config must be a JSON object (not null, an array, or a primitive value)"
+    );
+  }
+
+  const candidate = rawConfig as Record<string, unknown>;
+  for (const field of ["id", "type", "name", "address"] as const) {
+    if (typeof candidate[field] !== "string" || candidate[field] === "") {
+      throw new FoldersOperationError("VALIDATION", `Config field "${field}" must be a non-empty string`);
+    }
+  }
+
+  if (candidate.id !== existing.config.id) {
+    throw new FoldersOperationError(
+      "FORBIDDEN_IDENTITY_CHANGE",
+      `Config "id" must match the existing item's id (expected "${existing.config.id}", got "${candidate.id}")`
+    );
+  }
+  if (candidate.address !== existing.config.address) {
+    throw new FoldersOperationError(
+      "FORBIDDEN_IDENTITY_CHANGE",
+      `Config "address" must match the existing item's address (expected "${existing.config.address}", got "${candidate.address}")`
+    );
+  }
+  if (candidate.type !== existing.config.type) {
+    throw new FoldersOperationError(
+      "FORBIDDEN_IDENTITY_CHANGE",
+      `Changing "type" is not supported here (expected "${existing.config.type}", got "${candidate.type}") — Text/Folder conversion could corrupt body/children semantics`
+    );
+  }
+
+  // Same rules as create-child names: trim, reject empty / path-like values.
+  // validateChildName throws VALIDATION on bad input.
+  const name = validateChildName(String(candidate.name));
+
+  return { ...candidate, name } as CpItemConfig;
+}
+
+/**
+ * When renaming, refuse if another direct sibling already uses that name —
+ * CP's getByNames / create-child find-or-create treat sibling names as
+ * unique, and leaving two siblings with the same name would later throw
+ * DuplicateChildNameError on name-path lookups.
+ */
+async function assertRenameDoesNotCollide(
+  existing: CpItem,
+  newName: string,
+  ops: FolderChildOps
+): Promise<void> {
+  if (newName === existing.config.name) return;
+
+  const parts = existing.config.address.split("/");
+  if (parts.length < 2) return; // repo root — no parent/siblings to collide with
+
+  parts.pop();
+  const parentAddress = parts.join("/");
+  const siblings = await ops.getChildrenOf(parentAddress);
+  const clash = siblings.find(
+    (s) => s.config.address !== existing.config.address && s.config.name === newName
+  );
+  if (clash) {
+    throw new FoldersOperationError(
+      "VALIDATION",
+      `A sibling item already uses the name "${newName}" (at "${clash.config.address}")`
+    );
+  }
+}
+
+/**
+ * Overwrites an existing item's config in place, preserving its body
+ * untouched — the Folders GUI's Config editor's write path (Story 95).
+ * Works for both Text and Folder items (a Folder's config is real stored
+ * data; only its visible "Body" is a computed children map).
+ *
+ * @throws FoldersOperationError ITEM_NOT_FOUND / VALIDATION /
+ *   FORBIDDEN_IDENTITY_CHANGE / SYSTEM_FOLDER_READ_ONLY
+ */
+async function updateFolderItemConfigInternal(
+  address: string,
+  rawConfig: unknown,
+  ops: FolderChildOps = defaultOps,
+  options: FolderWriteOptions = {}
+): Promise<CpItem> {
+  const existing = await ops.getItemByAddress(address);
+  if (!existing) {
+    throw new FoldersOperationError("ITEM_NOT_FOUND", `Item not found at address "${address}"`);
+  }
+
+  const config = validateItemConfig(rawConfig, existing);
+
+  if (config.name !== existing.config.name) {
+    await assertRenameDoesNotCollide(existing, config.name, ops);
+  }
+
+  if (!options.allowSystemFolderWrite) {
+    try {
+      const names = await resolveLogicalNamePath(address, ops);
+      assertNotSystemFolderWrite(names, "update-body");
+    } catch (err) {
+      rethrowSystemFolder(err);
+    }
+  }
+
+  return ops.putItemConfig({ _id: existing._id, config, body: existing.body });
+}
+
+export async function updateFolderItemConfig(
+  address: string,
+  rawConfig: unknown,
+  ops: FolderChildOps = defaultOps
+): Promise<CpItem> {
+  return updateFolderItemConfigInternal(address, rawConfig, ops);
+}
+
+export async function updateFolderItemConfigAllowingSystemFolderWrite(
+  address: string,
+  rawConfig: unknown
+): Promise<CpItem> {
+  return updateFolderItemConfigInternal(address, rawConfig, defaultOps, {
     allowSystemFolderWrite: true,
   });
 }
