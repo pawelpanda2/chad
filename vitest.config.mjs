@@ -1,4 +1,8 @@
 import { defineConfig } from "vitest/config";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
+
+const dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Root-level Vitest config (Story 78) — the one standard runner for every
 // unit/integration test in this monorepo. Existing self-executing
@@ -7,6 +11,24 @@ import { defineConfig } from "vitest/config";
 // via their own package scripts from pnpm's root scripts; this config only
 // governs new/converted Vitest-based tests.
 export default defineConfig({
+  // Story 98 — `packages/dashboard/tsconfig.json` sets `"jsx": "preserve"`
+  // (Next.js transforms JSX itself via SWC at build time), which esbuild
+  // would otherwise inherit here and refuse to parse a `.tsx` test file's
+  // own JSX. Vitest/esbuild needs to actually transform it, since nothing
+  // else in this standalone test run does.
+  oxc: {
+    jsx: "automatic",
+  },
+  resolve: {
+    alias: {
+      // Story 98 — `packages/dashboard`'s own `@/*` tsconfig path alias
+      // (`@/*` -> `packages/dashboard/*`), needed only by component tests
+      // that import a dashboard component directly (e.g.
+      // `text-editor-with-toolbar.test.tsx`) rather than by relative path
+      // like every prior `packages/dashboard/**/*.test.ts` pure-logic test.
+      "@": path.resolve(dirname, "packages/dashboard"),
+    },
+  },
   test: {
     include: [
       "packages/dba/src/cp-history/**/*.test.ts",
@@ -37,6 +59,10 @@ export default defineConfig({
       "packages/dba/src/audio-recording-drafts.test.ts",
       "packages/dashboard/components/forms/audio-recording-utils.test.ts",
       "packages/dashboard/components/forms/audio-recorder-session.test.ts",
+      // Story 98 — shared editor Save-button regression (showPreview=false
+      // must render Save/WCH/Saved unconditionally, not only when a caller
+      // remembers to also pass defaultTab="editor").
+      "packages/dashboard/components/shared/text-editor-with-toolbar.test.tsx",
       // Msg Auto AI Prompts — kind labels / Category mapping (mockup v4).
       "packages/dashboard/components/msg-automation/ai-prompt-kind.test.ts",
       // Story 90 — Lead ↔ Beeper Links (phone match / save validation).

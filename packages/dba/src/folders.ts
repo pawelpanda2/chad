@@ -20,7 +20,7 @@ import {
   deleteItemByAddress as realDeleteItemByAddress,
 } from "./item-ops.js";
 import type { CpItem, CpItemConfig } from "./cp-model.js";
-import { splitAddress } from "./cp-model.js";
+import { splitAddress, parseChildIndex } from "./cp-model.js";
 import {
   assertNotSystemFolderWrite,
   SystemFolderReadOnlyError,
@@ -37,7 +37,9 @@ export type FoldersErrorCode =
   | "NOT_TEXT_ITEM"
   | "SYSTEM_FOLDER_READ_ONLY"
   | "FOLDER_NOT_EMPTY"
-  | "FORBIDDEN_IDENTITY_CHANGE";
+  | "FORBIDDEN_IDENTITY_CHANGE"
+  | "ROOT_NOT_FOLDER"
+  | "EXPORT_LIMIT_EXCEEDED";
 
 export class FoldersOperationError extends Error {
   constructor(
@@ -445,4 +447,207 @@ export async function deleteFolderItem(address: string, ops: FolderChildOps = de
 
 export async function deleteFolderItemAllowingSystemFolderWrite(address: string): Promise<void> {
   return deleteFolderItemInternal(address, defaultOps, { allowSystemFolderWrite: true });
+}
+
+// ============================================================================
+// Folder tree export (Story 98) — read-only, for pasting context into AI.
+// ============================================================================
+
+/** Transport-form mode values (used on the wire — URL query param / API). */
+export type FolderExportMode = "body-l1" | "body-l2" | "all-l1";
+
+/** Human-readable mode labels — exactly what the Folders UI combobox shows, and what ends up in the exported JSON's own `mode` field. */
+const FOLDER_EXPORT_MODE_LABELS: Record<FolderExportMode, string> = {
+  "body-l1": "body l1",
+  "body-l2": "body l2",
+  "all-l1": "all l1",
+};
+
+/** Parses a transport-form mode string; returns `null` for anything else — callers turn that into a 400. */
+export function parseFolderExportMode(raw: string): FolderExportMode | null {
+  return raw === "body-l1" || raw === "body-l2" || raw === "all-l1" ? raw : null;
+}
+
+export interface FolderExportItem {
+  index: string;
+  address: string;
+  name: string;
+  type: string;
+  body: string;
+  /** Only present for `all-l1` — full config, not just the 4 identity keys. */
+  config?: CpItemConfig;
+  /** Only present for `body-l2`'s direct-child Folders (their own children, depth 2 relative to the export root). Always `[]`, never omitted, when that folder has no children. */
+  children?: FolderExportItem[];
+}
+
+export interface FolderExportResult {
+  source: { address: string; name: string; type: string };
+  mode: string;
+  maxDepth: 1 | 2;
+  items: FolderExportItem[];
+}
+
+export const DEFAULT_EXPORT_MAX_ITEMS = 500;
+export const DEFAULT_EXPORT_MAX_BODY_CHARS = 5_000_000;
+
+function lastAddressSegment(address: string): string {
+  return address.split("/").pop() ?? address;
+}
+
+/** Stable, numeric-index order (CP's own convention) — never trusts whatever order the provider happened to return. */
+function sortByCpIndex<T extends CpItem>(items: T[]): T[] {
+  return [...items].sort((a, b) => {
+    try {
+      return (
+        parseChildIndex(lastAddressSegment(a.config.address)) -
+        parseChildIndex(lastAddressSegment(b.config.address))
+      );
+    } catch {
+      // A non-numeric last segment shouldn't happen for a real CP child
+      // address, but fall back to a stable, deterministic order instead of
+      // throwing — this is a read-only export, not a write-path invariant.
+      return lastAddressSegment(a.config.address).localeCompare(lastAddressSegment(b.config.address));
+    }
+  });
+}
+
+/**
+ * Builds the exported tree DTO for one of the three fixed modes. Pure given
+ * its `getChildren` callback — no address/repo resolution, no auth, no I/O
+ * beyond that one injected function — so it's fully unit-testable without a
+ * real provider (mirrors `FolderChildOps`'s existing injectable-seam
+ * pattern).
+ *
+ * Enforces both a hard item-count and a hard total-body-size cap by
+ * throwing `EXPORT_LIMIT_EXCEEDED` — never silently truncates the result.
+ *
+ * @throws FoldersOperationError ROOT_NOT_FOLDER / EXPORT_LIMIT_EXCEEDED
+ */
+export async function buildFolderExport({
+  root,
+  mode,
+  getChildren,
+  maxItems = DEFAULT_EXPORT_MAX_ITEMS,
+  maxBodyChars = DEFAULT_EXPORT_MAX_BODY_CHARS,
+}: {
+  root: CpItem;
+  mode: FolderExportMode;
+  getChildren: (parentAddress: string) => Promise<CpItem[]>;
+  maxItems?: number;
+  maxBodyChars?: number;
+}): Promise<FolderExportResult> {
+  if (root.config.type !== "Folder") {
+    throw new FoldersOperationError(
+      "ROOT_NOT_FOLDER",
+      `Export root at "${root.config.address}" is not a Folder (type: "${root.config.type}")`
+    );
+  }
+
+  let itemCount = 0;
+  let bodyChars = 0;
+  function consume(item: CpItem): void {
+    itemCount += 1;
+    bodyChars += item.body.length;
+    if (itemCount > maxItems || bodyChars > maxBodyChars) {
+      throw new FoldersOperationError(
+        "EXPORT_LIMIT_EXCEEDED",
+        `Export exceeds the server limit (max ${maxItems} items / ${maxBodyChars} body chars) — narrow the scope (e.g. a smaller folder, or "body l1" instead of "body l2")`
+      );
+    }
+  }
+
+  const directChildren = sortByCpIndex(await getChildren(root.config.address));
+  for (const child of directChildren) consume(child);
+
+  let items: FolderExportItem[];
+
+  if (mode === "all-l1") {
+    items = directChildren.map((child) => ({
+      index: lastAddressSegment(child.config.address),
+      address: child.config.address,
+      name: child.config.name,
+      type: child.config.type,
+      body: child.body,
+      config: child.config,
+    }));
+  } else if (mode === "body-l1") {
+    items = directChildren.map((child) => ({
+      index: lastAddressSegment(child.config.address),
+      address: child.config.address,
+      name: child.config.name,
+      type: child.config.type,
+      body: child.body,
+    }));
+  } else {
+    // body-l2 — direct children, plus each direct child Folder's own
+    // children (depth 2 relative to the export root; never deeper).
+    items = [];
+    for (const child of directChildren) {
+      const exported: FolderExportItem = {
+        index: lastAddressSegment(child.config.address),
+        address: child.config.address,
+        name: child.config.name,
+        type: child.config.type,
+        body: child.body,
+      };
+      if (child.config.type === "Folder") {
+        const grandchildren = sortByCpIndex(await getChildren(child.config.address));
+        for (const grandchild of grandchildren) consume(grandchild);
+        exported.children = grandchildren.map((grandchild) => ({
+          index: lastAddressSegment(grandchild.config.address),
+          address: grandchild.config.address,
+          name: grandchild.config.name,
+          type: grandchild.config.type,
+          body: grandchild.body,
+        }));
+      }
+      items.push(exported);
+    }
+  }
+
+  return {
+    source: { address: root.config.address, name: root.config.name, type: root.config.type },
+    mode: FOLDER_EXPORT_MODE_LABELS[mode],
+    maxDepth: mode === "body-l2" ? 2 : 1,
+    items,
+  };
+}
+
+/** Total item count across the whole export tree (direct children + any nested `children`) — what the UI's success toast reports. */
+export function countFolderExportItems(items: FolderExportItem[]): number {
+  let total = 0;
+  for (const item of items) {
+    total += 1;
+    if (item.children) total += countFolderExportItems(item.children);
+  }
+  return total;
+}
+
+/**
+ * Read-only tree export for pasting Folder context into AI (Story 98) — the
+ * Folders GUI's Copy feature. Never mutates anything; always reads the
+ * item's/its descendants' already-saved backend data, never a client draft.
+ *
+ * @throws FoldersOperationError ITEM_NOT_FOUND / ROOT_NOT_FOLDER / EXPORT_LIMIT_EXCEEDED
+ */
+export async function exportFolderTree(
+  address: string,
+  mode: FolderExportMode,
+  ops: Pick<FolderChildOps, "getItemByAddress" | "getChildrenOf"> = defaultOps,
+  limits?: { maxItems?: number; maxBodyChars?: number }
+): Promise<{ result: FolderExportResult; itemCount: number }> {
+  const root = await ops.getItemByAddress(address);
+  if (!root) {
+    throw new FoldersOperationError("ITEM_NOT_FOUND", `Item not found at address "${address}"`);
+  }
+
+  const result = await buildFolderExport({
+    root,
+    mode,
+    getChildren: ops.getChildrenOf,
+    maxItems: limits?.maxItems,
+    maxBodyChars: limits?.maxBodyChars,
+  });
+
+  return { result, itemCount: countFolderExportItems(result.items) };
 }
