@@ -14,6 +14,10 @@ import {
   deleteFolderItem,
   validateChildName,
   validateChildType,
+  buildFolderExport,
+  exportFolderTree,
+  countFolderExportItems,
+  parseFolderExportMode,
   FoldersOperationError,
   type FolderChildOps,
 } from "./folders.js";
@@ -398,6 +402,168 @@ describe("deleteFolderItem", () => {
   it("rejects deleting a non-existent item", async () => {
     const { ops } = fakeOps([]);
     await expect(deleteFolderItem(`${REPO}/99`, ops)).rejects.toMatchObject({
+      code: "ITEM_NOT_FOUND",
+    });
+  });
+});
+
+describe("parseFolderExportMode", () => {
+  it("accepts exactly the three transport values", () => {
+    expect(parseFolderExportMode("body-l1")).toBe("body-l1");
+    expect(parseFolderExportMode("body-l2")).toBe("body-l2");
+    expect(parseFolderExportMode("all-l1")).toBe("all-l1");
+  });
+
+  it("rejects anything else", () => {
+    expect(parseFolderExportMode("body-l3")).toBeNull();
+    expect(parseFolderExportMode("")).toBeNull();
+    expect(parseFolderExportMode("BODY-L1")).toBeNull();
+  });
+});
+
+describe("buildFolderExport / exportFolderTree", () => {
+  /**
+   * REPO/01 (Folder "docs")            <- export root for most tests
+   *   REPO/01/01 (Text "readme", body "hello")
+   *   REPO/01/02 (Folder "sub", config.tag = "custom")
+   *     REPO/01/02/01 (Text "deep1", body "deepbody")
+   *     REPO/01/02/10 (Text "deep10", body "deepbody10")
+   *   REPO/01/03 (Folder "emptysub" — no children)
+   *   REPO/01/10 (Text "z-item", body "zzz")            <- "10" sorts after "02" numerically, not lexicographically
+   */
+  function buildTree() {
+    const root = folderItem(`${REPO}/01`, "docs");
+    const readme = textItem(`${REPO}/01/01`, "readme", "hello");
+    const sub = folderItem(`${REPO}/01/02`, "sub");
+    sub.config.tag = "custom";
+    const deep1 = textItem(`${REPO}/01/02/01`, "deep1", "deepbody");
+    const deep10 = textItem(`${REPO}/01/02/10`, "deep10", "deepbody10");
+    const emptysub = folderItem(`${REPO}/01/03`, "emptysub");
+    const zItem = textItem(`${REPO}/01/10`, "z-item", "zzz");
+    return fakeOps([root, readme, sub, deep1, deep10, emptysub, zItem]);
+  }
+
+  it("body-l1: direct children only, no config, no children field, numeric order", async () => {
+    const { ops } = buildTree();
+    const root = (await ops.getItemByAddress(`${REPO}/01`))!;
+
+    const result = await buildFolderExport({ root, mode: "body-l1", getChildren: ops.getChildrenOf });
+
+    expect(result.source).toEqual({ address: `${REPO}/01`, name: "docs", type: "Folder" });
+    expect(result.mode).toBe("body l1");
+    expect(result.maxDepth).toBe(1);
+    expect(result.items.map((i) => i.index)).toEqual(["01", "02", "03", "10"]);
+    expect(result.items.map((i) => i.name)).toEqual(["readme", "sub", "emptysub", "z-item"]);
+    for (const item of result.items) {
+      expect(item.config).toBeUndefined();
+      expect(item.children).toBeUndefined();
+    }
+    const readmeItem = result.items.find((i) => i.name === "readme")!;
+    expect(readmeItem).toMatchObject({ type: "Text", body: "hello" });
+  });
+
+  it("body-l2: direct children + each direct child Folder's own children, never depth 3", async () => {
+    const { ops } = buildTree();
+    const root = (await ops.getItemByAddress(`${REPO}/01`))!;
+
+    const result = await buildFolderExport({ root, mode: "body-l2", getChildren: ops.getChildrenOf });
+
+    expect(result.mode).toBe("body l2");
+    expect(result.maxDepth).toBe(2);
+
+    const readmeItem = result.items.find((i) => i.name === "readme")!;
+    expect(readmeItem.children).toBeUndefined(); // Text never gets a children field
+
+    const subItem = result.items.find((i) => i.name === "sub")!;
+    expect(subItem.children).toBeDefined();
+    expect(subItem.children!.map((c) => c.index)).toEqual(["01", "10"]); // numeric, not lexicographic
+    expect(subItem.children!.map((c) => c.body)).toEqual(["deepbody", "deepbody10"]);
+    // Grandchildren never carry their own `children` (would be depth 3).
+    for (const grandchild of subItem.children!) {
+      expect((grandchild as { children?: unknown }).children).toBeUndefined();
+    }
+
+    const emptyItem = result.items.find((i) => i.name === "emptysub")!;
+    expect(emptyItem.children).toEqual([]); // present, empty — not omitted
+  });
+
+  it("all-l1: config + body for direct children, no children field even for a Folder", async () => {
+    const { ops } = buildTree();
+    const root = (await ops.getItemByAddress(`${REPO}/01`))!;
+
+    const result = await buildFolderExport({ root, mode: "all-l1", getChildren: ops.getChildrenOf });
+
+    expect(result.mode).toBe("all l1");
+    expect(result.maxDepth).toBe(1);
+
+    const subItem = result.items.find((i) => i.name === "sub")!;
+    expect(subItem.children).toBeUndefined();
+    expect(subItem.config).toMatchObject({ type: "Folder", name: "sub", tag: "custom" });
+
+    const readmeItem = result.items.find((i) => i.name === "readme")!;
+    expect(readmeItem.config).toMatchObject({ type: "Text", name: "readme" });
+    expect(readmeItem.body).toBe("hello");
+  });
+
+  it("an empty Folder exports items: []", async () => {
+    const { ops } = fakeOps([folderItem(`${REPO}/01`, "docs")]);
+    const root = (await ops.getItemByAddress(`${REPO}/01`))!;
+
+    const result = await buildFolderExport({ root, mode: "body-l1", getChildren: ops.getChildrenOf });
+
+    expect(result.items).toEqual([]);
+  });
+
+  it("rejects exporting a Text item as the root", async () => {
+    const { ops } = fakeOps([textItem(`${REPO}/01`, "notes", "hi")]);
+    const root = (await ops.getItemByAddress(`${REPO}/01`))!;
+
+    await expect(
+      buildFolderExport({ root, mode: "body-l1", getChildren: ops.getChildrenOf })
+    ).rejects.toMatchObject({ code: "ROOT_NOT_FOLDER" });
+  });
+
+  it("throws EXPORT_LIMIT_EXCEEDED (not a silent truncation) past the item-count limit", async () => {
+    const { ops } = buildTree();
+    const root = (await ops.getItemByAddress(`${REPO}/01`))!;
+
+    await expect(
+      buildFolderExport({ root, mode: "body-l1", getChildren: ops.getChildrenOf, maxItems: 2 })
+    ).rejects.toMatchObject({ code: "EXPORT_LIMIT_EXCEEDED" });
+  });
+
+  it("throws EXPORT_LIMIT_EXCEEDED past the total body-size limit", async () => {
+    const { ops } = buildTree();
+    const root = (await ops.getItemByAddress(`${REPO}/01`))!;
+
+    await expect(
+      buildFolderExport({ root, mode: "body-l1", getChildren: ops.getChildrenOf, maxBodyChars: 3 })
+    ).rejects.toMatchObject({ code: "EXPORT_LIMIT_EXCEEDED" });
+  });
+
+  it("body-l2's item-count limit also accounts for grandchildren, not just direct children", async () => {
+    const { ops } = buildTree();
+    const root = (await ops.getItemByAddress(`${REPO}/01`))!;
+
+    // 4 direct children fit under a limit of 5, but body-l2 also pulls in
+    // "sub"'s 2 grandchildren (6 total) — must still throw, not truncate.
+    await expect(
+      buildFolderExport({ root, mode: "body-l2", getChildren: ops.getChildrenOf, maxItems: 5 })
+    ).rejects.toMatchObject({ code: "EXPORT_LIMIT_EXCEEDED" });
+  });
+
+  it("exportFolderTree resolves the root by address and reports itemCount (incl. nested)", async () => {
+    const { ops } = buildTree();
+
+    const { result, itemCount } = await exportFolderTree(`${REPO}/01`, "body-l2", ops);
+
+    expect(itemCount).toBe(6); // 4 direct children + 2 grandchildren under "sub"
+    expect(countFolderExportItems(result.items)).toBe(6);
+  });
+
+  it("exportFolderTree rejects a non-existent address", async () => {
+    const { ops } = fakeOps([]);
+    await expect(exportFolderTree(`${REPO}/99`, "body-l1", ops)).rejects.toMatchObject({
       code: "ITEM_NOT_FOUND",
     });
   });

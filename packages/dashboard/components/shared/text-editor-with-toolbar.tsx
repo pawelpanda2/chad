@@ -83,7 +83,15 @@ export function TextEditorWithToolbar({
   const [activeTab, setActiveTab] = useState<"preview" | "editor">(defaultTab);
   const [showWhitespace, setShowWhitespace] = useState(false);
 
-  const isEditorMode = activeTab === "editor";
+  // showPreview={false} means the editor is the ONLY possible view (there is
+  // no Preview tab to switch away from — see the content area below, which
+  // renders BodyTextEditor directly, ignoring activeTab, whenever showPreview
+  // is false). So "Editor mode" must be true unconditionally in that case;
+  // gating it on activeTab alone (which defaults to "preview" unless a caller
+  // remembers to also pass defaultTab="editor") silently hid Save/WCH/Saved
+  // for every showPreview={false} caller that didn't know about that
+  // undocumented coupling (Story 98 regression fix).
+  const isEditorMode = !showPreview || activeTab === "editor";
 
   const handleContentChange = useCallback(
     (newValue: string) => {

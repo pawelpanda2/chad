@@ -22,7 +22,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { ArrowLeft, ArrowRight, RefreshCw, Lock, Unlock, Trash2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, RefreshCw, Lock, Unlock, Trash2, Copy } from "lucide-react";
 
 // One of these is picked at random each time the delete confirmation dialog
 // opens, so the user must actually read and retype it rather than
@@ -115,6 +115,16 @@ interface UpdateConfigApiResponse {
 /** Which panel the item view shows — independent of item type (Text or Folder), toggled by the Config/Body button next to Delete. */
 type EditorMode = "body" | "config";
 
+/** Transport-form values `GET /api/folders/export` accepts — matches `dba`'s `FolderExportMode` (Story 98). */
+type FolderExportMode = "body-l1" | "body-l2" | "all-l1";
+
+interface FolderExportApiResponse {
+  export?: { mode: string; items: unknown[] };
+  itemCount?: number;
+  error?: string;
+  details?: string;
+}
+
 interface RepoOption {
   id: string;
   name: string;
@@ -191,6 +201,9 @@ export default function FoldersPage() {
   const [savingConfig, setSavingConfig] = useState(false);
   const [configSaveError, setConfigSaveError] = useState<string | null>(null);
   const [configSaved, setConfigSaved] = useState(false);
+  const [exportMode, setExportMode] = useState<FolderExportMode>("body-l1");
+  const [copying, setCopying] = useState(false);
+  const [copyError, setCopyError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [readOnlyFolders, setReadOnlyFolders] = useState<ReadOnlyFolderRow[]>([]);
@@ -313,6 +326,7 @@ export default function FoldersPage() {
       setConfigText(JSON.stringify(currentItem.Config, null, 2));
       setConfigSaveError(null);
       setConfigSaved(false);
+      setCopyError(null);
     }
     // Intentionally keyed on Address, not the whole currentItem object.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -495,6 +509,47 @@ export default function FoldersPage() {
     }
   }
 
+  /**
+   * Read-only Folder-tree export → clipboard, for pasting context into AI
+   * (Story 98). Always the server's saved data (a fresh GET), never the
+   * local `editorBody`/`configText` drafts — works regardless of which is
+   * currently dirty, and never touches either. Does not require unlocking a
+   * protected system folder (Copy never writes).
+   */
+  async function handleCopyExport() {
+    if (!currentItem || currentItem.Config.type !== "Folder" || copying) return;
+    const loca = relativeLoca(currentItem.Address, selectedRepoGuid);
+
+    setCopying(true);
+    setCopyError(null);
+    try {
+      const query = new URLSearchParams({ loca, mode: exportMode });
+      if (selectedRepoGuid) query.set("repoGuid", selectedRepoGuid);
+      const res = await fetch(`/api/folders/export?${query}`);
+      const data: FolderExportApiResponse = await res.json();
+      if (!res.ok || !data.export) {
+        setCopyError(data.details ?? data.error ?? `Request failed (${res.status})`);
+        return;
+      }
+
+      const json = JSON.stringify(data.export, null, 2);
+      try {
+        await navigator.clipboard.writeText(json);
+      } catch (err) {
+        setCopyError(
+          err instanceof Error ? `Nie udało się skopiować do schowka: ${err.message}` : "Nie udało się skopiować do schowka"
+        );
+        return;
+      }
+
+      toast.success(`Copied ${data.itemCount ?? data.export.items.length} item(s) — ${data.export.mode}`);
+    } catch (err) {
+      setCopyError(err instanceof Error ? err.message : "Nie udało się pobrać eksportu");
+    } finally {
+      setCopying(false);
+    }
+  }
+
   function toggleProtectedWriteUnlock() {
     if (!protectingFolder || !canUnlockSystemFolders) return;
     setUnlockedFolderAddresses((prev) =>
@@ -576,7 +631,6 @@ export default function FoldersPage() {
         saved={configSaved}
         saveDisabled={configSaveDisabled}
         showPreview={false}
-        defaultTab="editor"
         showSave={!protectingFolder || isProtectedWriteUnlocked}
         placeholder="Enter config JSON..."
         className="min-h-[360px] h-[50vh]"
@@ -753,7 +807,36 @@ export default function FoldersPage() {
                 <Button type="button" variant="outline" size="sm" onClick={toggleEditorMode}>
                   {editorMode === "body" ? "Config" : "Body"}
                 </Button>
+                {/*
+                  Copy (Story 98): read-only Folder-tree export for pasting
+                  context into AI. Independent of Body/Config mode (works in
+                  either), always reads the server's saved data — never the
+                  local editorBody/configText drafts, never requires
+                  unlocking a protected system folder.
+                */}
+                <Select value={exportMode} onValueChange={(v) => setExportMode(v as FolderExportMode)}>
+                  <SelectTrigger className="w-[100px]" title="Copies saved data.">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="body-l1">body l1</SelectItem>
+                    <SelectItem value="body-l2">body l2</SelectItem>
+                    <SelectItem value="all-l1">all l1</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleCopyExport}
+                  disabled={copying}
+                  title="Copies saved data."
+                >
+                  <Copy className="mr-1 h-3.5 w-3.5" />
+                  {copying ? "Copying..." : "Copy"}
+                </Button>
               </div>
+              <ErrorBox message={copyError} className="mb-0" />
               {editorMode === "body" && (
                 <>
                   <div className="flex flex-wrap items-center gap-2">
