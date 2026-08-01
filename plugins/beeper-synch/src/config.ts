@@ -19,6 +19,7 @@ export interface Config {
   beeperWsUrl: string;
   beeperWsDir: string;
   beeperSyncDir: string;
+  beeperOplogDir: string;
   lockFile: string;
   statusFile: string;
   syncIntervalMs: number;
@@ -66,12 +67,16 @@ export function loadConfig(
 
   const beeperWsDir = resolve(REPO_ROOT, "packages/beeper-ws");
   const beeperSyncDir = resolve(REPO_ROOT, "packages/beeper-sync");
+  const beeperOplogDir = resolve(REPO_ROOT, "packages/beeper-oplog");
 
   if (!existsSync(resolve(beeperWsDir, "package.json"))) {
     throw new ConfigError(`packages/beeper-ws not found at ${beeperWsDir} — this monorepo checkout is incomplete`);
   }
   if (!existsSync(resolve(beeperSyncDir, "package.json"))) {
     throw new ConfigError(`packages/beeper-sync not found at ${beeperSyncDir} — this monorepo checkout is incomplete`);
+  }
+  if (!existsSync(resolve(beeperOplogDir, "package.json"))) {
+    throw new ConfigError(`packages/beeper-oplog not found at ${beeperOplogDir} — this monorepo checkout is incomplete`);
   }
 
   const mongodbUri = env.MONGODB_URI;
@@ -110,6 +115,7 @@ export function loadConfig(
     beeperWsUrl,
     beeperWsDir,
     beeperSyncDir,
+    beeperOplogDir,
     lockFile: resolve(runtimeDir, "beeper-synch.pid"),
     statusFile: resolve(runtimeDir, "status.json"),
     syncIntervalMs: readNumber(env, "BEEPER_SYNCH_SYNC_INTERVAL_MS", 5 * 60 * 1000),
