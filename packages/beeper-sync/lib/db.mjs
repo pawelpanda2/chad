@@ -138,6 +138,20 @@ export async function upsertContact(senderID, senderName, network, extra = {}) {
       await contactsCol.updateOne({ _id: doc._id }, { $set: upd });
     }
 
+    // Backfill identities[].username (phone number for WhatsApp, handle for
+    // Instagram — see sqlite-sync.mjs fetchParticipants()) on contacts synced
+    // before this field was wired through, or for identities that just never
+    // had it. Additive/idempotent: only fills a blank, never overwrites.
+    if (extra.username) {
+      const idx = (doc.identities || []).findIndex(i => i.senderID === senderID);
+      if (idx !== -1 && !doc.identities[idx].username) {
+        await contactsCol.updateOne(
+          { _id: doc._id, 'identities.senderID': senderID },
+          { $set: { 'identities.$.username': extra.username, updatedAt: new Date() } }
+        );
+      }
+    }
+
     return doc._id;
 
   } catch (err) {

@@ -63,12 +63,21 @@ interface LineGeom {
 
 function statusCopy(method: LinkMethod): { title: string; className: string } {
   if (method === "automatic") {
-    return { title: "Linked by contact", className: "text-[#237a42]" };
+    return {
+      title: "Linked by contact",
+      className: "text-green-700 dark:text-green-400",
+    };
   }
   if (method === "manual") {
-    return { title: "Linked manually", className: "text-[#2453b8]" };
+    return {
+      title: "Linked manually",
+      className: "text-blue-700 dark:text-blue-400",
+    };
   }
-  return { title: "Suggested by contact", className: "text-[#925f00]" };
+  return {
+    title: "Suggested by contact",
+    className: "text-amber-700 dark:text-amber-400",
+  };
 }
 
 function formatNumberLine(value: string | undefined, phones: string[]): string | null {
@@ -85,9 +94,13 @@ function curve(a: { x: number; y: number }, b: { x: number; y: number }): string
 }
 
 function strokeClass(method: LinkMethod): string {
-  if (method === "automatic") return "stroke-[#1f9d55] stroke-[3] fill-none";
-  if (method === "manual") return "stroke-[#2563eb] stroke-[3] fill-none [stroke-dasharray:8_6]";
-  return "stroke-[#aaa] stroke-[2] fill-none [stroke-dasharray:3_5]";
+  if (method === "automatic") {
+    return "stroke-green-600 dark:stroke-green-400 stroke-[3] fill-none";
+  }
+  if (method === "manual") {
+    return "stroke-blue-600 dark:stroke-blue-400 stroke-[3] fill-none [stroke-dasharray:8_6]";
+  }
+  return "stroke-muted-foreground stroke-[2] fill-none [stroke-dasharray:3_5]";
 }
 
 export default function MsgAutoLinksPage() {
@@ -271,7 +284,7 @@ export default function MsgAutoLinksPage() {
         y: hr.top + hr.height / 2 - cr.top,
       },
     };
-    handle.classList.add("bg-neutral-900");
+    handle.classList.add("bg-foreground");
   };
 
   useEffect(() => {
@@ -299,7 +312,7 @@ export default function MsgAutoLinksPage() {
         }
       }
       document.querySelectorAll("[data-link-handle]").forEach((el) => {
-        el.classList.remove("bg-neutral-900");
+        el.classList.remove("bg-foreground");
       });
       dragRef.current = null;
       setDragPath(null);
@@ -377,20 +390,15 @@ export default function MsgAutoLinksPage() {
         </div>
       )}
 
-      {loading ? (
-        <div className="flex flex-1 items-center justify-center py-16">
-          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-        </div>
-      ) : (
-        <>
+      <>
           <div
             className={cn(
-              "min-h-0 flex-1 grid bg-neutral-50",
+              "min-h-0 flex-1 grid bg-muted/30",
               "grid-cols-1 md:grid-cols-[minmax(220px,300px)_minmax(0,1fr)_minmax(220px,300px)]"
             )}
           >
             {/* CHAD Leads */}
-            <aside className="min-h-0 flex flex-col border-b md:border-b-0 md:border-r bg-white">
+            <aside className="min-h-0 flex flex-col border-b md:border-b-0 md:border-r bg-card">
               <div className="h-[58px] border-b px-3 py-2.5">
                 <strong className="block text-sm">CHAD Leads</strong>
                 <span className="block text-xs text-muted-foreground">
@@ -398,12 +406,17 @@ export default function MsgAutoLinksPage() {
                 </span>
               </div>
               <input
-                className="mx-3 mt-2.5 mb-1.5 h-9 rounded-lg border px-2.5 text-sm"
+                className="mx-3 mt-2.5 mb-1.5 h-9 rounded-lg border bg-transparent px-2.5 text-sm placeholder:text-muted-foreground"
                 placeholder="Search leads..."
                 value={leadSearch}
                 onChange={(e) => setLeadSearch(e.target.value)}
               />
               <div ref={leftListRef} className="min-h-0 flex-1 overflow-auto px-3 pb-3">
+                {loading && (
+                  <div className="flex items-center justify-center py-10">
+                    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                  </div>
+                )}
                 {filteredLeads.map((lead) => {
                   const link = linkByLead.get(lead.leadName);
                   const status = link ? statusCopy(link.method) : null;
@@ -413,7 +426,7 @@ export default function MsgAutoLinksPage() {
                   return (
                     <div
                       key={lead.leadName}
-                      className="relative my-2 rounded-[10px] border bg-white px-3 py-2.5"
+                      className="relative my-2 rounded-[10px] border bg-card px-3 py-2.5"
                       data-testid="links-lead-node"
                     >
                       <Link
@@ -422,7 +435,7 @@ export default function MsgAutoLinksPage() {
                           leadLoca: lead.leadLoca,
                           returnTo: "/dashboard/msg-automation/links",
                         })}
-                        className="inline-block text-sm font-bold text-neutral-900 hover:underline"
+                        className="inline-block text-sm font-bold text-foreground hover:underline"
                         onClick={(e) => e.stopPropagation()}
                       >
                         {lead.leadName}
@@ -444,7 +457,7 @@ export default function MsgAutoLinksPage() {
                         data-lead-name={lead.leadName}
                         title="Drag to connect"
                         aria-label={`Connect lead ${lead.leadName}`}
-                        className="absolute top-1/2 z-10 hidden h-4 w-4 -translate-y-1/2 rounded-full border-[3px] border-neutral-900 bg-white shadow-[0_0_0_3px_#fff] cursor-crosshair md:block"
+                        className="absolute top-1/2 z-10 hidden h-4 w-4 -translate-y-1/2 rounded-full border-[3px] border-foreground bg-card shadow-[0_0_0_3px_var(--card)] cursor-crosshair md:block"
                         style={{ right: -22 }}
                         ref={(el) => {
                           if (el) leadHandleRefs.current.set(lead.leadName, el);
@@ -458,7 +471,7 @@ export default function MsgAutoLinksPage() {
                   );
                 })}
               </div>
-              <div className="border-t bg-neutral-50 px-3 py-2.5 text-[11px] text-muted-foreground">
+              <div className="border-t bg-muted/30 px-3 py-2.5 text-[11px] text-muted-foreground">
                 Drag from a dot to a dot on the opposite side to create a connection.
               </div>
             </aside>
@@ -466,7 +479,7 @@ export default function MsgAutoLinksPage() {
             {/* Canvas */}
             <div
               ref={canvasRef}
-              className="relative min-h-[280px] md:min-h-0 overflow-hidden bg-[radial-gradient(#ddd_1px,transparent_1px)] [background-size:20px_20px]"
+              className="relative min-h-[280px] md:min-h-0 overflow-hidden bg-[radial-gradient(var(--border)_1px,transparent_1px)] [background-size:20px_20px]"
               data-testid="links-canvas"
             >
               <svg className="absolute inset-0 h-full w-full pointer-events-none">
@@ -478,32 +491,32 @@ export default function MsgAutoLinksPage() {
                 {dragPath && (
                   <path
                     d={dragPath}
-                    className="stroke-neutral-900 stroke-[2.5] fill-none [stroke-dasharray:6_5]"
+                    className="stroke-foreground stroke-[2.5] fill-none [stroke-dasharray:6_5]"
                   />
                 )}
               </svg>
-              {links.length === 0 && !dragPath && (
-                <div className="absolute left-1/2 top-1/2 z-[2] max-w-[300px] -translate-x-1/2 -translate-y-1/2 rounded-xl border bg-white px-4 py-3.5 text-center shadow-sm">
+              {!loading && links.length === 0 && !dragPath && (
+                <div className="absolute left-1/2 top-1/2 z-[2] max-w-[300px] -translate-x-1/2 -translate-y-1/2 rounded-xl border bg-card px-4 py-3.5 text-center shadow-sm">
                   <strong className="block text-sm">Visual connection map</strong>
                   <span className="mt-1 block text-xs text-muted-foreground">
                     Use the black dots on both sides to drag and create a link.
                   </span>
                 </div>
               )}
-              <div className="absolute bottom-3 left-3 z-[2] rounded-[10px] border bg-white p-2 text-[11px]">
+              <div className="absolute bottom-3 left-3 z-[2] rounded-[10px] border bg-card p-2 text-[11px]">
                 <div className="my-1 flex items-center gap-2">
-                  <span className="inline-block w-7 border-t-[3px] border-dashed border-[#2563eb]" />
+                  <span className="inline-block w-7 border-t-[3px] border-dashed border-blue-600 dark:border-blue-400" />
                   Manual link
                 </div>
                 <div className="my-1 flex items-center gap-2">
-                  <span className="inline-block w-7 border-t-[3px] border-dotted border-[#aaa]" />
+                  <span className="inline-block w-7 border-t-[3px] border-dotted border-muted-foreground" />
                   Suggested link
                 </div>
               </div>
             </div>
 
             {/* Beeper Conversations */}
-            <aside className="min-h-0 flex flex-col border-t md:border-t-0 md:border-l bg-white">
+            <aside className="min-h-0 flex flex-col border-t md:border-t-0 md:border-l bg-card">
               <div className="h-[58px] border-b px-3 py-2.5">
                 <strong className="block text-sm">Beeper Conversations</strong>
                 <span className="block text-xs text-muted-foreground">
@@ -511,12 +524,17 @@ export default function MsgAutoLinksPage() {
                 </span>
               </div>
               <input
-                className="mx-3 mt-2.5 mb-1.5 h-9 rounded-lg border px-2.5 text-sm"
+                className="mx-3 mt-2.5 mb-1.5 h-9 rounded-lg border bg-transparent px-2.5 text-sm placeholder:text-muted-foreground"
                 placeholder="Search conversations..."
                 value={convSearch}
                 onChange={(e) => setConvSearch(e.target.value)}
               />
               <div ref={rightListRef} className="min-h-0 flex-1 overflow-auto px-3 pb-3">
+                {loading && (
+                  <div className="flex items-center justify-center py-10">
+                    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                  </div>
+                )}
                 {filteredConvs.map((conv) => {
                   const link = linkByConv.get(conv.conversationId);
                   const status = link ? statusCopy(link.method) : null;
@@ -526,12 +544,12 @@ export default function MsgAutoLinksPage() {
                   return (
                     <div
                       key={conv.conversationId}
-                      className="relative my-2 rounded-[10px] border bg-white px-3 py-2.5"
+                      className="relative my-2 rounded-[10px] border bg-card px-3 py-2.5"
                       data-testid="links-conv-node"
                     >
                       <Link
                         href={`/dashboard/beeper/${encodeURIComponent(conv.conversationId)}`}
-                        className="inline-block text-sm font-bold text-neutral-900 hover:underline"
+                        className="inline-block text-sm font-bold text-foreground hover:underline"
                         onClick={(e) => e.stopPropagation()}
                       >
                         {conv.conversationName}
@@ -553,7 +571,7 @@ export default function MsgAutoLinksPage() {
                         data-conversation-id={conv.conversationId}
                         title="Drag to connect"
                         aria-label={`Connect conversation ${conv.conversationName}`}
-                        className="absolute top-1/2 z-10 hidden h-4 w-4 -translate-y-1/2 rounded-full border-[3px] border-neutral-900 bg-white shadow-[0_0_0_3px_#fff] cursor-crosshair md:block"
+                        className="absolute top-1/2 z-10 hidden h-4 w-4 -translate-y-1/2 rounded-full border-[3px] border-foreground bg-card shadow-[0_0_0_3px_var(--card)] cursor-crosshair md:block"
                         style={{ left: -22 }}
                         ref={(el) => {
                           if (el) convHandleRefs.current.set(conv.conversationId, el);
@@ -569,13 +587,13 @@ export default function MsgAutoLinksPage() {
                   );
                 })}
               </div>
-              <div className="border-t bg-neutral-50 px-3 py-2.5 text-[11px] text-muted-foreground">
+              <div className="border-t bg-muted/30 px-3 py-2.5 text-[11px] text-muted-foreground">
                 The same contact signal is shown on both sides for fast visual verification.
               </div>
             </aside>
           </div>
 
-          <div className="flex h-[58px] shrink-0 items-center gap-3 border-t bg-white px-3.5">
+          <div className="flex h-[58px] shrink-0 items-center gap-3 border-t bg-card px-3.5">
             <Button
               type="button"
               variant="outline"
@@ -587,18 +605,17 @@ export default function MsgAutoLinksPage() {
             </Button>
             <Button
               type="button"
-              className="h-8 bg-neutral-900 text-white hover:bg-neutral-800"
+              className="h-8"
               disabled={!dirty || saving || loading}
               onClick={handleSave}
             >
               {saving ? "Saving…" : savedFlash && !dirty ? "Saved" : "Save"}
             </Button>
             {savedFlash && !dirty && (
-              <span className="text-xs text-green-700">Saved</span>
+              <span className="text-xs text-green-700 dark:text-green-400">Saved</span>
             )}
           </div>
-        </>
-      )}
+      </>
     </DashboardPageShell>
   );
 }

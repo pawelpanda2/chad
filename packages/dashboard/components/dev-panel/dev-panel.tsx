@@ -115,10 +115,10 @@ export function DevPanel() {
         {/* Tabs */}
         <div className="dev-panel-tabs">
           <button
-            className={`dev-tab ${activeTab === 'requests' ? 'active' : ''}`}
-            onClick={() => setTab('requests')}
+            className={`dev-tab ${activeTab === 'settings' ? 'active' : ''}`}
+            onClick={() => setTab('settings')}
           >
-            🌐 Requests {requestCount > 0 ? `(${requestCount})` : ''}
+            ⚙️ Settings
           </button>
           <button
             className={`dev-tab ${activeTab === 'errors' ? 'active' : ''}`}
@@ -127,10 +127,10 @@ export function DevPanel() {
             ⚠️ Errors {errorCount > 0 ? `(${errorCount})` : ''}
           </button>
           <button
-            className={`dev-tab ${activeTab === 'settings' ? 'active' : ''}`}
-            onClick={() => setTab('settings')}
+            className={`dev-tab ${activeTab === 'requests' ? 'active' : ''}`}
+            onClick={() => setTab('requests')}
           >
-            ⚙️ Settings
+            🌐 Requests {requestCount > 0 ? `(${requestCount})` : ''}
           </button>
         </div>
 

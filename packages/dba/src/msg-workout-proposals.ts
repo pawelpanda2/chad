@@ -78,6 +78,25 @@ export async function writeProposal(leadName: string, workoutName: string, propo
   return putItemBody(created.config.address, serializeProposal(proposal));
 }
 
+/**
+ * Flips an existing proposal's status (manual assignment via the GUI's
+ * numeric combobox — see msg-workout-linking.ts's `setMsgWorkoutBeeperLinkManual`).
+ * No-op (not an error) if there's no proposal item for this workout — a
+ * workout can be manually linked without ever having had a proposal at all
+ * (e.g. one of the "undated" ones).
+ */
+export async function setProposalStatusIfExists(
+  leadName: string,
+  workoutName: string,
+  status: MsgWorkoutProposalStatus
+): Promise<void> {
+  const existing = await getExistingProposal(leadName, workoutName);
+  if (!existing) return;
+  const proposal = parseProposalBody(existing.body);
+  if (!proposal) return;
+  await putItemBody(existing.config.address, serializeProposal({ ...proposal, status }));
+}
+
 export interface ProposalListEntry {
   name: string;
   loca: string;

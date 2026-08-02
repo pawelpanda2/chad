@@ -5,7 +5,7 @@
  *
  * Storage: one Content Provider Text item, `msg-auto / ai prompts`, lazily
  * created on first write (same find-or-create pattern
- * `message-creator.ts`'s `getOrCreateApproachContext` already uses via
+ * `message-creator.ts`'s `saveApproachContext` already uses via
  * `item-ops.ts`). Body is a single JSON document (never YAML — the model is
  * a complex, versioned list, not a flat key/value body):
  *

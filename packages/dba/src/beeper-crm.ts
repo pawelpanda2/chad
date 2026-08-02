@@ -332,8 +332,8 @@ export async function listBeeperContacts(opts?: {
   tag?: BeeperTag;
   view?: "default" | "permissions";
   permissionFilter?: BeeperPermissionFilter;
-  /** Story 101 — filter to a single contact group. */
-  groupId?: string;
+  /** Story 101 — filter to a single contact group. `null` filters to contacts with no group at all ("— No group —"); omitted/undefined shows everyone. */
+  groupId?: string | null;
 }): Promise<BeeperContactListItem[]> {
   // Story 92: this lazy auto-heal is a write (assertBeeperWriteAllowed
   // inside ensureBeeperSyncPermissionsMigrated) — must never block a read
@@ -358,7 +358,12 @@ export async function listBeeperContacts(opts?: {
         ],
       };
 
-  if (opts?.groupId) {
+  if (opts?.groupId === null) {
+    // Matches both an explicit `groupId: null` and a document where the
+    // field doesn't exist at all (Mongo equality-on-null semantics) — most
+    // contacts predate this feature and never had the field set.
+    filter.groupId = null;
+  } else if (typeof opts?.groupId === "string" && opts.groupId) {
     filter.groupId = toObjectId(opts.groupId);
   }
 

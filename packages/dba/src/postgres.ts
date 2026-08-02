@@ -19,7 +19,7 @@ import {
   getPostgresOverrideGeneration,
   type ChadPostgresSource,
 } from "./dev-db-override.js";
-import { DEV_DB_PROBE_TIMEOUT_MS } from "./offline-readonly-backup/constants.js";
+import { DEV_DB_PROBE_TIMEOUT_MS, POSTGRES_POOL_CONNECT_TIMEOUT_MS } from "./offline-readonly-backup/constants.js";
 
 export { DEV_DB_PROBE_TIMEOUT_MS };
 
@@ -39,11 +39,13 @@ function getPool(): Pool {
   }
   if (!pool) {
     poolGeneration = generation;
-    // Short connect timeout so a dead Tailscale/QNAP host cannot hang the
-    // Dev Panel forever (café / offline emergency switch).
+    // Bounded connect timeout so a dead Tailscale/QNAP host cannot hang
+    // requests forever — but long enough to survive a slow (relayed) link;
+    // see POSTGRES_POOL_CONNECT_TIMEOUT_MS. Dev Panel probes use their own
+    // one-shot Client with DEV_DB_PROBE_TIMEOUT_MS, never this pool.
     pool = new Pool({
       connectionString: getPostgresUri(),
-      connectionTimeoutMillis: DEV_DB_PROBE_TIMEOUT_MS,
+      connectionTimeoutMillis: POSTGRES_POOL_CONNECT_TIMEOUT_MS,
     });
   }
   return pool;

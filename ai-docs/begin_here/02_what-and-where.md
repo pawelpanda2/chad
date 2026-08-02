@@ -331,6 +331,52 @@ Desktop.
 
 ---
 
+## Msg workout ↔ Beeper linking (Story 99)
+
+**Opis:** Łączenie `msg workout` Text-itemów leada (Content Provider,
+`leads/all items/<leadName>/msg workout/`) z konkretną wiadomością Beeper
+wyświetlaną w `/dashboard/beeper` → Conversations. Kardynalność: jeden
+workout → jedna wiadomość; jedna wiadomość może mieć wiele workoutów.
+Dopasowanie 4-etapowe (data+godzina ±30 min, sam dzień, exact
+`p1_you`/`p1_she`, fuzzy) — fuzzy nigdy nie linkuje automatycznie, tylko
+tworzy propozycję. Nie mylić z Story 90 (`lead-beeper-links.ts`, Msg Auto →
+Links) — to łączy leada z całą rozmową, nie workoutu z konkretną
+wiadomością; ta specjalizacja czyta z tamtej, nigdy nie zapisuje.
+
+**Lokalizacja:** `ai-docs/msg-workout/` (analogiczny do `ai-docs/beeper/`).
+
+**Zacznij od:** [`ai-docs/msg-workout/ai-start.md`](../msg-workout/ai-start.md).
+
+**Czytać gdy:** zadanie dotyczy `packages/dba/src/msg-workout-*.ts`,
+`packages/dashboard/app/api/msg-workout/**`, albo
+`packages/dashboard/components/beeper/msg-workout-*.tsx`/
+`undated-msg-workouts.tsx`.
+
+---
+
+## GUI standard (layout/scroll wzorce współdzielone między zakładkami)
+
+**Opis:** Uzupełnienie `human-docs/dashboard/common/features/responsive-layout-standard.md`
+(które pozostaje jedynym źródłem prawdy dla `DashboardPageShell`/ramki/
+edytowalnej tabeli) o wzorce, których tamten dokument nie opisuje: split-view
+z dwoma niezależnymi scrollami + kolapsującym nagłówkiem (Beeper Conversations/
+Msg workout), tabela bez edycji inline (stałe szerokości kolumn, licznik "N
+items" w drugiej linii przycisków), tooltip po kliknięciu zamiast po
+najechaniu. Powstało po tym, jak layout Beepera trzeba było poprawiać kilka
+razy w Story 99/101, bo te wzorce nie były jeszcze nigdzie spisane.
+
+**Lokalizacja:** `ai-docs/gui-standard/` (nowy folder specjalizacji, Story
+99/101 follow-up, 2026-08-02 — analogiczny do `ai-docs/beeper/`).
+
+**Zacznij od:** [`ai-docs/gui-standard/ai-start.md`](../gui-standard/ai-start.md).
+
+**Czytać gdy:** dowolna zmiana dotykająca głównej ramki strony, scrolla
+wewnątrz zakładki, split-view (lista + szczegół), tabeli bez edycji inline,
+albo skróconych nagłówków/ikon wymagających tooltipa — **przed** zgadywaniem
+rozwiązania od zera.
+
+---
+
 ## Google Sheets sync (Daily Tracker export, nie zakładka UI)
 
 **Opis:** Jednokierunkowa synchronizacja Daily Entry ("Tracker", tab

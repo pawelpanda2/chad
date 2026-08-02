@@ -308,6 +308,20 @@ export async function getCachedUsers(forceRefresh: boolean = false): Promise<App
   console.log('[UserService] Cache miss or force refresh, fetching from Sharp');
   const users = await getUsersFromSharp() as AppUser[];
 
+  if (users.length === 0 && usersCache && usersCache.data.length > 0) {
+    // getUsersFromSharp() returns [] both for "no users" and for a failed
+    // fetch (e.g. a Postgres connect timeout over a degraded Tailscale
+    // link). Caching that [] used to log EVERY user out for the next
+    // CACHE_TTL_MS (resolveCurrentUser -> null -> NOT_AUTHENTICATED on all
+    // routes), so when we still hold a previously good list, keep serving
+    // it and retry after the normal TTL. Real user mutations invalidate
+    // this cache explicitly (invalidateUsersCache), so a stale list here
+    // can only mean a transient fetch failure.
+    console.warn('[UserService] users fetch returned empty — keeping previously cached users');
+    usersCache = { data: usersCache.data, timestamp: now };
+    return usersCache.data;
+  }
+
   usersCache = {
     data: users,
     timestamp: now,

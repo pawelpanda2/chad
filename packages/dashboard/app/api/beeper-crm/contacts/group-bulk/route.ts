@@ -1,6 +1,7 @@
 /**
- * POST /api/beeper-crm/contacts/group-bulk { contactIds: string[], groupId: string } —
- * bulk-assign every listed contact to one group (Story 101, the Groups tab's "Do" button).
+ * POST /api/beeper-crm/contacts/group-bulk { contactIds: string[], groupId: string | null } —
+ * bulk-assign every listed contact to one group, or clear them all to
+ * "— no group —" with `groupId: null` (Story 101, the Groups tab's "Do" button).
  */
 import { NextResponse } from "next/server";
 import { setBeeperContactsGroupBulk, runWithRepoContext } from "dba";
@@ -14,9 +15,9 @@ export async function POST(request: Request) {
 
   const body = await request.json().catch(() => null);
   const contactIds = Array.isArray(body?.contactIds) ? body.contactIds.filter((v: unknown) => typeof v === "string") : [];
-  const groupId = typeof body?.groupId === "string" ? body.groupId : "";
-  if (!groupId) {
-    return NextResponse.json({ ok: false, error: "groupId is required" }, { status: 400 });
+  const groupId = body?.groupId === null ? null : typeof body?.groupId === "string" ? body.groupId : undefined;
+  if (groupId === undefined) {
+    return NextResponse.json({ ok: false, error: "groupId (string or null) is required" }, { status: 400 });
   }
   if (contactIds.length === 0) {
     return NextResponse.json({ ok: false, error: "contactIds must be a non-empty array" }, { status: 400 });

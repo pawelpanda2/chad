@@ -25,6 +25,8 @@ export interface BeeperGroup {
   name: string;
   createdAt: string;
   updatedAt: string;
+  /** At most one group is ever the default at a time (new contacts / unassigned fallback — set via setDefaultBeeperGroup). */
+  isDefault: boolean;
 }
 
 async function groupsCol() {
@@ -49,6 +51,7 @@ function toBeeperGroup(doc: any): BeeperGroup {
     name: doc.name,
     createdAt: doc.createdAt instanceof Date ? doc.createdAt.toISOString() : doc.createdAt,
     updatedAt: doc.updatedAt instanceof Date ? doc.updatedAt.toISOString() : doc.updatedAt,
+    isDefault: doc.isDefault === true,
   };
 }
 
@@ -93,6 +96,87 @@ export async function createBeeperGroup(name: string): Promise<BeeperGroup> {
   return toBeeperGroup({ _id: result.insertedId, ...doc });
 }
 
+/**
+ * Rename an existing group. Rejects empty names and case-insensitive
+ * collisions with a *different* group (same uniqueness rule as create).
+ */
+export async function renameBeeperGroup(groupId: string, name: string): Promise<BeeperGroup> {
+  assertBeeperWriteAllowed();
+  const trimmed = name.trim();
+  if (!trimmed) {
+    throw new Error("Group name is required");
+  }
+
+  const col = await groupsCol();
+  const id = toObjectId(groupId);
+  const current = await col.findOne({ _id: id });
+  if (!current) {
+    throw new Error(`Group not found: "${groupId}"`);
+  }
+
+  const clash = await col.findOne(
+    { name: trimmed, _id: { $ne: id } },
+    { collation: { locale: "en", strength: 2 } }
+  );
+  if (clash) {
+    throw new Error(`A group named "${trimmed}" already exists`);
+  }
+
+  const now = new Date();
+  await col.updateOne({ _id: id }, { $set: { name: trimmed, updatedAt: now } });
+  return toBeeperGroup({ ...current, name: trimmed, updatedAt: now });
+}
+
+/**
+ * Deletes a group definition. Contacts currently assigned to it fall back
+ * to "no group" (never left pointing at a dangling groupId) rather than
+ * being touched otherwise — same "clear the reference, don't cascade-delete
+ * the referencing side" shape as `setBeeperContactGroup(id, null)`.
+ */
+export async function deleteBeeperGroup(groupId: string): Promise<void> {
+  assertBeeperWriteAllowed();
+  const id = toObjectId(groupId);
+  const col = await groupsCol();
+  const existing = await col.findOne({ _id: id });
+  if (!existing) {
+    throw new Error(`Group not found: "${groupId}"`);
+  }
+
+  const contacts = await contactsCol();
+  await contacts.updateMany({ groupId: id }, { $set: { groupId: null } });
+  await col.deleteOne({ _id: id });
+}
+
+/** Reads whichever group (if any) is currently marked default. */
+export async function getDefaultBeeperGroup(): Promise<BeeperGroup | null> {
+  const col = await groupsCol();
+  const doc = await col.findOne({ isDefault: true });
+  return doc ? toBeeperGroup(doc) : null;
+}
+
+/**
+ * Sets the default group — `groupId: null` clears it (no default). At most
+ * one group is ever default: clears any previous holder first, in the same
+ * write, so there's never a moment with two.
+ */
+export async function setDefaultBeeperGroup(groupId: string | null): Promise<void> {
+  assertBeeperWriteAllowed();
+  const col = await groupsCol();
+
+  if (groupId === null) {
+    await col.updateMany({ isDefault: true }, { $set: { isDefault: false } });
+    return;
+  }
+
+  const id = toObjectId(groupId);
+  const target = await col.findOne({ _id: id });
+  if (!target) {
+    throw new Error(`Group not found: "${groupId}"`);
+  }
+  await col.updateMany({ isDefault: true, _id: { $ne: id } }, { $set: { isDefault: false } });
+  await col.updateOne({ _id: id }, { $set: { isDefault: true } });
+}
+
 /** Single-contact assign/clear. `groupId: null` removes the contact from any group. */
 export async function setBeeperContactGroup(contactId: string, groupId: string | null): Promise<void> {
   assertBeeperWriteAllowed();
@@ -111,26 +195,30 @@ export async function setBeeperContactGroup(contactId: string, groupId: string |
   await contacts.updateOne({ _id: toObjectId(contactId) }, { $set: { groupId: group._id } });
 }
 
-/** Bulk assign — every checked contact gets set to the same group. Never accepts `groupId: null` (bulk clear isn't a supported action here). */
+/** Bulk assign/clear — every checked contact gets set to the same group, or `groupId: null` clears them all to "— No group —". */
 export async function setBeeperContactsGroupBulk(
   contactIds: string[],
-  groupId: string
+  groupId: string | null
 ): Promise<{ updated: number }> {
   assertBeeperWriteAllowed();
   if (contactIds.length === 0) {
     return { updated: 0 };
   }
 
-  const groups = await groupsCol();
-  const group = await groups.findOne({ _id: toObjectId(groupId) });
-  if (!group) {
-    throw new Error(`Group not found: "${groupId}"`);
+  let targetGroupId: ObjectId | null = null;
+  if (groupId !== null) {
+    const groups = await groupsCol();
+    const group = await groups.findOne({ _id: toObjectId(groupId) });
+    if (!group) {
+      throw new Error(`Group not found: "${groupId}"`);
+    }
+    targetGroupId = group._id;
   }
 
   const contacts = await contactsCol();
   const result = await contacts.updateMany(
     { _id: { $in: contactIds.map(toObjectId) } },
-    { $set: { groupId: group._id } }
+    { $set: { groupId: targetGroupId } }
   );
   return { updated: result.modifiedCount };
 }

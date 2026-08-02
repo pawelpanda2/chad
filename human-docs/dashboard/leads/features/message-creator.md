@@ -34,6 +34,11 @@ match the per-message combobox (same builder).
 | My proposals | `{lead}/msg workout/my proposals` (Text) |
 | Analysis runs | `{lead}/msg workout/{yy-MM-dd}; {schoolId}; {op}` |
 
+These items (and the `msg workout` folder) are created **only on save** —
+opening the Message Creator view never writes anything. (Until 2026-07-30 the
+GET bootstrap auto-created empty `approach context` / `my proposals` items as
+a side effect; users saw them as phantom items they never added.)
+
 Schema v2 runs may include `targetMessageId`, `promptVersionId`, `modelId`,
 `runNumber`, `proposalText`. Legacy runs without message target remain readable.
 

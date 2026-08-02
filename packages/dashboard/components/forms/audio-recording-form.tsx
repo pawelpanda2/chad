@@ -27,6 +27,10 @@ import {
   clearSession,
   listPendingSessions,
 } from "@/components/forms/audio-recording-draft-store";
+import {
+  SequentialAudioPlayer,
+  type SequentialAudioTrack,
+} from "@/components/forms/sequential-audio-player";
 
 /**
  * Recording flow (Story 93 follow-up):
@@ -100,7 +104,12 @@ export function AudioRecordingForm({
   const [notice, setNotice] = useState<string | null>(null);
   const [syncWarning, setSyncWarning] = useState<string | null>(null);
   const [result, setResult] = useState<{ type: "success" | "error"; message: string } | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  /** Unsynced just-stopped take — shown in Latest take until it appears in draftSegments. */
+  const [localPreview, setLocalPreview] = useState<{
+    sessionId: string;
+    url: string;
+    durationMs: number;
+  } | null>(null);
   const [draftSegments, setDraftSegments] = useState<DraftSegmentInfo[]>([]);
   const [draftId, setDraftId] = useState<string | null>(initialDraftId);
 
@@ -118,6 +127,51 @@ export function AudioRecordingForm({
     [draftSegments],
   );
 
+  /** Chronological full take for "Latest take" — all saved segments, plus a
+   *  just-stopped local blob until the server lists it. Total length = sum. */
+  const latestTakeTracks = useMemo((): SequentialAudioTrack[] => {
+    const tracks: SequentialAudioTrack[] = [];
+    if (draftId) {
+      for (const segment of draftSegments) {
+        tracks.push({
+          id: segment.sessionId,
+          src: `/api/forms/audio-recording/drafts/${encodeURIComponent(draftId)}/segments/${encodeURIComponent(segment.sessionId)}/audio`,
+          durationMs: segment.durationMs || 0,
+        });
+      }
+    }
+    if (
+      localPreview &&
+      localPreview.durationMs > 0 &&
+      !draftSegments.some((s) => s.sessionId === localPreview.sessionId)
+    ) {
+      tracks.push({
+        id: localPreview.sessionId,
+        src: localPreview.url,
+        durationMs: localPreview.durationMs,
+      });
+    }
+    return tracks.filter((t) => t.durationMs > 0 && t.src);
+  }, [draftId, draftSegments, localPreview]);
+
+  /** Newest-first for the Saved segments list (display only). */
+  const segmentsNewestFirst = useMemo(
+    () =>
+      draftSegments
+        .map((segment, chronologicalIndex) => ({ segment, chronologicalIndex }))
+        .reverse(),
+    [draftSegments],
+  );
+
+  // Drop the local blob preview once the same session is on the server list.
+  useEffect(() => {
+    if (!localPreview) return;
+    if (draftSegments.some((s) => s.sessionId === localPreview.sessionId)) {
+      URL.revokeObjectURL(localPreview.url);
+      setLocalPreview(null);
+    }
+  }, [draftSegments, localPreview]);
+
   const displayName = useMemo(
     () => buildRecordingDisplayName(recordedDate, namePart),
     [recordedDate, namePart],
@@ -131,8 +185,8 @@ export function AudioRecordingForm({
   }, []);
 
   const revokePreview = useCallback(() => {
-    setPreviewUrl((prev) => {
-      if (prev) URL.revokeObjectURL(prev);
+    setLocalPreview((prev) => {
+      if (prev?.url) URL.revokeObjectURL(prev.url);
       return null;
     });
   }, []);
@@ -481,7 +535,11 @@ export function AudioRecordingForm({
       return;
     }
     sessionBlobRef.current = blob;
-    setPreviewUrl(URL.createObjectURL(blob));
+    setLocalPreview({
+      sessionId: session.sessionId,
+      url: URL.createObjectURL(blob),
+      durationMs: activeMs,
+    });
     setPhase("preview");
     // Final upload of this session's segment (replaces its checkpoint).
     void syncCurrentSession(true);
@@ -720,28 +778,38 @@ export function AudioRecordingForm({
         </p>
       )}
 
-      {previewUrl && phase !== "recording" && phase !== "paused" && (
+      {latestTakeTracks.length > 0 && phase !== "recording" && phase !== "paused" && (
         <div className="max-w-[500px] rounded-lg border bg-muted/10 p-3">
-          <p className="mb-1 text-xs text-muted-foreground">Latest take</p>
-          <audio controls src={previewUrl} className="w-full" />
+          <p className="mb-1 text-xs text-muted-foreground">
+            Latest take
+            {latestTakeTracks.length > 1
+              ? ` · ${latestTakeTracks.length} segments · ${formatDurationClock(
+                  latestTakeTracks.reduce((s, t) => s + t.durationMs, 0),
+                )}`
+              : ""}
+          </p>
+          <SequentialAudioPlayer tracks={latestTakeTracks} />
         </div>
       )}
 
       {draftId && draftSegments.length > 0 && phase !== "recording" && phase !== "paused" && (
         <div className="max-w-[500px] space-y-2 rounded-lg border bg-muted/10 p-3">
           <p className="text-xs text-muted-foreground">
-            Saved segments ({draftSegments.length}) — merged into one file on Save
+            Saved segments ({draftSegments.length})
           </p>
-          {draftSegments.map((segment, index) => (
+          {segmentsNewestFirst.map(({ segment, chronologicalIndex }) => (
             <div key={segment.sessionId} className="flex items-center gap-2">
               <span className="w-24 flex-shrink-0 font-mono text-xs text-muted-foreground">
-                {index + 1} · {formatDurationClock(segment.durationMs) ?? "?"}
+                {chronologicalIndex + 1} · {formatDurationClock(segment.durationMs) ?? "?"}
               </span>
-              <audio
-                controls
-                preload="none"
-                src={`/api/forms/audio-recording/drafts/${encodeURIComponent(draftId)}/segments/${encodeURIComponent(segment.sessionId)}/audio`}
-                className="h-8 w-full"
+              <SequentialAudioPlayer
+                tracks={[
+                  {
+                    id: segment.sessionId,
+                    src: `/api/forms/audio-recording/drafts/${encodeURIComponent(draftId)}/segments/${encodeURIComponent(segment.sessionId)}/audio`,
+                    durationMs: segment.durationMs || 0,
+                  },
+                ]}
               />
             </div>
           ))}

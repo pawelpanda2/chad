@@ -50,9 +50,60 @@ done
 
 docker compose -p "$COMPOSE_PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d
 
-log_info "Standard local workflow uses Server PostgreSQL (QNAP). Local CHAD Postgres mirror is opt-in:"
-log_info "  docker compose -p $COMPOSE_PROJECT_NAME --profile local-postgres-mirror up -d postgres"
-log_info "Emergency read-only snapshot: infrastructure/offline-readonly-backup/start.sh"
+# Keep the local Postgres volume as a mirror of QNAP (Story 89) so login
+# (chad_admin/users-list) and Dev Panel reads use real data.
+log_info "Waiting for local Postgres to accept connections..."
+ready=0
+for _ in $(seq 1 30); do
+  if docker exec chad-postgres-local-mac-docker pg_isready -U "${POSTGRES_USER:-chad}" -d "${POSTGRES_DB:-chad}" >/dev/null 2>&1; then
+    ready=1
+    break
+  fi
+  sleep 1
+done
+if [ "$ready" != "1" ]; then
+  log_error "Local Postgres did not become ready in time."
+  exit 1
+fi
+
+if [ -z "${LOCAL_POSTGRES_HOST_URI:-}" ]; then
+  _pg_user="$(read_env_var "$ENV_FILE" POSTGRES_USER)"
+  _pg_pass="$(read_env_var "$ENV_FILE" POSTGRES_PASSWORD)"
+  _pg_db="$(read_env_var "$ENV_FILE" POSTGRES_DB)"
+  _pg_port="$(read_env_var "$ENV_FILE" POSTGRES_PORT)"
+  LOCAL_POSTGRES_HOST_URI="postgres://${_pg_user:-chad}:${_pg_pass}@127.0.0.1:${_pg_port:-5433}/${_pg_db:-chad}"
+fi
+
+log_info "Migrating schema + ensuring local Postgres has login data..."
+(
+  cd "$REPO_ROOT"
+  pnpm --filter dba build >/dev/null
+  POSTGRES_URI="$LOCAL_POSTGRES_HOST_URI" node packages/dba/scripts/apply-postgres-migrations.mjs
+  LOCAL_ITEMS="$(POSTGRES_URI="$LOCAL_POSTGRES_HOST_URI" node -e "
+    import pg from 'pg';
+    const c=new pg.Client({connectionString:process.env.POSTGRES_URI});
+    await c.connect();
+    const r=await c.query('SELECT count(*)::int AS c FROM cp_items');
+    console.log(r.rows[0].c);
+    await c.end();
+  ")"
+  if [ "${LOCAL_ITEMS:-0}" -lt 50 ]; then
+    log_warn "Local Postgres has only ${LOCAL_ITEMS} cp_items — restoring from QNAP Mongo (not QNAP Postgres; server PG may be mid-migration)."
+  MONGO_ROOT_USERNAME="$(read_env_var "$ENV_FILE" MONGO_ROOT_USERNAME)"
+  MONGO_ROOT_PASSWORD="$(read_env_var "$ENV_FILE" MONGO_ROOT_PASSWORD)"
+  QNAP_TAILSCALE_HOST="100.117.139.83"
+  QNAP_MONGO_PORT="12040"
+  MONGODB_URI="mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@${QNAP_TAILSCALE_HOST}:${QNAP_MONGO_PORT}/chad?authSource=admin&directConnection=true"
+  POSTGRES_URI="$LOCAL_POSTGRES_HOST_URI" MONGODB_URI="$MONGODB_URI" \
+    node packages/dba/scripts/migrate-mongo-to-postgres.mjs --all --apply
+  else
+    log_info "Local Postgres has ${LOCAL_ITEMS} cp_items — skipping QNAP sync (use 07_sync-postgres-from-qnap.sh manually if needed)."
+  fi
+  POSTGRES_URI="$LOCAL_POSTGRES_HOST_URI" node packages/dba/scripts/seed-local-postgres-login.mjs
+) || {
+  log_error "Local Postgres migrate/sync/seed failed."
+  exit 1
+}
 
 log_info "Waiting for dashboard to respond..."
 for _ in $(seq 1 30); do

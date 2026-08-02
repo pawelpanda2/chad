@@ -11,10 +11,11 @@ import { repoAndLocaToAddress } from "./cp-model.js";
 import { getCurrentRepoGuid } from "./repo-context.js";
 import { getItemByAddress } from "./item-ops.js";
 import { getAllLeadsWithContacts, getLeadMsgWorkoutsByLoca } from "./leads.js";
+import { getBeeperContact } from "./beeper-crm.js";
 import { listLeadBeeperLinks, findLiveBeeperMatchForLead } from "./lead-beeper-links.js";
-import { getMsgWorkoutBeeperLink } from "./msg-workout-linking.js";
+import { getMsgWorkoutBeeperLink, setMsgWorkoutBeeperLinkManual } from "./msg-workout-linking.js";
 import { parseWorkoutName } from "./msg-workout-matching.js";
-import { listProposalsForLead } from "./msg-workout-proposals.js";
+import { listProposalsForLead, setProposalStatusIfExists } from "./msg-workout-proposals.js";
 
 /**
  * Resolves which lead (if any) is linked to a given Beeper conversation.
@@ -58,18 +59,33 @@ export interface MsgWorkoutProposalGuiEntry extends MsgWorkoutGuiEntry {
   totalCandidates: number;
 }
 
+/** One row of the full "all workouts, in order" list (GUI manual-assignment panel). */
+export interface MsgWorkoutListEntry {
+  loca: string;
+  name: string;
+  body: string;
+  /** Confirmed link's messageId, if linked. */
+  linkedMessageId: string | null;
+  /** Best proposal's messageId, if proposed and not (yet) linked. */
+  proposedMessageId: string | null;
+  /** Proposal confidence (0..1), only set alongside `proposedMessageId`. */
+  confidence: number | null;
+}
+
 export interface MsgWorkoutConversationLinks {
   leadName: string | null;
   linksByMessageId: Record<string, MsgWorkoutGuiEntry[]>;
   /** Pending (status "proposed") proposals, keyed by each candidate's messageId — never auto-linked, shown for human review next to the candidate message. */
   proposalsByMessageId: Record<string, MsgWorkoutProposalGuiEntry[]>;
   undated: MsgWorkoutGuiEntry[];
+  /** Every workout for this lead, in their natural order, each with its current assignment (if any) — drives the manual numeric-assignment list panel. */
+  allWorkouts: MsgWorkoutListEntry[];
 }
 
 export async function getMsgWorkoutConversationLinks(conversationId: string): Promise<MsgWorkoutConversationLinks> {
   const lead = await findLeadForConversation(conversationId);
   if (!lead) {
-    return { leadName: null, linksByMessageId: {}, proposalsByMessageId: {}, undated: [] };
+    return { leadName: null, linksByMessageId: {}, proposalsByMessageId: {}, undated: [], allWorkouts: [] };
   }
 
   const repoGuid = getCurrentRepoGuid();
@@ -79,6 +95,7 @@ export async function getMsgWorkoutConversationLinks(conversationId: string): Pr
   const undated: MsgWorkoutGuiEntry[] = [];
   const entryByWorkoutName = new Map<string, MsgWorkoutGuiEntry>();
   const linkedWorkoutNames = new Set<string>();
+  const linkedMessageIdByWorkoutName = new Map<string, string>();
 
   for (const workout of workoutsResult.workouts) {
     const address = repoAndLocaToAddress(repoGuid, workout.loca);
@@ -92,11 +109,13 @@ export async function getMsgWorkoutConversationLinks(conversationId: string): Pr
     if (link) {
       (linksByMessageId[link.messageId] ??= []).push(entry);
       linkedWorkoutNames.add(workout.logicalName);
+      linkedMessageIdByWorkoutName.set(workout.logicalName, link.messageId);
     }
   }
 
   const proposals = await listProposalsForLead(lead.leadName);
   const proposedWorkoutNames = new Set(proposals.map((p) => p.proposal?.msgWorkoutItemName).filter((n): n is string => Boolean(n)));
+  const bestProposalByWorkoutName = new Map<string, { messageId: string; confidence: number }>();
 
   const proposalsByMessageId: Record<string, MsgWorkoutProposalGuiEntry[]> = {};
   for (const p of proposals) {
@@ -111,6 +130,7 @@ export async function getMsgWorkoutConversationLinks(conversationId: string): Pr
     // point of confusion). Surface only the single best-confidence
     // candidate; the rest stay visible inside the panel body if needed.
     const best = [...p.proposal.candidates].sort((a, b) => b.confidence - a.confidence)[0];
+    bestProposalByWorkoutName.set(p.proposal.msgWorkoutItemName, { messageId: best.messageId, confidence: best.confidence });
     (proposalsByMessageId[best.messageId] ??= []).push({
       ...entry,
       confidence: best.confidence,
@@ -130,5 +150,61 @@ export async function getMsgWorkoutConversationLinks(conversationId: string): Pr
     }
   }
 
-  return { leadName: lead.leadName, linksByMessageId, proposalsByMessageId, undated };
+  const allWorkouts: MsgWorkoutListEntry[] = workoutsResult.workouts
+    .filter((w) => entryByWorkoutName.has(w.logicalName))
+    .map((w) => {
+      const bestProposal = bestProposalByWorkoutName.get(w.logicalName) ?? null;
+      return {
+        loca: w.loca,
+        name: w.logicalName,
+        body: entryByWorkoutName.get(w.logicalName)?.body ?? "",
+        linkedMessageId: linkedMessageIdByWorkoutName.get(w.logicalName) ?? null,
+        proposedMessageId: bestProposal?.messageId ?? null,
+        confidence: bestProposal?.confidence ?? null,
+      };
+    });
+
+  return { leadName: lead.leadName, linksByMessageId, proposalsByMessageId, undated, allWorkouts };
+}
+
+/**
+ * Manual assignment (GUI numeric combobox next to each workout in the list
+ * panel) — sets or clears which message a workout is linked to, overriding
+ * whatever the auto-matcher decided (or providing a link for a workout that
+ * was never proposed at all, e.g. one of the "undated" ones).
+ *
+ * `messageId: null` clears the link. Otherwise the message's own ISO
+ * timestamp is looked up server-side from `conversationId` — the frontend
+ * only ever has the display-formatted (`DD/MM/YYYY, HH:MM:SS`) timestamp
+ * after the WhatsApp-export round-trip (see `beeperMessagesToParsedMessagesWithDbId`
+ * in whatsapp-messages.ts), so re-parsing that on the client would be lossy;
+ * reading the real value from Mongo here is both simpler and correct.
+ *
+ * When a proposal exists for this workout, its status is kept in sync
+ * (`"accepted"` once linked, back to `"proposed"` once cleared) so it
+ * doesn't keep showing as a separate, stale proposal chip alongside the
+ * real link.
+ */
+export async function setMsgWorkoutMessageAssignment(
+  leadName: string,
+  workoutLoca: string,
+  workoutName: string,
+  conversationId: string,
+  messageId: string | null
+): Promise<void> {
+  const repoGuid = getCurrentRepoGuid();
+  const address = repoAndLocaToAddress(repoGuid, workoutLoca);
+  const item = await getItemByAddress(address);
+  if (!item) throw new Error(`msg workout item not found: ${workoutLoca}`);
+
+  let assignment: { messageId: string; timestamp: string } | null = null;
+  if (messageId) {
+    const contact = await getBeeperContact(conversationId);
+    const message = contact?.messages.find((m) => m._id === messageId);
+    if (!message?.timestamp) throw new Error(`message not found in conversation: ${messageId}`);
+    assignment = { messageId, timestamp: message.timestamp };
+  }
+
+  await setMsgWorkoutBeeperLinkManual(item, assignment);
+  await setProposalStatusIfExists(leadName, workoutName, assignment ? "accepted" : "proposed");
 }

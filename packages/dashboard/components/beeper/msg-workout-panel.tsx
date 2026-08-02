@@ -41,7 +41,13 @@ export function MsgWorkoutPanel({ entry, onClose }: MsgWorkoutPanelProps) {
         </button>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
-        <pre className="whitespace-pre-wrap break-words font-sans text-sm">{entry.body}</pre>
+        {entry.body ? (
+          <pre className="whitespace-pre-wrap break-words font-sans text-sm">{entry.body}</pre>
+        ) : (
+          <p className="text-sm italic text-muted-foreground">
+            This msg workout item has no body text yet.
+          </p>
+        )}
       </div>
     </div>
   );

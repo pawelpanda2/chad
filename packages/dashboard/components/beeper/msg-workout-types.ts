@@ -13,9 +13,20 @@ export interface MsgWorkoutProposalEntry extends MsgWorkoutEntry {
   totalCandidates: number;
 }
 
+/** One row of the "all workouts, in order" manual-assignment list — mirrors dba's MsgWorkoutListEntry. */
+export interface MsgWorkoutListEntry {
+  loca: string;
+  name: string;
+  body: string;
+  linkedMessageId: string | null;
+  proposedMessageId: string | null;
+  confidence: number | null;
+}
+
 export interface MsgWorkoutConversationLinksResponse {
   leadName: string | null;
   linksByMessageId: Record<string, MsgWorkoutEntry[]>;
   proposalsByMessageId: Record<string, MsgWorkoutProposalEntry[]>;
   undated: MsgWorkoutEntry[];
+  allWorkouts: MsgWorkoutListEntry[];
 }
