@@ -12,6 +12,8 @@ export interface ParsedWhatsAppMessage {
   timestamp: string;
   isOwn: boolean;
   raw: string;
+  /** Stable Mongo `_id` of the source message (Story 99) — undefined for content built from raw export text with no DB-backed message behind it. */
+  dbId?: string;
 }
 
 /** FNV-1a 32-bit → hex (deterministic, no Node crypto). */
@@ -134,6 +136,25 @@ export function beeperMessagesToParsedMessages(
   messages: { isSelf: boolean; text: string; timestamp: string | null }[]
 ): ParsedWhatsAppMessage[] {
   return parseWhatsAppMessages(formatBeeperMessagesForExport(messages));
+}
+
+/**
+ * Same as `beeperMessagesToParsedMessages`, plus the source Mongo `_id` on
+ * each parsed message (Story 99 — needed by anything that must reference a
+ * *specific* Beeper message stably, since the content-hash `id` above is
+ * derived and would change if the message's own text/timestamp changed).
+ * Zips by index: `formatBeeperMessagesForExport`'s filter
+ * (`text && timestamp`) is applied here first so the filtered input list
+ * and the parsed output list stay in the same order/length correspondence.
+ */
+export function beeperMessagesToParsedMessagesWithDbId(
+  messages: { _id: string; isSelf: boolean; text: string; timestamp: string | null }[]
+): ParsedWhatsAppMessage[] {
+  const filtered = messages.filter(
+    (m): m is typeof m & { text: string; timestamp: string } => Boolean(m.text?.trim() && m.timestamp)
+  );
+  const parsed = beeperMessagesToParsedMessages(filtered);
+  return parsed.map((p, i) => ({ ...p, dbId: filtered[i]?._id }));
 }
 
 /**

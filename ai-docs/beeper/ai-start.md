@@ -79,6 +79,11 @@ Konkretnie:
   kanały, wiadomości, merge, statystyki, SSE); wszystkie funkcje wołają
   `getCurrentRepoGuid()` przez 4 helpery kolekcji (`contactsCol`,
   `channelsCol`, `messagesCol`, `timelineEventsCol`) i `ensureBeeperIndexes(repoGuid)`.
+- `packages/dba/src/beeper-platform.ts` (+ `dba/beeper-platform` export) —
+  normalizacja raw `network` → platform key oraz wybór sieci wiersza
+  (`lastMessage` → jednoznaczny channel → jednoznaczna identity; nigdy
+  zgadywanie po nazwie ani `identities[0]` przy wielu sieciach). GUI:
+  `BeeperPlatformIcon` w Groups / Conversations / Msg workout / Permissions.
 - `packages/dba/src/repo-context.ts` — `runWithRepoContext`/
   `getCurrentRepoGuid`, wspólne z resztą `dba` (nie tylko Beeper).
 - `packages/dashboard/app/api/beeper-crm/**` — 14 cienkich route'ów,
@@ -128,7 +133,15 @@ Konkretnie:
   `BEEPER_MONGODB_URI` (`.env.local`, co czyta Dashboard — QNAP lub
   lokalny, zależnie od wyboru w Dev Panelu).
 
-## 3. Powiązana dokumentacja poza tym katalogiem
+## 3. Msg workout ↔ Beeper message linking (Story 99) — osobna specjalizacja
+
+Łączenie leada `msg workout` Text-itemów (Content Provider) z konkretną
+wiadomością Beeper w zakładce Conversations — **nie** to samo co ten
+katalog (który dotyczy Beeper CRM jako całości) ani co Story 90
+(`lead-beeper-links.ts`, lead↔cała rozmowa). Zacznij od
+[`ai-docs/msg-workout/ai-start.md`](../msg-workout/ai-start.md).
+
+## 4. Powiązana dokumentacja poza tym katalogiem
 
 - `human-docs/dashboard/common/features/chad-user-data-isolation.md` —
   ogólny standard izolacji danych CHAD (Content Provider/repoGuid); Story

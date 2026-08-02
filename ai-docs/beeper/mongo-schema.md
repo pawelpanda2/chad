@@ -71,7 +71,7 @@ One document per chat (direct or group), per network.
 |---|---|---|
 | `_id` | ObjectId | |
 | `beeperChatID` | string | Beeper's own chat ID |
-| `network` | string | e.g. `whatsapp`, `telegram`, `imessage`, `signal`, `gcm`/`sms` |
+| `network` | string | Live Beeper/Bridge values are often long bridge ids (e.g. `local-whatsapp_ba_…`, `local-instagram_ba_…`), plus short aliases (`whatsapp`, `telegram`, `imessage`, `signal`, `gcm`/`sms`) and internal plumbing (`matrix`, `hungryserv`, `$other`, `$space`). GUI platform icons normalize via `packages/dba/src/beeper-platform.ts` — never by contact display name. |
 | `type` | `"direct"` \| `"group"` | |
 | `title` | string \| null | |
 | `participantIDs` | ObjectId[] | references into `contacts` |

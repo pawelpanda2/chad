@@ -2,14 +2,18 @@
 
 import { Search, RefreshCw } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
+import { beeperContactDisplayName } from "@/lib/beeper-contact-display";
+import { BeeperPlatformIcon } from "./beeper-platform-icon";
 
 export interface BeeperConversationListItem {
   _id: string;
   displayName: string;
   hasAvatar: boolean;
   lastMessage: { text: string; timestamp: string | null; network: string } | null;
+  /** Resolved conversation platform network (DBA); preferred over guessing identities[0]. */
+  platformNetwork?: string | null;
+  identities?: Array<{ network?: string; senderName?: string }>;
 }
 
 interface BeeperConversationListProps {
@@ -49,6 +53,9 @@ export function BeeperConversationList({
           <div className="divide-y">
             {contacts.map((c) => {
               const selected = c._id === selectedContactId;
+              const name = beeperContactDisplayName(c.displayName, c.identities);
+              const platformNetwork =
+                c.platformNetwork ?? c.lastMessage?.network ?? null;
               return (
                 <button
                   key={c._id}
@@ -60,19 +67,9 @@ export function BeeperConversationList({
                     selected && "bg-accent"
                   )}
                 >
-                  <Avatar className="h-7 w-7 shrink-0">
-                    {c.hasAvatar && (
-                      <AvatarImage
-                        src={`/api/beeper-crm/contacts/${c._id}/avatar`}
-                        alt={c.displayName}
-                      />
-                    )}
-                    <AvatarFallback className="text-[10px]">
-                      {c.displayName.slice(0, 1).toUpperCase()}
-                    </AvatarFallback>
-                  </Avatar>
+                  <BeeperPlatformIcon network={platformNetwork} size="md" className="h-7 w-7" />
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-medium">{c.displayName}</div>
+                    <div className="truncate text-sm font-medium">{name}</div>
                     {c.lastMessage ? (
                       <p className="truncate text-xs text-muted-foreground">
                         {c.lastMessage.text}

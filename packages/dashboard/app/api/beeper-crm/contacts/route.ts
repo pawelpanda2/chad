@@ -1,6 +1,7 @@
 /**
  * GET /api/beeper-crm/contacts?tag=business|romantic|friends
  *     &view=permissions&permissionFilter=all|include|exclude|permission
+ *     &groupId=<contact group id> (Story 101 — filters to one contact group)
  *
  * Lists Beeper CRM contacts. All data access goes through `dba`.
  */
@@ -26,6 +27,7 @@ export async function GET(request: Request) {
   const tagParam = params.get("tag");
   const viewParam = params.get("view");
   const permFilter = params.get("permissionFilter");
+  const groupIdParam = params.get("groupId") || undefined;
 
   if (tagParam && !ALLOWED_TAGS.has(tagParam)) {
     return NextResponse.json({ ok: false, error: `Invalid tag: ${tagParam}` }, { status: 400 });
@@ -50,6 +52,7 @@ export async function GET(request: Request) {
               permissionFilter: (permFilter as BeeperPermissionFilter) || "all",
             }
           : {}),
+        ...(groupIdParam ? { groupId: groupIdParam } : {}),
       });
       return NextResponse.json(contacts);
     } catch (error) {

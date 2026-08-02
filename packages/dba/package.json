@@ -16,6 +16,10 @@
     "./system-folders": {
       "types": "./dist/system-folders.d.ts",
       "import": "./dist/system-folders.js"
+    },
+    "./beeper-platform": {
+      "types": "./dist/beeper-platform.d.ts",
+      "import": "./dist/beeper-platform.js"
     }
   },
   "type": "module",

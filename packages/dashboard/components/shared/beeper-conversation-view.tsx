@@ -12,6 +12,8 @@ export interface ParsedWhatsAppMessage {
   timestamp: string;
   isOwn: boolean;
   raw: string;
+  /** Stable Mongo `_id` of the source message (Story 99) — only present when pre-parsed server-side via beeperMessagesToParsedMessagesWithDbId. */
+  dbId?: string;
 }
 
 /** FNV-1a 32-bit → hex — must match packages/dba/src/whatsapp-messages.ts */
