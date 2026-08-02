@@ -13,15 +13,33 @@ import { BeeperSplitHandle } from "./beeper-split-handle";
 import { filterBeeperContacts, shouldRenderConversation } from "./beeper-conversations-logic";
 import { MsgWorkoutMarker } from "./msg-workout-marker";
 import { MsgWorkoutPanel } from "./msg-workout-panel";
+import { MsgWorkoutAssignmentList } from "./msg-workout-assignment-list";
+import { buildMessageNumberMaps, messageIdForNumber } from "./msg-workout-message-numbers";
 import { UndatedMsgWorkouts } from "./undated-msg-workouts";
-import type { MsgWorkoutConversationLinksResponse, MsgWorkoutEntry, MsgWorkoutProposalEntry } from "./msg-workout-types";
+import type {
+  MsgWorkoutConversationLinksResponse,
+  MsgWorkoutEntry,
+  MsgWorkoutListEntry,
+  MsgWorkoutProposalEntry,
+} from "./msg-workout-types";
 
 const EMPTY_WORKOUT_LINKS: MsgWorkoutConversationLinksResponse = {
   leadName: null,
   linksByMessageId: {},
   proposalsByMessageId: {},
   undated: [],
+  allWorkouts: [],
 };
+
+function normalizeWorkoutLinks(data: Partial<MsgWorkoutConversationLinksResponse> | null | undefined): MsgWorkoutConversationLinksResponse {
+  return {
+    leadName: data?.leadName ?? null,
+    linksByMessageId: data?.linksByMessageId ?? {},
+    proposalsByMessageId: data?.proposalsByMessageId ?? {},
+    undated: Array.isArray(data?.undated) ? data.undated : [],
+    allWorkouts: Array.isArray(data?.allWorkouts) ? data.allWorkouts : [],
+  };
+}
 
 export interface MsgWorkoutReviewViewProps {
   /** Restores the open conversation after a hard refresh — read from the page's `?contact=` query param. */
@@ -62,6 +80,7 @@ export function MsgWorkoutReviewView({
   const [loadingWorkoutLinks, setLoadingWorkoutLinks] = useState(false);
   const [expandedWorkout, setExpandedWorkout] = useState<MsgWorkoutEntry | MsgWorkoutProposalEntry | null>(null);
   const [syncingWorkouts, setSyncingWorkouts] = useState(false);
+  const [assigningLoca, setAssigningLoca] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const conversationScrollRef = useRef<HTMLDivElement>(null);
@@ -71,12 +90,7 @@ export function MsgWorkoutReviewView({
     fetch(`/api/msg-workout/conversation-links?conversationId=${encodeURIComponent(conversationId)}`)
       .then((res) => (res.ok ? res.json() : EMPTY_WORKOUT_LINKS))
       .then((data: MsgWorkoutConversationLinksResponse) => {
-        setWorkoutLinks({
-          leadName: data?.leadName ?? null,
-          linksByMessageId: data?.linksByMessageId ?? {},
-          proposalsByMessageId: data?.proposalsByMessageId ?? {},
-          undated: Array.isArray(data?.undated) ? data.undated : [],
-        });
+        setWorkoutLinks(normalizeWorkoutLinks(data));
       })
       .catch(() => setWorkoutLinks(EMPTY_WORKOUT_LINKS))
       .finally(() => setLoadingWorkoutLinks(false));
@@ -183,18 +197,57 @@ export function MsgWorkoutReviewView({
     }
   }, [conversationMessages]);
 
+  const handleAssign = useCallback(
+    async (workout: MsgWorkoutListEntry, messageNumber: number | null) => {
+      if (!workoutLinks.leadName || !selectedContactId) return;
+
+      const messageId = messageIdForNumber(conversationMessages, messageNumber);
+      if (messageNumber !== null && !messageId) {
+        toast.error("That message has no stable id — cannot assign");
+        return;
+      }
+
+      setAssigningLoca(workout.loca);
+      try {
+        const res = await fetch("/api/msg-workout/set-link", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            leadName: workoutLinks.leadName,
+            workoutLoca: workout.loca,
+            workoutName: workout.name,
+            conversationId: selectedContactId,
+            messageId,
+          }),
+        });
+        const json = await res.json().catch(() => null);
+        if (!res.ok || json?.ok === false) {
+          throw new Error(json?.error || `Assign failed (${res.status})`);
+        }
+        fetchWorkoutLinks(selectedContactId);
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Failed to assign msg workout");
+      } finally {
+        setAssigningLoca(null);
+      }
+    },
+    [workoutLinks.leadName, selectedContactId, conversationMessages, fetchWorkoutLinks]
+  );
+
   const filtered = filterBeeperContacts(contacts, query);
   const showConversation = shouldRenderConversation(selectedContactId, conversationMessages.length);
   const hasSelection = Boolean(selectedContactId);
+
+  const { messageOptions, numberByMessageId } = buildMessageNumberMaps(conversationMessages);
+  const rightPanelOpen = Boolean(hasSelection && showConversation && !loadingConversation);
 
   return (
     <div className="flex h-full min-h-0 w-full">
       <aside
         className={cn(
           "flex min-h-0 w-full flex-col border-r transition-[width] duration-150",
-          // Opening a msg workout also force-collapses the list (freeing width
-          // for the workout panel) — closing it restores whatever the user's
-          // own manual collapse preference was.
+          // Opening a workout full-body collapses the contact list for width;
+          // the assignment list keeps the contact list visible.
           isListCollapsed || expandedWorkout ? "md:w-0 md:border-transparent" : "md:w-[300px]",
           hasSelection && "hidden md:flex"
         )}
@@ -207,11 +260,6 @@ export function MsgWorkoutReviewView({
         />
       </aside>
 
-      {/* Opening a workout force-collapses the list regardless of this
-          handle's own toggle state (see `isListCollapsed || expandedWorkout`
-          above), so the handle would flip a state that has no visible
-          effect — confusing, looked broken. Hidden while a workout is open;
-          the panel's own X close (below) is the only way back. */}
       {!expandedWorkout && (
         <BeeperSplitHandle
           isListCollapsed={isListCollapsed}
@@ -222,7 +270,7 @@ export function MsgWorkoutReviewView({
 
       <section
         className={cn(
-          "relative flex min-h-0 min-w-0 flex-1 overflow-hidden rounded-xl border",
+          "relative flex min-h-0 min-w-0 flex-1 overflow-hidden",
           !hasSelection && "hidden md:flex"
         )}
       >
@@ -231,21 +279,9 @@ export function MsgWorkoutReviewView({
             type="button"
             onClick={clearSelection}
             aria-label="Back to conversation list"
-            className="absolute left-1.5 top-1.5 z-10 flex h-7 w-7 items-center justify-center rounded-full border bg-card text-muted-foreground shadow-sm hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:hidden"
+            className="absolute left-1.5 top-10 z-10 flex h-7 w-7 items-center justify-center rounded-full border bg-card text-muted-foreground shadow-sm hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:hidden"
           >
             <ChevronLeft className="h-4 w-4" />
-          </button>
-        )}
-        {hasSelection && !expandedWorkout && (loadingWorkoutLinks || syncingWorkouts || workoutLinks.leadName) && (
-          <button
-            type="button"
-            onClick={handleSyncWorkouts}
-            disabled={syncingWorkouts || loadingWorkoutLinks || !workoutLinks.leadName}
-            aria-label="Sync msg workouts"
-            title={loadingWorkoutLinks ? "Loading msg workouts…" : syncingWorkouts ? "Syncing…" : "Sync msg workouts"}
-            className="absolute right-1.5 top-1.5 z-10 flex h-7 w-7 items-center justify-center rounded-full border bg-card text-muted-foreground shadow-sm hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
-          >
-            <RefreshCw className={cn("h-4 w-4", (syncingWorkouts || loadingWorkoutLinks) && "animate-spin")} />
           </button>
         )}
         {loadingConversation ? (
@@ -253,14 +289,38 @@ export function MsgWorkoutReviewView({
             <RefreshCw className="h-4 w-4 animate-spin" />
           </div>
         ) : showConversation ? (
-          <>
-            <div className={cn("flex h-full min-h-0 min-w-0 flex-1 flex-col", expandedWorkout && "hidden md:flex")}>
+          // Full body: 50/50 Conversation | Msg workout. List stays ~198px.
+          <div className="flex h-full min-h-0 w-full gap-2 overflow-hidden p-0 md:p-0">
+            <div
+              className={cn(
+                "flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border bg-card",
+                expandedWorkout ? "md:w-1/2 md:flex-1" : "min-w-0 flex-1",
+                expandedWorkout && "hidden md:flex"
+              )}
+            >
+              <div className="flex h-9 shrink-0 items-center justify-between gap-2 border-b px-[11px] text-[11px] font-semibold">
+                <span>Conversation</span>
+                {(loadingWorkoutLinks || syncingWorkouts || workoutLinks.leadName) && (
+                  <button
+                    type="button"
+                    onClick={handleSyncWorkouts}
+                    disabled={syncingWorkouts || loadingWorkoutLinks || !workoutLinks.leadName}
+                    aria-label="Sync msg workouts"
+                    title={loadingWorkoutLinks ? "Loading msg workouts…" : syncingWorkouts ? "Syncing…" : "Sync msg workouts"}
+                    className="flex h-6 w-6 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                  >
+                    <RefreshCw className={cn("h-3.5 w-3.5", (syncingWorkouts || loadingWorkoutLinks) && "animate-spin")} />
+                  </button>
+                )}
+              </div>
               <UndatedMsgWorkouts entries={workoutLinks.undated} onOpen={setExpandedWorkout} />
-              <div ref={conversationScrollRef} className="min-h-0 flex-1 overflow-y-auto">
+              <div ref={conversationScrollRef} className="min-h-0 flex-1 overflow-y-auto px-[10px] pb-5 pt-3 sm:px-[14px]">
                 <BeeperConversationView
                   messages={conversationMessages}
                   endRef={messagesEndRef}
                   showActions
+                  showMessageNumbers
+                  className="!gap-0 !p-0"
                   renderMessageAction={(msg) => (
                     <MsgWorkoutMarker
                       linked={msg.dbId ? workoutLinks.linksByMessageId[msg.dbId] ?? [] : []}
@@ -271,12 +331,39 @@ export function MsgWorkoutReviewView({
                 />
               </div>
             </div>
-            {expandedWorkout && (
-              <div className="flex h-full w-full min-h-0 flex-col md:w-[600px] md:shrink-0 md:border-l">
-                <MsgWorkoutPanel entry={expandedWorkout} onClose={() => setExpandedWorkout(null)} />
-              </div>
+
+            {rightPanelOpen && (
+              <aside
+                className={cn(
+                  "flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-xl border bg-card md:shrink-0",
+                  // Full body: half the workspace; list stays narrow (~198px).
+                  expandedWorkout ? "md:w-1/2 md:flex-1" : "md:w-[198px]"
+                )}
+              >
+                <div className="flex h-9 shrink-0 items-center border-b px-[11px] text-[11px] font-semibold">
+                  Msg workout
+                </div>
+                <div className="min-h-0 flex-1 overflow-hidden">
+                  {expandedWorkout ? (
+                    <MsgWorkoutPanel entry={expandedWorkout} onClose={() => setExpandedWorkout(null)} />
+                  ) : loadingWorkoutLinks ? (
+                    <div className="flex h-full items-center justify-center text-muted-foreground">
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                    </div>
+                  ) : (
+                    <MsgWorkoutAssignmentList
+                      workouts={workoutLinks.allWorkouts}
+                      messageOptions={messageOptions}
+                      numberByMessageId={numberByMessageId}
+                      onOpen={setExpandedWorkout}
+                      onAssign={(w, n) => void handleAssign(w, n)}
+                      assigningLoca={assigningLoca}
+                    />
+                  )}
+                </div>
+              </aside>
             )}
-          </>
+          </div>
         ) : (
           <div className="h-full w-full" />
         )}

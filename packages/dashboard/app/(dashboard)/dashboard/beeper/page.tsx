@@ -165,11 +165,23 @@ function BeeperContactsPageInner() {
 	// out of view — same mechanism as scrolling it manually (see the doc
 	// comment above), just triggered automatically so the extra room shows up
 	// right away instead of only on request. Never fires for
-	// Groups/Permissions (no `contact` param there).
+	// Groups/Permissions (no `contact` param there). Double rAF waits for the
+	// oversized split-view to paint so scrollHeight is correct; keyed only on
+	// contact open/change — not on every message/workout fetch.
 	useEffect(() => {
 		if (!hasOpenConversation) return;
-		const el = shellScrollRef.current;
-		if (el) el.scrollTop = el.scrollHeight;
+		let cancelled = false;
+		const outer = requestAnimationFrame(() => {
+			requestAnimationFrame(() => {
+				if (cancelled) return;
+				const el = shellScrollRef.current;
+				if (el) el.scrollTop = el.scrollHeight;
+			});
+		});
+		return () => {
+			cancelled = true;
+			cancelAnimationFrame(outer);
+		};
 	}, [hasOpenConversation, contactParam]);
 
 	const handleGroupChange = useCallback(

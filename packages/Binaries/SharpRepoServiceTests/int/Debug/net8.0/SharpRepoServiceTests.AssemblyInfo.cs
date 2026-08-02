@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("SharpRepoServiceTests")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+c7cf901bc9fca447597abf2cfcb6a1e3c4fb4992")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+682b84c1cd316b5f577e549b7035f39d1ab15ee8")]
 [assembly: System.Reflection.AssemblyProductAttribute("SharpRepoServiceTests")]
 [assembly: System.Reflection.AssemblyTitleAttribute("SharpRepoServiceTests")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

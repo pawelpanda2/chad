@@ -1,8 +1,7 @@
 "use client";
 
-import { Dumbbell, HelpCircle, RefreshCw } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { LIST_ROW_CLASS } from "@/components/shared/layout-tokens";
 import type { MsgWorkoutEntry, MsgWorkoutListEntry, MsgWorkoutProposalEntry } from "./msg-workout-types";
 
 export interface MessageNumberOption {
@@ -22,14 +21,9 @@ export interface MsgWorkoutAssignmentListProps {
 }
 
 /**
- * Persistent "all msg workouts, in order" list — Story 99 follow-up. Fills
- * the right-hand panel whenever no workout is expanded to full text (see
- * msg-workout-review-view.tsx: `expandedWorkout ? <MsgWorkoutPanel/> : <MsgWorkoutAssignmentList/>`
- * in the same slot). Replaces "nothing shown there" from the original
- * design — every workout for the lead is always visible, linked or not,
- * with a small numeric combobox to assign/reassign which message it
- * belongs to (message numbers shown next to each bubble's timestamp, see
- * `showMessageNumbers` on BeeperConversationView).
+ * Narrow side list — matches
+ * examples/CHAD_beeper_msg_workout_layout_mock_v7.html (`.workout-row`):
+ * state · name · AI number · tiny select. Compact so a ~198px panel fits.
  */
 export function MsgWorkoutAssignmentList({
   workouts,
@@ -41,75 +35,105 @@ export function MsgWorkoutAssignmentList({
 }: MsgWorkoutAssignmentListProps) {
   if (workouts.length === 0) {
     return (
-      <div className="flex h-full items-center justify-center p-4 text-center text-sm text-muted-foreground">
+      <div className="flex h-full items-center justify-center px-2 py-6 text-center text-[11px] text-muted-foreground">
         No msg workouts for this lead yet.
       </div>
     );
   }
 
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="divide-y">
-        {workouts.map((w) => {
-          const currentMessageId = w.linkedMessageId ?? w.proposedMessageId;
-          const currentNumber = currentMessageId ? numberByMessageId.get(currentMessageId) ?? null : null;
-          const isLinked = Boolean(w.linkedMessageId);
-          const isProposed = !isLinked && Boolean(w.proposedMessageId);
-          const isSaving = assigningLoca === w.loca;
+    <div className="h-full overflow-y-auto p-[3px]">
+      {workouts.map((w) => {
+        const linkedNumber = w.linkedMessageId ? numberByMessageId.get(w.linkedMessageId) ?? null : null;
+        const proposedNumber = w.proposedMessageId ? numberByMessageId.get(w.proposedMessageId) ?? null : null;
+        const isLinked = Boolean(w.linkedMessageId);
+        const isProposed = !isLinked && Boolean(w.proposedMessageId);
+        const isSaving = assigningLoca === w.loca;
+        const aiNumber = linkedNumber ?? proposedNumber;
 
-          const openEntry: MsgWorkoutEntry | MsgWorkoutProposalEntry =
-            isProposed && w.confidence !== null
-              ? { loca: w.loca, name: w.name, body: w.body, confidence: w.confidence, reasons: [], reasonType: "", totalCandidates: 1 }
-              : { loca: w.loca, name: w.name, body: w.body };
+        const openEntry: MsgWorkoutEntry | MsgWorkoutProposalEntry =
+          isProposed && w.confidence !== null
+            ? {
+                loca: w.loca,
+                name: w.name,
+                body: w.body,
+                confidence: w.confidence,
+                reasons: [],
+                reasonType: "",
+                totalCandidates: 1,
+              }
+            : { loca: w.loca, name: w.name, body: w.body };
 
-          return (
-            <div key={w.loca} className={cn("flex items-center gap-2", LIST_ROW_CLASS)}>
-              <span
-                className={cn(
-                  "flex h-6 w-6 shrink-0 items-center justify-center rounded-full",
-                  isLinked && "bg-primary/10 text-primary",
-                  isProposed && "border border-dashed border-amber-500/60 text-amber-600 dark:text-amber-400",
-                  !isLinked && !isProposed && "bg-muted text-muted-foreground"
-                )}
+        return (
+          <div
+            key={w.loca}
+            className="grid min-h-[30px] grid-cols-[13px_minmax(0,1fr)_15px_30px] items-center gap-[3px] border-b border-border/60 px-1 py-1 hover:bg-accent/50"
+          >
+            <span
+              className={cn(
+                "flex h-3 w-3 items-center justify-center rounded-full text-[7px] leading-none",
+                isLinked && "border border-solid border-border text-muted-foreground",
+                isProposed && "border border-dashed border-amber-600/70 text-amber-600 dark:text-amber-400",
+                !isLinked && !isProposed && "border border-dashed border-muted-foreground/40 text-muted-foreground"
+              )}
+              title={
+                isLinked
+                  ? "Linked"
+                  : isProposed
+                    ? `Proposed #${proposedNumber ?? "?"} — ${Math.round((w.confidence ?? 0) * 100)}%`
+                    : "Not linked"
+              }
+            >
+              {isLinked ? "•" : "?"}
+            </span>
+            <button
+              type="button"
+              onClick={() => onOpen(openEntry)}
+              className="min-w-0 truncate text-left text-[10.5px] hover:underline"
+              title={w.name}
+            >
+              {w.name}
+            </button>
+            <span
+              className={cn(
+                "text-center text-[10px] font-bold tabular-nums",
+                aiNumber != null ? "text-amber-600 dark:text-amber-400" : "text-transparent"
+              )}
+              title={
+                isLinked
+                  ? `Linked to #${linkedNumber}`
+                  : isProposed
+                    ? `AI suggestion #${proposedNumber}`
+                    : undefined
+              }
+            >
+              {aiNumber ?? "·"}
+            </span>
+            {isSaving ? (
+              <RefreshCw className="h-3 w-3 animate-spin justify-self-center text-muted-foreground" />
+            ) : (
+              <select
+                className="h-[22px] w-[30px] justify-self-end rounded-md border border-border bg-background p-0 text-center text-[10px]"
+                value={linkedNumber ?? ""}
+                onChange={(e) => onAssign(w, e.target.value === "" ? null : Number(e.target.value))}
+                aria-label={`Assign ${w.name} to message number`}
                 title={
-                  isLinked
-                    ? "Linked"
-                    : isProposed
-                      ? `Proposed match — ${Math.round((w.confidence ?? 0) * 100)}% confidence`
-                      : "Not linked"
+                  isProposed && proposedNumber != null
+                    ? `Suggested message #${proposedNumber}`
+                    : "Assign to message number"
                 }
               >
-                {isProposed ? <HelpCircle className="h-3.5 w-3.5" /> : <Dumbbell className="h-3.5 w-3.5" />}
-              </span>
-              <button
-                type="button"
-                onClick={() => onOpen(openEntry)}
-                className="min-w-0 flex-1 truncate text-left text-sm font-medium hover:underline"
-                title={w.name}
-              >
-                {w.name}
-              </button>
-              {isSaving ? (
-                <RefreshCw className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />
-              ) : (
-                <select
-                  className="h-8 w-16 shrink-0 rounded-md border border-border bg-background px-1 text-sm"
-                  value={currentNumber ?? ""}
-                  onChange={(e) => onAssign(w, e.target.value === "" ? null : Number(e.target.value))}
-                  aria-label={`Assign ${w.name} to message number`}
-                >
-                  <option value="">—</option>
-                  {messageOptions.map((opt) => (
-                    <option key={opt.dbId} value={opt.number}>
-                      {opt.number}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </div>
-          );
-        })}
-      </div>
+                <option value="">—</option>
+                {messageOptions.map((opt) => (
+                  <option key={opt.dbId} value={opt.number}>
+                    {opt.number}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
