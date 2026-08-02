@@ -17,7 +17,7 @@ git reset --hard 6de07ca37fea72ae885c0d96f2f452ba9c6cf17c
 ## FINAL_SHA
 
 ```
-FINAL_SHA=3cc648499e66f4c7dd60da78e5200d39123bb48f
+FINAL_SHA=68914e3ab908eed8dd35034cb43e0230f7017ae3
 ```
 
 Feature commit: `3dc52ebf00e84e64d1b35311ac04d0436be88cda`
