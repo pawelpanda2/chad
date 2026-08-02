@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import {
   getBeeperPlatformMeta,
@@ -15,6 +16,18 @@ interface BeeperPlatformIconProps {
 }
 
 const SIZE = { sm: "h-4 w-4", md: "h-5 w-5" } as const;
+
+/** Brand-ish colors that stay readable in light and dark mode. */
+const PLATFORM_COLOR: Record<BeeperPlatformKey, string> = {
+  whatsapp: "text-[#25D366]",
+  instagram: "text-[#E4405F]",
+  telegram: "text-[#2AABEE]",
+  facebook: "text-[#1877F2]",
+  signal: "text-[#3A76F0]",
+  sms: "text-emerald-600 dark:text-emerald-400",
+  imessage: "text-[#34C759]",
+  unknown: "text-muted-foreground",
+};
 
 /** Compact local SVGs — no external URLs, no heavy icon pack. */
 function PlatformGlyph({ platform }: { platform: BeeperPlatformKey }) {
@@ -97,22 +110,54 @@ function PlatformGlyph({ platform }: { platform: BeeperPlatformKey }) {
  * Small platform mark for Beeper contact/conversation rows. Driven only by
  * a real `network` value (via dba `normalizeBeeperNetwork`) — never by the
  * contact's display-name initial.
+ *
+ * Clicking it shows the full platform name (e.g. "WhatsApp") in a small
+ * bubble for ~2s, then it fades away — click only, not hover (no native
+ * `title` tooltip, so it doesn't also pop up on mouseover).
  */
 export function BeeperPlatformIcon({ network, size = "sm", className }: BeeperPlatformIconProps) {
   const key = normalizeBeeperNetwork(network);
   const { label } = getBeeperPlatformMeta(key);
+  const [revealed, setRevealed] = useState(false);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function reveal(e: React.SyntheticEvent) {
+    e.stopPropagation();
+    setRevealed(true);
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    timeoutRef.current = setTimeout(() => setRevealed(false), 2000);
+  }
+
   return (
-    <span
-      className={cn(
-        "inline-flex shrink-0 items-center justify-center text-muted-foreground",
-        SIZE[size],
-        className
+    <span className="relative inline-flex shrink-0">
+      {/* Not a real <button>: this icon is also used inside other buttons
+          (e.g. the conversation list row), and nested buttons are invalid
+          HTML. role="button" keeps it click/keyboard accessible instead. */}
+      <span
+        role="button"
+        tabIndex={0}
+        onClick={reveal}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            reveal(e);
+          }
+        }}
+        aria-label={label}
+        className={cn(
+          "inline-flex shrink-0 cursor-pointer items-center justify-center",
+          PLATFORM_COLOR[key],
+          SIZE[size],
+          className
+        )}
+      >
+        <PlatformGlyph platform={key} />
+      </span>
+      {revealed && (
+        <span className="pointer-events-none absolute left-1/2 top-full z-20 mt-1 -translate-x-1/2 whitespace-nowrap rounded-md border bg-popover px-1.5 py-0.5 text-[11px] text-popover-foreground shadow-md">
+          {label}
+        </span>
       )}
-      title={label}
-      aria-label={label}
-      role="img"
-    >
-      <PlatformGlyph platform={key} />
     </span>
   );
 }

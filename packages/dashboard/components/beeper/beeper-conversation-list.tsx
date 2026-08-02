@@ -1,7 +1,6 @@
 "use client";
 
-import { Search, RefreshCw } from "lucide-react";
-import { Input } from "@/components/ui/input";
+import { RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { beeperContactDisplayName } from "@/lib/beeper-contact-display";
 import { BeeperPlatformIcon } from "./beeper-platform-icon";
@@ -19,31 +18,22 @@ export interface BeeperConversationListItem {
 interface BeeperConversationListProps {
   contacts: BeeperConversationListItem[];
   loading: boolean;
-  query: string;
-  onQueryChange: (query: string) => void;
   selectedContactId: string | null;
   onSelect: (id: string) => void;
 }
 
+/**
+ * Contact list for Conversations / Msg workout. Search lives in the Beeper
+ * page toolbar (next to All groups), not inside this list.
+ */
 export function BeeperConversationList({
   contacts,
   loading,
-  query,
-  onQueryChange,
   selectedContactId,
   onSelect,
 }: BeeperConversationListProps) {
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="relative shrink-0 p-1.5">
-        <Search className="pointer-events-none absolute left-3.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          placeholder="Search"
-          className="h-8 pl-7 text-sm"
-          value={query}
-          onChange={(e) => onQueryChange(e.target.value)}
-        />
-      </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
         {loading ? (
           <div className="flex items-center justify-center py-8 text-muted-foreground">

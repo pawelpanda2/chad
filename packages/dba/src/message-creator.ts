@@ -41,6 +41,7 @@ import {
 export {
   analysisContextMessageIds,
   beeperMessagesToParsedMessages,
+  beeperMessagesToParsedMessagesWithDbId,
   buildMessagePromptVersionOptions,
   fnv1aHex,
   parseWhatsAppMessages,
@@ -437,16 +438,32 @@ async function ensureMsgWorkoutFolder(leadLoca: string) {
   return createOrGetChild(lead, "msg workout", "Folder");
 }
 
+/**
+ * Read-only lookup of the lead's "msg workout" folder — returns null when it
+ * doesn't exist. Read paths (bootstrap/list) must use this, never
+ * ensureMsgWorkoutFolder: merely OPENING the Message Creator view used to
+ * physically create "msg workout", "approach context" and "my proposals"
+ * items in cp_items as a side effect, which users rightly reported as
+ * phantom items they never added. Creation now happens only in the save
+ * functions below.
+ */
+async function findMsgWorkoutFolder(leadLoca: string) {
+  const lead = await getLeadItem(leadLoca);
+  const children = await getChildrenOf(lead.config.address);
+  return children.find((c) => c.config.type === "Folder" && c.config.name === "msg workout") ?? null;
+}
+
 // ---------------------------------------------------------------------------
 // Approach / proposals
 // ---------------------------------------------------------------------------
 
-export async function getOrCreateApproachContext(leadLoca: string): Promise<{ text: string; loca: string }> {
+/** Read-only — returns "" when the item doesn't exist (created only on save). */
+export async function getApproachContext(leadLoca: string): Promise<{ text: string }> {
   const lead = await getLeadItem(leadLoca);
-  const item = await createOrGetChild(lead, "approach context", "Text", "");
+  const children = await getChildrenOf(lead.config.address);
+  const item = children.find((c) => c.config.type === "Text" && c.config.name === "approach context");
   return {
-    text: typeof item.body === "string" ? item.body : "",
-    loca: addressToRepoAndLoca(item.config.address).loca,
+    text: item && typeof item.body === "string" ? item.body : "",
   };
 }
 
@@ -457,18 +474,21 @@ export async function saveApproachContext(leadLoca: string, text: string): Promi
   return { loca: addressToRepoAndLoca(item.config.address).loca };
 }
 
-export async function getOrCreateMyProposals(leadLoca: string): Promise<{
+/** Read-only — returns "" when the folder/item doesn't exist (created only on save). */
+export async function getMyProposals(leadLoca: string): Promise<{
   text: string;
-  loca: string;
   importedFromHistorical: boolean;
   historicalYouSuggestion: string | null;
 }> {
-  const folder = await ensureMsgWorkoutFolder(leadLoca);
-  const item = await createOrGetChild(folder, "my proposals", "Text", "");
-  const text = typeof item.body === "string" ? item.body : "";
+  const folder = await findMsgWorkoutFolder(leadLoca);
+  if (!folder) {
+    return { text: "", importedFromHistorical: false, historicalYouSuggestion: null };
+  }
+  const siblings = await getChildrenOf(folder.config.address);
+  const item = siblings.find((c) => c.config.type === "Text" && c.config.name === "my proposals");
+  const text = item && typeof item.body === "string" ? item.body : "";
   let historicalYouSuggestion: string | null = null;
   if (!text.trim()) {
-    const siblings = await getChildrenOf(folder.config.address);
     for (const sibling of siblings) {
       if (sibling.config.name === "my proposals") continue;
       if (sibling.config.type !== "Text") continue;
@@ -482,7 +502,6 @@ export async function getOrCreateMyProposals(leadLoca: string): Promise<{
   }
   return {
     text,
-    loca: addressToRepoAndLoca(item.config.address).loca,
     importedFromHistorical: false,
     historicalYouSuggestion,
   };
@@ -581,7 +600,10 @@ export async function listAnalysisRuns(
   leadLoca: string,
   currentConversationHash: string | null
 ): Promise<AnalysisRunSummary[]> {
-  const folder = await ensureMsgWorkoutFolder(leadLoca);
+  // Read-only: no "msg workout" folder simply means no runs yet — listing
+  // must never create the folder as a side effect.
+  const folder = await findMsgWorkoutFolder(leadLoca);
+  if (!folder) return [];
   const children = await getChildrenOf(folder.config.address);
   const runs: AnalysisRunSummary[] = [];
 
@@ -876,8 +898,8 @@ export async function getMessageCreatorBootstrap(
   const models = listMessageCreatorModels();
 
   const [approach, proposals, reports, conversation, workoutsResult] = await Promise.all([
-    getOrCreateApproachContext(leadLoca),
-    getOrCreateMyProposals(leadLoca),
+    getApproachContext(leadLoca),
+    getMyProposals(leadLoca),
     listLeadReportsForCreator(leadName),
     getLeadConversationForCreator(leadName, leadLoca),
     getLeadMsgWorkoutsByLoca(leadLoca).catch(() => ({ workouts: [], error: null, notFound: true })),

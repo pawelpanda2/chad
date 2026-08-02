@@ -321,7 +321,14 @@ Tryb: ${force ? "FORCE (pełny re-import)" : "incremental"}
           }
           const participantInfo = participantMap.get(senderContactID);
           const displayName = participantInfo?.displayName || senderContactID;
-          contactID = await upsertContact(senderContactID, displayName, network);
+          // identifier = phone number (WhatsApp) or handle (Instagram), from
+          // the local participant_identifiers table — real name resolution
+          // still happens elsewhere (REST/events senderName); this is only
+          // the fallback shown when no real name is ever resolved (see
+          // beeperContactDisplayName() in the dashboard).
+          contactID = await upsertContact(senderContactID, displayName, network, {
+            username: participantInfo?.identifier || '',
+          });
           await addParticipant(channelID, contactID);
           if (mode === "metadata") {
             continue;

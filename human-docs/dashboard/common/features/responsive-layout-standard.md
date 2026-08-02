@@ -455,3 +455,8 @@ zaimplementowania w przyszłym Story):
 - [../bugs/text-editor-overflows-page.md](../bugs/text-editor-overflows-page.md)
 - [../bugs/shared-editor-layout-and-toolbar-v2.md](../bugs/shared-editor-layout-and-toolbar-v2.md)
 - [../../../bugs/msg-planner-editor-internal-scroll-missing.md](../../../bugs/msg-planner-editor-internal-scroll-missing.md)
+- [`ai-docs/gui-standard/ai-start.md`](../../../../ai-docs/gui-standard/ai-start.md)
+  (Story 99/101 follow-up, 2026-08-02) — split-view z dwoma niezależnymi
+  scrollami + kolapsującym nagłówkiem (Beeper Conversations/Msg workout),
+  tabela bez edycji inline, tooltip po kliknięciu. Uzupełnienie tego
+  dokumentu, nie zamiennik — czytaj oba.

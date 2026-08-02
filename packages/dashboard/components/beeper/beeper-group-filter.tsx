@@ -52,6 +52,7 @@ export function BeeperGroupFilter({ value, onChange, refreshKey }: BeeperGroupFi
           {g.name}
         </option>
       ))}
+      <option value="__none__">— no group —</option>
     </select>
   );
 }

@@ -76,3 +76,30 @@ export async function writeMsgWorkoutBeeperLink(
 
   return putItemConfig({ ...item, config: nextConfig });
 }
+
+/**
+ * Manual set/clear (GUI numeric assignment combobox) — unlike
+ * `writeMsgWorkoutBeeperLink`, this DOES overwrite an existing link (or
+ * removes it entirely when `link` is `null`), because it's a deliberate
+ * human override, not the idempotent auto-matcher. Always stamps
+ * `method: "manual"` when setting.
+ */
+export async function setMsgWorkoutBeeperLinkManual(
+  item: CpItem,
+  link: { messageId: string; timestamp: string } | null
+): Promise<CpItem> {
+  const existingLinks = { ...((item.config.links as Record<string, unknown> | undefined) ?? {}) };
+
+  if (link === null) {
+    delete existingLinks.beeper;
+  } else {
+    existingLinks.beeper = {
+      messageId: link.messageId,
+      timestamp: link.timestamp,
+      linkedAt: new Date().toISOString(),
+      method: "manual",
+    } satisfies MsgWorkoutBeeperLink;
+  }
+
+  return putItemConfig({ ...item, config: { ...item.config, links: existingLinks } });
+}

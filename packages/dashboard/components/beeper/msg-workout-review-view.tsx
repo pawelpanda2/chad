@@ -30,6 +30,9 @@ export interface MsgWorkoutReviewViewProps {
   onSelectContact?: (id: string | null) => void;
   /** Story 101 — filters the contact list to one contact group; undefined/"All groups" shows everyone. */
   groupFilter?: string;
+  /** Search query from the page toolbar (next to All groups). */
+  query?: string;
+  onQueryChange?: (query: string) => void;
 }
 
 /**
@@ -39,15 +42,18 @@ export interface MsgWorkoutReviewViewProps {
  * this tab is where the msg-workout marker/proposal/sync workflow lives.
  * Structurally a sibling of BeeperConversationsView (same contact list +
  * conversation split-view), extended with the workout review pane.
+ *
+ * Same split-view scrollbar design as BeeperConversationsView (see
+ * ai-docs/gui-standard/ai-start.md) — same reasoning.
  */
 export function MsgWorkoutReviewView({
   initialContactId,
   onSelectContact,
   groupFilter,
+  query = "",
 }: MsgWorkoutReviewViewProps = {}) {
   const [contacts, setContacts] = useState<BeeperConversationListItem[]>([]);
   const [loadingContacts, setLoadingContacts] = useState(true);
-  const [query, setQuery] = useState("");
   const [selectedContactId, setSelectedContactId] = useState<string | null>(null);
   const [isListCollapsed, setIsListCollapsed] = useState(false);
   const [loadingConversation, setLoadingConversation] = useState(false);
@@ -58,6 +64,7 @@ export function MsgWorkoutReviewView({
   const [syncingWorkouts, setSyncingWorkouts] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const conversationScrollRef = useRef<HTMLDivElement>(null);
 
   const fetchWorkoutLinks = useCallback((conversationId: string) => {
     setLoadingWorkoutLinks(true);
@@ -168,8 +175,11 @@ export function MsgWorkoutReviewView({
   }, []);
 
   useEffect(() => {
-    if (messagesEndRef.current && conversationMessages.length > 0) {
-      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+    // scrollTop on the local container directly — see BeeperConversationsView
+    // for why (scrollIntoView climbs every scrollable ancestor, including
+    // the page shell's, which visibly collapsed the tabs).
+    if (conversationScrollRef.current && conversationMessages.length > 0) {
+      conversationScrollRef.current.scrollTop = conversationScrollRef.current.scrollHeight;
     }
   }, [conversationMessages]);
 
@@ -178,10 +188,10 @@ export function MsgWorkoutReviewView({
   const hasSelection = Boolean(selectedContactId);
 
   return (
-    <div className="flex h-full min-h-0 w-full overflow-hidden">
+    <div className="flex h-full min-h-0 w-full">
       <aside
         className={cn(
-          "flex min-h-0 w-full flex-col overflow-hidden border-r transition-[width] duration-150",
+          "flex min-h-0 w-full flex-col border-r transition-[width] duration-150",
           // Opening a msg workout also force-collapses the list (freeing width
           // for the workout panel) — closing it restores whatever the user's
           // own manual collapse preference was.
@@ -192,22 +202,27 @@ export function MsgWorkoutReviewView({
         <BeeperConversationList
           contacts={filtered}
           loading={loadingContacts}
-          query={query}
-          onQueryChange={setQuery}
           selectedContactId={selectedContactId}
           onSelect={selectContact}
         />
       </aside>
 
-      <BeeperSplitHandle
-        isListCollapsed={isListCollapsed}
-        onClick={() => setIsListCollapsed((v) => !v)}
-        className="my-auto hidden shrink-0 self-center md:flex"
-      />
+      {/* Opening a workout force-collapses the list regardless of this
+          handle's own toggle state (see `isListCollapsed || expandedWorkout`
+          above), so the handle would flip a state that has no visible
+          effect — confusing, looked broken. Hidden while a workout is open;
+          the panel's own X close (below) is the only way back. */}
+      {!expandedWorkout && (
+        <BeeperSplitHandle
+          isListCollapsed={isListCollapsed}
+          onClick={() => setIsListCollapsed((v) => !v)}
+          className="my-auto hidden shrink-0 self-center md:flex"
+        />
+      )}
 
       <section
         className={cn(
-          "relative flex min-w-0 flex-1 overflow-hidden",
+          "relative flex min-h-0 min-w-0 flex-1 overflow-hidden rounded-xl border",
           !hasSelection && "hidden md:flex"
         )}
       >
@@ -239,9 +254,9 @@ export function MsgWorkoutReviewView({
           </div>
         ) : showConversation ? (
           <>
-            <div className={cn("flex h-full min-h-0 flex-1 flex-col overflow-hidden", expandedWorkout && "hidden md:flex")}>
+            <div className={cn("flex h-full min-h-0 min-w-0 flex-1 flex-col", expandedWorkout && "hidden md:flex")}>
               <UndatedMsgWorkouts entries={workoutLinks.undated} onOpen={setExpandedWorkout} />
-              <div className="min-h-0 flex-1 overflow-y-auto">
+              <div ref={conversationScrollRef} className="min-h-0 flex-1 overflow-y-auto">
                 <BeeperConversationView
                   messages={conversationMessages}
                   endRef={messagesEndRef}
@@ -257,7 +272,7 @@ export function MsgWorkoutReviewView({
               </div>
             </div>
             {expandedWorkout && (
-              <div className="flex h-full w-full min-h-0 flex-col overflow-hidden md:w-[600px] md:shrink-0 md:border-l">
+              <div className="flex h-full w-full min-h-0 flex-col md:w-[600px] md:shrink-0 md:border-l">
                 <MsgWorkoutPanel entry={expandedWorkout} onClose={() => setExpandedWorkout(null)} />
               </div>
             )}

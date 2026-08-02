@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Suspense, useState, useEffect, useCallback, useMemo } from "react";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -121,7 +121,9 @@ export default function StatusesPage() {
 
 function StatusesPageContent() {
   const pathname = usePathname();
+  const router = useRouter();
   const searchParams = useSearchParams();
+  const editorLeadKey = searchParams.get("editorLeadKey");
 
   const returnTo = searchParams.toString()
     ? `${pathname}?${searchParams.toString()}`
@@ -130,8 +132,6 @@ function StatusesPageContent() {
   // View mode state
   const [mode, setMode] = useState<ViewMode>("matrix");
 
-  // List view state
-  const [view, setView] = useState<"list" | "editor">("list");
   const [rangeFilter, setRangeFilter] = useState("");
   const [leads, setLeads] = useState<StatusLeadItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -186,9 +186,21 @@ function StatusesPageContent() {
     loadLeads();
   }, [loadLeads]);
 
+  const pushStatusesState = useCallback(
+    (updates: Record<string, string | null>) => {
+      const next = new URLSearchParams(searchParams.toString());
+      for (const [key, value] of Object.entries(updates)) {
+        if (value) next.set(key, value);
+        else next.delete(key);
+      }
+      const nextSearch = next.toString();
+      router.push(nextSearch ? `${pathname}?${nextSearch}` : pathname);
+    },
+    [pathname, router, searchParams],
+  );
+
   /** Open editor for a specific lead */
-  const openEditor = async (leadKey: string) => {
-    setView("editor");
+  const loadEditor = useCallback(async (leadKey: string) => {
     setSaving(true);
     setSaved(false);
     setError(null);
@@ -229,11 +241,25 @@ function StatusesPageContent() {
     } finally {
       setSaving(false);
     }
+  }, []);
+
+  useEffect(() => {
+    if (!editorLeadKey) {
+      setEditorData(null);
+      setFields(null);
+      setSaved(false);
+      return;
+    }
+    void loadEditor(editorLeadKey);
+  }, [editorLeadKey, loadEditor]);
+
+  const openEditor = (leadKey: string) => {
+    pushStatusesState({ editorLeadKey: leadKey });
   };
 
   /** Close editor and return to list */
   const closeEditor = () => {
-    setView("list");
+    pushStatusesState({ editorLeadKey: null });
     setEditorData(null);
     setFields(null);
     setSaved(false);
@@ -567,7 +593,7 @@ function StatusesPageContent() {
   // Render
   // ========================================================================
 
-  if (view === "editor" && editorData) {
+  if (editorLeadKey && editorData) {
     return (
       <DashboardPageShell
         contentClassName={FRAME_SECTION_GAP_CLASS}
@@ -696,6 +722,21 @@ function StatusesPageContent() {
                 </div>
               </div>
             )}
+      </DashboardPageShell>
+    );
+  }
+
+  if (editorLeadKey && !editorData && !error) {
+    return (
+      <DashboardPageShell
+        contentClassName={FRAME_SECTION_GAP_CLASS}
+        upLevel={{ onClick: closeEditor, label: "Back to list" }}
+        title="Statuses"
+      >
+        <div className="flex items-center gap-2 py-4 text-muted-foreground">
+          <RefreshCw className="h-4 w-4 animate-spin" />
+          <span>Loading editor...</span>
+        </div>
       </DashboardPageShell>
     );
   }

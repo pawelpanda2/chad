@@ -19,6 +19,9 @@ export interface BeeperConversationsViewProps {
   onSelectContact?: (id: string | null) => void;
   /** Story 101 — filters the contact list to one contact group; undefined/"All groups" shows everyone. */
   groupFilter?: string;
+  /** Search query from the page toolbar (next to All groups). */
+  query?: string;
+  onQueryChange?: (query: string) => void;
 }
 
 /**
@@ -30,21 +33,33 @@ export interface BeeperConversationsViewProps {
  * workout linking/review UI (Story 99) lives in its own "Msg workout" tab
  * (`msg-workout-review-view.tsx`), not here, per explicit direction:
  * Conversations should stay a simple message browser.
+ *
+ * Two of the three scrollbars described in ai-docs/gui-standard/ai-start.md
+ * ("split-view with collapsing header") live here: the contact list
+ * (`aside`) and the conversation (`section`, in its own rounded-corner
+ * frame) each own their scroll and fill the available height exactly, same
+ * as any other chat-style split view. The third (the page shell's own
+ * scrollbar, which scrolls the tabs+filter row out of view) is entirely
+ * outside this component — see beeper/page.tsx's `h-full shrink-0` wrapper
+ * around whichever of this/MsgWorkoutReviewView is active. Because that's a
+ * completely separate scroll container, this component's own
+ * auto-scroll-to-latest-message (below) never touches it.
  */
 export function BeeperConversationsView({
   initialContactId,
   onSelectContact,
   groupFilter,
+  query = "",
 }: BeeperConversationsViewProps = {}) {
   const [contacts, setContacts] = useState<BeeperConversationListItem[]>([]);
   const [loadingContacts, setLoadingContacts] = useState(true);
-  const [query, setQuery] = useState("");
   const [selectedContactId, setSelectedContactId] = useState<string | null>(null);
   const [isListCollapsed, setIsListCollapsed] = useState(false);
   const [loadingConversation, setLoadingConversation] = useState(false);
   const [conversationMessages, setConversationMessages] = useState<ParsedWhatsAppMessage[]>([]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const conversationScrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -111,8 +126,15 @@ export function BeeperConversationsView({
   }, []);
 
   useEffect(() => {
-    if (messagesEndRef.current && conversationMessages.length > 0) {
-      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+    // Set scrollTop directly on the local container instead of
+    // messagesEndRef.scrollIntoView(): scrollIntoView walks up *every*
+    // scrollable ancestor (including the page shell's own scrollbar, which
+    // has genuine overflow by design — see ai-docs/gui-standard/ai-start.md)
+    // and nudges each one, which visibly collapsed the tabs+filter row the
+    // instant a conversation opened. Setting scrollTop on just this one
+    // element can't ever touch anything outside it.
+    if (conversationScrollRef.current && conversationMessages.length > 0) {
+      conversationScrollRef.current.scrollTop = conversationScrollRef.current.scrollHeight;
     }
   }, [conversationMessages]);
 
@@ -121,10 +143,10 @@ export function BeeperConversationsView({
   const hasSelection = Boolean(selectedContactId);
 
   return (
-    <div className="flex h-full min-h-0 w-full overflow-hidden">
+    <div className="flex h-full min-h-0 w-full">
       <aside
         className={cn(
-          "flex min-h-0 w-full flex-col overflow-hidden border-r transition-[width] duration-150",
+          "flex min-h-0 w-full flex-col border-r transition-[width] duration-150",
           // Desktop-only collapse; mobile visibility is selection-driven instead (below).
           isListCollapsed ? "md:w-0 md:border-transparent" : "md:w-[300px]",
           // Mobile: hide the list once a contact is open (full-screen conversation).
@@ -134,8 +156,6 @@ export function BeeperConversationsView({
         <BeeperConversationList
           contacts={filtered}
           loading={loadingContacts}
-          query={query}
-          onQueryChange={setQuery}
           selectedContactId={selectedContactId}
           onSelect={selectContact}
         />
@@ -149,7 +169,7 @@ export function BeeperConversationsView({
 
       <section
         className={cn(
-          "relative min-w-0 flex-1 overflow-hidden",
+          "relative min-h-0 min-w-0 flex-1 overflow-hidden rounded-xl border",
           // Mobile: hide the conversation until a contact is selected.
           !hasSelection && "hidden md:block"
         )}
@@ -169,7 +189,7 @@ export function BeeperConversationsView({
             <RefreshCw className="h-4 w-4 animate-spin" />
           </div>
         ) : showConversation ? (
-          <div className="h-full overflow-y-auto">
+          <div ref={conversationScrollRef} className="h-full overflow-y-auto">
             <BeeperConversationView messages={conversationMessages} endRef={messagesEndRef} />
           </div>
         ) : (

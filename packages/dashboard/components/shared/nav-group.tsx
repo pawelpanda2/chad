@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Undo2 } from "lucide-react";
 import { useDashboardHistory } from "@/components/shared/dashboard-history-provider";
@@ -33,48 +33,51 @@ export interface NavGroupProps {
  * left-aligned. Replaces the old standalone `BackButton` as the single way
  * to render "go back" affordances on a dashboard view (Story 56).
  *
+ * - `Back` — prefers the dashboard's own tracked history first, so repeated
+ *   in-app clicks can step back through the last visited states. If there is
+ *   no tracked previous state (e.g. a fresh deep link), it falls back to this
+ *   page's declared structural parent (`upLevel`) so details -> list -> menu
+ *   still works.
  * - `Forw` — real forward through the dashboard's own tracked navigation
  *   history (`useDashboardHistory`), the same on every page, no props
- *   needed. (`Prev` removed for now — 2026-07-14 — kept out of the group
- *   rather than just hidden, since `goBack`/`canGoBack` may still be used
- *   elsewhere; re-add here if it comes back.)
- * - `Back` (bigger circular-undo icon) — up one level in the CURRENT page's
- *   own hierarchy (per-page, supplied via `upLevel`). NOT browser/session
- *   history — deliberately a different action from `Forw` even though the
- *   label says "Back" too.
+ *   needed.
  *
  * Must be the FIRST element among its flex toolbar siblings, placed right
  * after the toolbar's `pl-14` menu-handle gap — left-aligned, no `ml-auto`.
  */
 export function NavGroup({ upLevel, className }: NavGroupProps) {
-  const { canGoForward, goForward } = useDashboardHistory();
+  const router = useRouter();
+  const { canGoBack, canGoForward, goBack, goForward } = useDashboardHistory();
 
-  const upLevelDisabled = !upLevel || upLevel.disabled;
+  const canUseUpLevel = !!upLevel && !upLevel.disabled;
+  const canBack = canGoBack || canUseUpLevel;
 
-  const upLevelButton = upLevel?.href ? (
-    <Button variant="outline" size="sm" className="h-7 shrink-0 gap-1 px-2" disabled={upLevelDisabled} asChild>
-      <Link href={upLevel.href} title={upLevel.label ?? "Up one level"}>
-        <Undo2 className="h-4 w-4" />
-        Back
-      </Link>
-    </Button>
-  ) : (
-    <Button
-      variant="outline"
-      size="sm"
-      className="h-7 shrink-0 gap-1 px-2"
-      disabled={upLevelDisabled}
-      onClick={upLevel?.onClick}
-      title={upLevel?.label ?? "Up one level"}
-    >
-      <Undo2 className="h-4 w-4" />
-      Back
-    </Button>
-  );
+  const handleBack = () => {
+    if (canGoBack) {
+      goBack();
+      return;
+    }
+    if (!canUseUpLevel) return;
+    if (upLevel.href) {
+      router.push(upLevel.href);
+      return;
+    }
+    upLevel.onClick?.();
+  };
 
   return (
     <div className={cn("flex shrink-0 items-center gap-1", className)}>
-      {upLevelButton}
+      <Button
+        variant="outline"
+        size="sm"
+        className="h-7 shrink-0 gap-1 px-2"
+        disabled={!canBack}
+        onClick={handleBack}
+        title={canGoBack ? "Back through dashboard history" : (upLevel?.label ?? "Up one level")}
+      >
+        <Undo2 className="h-4 w-4" />
+        Back
+      </Button>
       <Button
         variant="outline"
         size="sm"

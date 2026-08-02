@@ -1,7 +1,9 @@
 /**
  * GET /api/beeper-crm/contacts?tag=business|romantic|friends
  *     &view=permissions&permissionFilter=all|include|exclude|permission
- *     &groupId=<contact group id> (Story 101 — filters to one contact group)
+ *     &groupId=<contact group id>|__none__ (Story 101 — filters to one
+ *     contact group; `__none__` filters to contacts with no group at all,
+ *     since query strings can't carry a literal `null`)
  *
  * Lists Beeper CRM contacts. All data access goes through `dba`.
  */
@@ -52,7 +54,7 @@ export async function GET(request: Request) {
               permissionFilter: (permFilter as BeeperPermissionFilter) || "all",
             }
           : {}),
-        ...(groupIdParam ? { groupId: groupIdParam } : {}),
+        ...(groupIdParam === "__none__" ? { groupId: null } : groupIdParam ? { groupId: groupIdParam } : {}),
       });
       return NextResponse.json(contacts);
     } catch (error) {

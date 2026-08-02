@@ -22,3 +22,10 @@ No whatsapp+instagram dual-identity contacts in this DB. Cross-network ambiguity
 - Groups: `Group \| Platform \| Name`
 - Conversations + Msg workout: platform icon replaces letter avatar (shared list)
 - Permissions: `Include \| Exclude \| Platform \| Name`, Updated removed, compact left-aligned
+
+## Groups List / Manage (follow-up)
+
+- Groups tab no longer uses a second row of group pills.
+- Sub-tabs: **List** (assign contacts) and **Manage** (create/rename groups,
+  Views-style list rows + edit form).
+- Rename: `PATCH /api/beeper-crm/groups/[id]` → `renameBeeperGroup` in dba.
