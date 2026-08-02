@@ -74,9 +74,12 @@ export default defineConfig({
       // throwaway repoGuids — same local test Postgres as leads-postgres.test.ts).
       "packages/dba/src/msg-workout-matching.test.ts",
       "packages/dba/src/msg-workout-cp.test.ts",
+      "packages/dba/src/msg-workout-linking.test.ts",
       // Story 94 — Beeper Conversations split-view pure logic (filter,
       // handle icon/aria-label, empty-state gate).
       "packages/dashboard/components/beeper/beeper-conversations-logic.test.ts",
+      // Story 99 follow-up — GUI number ↔ stable Mongo dbId mapping.
+      "packages/dashboard/components/beeper/msg-workout-message-numbers.test.ts",
       // tests/ reorg (2026-07-28) — only the Vitest-based files from each
       // pillar's unit/integration dirs; the node:test-based files in the
       // same directories (no-chad-mongo-runtime, config-validator,

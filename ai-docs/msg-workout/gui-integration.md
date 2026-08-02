@@ -1,10 +1,19 @@
-# GUI integration — Beeper Conversations
+# GUI integration — Beeper Conversations / Msg workout tab
 
 ## Where it lives
 
-`packages/dashboard/components/beeper/beeper-conversations-view.tsx`
-(Story 94's split-view). The right-hand `<section>` — the conversation pane
-— is "the right panel" referred to below; there is no new route/page.
+Plain conversation browsing: `beeper-conversations-view.tsx` (Story 94).
+
+Msg workout linking review: `msg-workout-review-view.tsx` (Beeper →
+**Msg workout** tab). Same split-view shape, plus:
+
+- per-message numbers (`showMessageNumbers` on `BeeperConversationView`) —
+  display order top→bottom (`1` = first visible row); numbers are GUI-only;
+- right pane: `MsgWorkoutAssignmentList` (all workouts) or `MsgWorkoutPanel`
+  (full body after clicking a name);
+- `PATCH /api/msg-workout/set-link` for assign / reassign / unlink
+  (`messageId: null`), always writing stable Mongo `dbId` via
+  `setMsgWorkoutMessageAssignment` (never the GUI number).
 
 ## The one hard rule
 
@@ -58,16 +67,24 @@ resolved for the open conversation) calls
 matching engine — a deliberate, explicit, user-initiated action, never
 triggered by opening/rendering a conversation.
 
+## Manual assignment list
+
+`msg-workout-assignment-list.tsx` reads `allWorkouts` from
+`conversation-links`. Combobox values are message numbers; on change the
+client maps `number → messages[n-1].dbId` and PATCHes set-link. A proposed
+(not confirmed) match is shown with an amber control / `*` on the suggested
+number — selecting that number confirms; `—` clears a confirmed link only.
+
 ## Data flow summary
 
 ```
-open conversation → GET conversation-links (read-only)
+open conversation → GET conversation-links (read-only, includes allWorkouts)
                         │
                         ▼
-              render markers + Undated from what's already there
+              markers + Undated + assignment list
                         │
-              (optional) click "sync" → POST analyze-lead
-                        │              (writes config.links.beeper / proposals)
-                        ▼
-                  GET conversation-links again → markers/Undated update
+              (optional) sync → POST analyze-lead
+              (optional) combobox → PATCH set-link { messageId | null }
+                        │
+                  GET conversation-links again
 ```
