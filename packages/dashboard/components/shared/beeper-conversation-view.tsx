@@ -12,6 +12,20 @@ export interface ParsedWhatsAppMessage {
   timestamp: string;
   isOwn: boolean;
   raw: string;
+  /** Stable Mongo `_id` of the source message (Story 99) — only present when pre-parsed server-side via beeperMessagesToParsedMessagesWithDbId. */
+  dbId?: string;
+}
+
+/**
+ * Some messages contain a literal `<br>`/`<br/>`/`<br />` string (not a real
+ * newline) — probably HTML-encoded at some point upstream. React escapes it
+ * like any other text, so it showed up as the literal characters "<br>"
+ * instead of a line break. `whitespace-pre-wrap` already turns real `\n`
+ * into a visual break, so converting the literal tag to `\n` is enough —
+ * no `dangerouslySetInnerHTML` needed.
+ */
+function normalizeMessageText(text: string): string {
+  return text.replace(/<br\s*\/?>/gi, "\n");
 }
 
 /** FNV-1a 32-bit → hex — must match packages/dba/src/whatsapp-messages.ts */
@@ -116,9 +130,18 @@ export interface BeeperConversationViewProps {
   onSelectMessage?: (messageId: string) => void;
   /** Message IDs wrapped in the red analysis context frame. */
   contextFrameIds?: string[] | null;
-  /** Per-message action column (Beeper mode). Not shown in compact mode. */
+  /** Per-message action, rendered in the empty space on the side OPPOSITE the bubble (Beeper mode). Not shown in compact mode. */
   renderMessageAction?: (message: ParsedWhatsAppMessage) => ReactNode;
   showActions?: boolean;
+  /**
+   * Numbers messages 1..N (display order) and shows the number next to the
+   * timestamp — after it for messages on the left (`!isOwn`, e.g.
+   * "31/07/2026, 15:52:33 (2)"), before it for messages on the right
+   * (`isOwn`, e.g. "(3) 31/07/2026, 15:52:33"). Msg workout tab only — lets
+   * the manual-assignment list panel reference messages by a short number
+   * instead of an opaque id.
+   */
+  showMessageNumbers?: boolean;
 }
 
 /**
@@ -137,11 +160,18 @@ export function BeeperConversationView({
   contextFrameIds,
   renderMessageAction,
   showActions = false,
+  showMessageNumbers = false,
 }: BeeperConversationViewProps) {
   const messages = useMemo(() => {
     if (messagesProp) return messagesProp;
     return content ? parseWhatsAppMessages(content) : [];
   }, [messagesProp, content]);
+
+  const messageNumberById = useMemo(() => {
+    const map = new Map<string, number>();
+    messages.forEach((m, i) => map.set(m.id, i + 1));
+    return map;
+  }, [messages]);
 
   const frameSet = useMemo(
     () => (contextFrameIds && contextFrameIds.length > 0 ? new Set(contextFrameIds) : null),
@@ -201,17 +231,23 @@ export function BeeperConversationView({
           selected && !compact && "outline outline-[3px] outline-[rgba(30,110,255,0.18)] border-[#4384ff]"
         )}
       >
-        <p className="whitespace-pre-wrap break-words">{msg.message}</p>
-        {msg.timestamp && (
-          <span
-            className={cn(
-              "mt-1 block text-[11px] opacity-60",
-              msg.isOwn ? "text-primary-foreground" : "text-muted-foreground"
-            )}
-          >
-            {msg.timestamp}
-          </span>
-        )}
+        <p className="whitespace-pre-wrap break-words">{normalizeMessageText(msg.message)}</p>
+        {msg.timestamp &&
+          (() => {
+            const number = showMessageNumbers ? messageNumberById.get(msg.id) : undefined;
+            const timestampText =
+              number === undefined ? msg.timestamp : msg.isOwn ? `(${number}) ${msg.timestamp}` : `${msg.timestamp} (${number})`;
+            return (
+              <span
+                className={cn(
+                  "mt-1 block text-[11px] opacity-60",
+                  msg.isOwn ? "text-primary-foreground" : "text-muted-foreground"
+                )}
+              >
+                {timestampText}
+              </span>
+            );
+          })()}
       </div>
     );
   }
@@ -220,19 +256,33 @@ export function BeeperConversationView({
     const action =
       showActions && !compact && renderMessageAction ? renderMessageAction(msg) : null;
 
-    const rowInner = (
-      <>
-        <div
-          className={cn(
-            "flex min-w-0",
-            msg.isOwn ? "justify-end" : msg.sender === "system" ? "justify-center" : "justify-start"
-          )}
-        >
-          {renderBubble(msg)}
-        </div>
-        {showActions && !compact && (
-          <div className="flex items-center justify-end">{action}</div>
+    const bubbleCol = (
+      <div
+        className={cn(
+          "flex min-w-0",
+          msg.isOwn ? "justify-end" : msg.sender === "system" ? "justify-center" : "justify-start"
         )}
+      >
+        {renderBubble(msg)}
+      </div>
+    );
+    const actionCol = <div className="flex items-center justify-center">{action}</div>;
+
+    // Action renders in the space beside the bubble, on whichever side is
+    // otherwise empty: own (right-aligned) messages get it on the left,
+    // others (left-aligned) get it on the right — never overlapping the
+    // bubble itself. Plain column order swap, not a fixed "always right"
+    // slot (Story 99 follow-up — markers used to sit in a fixed right-hand
+    // column regardless of bubble side, wasting the actual empty gap).
+    const rowInner = msg.isOwn ? (
+      <>
+        {actionCol}
+        {bubbleCol}
+      </>
+    ) : (
+      <>
+        {bubbleCol}
+        {actionCol}
       </>
     );
 
@@ -251,7 +301,8 @@ export function BeeperConversationView({
             }
           }}
           className={cn(
-            "grid w-full grid-cols-1 items-center gap-3 sm:grid-cols-[minmax(0,1fr)_190px]",
+            "grid w-full grid-cols-1 items-center gap-3",
+            msg.isOwn ? "sm:grid-cols-[190px_minmax(0,1fr)]" : "sm:grid-cols-[minmax(0,1fr)_190px]",
             onSelectMessage && "cursor-pointer"
           )}
         >

@@ -27,6 +27,8 @@ export * from './beeper-mongo-mirror/metadata.js';
 export * from './beeper-mongo-mirror/refresh.js';
 export * from './secrets-crypto.js';
 export * from './beeper-crm.js';
+export * from './beeper-groups.js';
+export * from './beeper-platform.js';
 export * from './path-resolver.js';
 export * from './ai-answer.js';
 export * from './ai-prompts.js';
@@ -99,6 +101,11 @@ export * from './google-sheets/layout.js';
 export * from './google-sheets/bootstrap.js';
 export * from './google-sheets/production-guard.js';
 export * from './system-folders.js';
+export * from './msg-workout-matching.js';
+export * from './msg-workout-linking.js';
+export * from './msg-workout-proposals.js';
+export * from './msg-workout-analyze.js';
+export * from './msg-workout-gui-data.js';
 export {
   runWithGoogleSheetsTxnBuffer,
   deferGoogleSheetsJob,

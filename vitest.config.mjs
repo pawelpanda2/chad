@@ -48,6 +48,8 @@ export default defineConfig({
       // selection guard: pure, fake-ops-based, no real DB needed.
       "packages/dba/src/knowledge.test.ts",
       "packages/dba/src/shared-repo-access.test.ts",
+      // Beeper platform icons — network normalize + resolve priority (no DB).
+      "packages/dba/src/beeper-platform.test.ts",
       // Story 88 — AI Prompts registry (CRUD, validation, corrupt-JSON
       // guard, draft/published filtering, version increment): pure,
       // fake-ops-based, no real DB needed.
@@ -67,6 +69,11 @@ export default defineConfig({
       "packages/dashboard/components/msg-automation/ai-prompt-kind.test.ts",
       // Story 90 — Lead ↔ Beeper Links (phone match / save validation).
       "packages/dba/src/lead-beeper-links.test.ts",
+      // Story 99 — msg workout ↔ Beeper message matching engine (pure) and
+      // config.links.beeper / proposal-tree CP write paths (Postgres,
+      // throwaway repoGuids — same local test Postgres as leads-postgres.test.ts).
+      "packages/dba/src/msg-workout-matching.test.ts",
+      "packages/dba/src/msg-workout-cp.test.ts",
       // Story 94 — Beeper Conversations split-view pure logic (filter,
       // handle icon/aria-label, empty-state gate).
       "packages/dashboard/components/beeper/beeper-conversations-logic.test.ts",

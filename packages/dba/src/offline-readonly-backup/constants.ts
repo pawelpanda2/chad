@@ -16,3 +16,13 @@ export const DEFAULT_OFFLINE_READONLY_BACKUP_PORT = "55432";
 
 /** Short timeout for Dev Panel probes — dead Tailscale must not hang Settings. */
 export const DEV_DB_PROBE_TIMEOUT_MS = 2_500;
+
+/**
+ * Connect timeout for the main shared Postgres Pool. Deliberately longer than
+ * DEV_DB_PROBE_TIMEOUT_MS: over a degraded Tailscale link (observed RTT up to
+ * ~1s to QNAP) a fresh TCP + auth handshake needs several round trips and can
+ * exceed 2.5s, which used to kill real requests ("Connection terminated due
+ * to connection timeout") even though the host was reachable. Dev Panel
+ * probes keep their own short timeout — they never use the shared pool.
+ */
+export const POSTGRES_POOL_CONNECT_TIMEOUT_MS = 10_000;

@@ -1,4 +1,4 @@
-import { ReactNode } from "react";
+import { ReactNode, type Ref } from "react";
 import { NavGroup, type NavGroupUpLevel } from "@/components/shared/nav-group";
 import { cn } from "@/lib/utils";
 
@@ -51,6 +51,8 @@ interface DashboardPageShellProps {
   frameClassName?: string;
   /** Extra classes for the inner content wrapper. */
   contentClassName?: string;
+  /** Ref to the inner scrollable content div — for pages that need to read/set its scroll position programmatically (e.g. Beeper's "select a conversation scrolls the tabs out of view"). */
+  scrollContainerRef?: Ref<HTMLDivElement>;
 }
 
 /**
@@ -88,6 +90,7 @@ export function DashboardPageShell({
   className,
   frameClassName,
   contentClassName,
+  scrollContainerRef,
 }: DashboardPageShellProps) {
   return (
     <div className={cn("flex h-full min-h-0 w-full flex-col gap-0.5", className)}>
@@ -127,6 +130,7 @@ export function DashboardPageShell({
           stacked from the top => content is anchored top-left, never centered.
         */}
         <div
+          ref={scrollContainerRef}
           className={cn(
             "flex h-full min-h-0 w-full flex-col",
             scroll ? "overflow-y-auto overflow-x-hidden" : "overflow-hidden",

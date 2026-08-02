@@ -27,6 +27,7 @@ import {
 import { toast } from "sonner";
 import { DATE_ENTRY_DOMAIN_COLUMNS, DAILY_ENTRY_DOMAIN_COLUMNS, ITEM_NUMBER_COLUMN, type SheetColumnGroup } from "dba/table-columns";
 import { formatDurationClock } from "@/components/forms/audio-recording-utils";
+import { SequentialAudioPlayer } from "@/components/forms/sequential-audio-player";
 
 // Fields computed server-side on every read (computeDailyAutoFieldsByDate in
 // dba) — never editable, never sent back on save. Kept as a Set so the edit
@@ -807,12 +808,24 @@ function ViewsPageContent() {
               </div>
             </div>
             <div className="rounded-lg border bg-muted/10 p-4">
-              <audio
-                controls
-                preload="metadata"
-                src={`/api/views/recordings/${encodeURIComponent(selectedRecording.id)}/audio`}
-                className="w-full"
-              />
+              {selectedRecording.durationMs ? (
+                <SequentialAudioPlayer
+                  tracks={[
+                    {
+                      id: selectedRecording.id,
+                      src: `/api/views/recordings/${encodeURIComponent(selectedRecording.id)}/audio`,
+                      durationMs: selectedRecording.durationMs,
+                    },
+                  ]}
+                />
+              ) : (
+                <audio
+                  controls
+                  preload="metadata"
+                  src={`/api/views/recordings/${encodeURIComponent(selectedRecording.id)}/audio`}
+                  className="w-full"
+                />
+              )}
             </div>
           </div>
         ) : (
