@@ -3,13 +3,15 @@
  * Full contact detail: profile, channels, merged message timeline, timeline events.
  *
  * Story 94: also includes `conversationMessages`, the same messages
- * pre-parsed into ParsedWhatsAppMessage[] (via beeperMessagesToParsedMessages,
- * the same format+parse round-trip Message Creator's live-Beeper path
- * already uses) so the Beeper Conversations split-view can feed
- * BeeperConversationView directly without its own parser.
+ * pre-parsed into ParsedWhatsAppMessage[] (via
+ * beeperMessagesToParsedMessagesWithDbId, the same format+parse round-trip
+ * Message Creator's live-Beeper path already uses, plus each message's
+ * stable Mongo `_id` as `dbId` — Story 99, needed to key msg workout links)
+ * so the Beeper Conversations split-view can feed BeeperConversationView
+ * directly without its own parser.
  */
 import { NextResponse } from "next/server";
-import { beeperMessagesToParsedMessages, getBeeperContact, runWithRepoContext } from "dba";
+import { beeperMessagesToParsedMessagesWithDbId, getBeeperContact, runWithRepoContext } from "dba";
 import { getCurrentUserFromCookies } from "@/lib/session";
 
 interface RouteParams {
@@ -31,7 +33,7 @@ export async function GET(_request: Request, { params }: RouteParams) {
       }
       return NextResponse.json({
         ...detail,
-        conversationMessages: beeperMessagesToParsedMessages(detail.messages),
+        conversationMessages: beeperMessagesToParsedMessagesWithDbId(detail.messages),
       });
     } catch (error) {
       console.error(`Error fetching beeper contact ${id}:`, error);

@@ -5,16 +5,19 @@ import { Input } from "@/components/ui/input";
 import { Search, MessageCircle, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { beeperContactDisplayName } from "@/lib/beeper-contact-display";
+import { BeeperPlatformIcon } from "./beeper-platform-icon";
 
 interface BeeperContactListItem {
 	_id: string;
 	displayName: string;
 	notes: string;
 	tags: string[];
-	identities: { network: string }[];
+	identities: { network: string; senderName?: string }[];
 	hasAvatar: boolean;
 	channelCount: number;
 	lastMessage: { text: string; timestamp: string | null; network: string } | null;
+	platformNetwork?: string | null;
 	include: boolean;
 	exclude: boolean;
 }
@@ -28,12 +31,18 @@ const PERM_FILTER_OPTIONS: Array<{ value: PermissionFilter; label: string }> = [
 	{ value: "permission", label: "Permission" },
 ];
 
+export interface BeeperPermissionsViewProps {
+	/** Story 101 — filters to one contact group; undefined/"All groups" shows everyone. */
+	groupFilter?: string;
+}
+
 /**
  * Beeper Permissions tab (Story 86 layout, extracted unchanged into its own
  * component in Story 94 so beeper/page.tsx can switch between this and the
  * Conversations split-view without one giant file).
+ * Platform column + compact left-aligned columns: Story platform-icons follow-up.
  */
-export function BeeperPermissionsView() {
+export function BeeperPermissionsView({ groupFilter }: BeeperPermissionsViewProps = {}) {
 	const [permFilter, setPermFilter] = useState<PermissionFilter>("all");
 	const [contacts, setContacts] = useState<BeeperContactListItem[]>([]);
 	const [loading, setLoading] = useState(true);
@@ -46,6 +55,7 @@ export function BeeperPermissionsView() {
 			const params = new URLSearchParams();
 			params.set("view", "permissions");
 			params.set("permissionFilter", permFilter);
+			if (groupFilter) params.set("groupId", groupFilter);
 			const res = await fetch(`/api/beeper-crm/contacts?${params.toString()}`);
 			if (!res.ok) throw new Error(`Failed to load contacts: ${res.status}`);
 			const data = await res.json();
@@ -55,7 +65,7 @@ export function BeeperPermissionsView() {
 		} finally {
 			setLoading(false);
 		}
-	}, [permFilter]);
+	}, [permFilter, groupFilter]);
 
 	useEffect(() => {
 		load();
@@ -153,56 +163,58 @@ export function BeeperPermissionsView() {
 					<span>No contacts found.</span>
 				</div>
 			) : (
-				<div className="overflow-hidden rounded-lg border bg-muted/10">
-					<div className="overflow-x-auto">
-						<table className="w-full min-w-[640px] text-left text-sm">
-							<thead>
-								<tr className="border-b bg-muted/40 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-									<th className="px-3 py-2 text-center">Include</th>
-									<th className="px-3 py-2 text-center">Exclude</th>
-									<th className="px-3 py-2">Name</th>
-									<th className="px-3 py-2">Updated</th>
-								</tr>
-							</thead>
-							<tbody className="divide-y">
-								{filtered.map((c) => (
+				<div className="min-h-0 flex-1 overflow-y-auto rounded-lg border bg-muted/10">
+					{/* Compact left-aligned table: content-width cols + ~4px gaps; do not stretch across the page. */}
+					<table className="w-auto max-w-full border-separate border-spacing-x-1 border-spacing-y-0 text-left text-sm">
+						<thead>
+							<tr className="border-b bg-muted/40 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+								<th className="px-0.5 py-2 text-center whitespace-nowrap">Include</th>
+								<th className="px-0.5 py-2 text-center whitespace-nowrap">Exclude</th>
+								<th className="px-0.5 py-2 text-center whitespace-nowrap">Platform</th>
+								<th className="px-0.5 py-2 whitespace-nowrap">Name</th>
+							</tr>
+						</thead>
+						<tbody className="divide-y">
+							{filtered.map((c) => {
+								const name = beeperContactDisplayName(c.displayName, c.identities);
+								return (
 									<tr
 										key={c._id}
 										className={cn("hover:bg-accent", savingId === c._id && "opacity-70")}
 									>
-										<td className="px-3 py-2.5 text-center">
+										<td className="px-0.5 py-1.5 text-center align-middle">
 											<input
 												type="checkbox"
 												className="h-[18px] w-[18px] cursor-pointer"
 												checked={c.include}
 												disabled={savingId === c._id}
 												onChange={(e) => onIncludeChange(c, e.target.checked)}
-												aria-label={`Include ${c.displayName}`}
+												aria-label={`Include ${name}`}
 											/>
 										</td>
-										<td className="px-3 py-2.5 text-center">
+										<td className="px-0.5 py-1.5 text-center align-middle">
 											<input
 												type="checkbox"
 												className="h-[18px] w-[18px] cursor-pointer"
 												checked={c.exclude}
 												disabled={savingId === c._id}
 												onChange={(e) => onExcludeChange(c, e.target.checked)}
-												aria-label={`Exclude ${c.displayName}`}
+												aria-label={`Exclude ${name}`}
 											/>
 										</td>
-										<td className="px-3 py-2.5">
-											<div className="font-medium">{c.displayName}</div>
+										<td className="px-0.5 py-1.5 text-center align-middle">
+											<BeeperPlatformIcon
+												network={c.platformNetwork ?? c.lastMessage?.network ?? null}
+											/>
 										</td>
-										<td className="px-3 py-2.5 text-muted-foreground">
-											{c.lastMessage?.timestamp
-												? new Date(c.lastMessage.timestamp).toLocaleString()
-												: "—"}
+										<td className="px-0.5 py-1.5 align-middle whitespace-nowrap">
+											<div className="font-medium">{name}</div>
 										</td>
 									</tr>
-								))}
-							</tbody>
-						</table>
-					</div>
+								);
+							})}
+						</tbody>
+					</table>
 				</div>
 			)}
 		</>

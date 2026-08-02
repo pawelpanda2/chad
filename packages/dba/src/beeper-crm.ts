@@ -31,7 +31,9 @@ import { ObjectId } from "mongodb";
 import { getBeeperMongoDb } from "./mongo.js";
 import { getCurrentRepoGuid } from "./repo-context.js";
 import { ensureLeadBeeperLinksIndexes } from "./lead-beeper-links.js";
+import { ensureBeeperGroupsIndexes } from "./beeper-groups.js";
 import { assertBeeperWriteAllowed, isBeeperMongoReadonlyMode } from "./chad-data-mode.js";
+import { resolveBeeperPlatformNetwork } from "./beeper-platform.js";
 
 // ── Collections ────────────────────────────────────────────────────────────
 
@@ -96,6 +98,7 @@ export async function ensureBeeperIndexes(repoGuid: string): Promise<void> {
   ]);
 
   await ensureLeadBeeperLinksIndexes(repoGuid);
+  await ensureBeeperGroupsIndexes(repoGuid);
 }
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -118,9 +121,17 @@ export interface BeeperContactListItem {
   hasAvatar: boolean;
   channelCount: number;
   lastMessage: { text: string; timestamp: string | null; network: string } | null;
+  /**
+   * Raw Beeper `network` chosen for platform-icon display (conversation /
+   * channel / unambiguous identity — see `resolveBeeperPlatformNetwork`).
+   * Null when unknown or ambiguous; never a guessed identities[0].
+   */
+  platformNetwork: string | null;
   /** Story 86 — sync permission flags (defaults applied by migration). */
   include: boolean;
   exclude: boolean;
+  /** Story 101 — singular contact group (distinct from `tags`), null when unassigned. */
+  groupId: string | null;
 }
 
 export type BeeperSyncMode = "include" | "exclude" | "metadata";
@@ -321,6 +332,8 @@ export async function listBeeperContacts(opts?: {
   tag?: BeeperTag;
   view?: "default" | "permissions";
   permissionFilter?: BeeperPermissionFilter;
+  /** Story 101 — filter to a single contact group. */
+  groupId?: string;
 }): Promise<BeeperContactListItem[]> {
   // Story 92: this lazy auto-heal is a write (assertBeeperWriteAllowed
   // inside ensureBeeperSyncPermissionsMigrated) — must never block a read
@@ -345,6 +358,10 @@ export async function listBeeperContacts(opts?: {
         ],
       };
 
+  if (opts?.groupId) {
+    filter.groupId = toObjectId(opts.groupId);
+  }
+
   const rows = await contacts.find(filter).sort({ updatedAt: -1 }).toArray();
 
   const enriched = await Promise.all(
@@ -367,23 +384,31 @@ export async function listBeeperContacts(opts?: {
       const include = c.include === true || (c.include == null && c.exclude !== true);
       const exclude = c.exclude === true;
 
+      const identities = (c.identities ?? []) as BeeperIdentity[];
+      const lastMessage = lastMsg
+        ? {
+            text: lastMsg.text,
+            timestamp: toIso(lastMsg.timestamp),
+            network: lastMsg.network,
+          }
+        : null;
       const item: BeeperContactListItem = {
         _id: c._id.toString(),
         displayName: c.displayName,
         notes: c.notes ?? "",
         tags: c.tags ?? [],
-        identities: c.identities ?? [],
+        identities,
         hasAvatar: !!c.avatarURL,
         channelCount: contactChannels.length,
-        lastMessage: lastMsg
-          ? {
-              text: lastMsg.text,
-              timestamp: toIso(lastMsg.timestamp),
-              network: lastMsg.network,
-            }
-          : null,
+        lastMessage,
+        platformNetwork: resolveBeeperPlatformNetwork({
+          lastMessageNetwork: lastMessage?.network ?? null,
+          channelNetworks: contactChannels.map((ch) => ch.network as string | undefined),
+          identityNetworks: identities.map((i) => i.network),
+        }),
         include: exclude ? false : include,
         exclude,
+        groupId: c.groupId ? c.groupId.toString() : null,
       };
       return item;
     })
