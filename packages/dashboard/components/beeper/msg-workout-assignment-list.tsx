@@ -51,8 +51,8 @@ export function MsgWorkoutAssignmentList({
     <div className="h-full overflow-y-auto">
       <div className="divide-y">
         {workouts.map((w) => {
-          const currentMessageId = w.linkedMessageId ?? w.proposedMessageId;
-          const currentNumber = currentMessageId ? numberByMessageId.get(currentMessageId) ?? null : null;
+          const linkedNumber = w.linkedMessageId ? numberByMessageId.get(w.linkedMessageId) ?? null : null;
+          const proposedNumber = w.proposedMessageId ? numberByMessageId.get(w.proposedMessageId) ?? null : null;
           const isLinked = Boolean(w.linkedMessageId);
           const isProposed = !isLinked && Boolean(w.proposedMessageId);
           const isSaving = assigningLoca === w.loca;
@@ -75,7 +75,7 @@ export function MsgWorkoutAssignmentList({
                   isLinked
                     ? "Linked"
                     : isProposed
-                      ? `Proposed match — ${Math.round((w.confidence ?? 0) * 100)}% confidence`
+                      ? `Proposed #${proposedNumber ?? "?"} — ${Math.round((w.confidence ?? 0) * 100)}% — pick that number to confirm`
                       : "Not linked"
                 }
               >
@@ -93,15 +93,26 @@ export function MsgWorkoutAssignmentList({
                 <RefreshCw className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />
               ) : (
                 <select
-                  className="h-8 w-16 shrink-0 rounded-md border border-border bg-background px-1 text-sm"
-                  value={currentNumber ?? ""}
+                  className={cn(
+                    "h-8 w-16 shrink-0 rounded-md border bg-background px-1 text-sm",
+                    isProposed ? "border-amber-500/60" : "border-border"
+                  )}
+                  // Confirmed link only — proposed is a suggestion; picking the
+                  // number writes the link (selecting — clears a confirmed link).
+                  value={linkedNumber ?? ""}
                   onChange={(e) => onAssign(w, e.target.value === "" ? null : Number(e.target.value))}
                   aria-label={`Assign ${w.name} to message number`}
+                  title={
+                    isProposed && proposedNumber != null
+                      ? `Suggested message #${proposedNumber}`
+                      : "Assign to message number"
+                  }
                 >
                   <option value="">—</option>
                   {messageOptions.map((opt) => (
                     <option key={opt.dbId} value={opt.number}>
                       {opt.number}
+                      {isProposed && opt.number === proposedNumber ? " *" : ""}
                     </option>
                   ))}
                 </select>
