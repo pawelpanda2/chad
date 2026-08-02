@@ -16,7 +16,7 @@ git reset --hard 6de07ca37fea72ae885c0d96f2f452ba9c6cf17c
 
 ## FINAL_SHA
 
-(filled after final commit)
+3dc52ebf00e84e64d1b35311ac04d0436be88cda
 
 ## Baseline TS errors (pre-Cursor fix)
 
@@ -43,4 +43,5 @@ git reset --hard 6de07ca37fea72ae885c0d96f2f452ba9c6cf17c
 - [x] Local Docker official deploy (dashboard up; known unrelated `12040` FATAL warning)
 - [x] Browser smoke PASS LOCAL (numbers, empty assignment list, shell scroll, no console errors)
 - [ ] Full assign/reassign on real lead workout — BLOCKED (test3 had no linked lead/msg workouts; API validation path checked)
-- [ ] Final commit + FINAL_SHA + push
+- [x] Final commit + FINAL_SHA + push
+
