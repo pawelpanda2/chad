@@ -16,10 +16,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AlertCircle, Loader2 } from "lucide-react";
 import { AiPromptDeleteDialog } from "@/components/msg-automation/ai-prompt-delete-dialog";
-import { AiPromptConversationPanel } from "@/components/msg-automation/ai-prompt-conversation-panel";
+import { AiPromptWorkspace } from "@/components/msg-automation/ai-prompt-workspace";
 import { aiPromptKindLabel, slugifyPromptName } from "@/components/msg-automation/ai-prompt-kind";
 
 interface AiPromptManagedFormProps {
@@ -217,6 +216,159 @@ export function AiPromptManagedForm({ promptId }: AiPromptManagedFormProps) {
     );
   }
 
+  const manageContent = (
+    <div className="mx-auto max-w-xl space-y-4">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-base font-semibold">prompt settings</h2>
+        <Button size="sm" className="h-8" onClick={() => void handleSave()} disabled={saving}>
+          {saving ? "Saving…" : "Save"}
+        </Button>
+      </div>
+
+      <div className="rounded-xl border p-4">
+        <h3 className="text-sm font-semibold">Prompt metadata</h3>
+        <div className="mt-3 space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="managed-name">Name</Label>
+            <Input id="managed-name" value={name} onChange={(e) => setName(e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="managed-slug">Slug</Label>
+            <Input
+              id="managed-slug"
+              value={slug}
+              onChange={(e) => setSlug(e.target.value)}
+              placeholder="auto-generated from name if left empty"
+              className="font-mono"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="managed-description">Description</Label>
+            <Textarea
+              id="managed-description"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              className="min-h-20"
+            />
+          </div>
+          <div className="grid grid-cols-[100px_1fr] items-center gap-2">
+            <Label>Category</Label>
+            <Select value={actionType} onValueChange={setActionType}>
+              <SelectTrigger className="h-9 rounded-lg">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {ACTION_TYPE_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>
+                    {o.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Label htmlFor="managed-school">School</Label>
+            <Input
+              id="managed-school"
+              value={schoolId}
+              onChange={(e) => setSchoolId(e.target.value)}
+              placeholder="(all schools)"
+            />
+            <Label>Provider</Label>
+            <Input value="openai" disabled className="bg-muted" />
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-xl border p-4">
+        <h3 className="text-sm font-semibold">openai published prompt</h3>
+        <p className="mt-1 mb-4 text-xs text-muted-foreground">
+          Enter only the values shown after publishing the prompt in OpenAI.
+        </p>
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="managed-prompt-id">OpenAI prompt ID</Label>
+            <div className="flex gap-2">
+              <Input
+                id="managed-prompt-id"
+                value={openaiPromptId}
+                onChange={(e) => setOpenaiPromptId(e.target.value)}
+                placeholder="pmpt_…"
+                className="font-mono"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void navigator.clipboard?.writeText(openaiPromptId)}
+                disabled={!openaiPromptId}
+              >
+                Copy
+              </Button>
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="managed-version">OpenAI prompt version</Label>
+            <Input
+              id="managed-version"
+              value={openaiPromptVersion}
+              onChange={(e) => setOpenaiPromptVersion(e.target.value)}
+              placeholder="1"
+            />
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-xl border p-4">
+        <h3 className="text-sm font-semibold">Settings</h3>
+        <div className="mt-3 space-y-4">
+          <div className="grid grid-cols-[100px_1fr] items-center gap-2">
+            <Label>Summary</Label>
+            <Select value={summary} onValueChange={setSummary}>
+              <SelectTrigger className="h-9 rounded-lg">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="auto">auto</SelectItem>
+                <SelectItem value="none">none</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-sm">Store logs</span>
+            <Switch checked={storeLogs} onCheckedChange={setStoreLogs} />
+          </div>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between rounded-xl border p-4">
+        <div>
+          <div className="text-sm font-semibold">Status</div>
+          <span className="mt-1 inline-flex rounded-full bg-muted px-2 py-0.5 text-xs font-semibold text-muted-foreground">
+            {status === "published" ? `Published (v${version})` : status === "archived" ? "Archived" : "Draft"}
+          </span>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={isNew || publishing || status === "archived"}
+          onClick={() => void handlePublish()}
+        >
+          {publishing ? "Publishing…" : "Publish version"}
+        </Button>
+      </div>
+
+      {!isNew && (
+        <div className="flex items-center justify-between rounded-xl border border-destructive/30 p-4">
+          <div className="text-sm">
+            <div className="font-semibold">Delete prompt</div>
+            <div className="text-muted-foreground">This cannot be undone.</div>
+          </div>
+          <Button variant="outline" size="sm" className="h-8 text-destructive" onClick={() => setDeleteOpen(true)}>
+            Delete
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <EditorPageShell>
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b px-2 py-1.5 pl-14">
@@ -227,19 +379,6 @@ export function AiPromptManagedForm({ promptId }: AiPromptManagedFormProps) {
         <span className="hidden rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-800 sm:inline dark:bg-blue-950/40 dark:text-blue-200">
           {aiPromptKindLabel("openai_managed")}
         </span>
-        {!isNew && (
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-8 text-destructive"
-            onClick={() => setDeleteOpen(true)}
-          >
-            Delete
-          </Button>
-        )}
-        <Button size="sm" className="h-8" onClick={() => void handleSave()} disabled={saving}>
-          {saving ? "Saving…" : "Save"}
-        </Button>
       </div>
 
       {error && (
@@ -249,150 +388,7 @@ export function AiPromptManagedForm({ promptId }: AiPromptManagedFormProps) {
         </div>
       )}
 
-      <Tabs defaultValue="conversation" className="flex min-h-0 flex-1 flex-col gap-0">
-        <TabsList className="mx-2 mt-1.5 w-fit shrink-0">
-          <TabsTrigger value="conversation">conversation</TabsTrigger>
-          <TabsTrigger value="manage">manage</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="conversation" className="mt-0 flex min-h-0 flex-1 flex-col">
-          <AiPromptConversationPanel promptId={savedPromptId} />
-        </TabsContent>
-
-        <TabsContent value="manage" className="mt-0 min-h-0 flex-1 overflow-y-auto p-6">
-          <div className="mx-auto w-full max-w-xl space-y-4">
-            <div className="rounded-2xl border bg-background p-5">
-              <h2 className="text-lg font-semibold">Prompt metadata</h2>
-              <div className="mt-4 space-y-4">
-                <div className="space-y-1.5">
-                  <Label htmlFor="managed-name">Name</Label>
-                  <Input id="managed-name" value={name} onChange={(e) => setName(e.target.value)} />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="managed-slug">Slug</Label>
-                  <Input
-                    id="managed-slug"
-                    value={slug}
-                    onChange={(e) => setSlug(e.target.value)}
-                    placeholder="auto-generated from name if left empty"
-                    className="font-mono"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="managed-description">Description</Label>
-                  <Textarea
-                    id="managed-description"
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    className="min-h-20"
-                  />
-                </div>
-                <div className="grid grid-cols-[120px_1fr] items-center gap-2">
-                  <Label>Category</Label>
-                  <Select value={actionType} onValueChange={setActionType}>
-                    <SelectTrigger className="h-9 rounded-lg">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {ACTION_TYPE_OPTIONS.map((o) => (
-                        <SelectItem key={o.value} value={o.value}>
-                          {o.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Label htmlFor="managed-school">School</Label>
-                  <Input
-                    id="managed-school"
-                    value={schoolId}
-                    onChange={(e) => setSchoolId(e.target.value)}
-                    placeholder="(all schools)"
-                  />
-                  <Label>Provider</Label>
-                  <Input value="openai" disabled className="bg-muted" />
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-2xl border bg-background p-5">
-              <h2 className="text-lg font-semibold">openai published prompt</h2>
-              <p className="mt-1 mb-5 text-sm text-muted-foreground">
-                Enter only the values shown after publishing the prompt in OpenAI.
-              </p>
-              <div className="space-y-4">
-                <div className="space-y-1.5">
-                  <Label htmlFor="managed-prompt-id">OpenAI prompt ID</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      id="managed-prompt-id"
-                      value={openaiPromptId}
-                      onChange={(e) => setOpenaiPromptId(e.target.value)}
-                      placeholder="pmpt_…"
-                      className="font-mono"
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => void navigator.clipboard?.writeText(openaiPromptId)}
-                      disabled={!openaiPromptId}
-                    >
-                      Copy
-                    </Button>
-                  </div>
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="managed-version">OpenAI prompt version</Label>
-                  <Input
-                    id="managed-version"
-                    value={openaiPromptVersion}
-                    onChange={(e) => setOpenaiPromptVersion(e.target.value)}
-                    placeholder="1"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-2xl border bg-background p-5">
-              <h2 className="text-lg font-semibold">Settings</h2>
-              <div className="mt-4 space-y-4">
-                <div className="grid grid-cols-[120px_1fr] items-center gap-2">
-                  <Label>Summary</Label>
-                  <Select value={summary} onValueChange={setSummary}>
-                    <SelectTrigger className="h-9 rounded-lg">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="auto">auto</SelectItem>
-                      <SelectItem value="none">none</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm">Store logs</span>
-                  <Switch checked={storeLogs} onCheckedChange={setStoreLogs} />
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between rounded-2xl border bg-background p-5">
-              <div>
-                <div className="text-sm font-semibold">Status</div>
-                <span className="mt-1 inline-flex rounded-full bg-muted px-2 py-0.5 text-xs font-semibold text-muted-foreground">
-                  {status === "published" ? `Published (v${version})` : status === "archived" ? "Archived" : "Draft"}
-                </span>
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                disabled={isNew || publishing || status === "archived"}
-                onClick={() => void handlePublish()}
-              >
-                {publishing ? "Publishing…" : "Publish version"}
-              </Button>
-            </div>
-          </div>
-        </TabsContent>
-      </Tabs>
+      <AiPromptWorkspace promptId={savedPromptId} manageContent={manageContent} />
 
       <AiPromptDeleteDialog
         open={deleteOpen}

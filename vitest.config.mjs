@@ -67,12 +67,15 @@ export default defineConfig({
       "packages/dashboard/components/shared/text-editor-with-toolbar.test.tsx",
       // Msg Auto AI Prompts — kind labels / Category mapping (mockup v4).
       "packages/dashboard/components/msg-automation/ai-prompt-kind.test.ts",
-      // AI Prompts editor conversation tab — no-auto-request/explicit-Send/
-      // idle-sending-success-error-provider-not-configured state coverage.
-      "packages/dashboard/components/msg-automation/ai-prompt-conversation-panel.test.tsx",
-      // AI Prompts conversation tab — lead analysis context panel (report/
-      // conversation selection, base/final prompt preview wiring).
-      "packages/dashboard/components/msg-automation/ai-lead-context-panel.test.tsx",
+      // AI Prompts editor workspace (manage/leads/auto/base tabs + persistent
+      // chat panel, mockup CHAD_ai_prompts_manage_leads_auto_base_mockup.html)
+      // — tab locking, no-auto-request/explicit-Send, final-prompt preview.
+      "packages/dashboard/components/msg-automation/ai-prompt-workspace.test.tsx",
+      // AI Prompts workspace, leads tab — search/loading/empty/error/current highlight.
+      "packages/dashboard/components/msg-automation/ai-prompt-leads-tab.test.tsx",
+      // AI Prompts workspace, auto tab — amber AI-pick never disappears after
+      // a manual re-selection; green "currently selected" is independent.
+      "packages/dashboard/components/msg-automation/ai-prompt-auto-tab.test.tsx",
       // Lead analysis `<current_case>` prompt building — console-format
       // parity (askOpenAiAboutGirl.ts) and additional-input append-only.
       "packages/dba/src/lead-analysis-prompt.test.ts",
