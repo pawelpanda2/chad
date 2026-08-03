@@ -597,6 +597,7 @@ function ViewsPageContent() {
       <DashboardPageShell
         upLevel={{ onClick: handleBack }}
         title="Leads"
+        scroll={false}
         contentClassName={FRAME_SECTION_GAP_CLASS}
       >
         <div className="flex shrink-0 flex-wrap items-center gap-3">
@@ -639,8 +640,9 @@ function ViewsPageContent() {
 
         <ErrorBox message={error} className="mb-2" />
 
-        {/* Inner frame (Story 62 standard). */}
-        <div className={LIST_ROW_WRAPPER_CLASS}>
+        {/* Inner frame (Story 62 standard) — own independent scroll, capped
+            at 200px wide, so the page frame around it never scrolls. */}
+        <div className={cn(LIST_ROW_WRAPPER_CLASS, "flex min-h-0 w-[400px] max-w-[400px] flex-1 flex-col overflow-y-auto")}>
         {isLoading ? (
           <div className="flex items-center gap-2 py-4 text-muted-foreground">
             <RefreshCw className="h-4 w-4 animate-spin" />

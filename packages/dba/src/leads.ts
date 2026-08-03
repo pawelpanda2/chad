@@ -22,6 +22,7 @@ import {
   createOrGetChild,
   findOrCreateFolderChain,
   putItemBody,
+  deleteItemByAddress,
 } from "./item-ops.js";
 import { chad_GetRelativeLoca, chad_GetFirstSegment } from "./path-resolver.js";
 import {
@@ -2457,6 +2458,54 @@ export async function createLead(
       error: errorMsg,
     };
   }
+}
+
+/**
+ * Post-order removes every descendant of `address` (deepest first), then
+ * the item at `address` itself — never touches anything outside this
+ * subtree. Not exported: this is the opposite of the Folders admin page's
+ * deliberate "a Folder can only be deleted while empty, never cascades"
+ * rule (`folders.ts`'s `deleteFolderItem`) — safe here only because
+ * `deleteLead` below scopes it to one specific lead's own known
+ * substructure (`contacts`, `msg workout` and whatever lives under it —
+ * see `createLead` above), not an arbitrary Folder a user could pick.
+ */
+async function deleteSubtree(address: string): Promise<void> {
+  const children = await getChildrenOf(address);
+  for (const child of children) {
+    await deleteSubtree(child.config.address);
+  }
+  await deleteItemByAddress(address);
+}
+
+/**
+ * Permanently deletes a lead — the lead item itself plus its own real
+ * children (`contacts`, `msg workout` folder and everything under it) —
+ * and dequeues its Google Sheets row via the same outbox/follower flow
+ * `createLead` enqueues on write (`queueLeadSheetSyncIfEnabled`, Sheets is
+ * never the source of truth). Requires the Mongo or Postgres primary
+ * backend, same as `deleteDailyEntry`/`deleteDateEntry` —
+ * `deleteItemByAddress` throws (never a pretend success) when only the
+ * Content Provider's non-functional Delete stub is active.
+ */
+export async function deleteLead(leadLoca: string): Promise<void> {
+  const repoGuid = getCurrentRepoGuid();
+  const address = repoAndLocaToAddress(repoGuid, leadLoca);
+  const existing = await getItemByAddress(address);
+  if (!existing) {
+    throw new Error(`Could not find lead at loca "${leadLoca}" to delete`);
+  }
+
+  await deleteSubtree(address);
+
+  await queueLeadSheetSyncIfEnabled({
+    repoGuid,
+    username: getCurrentUsername(),
+    loca: leadLoca,
+    itemName: "",
+    fields: {},
+    kind: "delete",
+  });
 }
 
 // =============================================================================
