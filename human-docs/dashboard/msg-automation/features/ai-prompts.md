@@ -30,20 +30,32 @@ a session → `runWithRepoContext(user, ...)` → one `dba` call. No raw
 `invokeContentProvider()` in any route, no provider API keys ever appear in
 a response.
 
-## Content Provider structure
+## Content Provider structure — shared, not per-user (amended)
 
 ```
-msg-auto            (Folder, lazily created)
-└── ai prompts      (Text item, lazily created)
+chad_shared          (fixed repo, CHAD_SHARED_REPO_GUID — see knowledge.ts)
+└── msg-auto         (Folder, lazily created)
+    └── ai prompts   (Text item, lazily created)
 ```
 
-Both are created on first write via `item-ops.ts`'s
-`findOrCreateFolderChain(["msg-auto"])` → `createOrGetChild(folder, "ai
-prompts", "Text", ...)` — the same find-or-create pattern
-`message-creator.ts` already uses for `approach context`/`my proposals`.
-Per-user isolation is exclusively `getCurrentRepoGuid()`/
-`runWithRepoContext` (see `../../common/features/chad-user-data-isolation.md`)
-— no `repoGuid` is ever accepted from a query/body param.
+**Deliberate exception to this repo's usual per-user isolation.** AI Prompts
+is a single global, shared resource: the registry always lives under
+`chad_shared` (the same repo Knowledge already reads), never under the
+calling user's own repo. Every logged-in user reads, edits, publishes, and
+executes the exact same list — there is currently no owner/permission model
+(no read-only users, no per-prompt owner); that's a planned future layer,
+not an oversight (see this Story's follow-up notes). `ai-prompts.ts` never
+calls `getCurrentRepoGuid()` — storage is rooted via `item-ops.ts`'s
+`findOrCreateFolderChainFrom(CHAD_SHARED_REPO_GUID, ["msg-auto"])` →
+`createOrGetChild(folder, "ai prompts", "Text", ...)`, a generalized form of
+the `findOrCreateFolderChain` pattern `message-creator.ts` uses for
+`approach context`/`my proposals` (which stays per-user, unaffected).
+
+API routes still call `getCurrentUserFromCookies()` (401 without a session)
+and still wrap calls in `runWithRepoContext(user, ...)` — but only so the
+caller's own identity is best-effort stamped as the *actor* on the Postgres
+history trigger; it has no bearing on where this feature's data lives. No
+`repoGuid` is ever accepted from a query/body param.
 
 Body — a single JSON document, `schemaVersion: 1`:
 ```json

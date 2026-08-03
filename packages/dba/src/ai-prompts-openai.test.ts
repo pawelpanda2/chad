@@ -5,6 +5,7 @@
 import { describe, it, expect } from "vitest";
 import {
   buildOpenAiStoredPromptCreateParams,
+  buildLocalPromptInputMessages,
   substituteVariables,
   resolveAiPromptUserContent,
 } from "./ai-prompts-openai.js";
@@ -89,5 +90,62 @@ describe("buildOpenAiStoredPromptCreateParams", () => {
       leadName: "L",
     });
     expect(content).toBe("");
+  });
+
+  it("conversation tab: a raw userMessage bypasses template substitution entirely", () => {
+    const params = buildOpenAiStoredPromptCreateParams(
+      managedDef(),
+      { leadName: "Ada", report: "rep-body", conversation: "hi", question: "co teraz?" },
+      "Cześć, jak się masz?",
+    );
+    expect(params.input).toHaveLength(1);
+    expect(params.input[0].content).toBe("Cześć, jak się masz?");
+    expect(params.input[0].content).not.toContain("current_case");
+  });
+
+  it("falls back to the template when userMessage is empty/whitespace", () => {
+    const params = buildOpenAiStoredPromptCreateParams(
+      managedDef(),
+      { leadName: "Ada", report: "r", conversation: "c", question: "q" },
+      "   ",
+    );
+    expect(params.input[0].content).toContain("name: Ada");
+  });
+});
+
+describe("buildLocalPromptInputMessages (our_custom conversation tab)", () => {
+  function customDef(over: Partial<AiPromptDefinition> = {}): AiPromptDefinition {
+    return {
+      id: "x",
+      slug: "s",
+      name: "n",
+      actionType: "custom",
+      promptKind: "our_custom",
+      status: "draft",
+      version: 1,
+      messages: [{ role: "developer", content: "You are a helpful assistant." }],
+      variables: [],
+      provider: "openai",
+      createdAt: "",
+      updatedAt: "",
+      ...over,
+    };
+  }
+
+  it("appends the conversation-tab message as a genuine trailing user turn", () => {
+    const input = buildLocalPromptInputMessages(customDef(), {}, "Hello there");
+    expect(input).toHaveLength(2);
+    expect(input[0]).toEqual({ role: "developer", content: "You are a helpful assistant." });
+    expect(input[1]).toEqual({ role: "user", content: "Hello there" });
+  });
+
+  it("never runs {{variable}} substitution on the raw user turn", () => {
+    const input = buildLocalPromptInputMessages(customDef(), {}, "literal {{leadName}} text");
+    expect(input[1].content).toBe("literal {{leadName}} text");
+  });
+
+  it("omits the trailing user turn when no message is given", () => {
+    const input = buildLocalPromptInputMessages(customDef(), {});
+    expect(input).toHaveLength(1);
   });
 });

@@ -16,8 +16,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { AlertCircle, Loader2, MessageSquare, Plus } from "lucide-react";
+import { AlertCircle, Loader2, Plus } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AiPromptDeleteDialog } from "@/components/msg-automation/ai-prompt-delete-dialog";
+import { AiPromptConversationPanel } from "@/components/msg-automation/ai-prompt-conversation-panel";
 import { slugifyPromptName } from "@/components/msg-automation/ai-prompt-kind";
 import { cn } from "@/lib/utils";
 
@@ -55,6 +57,7 @@ export function AiPromptCustomEditor({ promptId }: AiPromptCustomEditorProps) {
 
   const [name, setName] = useState(isNew ? "New prompt" : "");
   const [slug, setSlug] = useState("");
+  const [description, setDescription] = useState("");
   const [status, setStatus] = useState<"draft" | "published" | "archived">("draft");
   const [promptBody, setPromptBody] = useState("");
   const [extraMessages, setExtraMessages] = useState<Array<{ role: string; content: string }>>([]);
@@ -69,7 +72,6 @@ export function AiPromptCustomEditor({ promptId }: AiPromptCustomEditorProps) {
   const [tools, setTools] = useState<Record<string, boolean>>(
     Object.fromEntries(HOSTED_TOOLS.map((t) => [t, false]))
   );
-  const [composer, setComposer] = useState("");
 
   const load = useCallback(async () => {
     if (!promptId) return;
@@ -82,6 +84,7 @@ export function AiPromptCustomEditor({ promptId }: AiPromptCustomEditorProps) {
       const p = json.data as {
         name: string;
         slug: string;
+        description?: string;
         status: "draft" | "published" | "archived";
         messages?: Array<{ role: string; content: string }>;
         model?: string;
@@ -97,6 +100,7 @@ export function AiPromptCustomEditor({ promptId }: AiPromptCustomEditorProps) {
       };
       setName(p.name);
       setSlug(p.slug);
+      setDescription(p.description ?? "");
       setStatus(p.status);
       const msgs = p.messages ?? [];
       const primary =
@@ -157,6 +161,7 @@ export function AiPromptCustomEditor({ promptId }: AiPromptCustomEditorProps) {
       const payload = {
         slug: nextSlug,
         name: name.trim() || "Untitled prompt",
+        description: description.trim() || undefined,
         actionType: "custom" as const,
         promptKind: "our_custom" as const,
         provider: "openai" as const,
@@ -286,18 +291,39 @@ export function AiPromptCustomEditor({ promptId }: AiPromptCustomEditorProps) {
         </div>
       )}
 
-      <div
-        className={cn(
-          "grid min-h-0 flex-1",
-          showCode
-            ? "grid-cols-1 lg:grid-cols-[340px_minmax(0,1fr)_minmax(240px,320px)]"
-            : "grid-cols-1 lg:grid-cols-[340px_minmax(0,1fr)]"
-        )}
-      >
+      <Tabs defaultValue="conversation" className="flex min-h-0 flex-1 flex-col gap-0">
+        <TabsList className="mx-2 mt-1.5 w-fit shrink-0">
+          <TabsTrigger value="conversation">conversation</TabsTrigger>
+          <TabsTrigger value="manage">manage</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="conversation" className="mt-0 flex min-h-0 flex-1 flex-col">
+          <AiPromptConversationPanel promptId={promptId} />
+        </TabsContent>
+
+        <TabsContent
+          value="manage"
+          className={cn(
+            "mt-0 grid min-h-0 flex-1",
+            showCode
+              ? "grid-cols-1 lg:grid-cols-[340px_minmax(240px,320px)]"
+              : "grid-cols-1 lg:grid-cols-[340px_minmax(0,1fr)]"
+          )}
+        >
         <aside className="min-h-0 overflow-y-auto border-b lg:border-b-0 lg:border-r">
           <section className="space-y-3 border-b p-4">
             <div className="flex items-center justify-between text-sm font-semibold">
               <span>Prompt</span>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="custom-description">Description</Label>
+              <Textarea
+                id="custom-description"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                className="min-h-16 rounded-xl"
+                placeholder="What this prompt is for"
+              />
             </div>
             <div className="grid grid-cols-2 gap-2">
               <Button type="button" variant="outline" size="sm" className="h-9 text-xs" disabled>
@@ -464,23 +490,6 @@ export function AiPromptCustomEditor({ promptId }: AiPromptCustomEditorProps) {
           </section>
         </aside>
 
-        <section className="flex min-h-0 flex-col bg-background">
-          <div className="flex flex-1 flex-col items-center justify-center gap-2 text-muted-foreground">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted">
-              <MessageSquare className="h-5 w-5" />
-            </div>
-            <div className="text-lg font-semibold text-foreground">Your conversation will appear here</div>
-          </div>
-          <div className="mx-auto mb-6 w-[min(670px,calc(100%-3rem))] rounded-3xl border p-4 shadow-sm">
-            <Textarea
-              value={composer}
-              onChange={(e) => setComposer(e.target.value)}
-              placeholder="Ask anything"
-              className="min-h-[60px] resize-none border-0 p-0 shadow-none focus-visible:ring-0"
-            />
-          </div>
-        </section>
-
         {showCode && (
           <aside className="min-h-0 overflow-y-auto border-t bg-muted/20 p-3 lg:border-l lg:border-t-0">
             <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -506,7 +515,8 @@ export function AiPromptCustomEditor({ promptId }: AiPromptCustomEditorProps) {
             </pre>
           </aside>
         )}
-      </div>
+        </TabsContent>
+      </Tabs>
 
       <AiPromptDeleteDialog
         open={deleteOpen}

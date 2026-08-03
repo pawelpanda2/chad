@@ -39,6 +39,25 @@ function buildInputMessages(
     .map((m) => ({ role: m.role, content: substituteVariables(m.content, variables) }));
 }
 
+/**
+ * Builds the `input` array for a **locally stored** (non-managed) prompt's
+ * Responses request — the substituted developer/system/user messages, plus
+ * a genuine trailing user turn when the conversation tab supplies one (never
+ * templated — free chat text, not a `{{variable}}` slot). Pure, no network —
+ * exported for unit testing; `executeOpenAiPrompt` is the only production caller.
+ */
+export function buildLocalPromptInputMessages(
+  promptDefinition: AiPromptDefinition,
+  variables: Record<string, string>,
+  userMessage?: string,
+): Array<{ role: "developer" | "system" | "user"; content: string }> {
+  const input = buildInputMessages(promptDefinition.messages, variables);
+  if (userMessage?.trim()) {
+    input.push({ role: "user", content: userMessage });
+  }
+  return input;
+}
+
 /** First substituted user message content, or empty string. */
 export function resolveAiPromptUserContent(
   promptDefinition: AiPromptDefinition,
@@ -65,10 +84,18 @@ export type OpenAiStoredPromptCreateParams = {
  * Matches console `callOpenAiPreparedPrompt`: message-array `input`,
  * `reasoning.summary`, `store`, and web_search sources in `include`
  * (no encrypted reasoning content by default).
+ *
+ * `userMessage` — when given (AI Prompts → conversation tab), it is sent
+ * as-is as the input content, exactly like console's
+ * `callOpenAiPreparedPrompt(inputText)` (no `{{variable}}` template
+ * substitution — a chat message is not a template). Omitted for the
+ * existing Message Creator path, which keeps resolving the stored prompt's
+ * own user-message template via `variables` (unchanged behavior).
  */
 export function buildOpenAiStoredPromptCreateParams(
   promptDefinition: AiPromptDefinition,
   variables: Record<string, string>,
+  userMessage?: string,
 ): OpenAiStoredPromptCreateParams {
   const openaiPromptId = promptDefinition.providerBindings?.openaiPromptId?.trim();
   if (!openaiPromptId) {
@@ -89,7 +116,7 @@ export function buildOpenAiStoredPromptCreateParams(
     input: [
       {
         role: "user",
-        content: resolveAiPromptUserContent(promptDefinition, variables),
+        content: userMessage?.trim() ? userMessage : resolveAiPromptUserContent(promptDefinition, variables),
       },
     ],
     reasoning: { summary },
@@ -101,6 +128,7 @@ export function buildOpenAiStoredPromptCreateParams(
 async function executeOpenAiPrompt(
   promptDefinition: AiPromptDefinition,
   variables: Record<string, string>,
+  userMessage?: string,
 ): Promise<AiPromptExecutionResult> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
@@ -111,16 +139,17 @@ async function executeOpenAiPrompt(
 
   try {
     if (promptDefinition.providerBindings?.openaiPromptId?.trim()) {
-      const params = buildOpenAiStoredPromptCreateParams(promptDefinition, variables);
+      const params = buildOpenAiStoredPromptCreateParams(promptDefinition, variables, userMessage);
       const response = await openai.responses.create(params);
       return { status: "complete", outputText: response.output_text || undefined };
     }
 
     // Variant A — role/messages + settings built from the locally stored prompt.
     const settings = promptDefinition.settings;
+    const input = buildLocalPromptInputMessages(promptDefinition, variables, userMessage);
     const response = await openai.responses.create({
       model: promptDefinition.model || "gpt-4o",
-      input: buildInputMessages(promptDefinition.messages, variables),
+      input,
       ...(settings?.textFormat === "json_schema" && settings.outputSchema
         ? {
             text: {
@@ -158,10 +187,11 @@ async function executeOpenAiPrompt(
 export async function executeAiPrompt(
   promptDefinition: AiPromptDefinition,
   variables: Record<string, string> = {},
+  userMessage?: string,
 ): Promise<AiPromptExecutionResult> {
   switch (promptDefinition.provider) {
     case "openai":
-      return executeOpenAiPrompt(promptDefinition, variables);
+      return executeOpenAiPrompt(promptDefinition, variables, userMessage);
     case "anthropic":
     case "gemini":
     case "openai-compatible":

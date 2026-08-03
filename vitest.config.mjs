@@ -67,6 +67,9 @@ export default defineConfig({
       "packages/dashboard/components/shared/text-editor-with-toolbar.test.tsx",
       // Msg Auto AI Prompts — kind labels / Category mapping (mockup v4).
       "packages/dashboard/components/msg-automation/ai-prompt-kind.test.ts",
+      // AI Prompts editor conversation tab — no-auto-request/explicit-Send/
+      // idle-sending-success-error-provider-not-configured state coverage.
+      "packages/dashboard/components/msg-automation/ai-prompt-conversation-panel.test.tsx",
       // Story 90 — Lead ↔ Beeper Links (phone match / save validation).
       "packages/dba/src/lead-beeper-links.test.ts",
       // Story 99 — msg workout ↔ Beeper message matching engine (pure) and
@@ -90,6 +93,8 @@ export default defineConfig({
       "tests/1_1_data-protection/integration/session-signing-configured.test.mjs",
       "tests/1_1_data-protection/unit/session-token.test.ts",
       "tests/1_1_data-protection/integration/offline-readonly-backup-workers.test.ts",
+      // AI Prompts conversation "run" endpoint — session-boundary smoke.
+      "tests/1_1_data-protection/integration/ai-prompts-run-api.test.mjs",
       "tests/1_1_data-protection/unit/offline-readonly-backup-mode-and-formatters.test.ts",
       "tests/1_2_google-sheets-sync/integration/local-google-sheets-info.test.mjs",
       "tests/1_2_google-sheets-sync/integration/qnap-test3-google-sheets.test.mjs",
