@@ -600,6 +600,19 @@ function ViewsPageContent() {
         contentClassName={FRAME_SECTION_GAP_CLASS}
       >
         <div className="flex shrink-0 flex-wrap items-center gap-3">
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-2 h-7 text-xs"
+            onClick={() =>
+              router.push(
+                `/dashboard/forms?form=lead&returnTo=${encodeURIComponent("/dashboard/views?view=leads")}`
+              )
+            }
+          >
+            <Plus className="h-3 w-3" />
+            Add
+          </Button>
           <div className="relative">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
             <Input
