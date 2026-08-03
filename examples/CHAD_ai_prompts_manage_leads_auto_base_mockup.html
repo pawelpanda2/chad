@@ -1,0 +1,491 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CHAD AI Prompts — redesigned mockup</title>
+  <style>
+    :root{
+      --bg:#0b0b0c;
+      --panel:#111214;
+      --panel2:#17181b;
+      --border:#2b2d31;
+      --text:#f4f4f5;
+      --muted:#969ba5;
+      --accent:#f59e0b;
+      --accent-bg:rgba(245,158,11,.12);
+      --accent-border:rgba(245,158,11,.55);
+      --selected:#24262a;
+      --green:#4ade80;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0;
+      background:var(--bg);
+      color:var(--text);
+      font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+      overflow:hidden;
+    }
+    button,input,textarea{font:inherit}
+    .app{height:100vh;display:grid;grid-template-rows:64px 1fr}
+    .topbar{
+      display:flex;align-items:center;gap:12px;padding:10px 16px;
+      border-bottom:1px solid var(--border);background:#0e0e10;
+    }
+    .topbar button{
+      height:42px;border:1px solid var(--border);background:#151619;color:var(--text);
+      border-radius:12px;padding:0 14px;cursor:pointer;
+    }
+    .title{
+      flex:1;max-width:520px;height:42px;display:flex;align-items:center;
+      padding:0 14px;border-radius:12px;background:#17181b;font-weight:800;
+    }
+    .badge{
+      padding:6px 10px;border-radius:999px;background:#23252a;color:#b8bcc4;
+      font-size:12px;font-weight:800;
+    }
+
+    .workspace{
+      min-height:0;display:grid;grid-template-columns:minmax(520px,44%) 1fr;
+      gap:1px;background:var(--border);
+    }
+    .left,.right{min-width:0;min-height:0;background:var(--bg)}
+    .left{display:grid;grid-template-rows:auto 1fr}
+    .tabs{
+      display:flex;gap:6px;padding:12px 16px;border-bottom:1px solid var(--border);
+      background:#101113;
+    }
+    .tab{
+      border:0;background:transparent;color:var(--muted);border-radius:10px;
+      padding:10px 14px;font-weight:800;cursor:pointer;
+    }
+    .tab.active{
+      color:var(--text);background:#24262a;box-shadow:inset 0 0 0 1px #3b3e44;
+    }
+    .tab.locked{opacity:.38;cursor:not-allowed}
+    .content{min-height:0;overflow:auto;padding:18px}
+    .section{display:none}
+    .section.active{display:block}
+    h2{margin:0 0 4px;font-size:20px}
+    .sub{color:var(--muted);font-size:13px;margin-bottom:16px}
+    .card{
+      border:1px solid var(--border);background:var(--panel);border-radius:14px;padding:16px;
+    }
+    .field{margin-bottom:14px}
+    .field:last-child{margin-bottom:0}
+    label{
+      display:block;color:#b7bbc3;font-size:12px;font-weight:900;
+      letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px;
+    }
+    .input,.textarea{
+      width:100%;border:1px solid var(--border);background:#18191c;color:var(--text);
+      border-radius:11px;padding:11px 12px;outline:none;
+    }
+    .textarea{min-height:96px;resize:vertical}
+    .search{position:relative;margin-bottom:12px}
+    .search span{position:absolute;left:14px;top:10px;color:var(--muted)}
+    .search input{
+      width:100%;height:42px;border:1px solid var(--border);background:#151619;
+      color:var(--text);border-radius:11px;padding:0 14px 0 40px;
+    }
+    .list{display:grid;gap:10px}
+    .item{
+      position:relative;padding:14px;border:1px solid var(--border);background:var(--panel);
+      border-radius:12px;cursor:pointer;transition:.15s ease;
+    }
+    .item:hover{border-color:#42454c;transform:translateY(-1px)}
+    .item.selected{background:var(--selected);border-color:#6b7280}
+    .item.ai{background:var(--accent-bg);border-color:var(--accent-border)}
+    .item.ai::before{
+      content:"";position:absolute;left:0;top:12px;bottom:12px;width:4px;
+      border-radius:0 4px 4px 0;background:var(--accent);
+    }
+    .item-row{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+    .item-title{font-weight:850;line-height:1.35}
+    .meta{color:var(--muted);font-size:12px;line-height:1.45;margin-top:5px}
+    .ai-chip{
+      flex:0 0 auto;border-radius:999px;background:#ffb84d;color:#241400;
+      padding:5px 9px;font-size:11px;font-weight:900;text-transform:uppercase;
+    }
+    .selected-note{
+      display:inline-flex;margin-top:9px;color:var(--green);font-size:12px;font-weight:800;
+    }
+    .locked-box{
+      border:1px dashed var(--border);border-radius:12px;padding:24px;text-align:center;color:var(--muted);
+    }
+    .hint{
+      margin-top:14px;padding:12px 14px;border:1px solid var(--border);background:#121316;
+      border-radius:11px;color:var(--muted);font-size:12px;line-height:1.5;
+    }
+    .hint strong{color:#ffb84d}
+
+    .base-box{
+      border:1px solid var(--border);background:#111214;border-radius:14px;overflow:hidden;
+    }
+    .base-head{
+      display:flex;justify-content:space-between;gap:12px;align-items:center;
+      padding:12px 14px;border-bottom:1px solid var(--border);background:#151619;
+    }
+    .base-title{font-weight:800}
+    .base-status{color:#ffb84d;font-size:12px;font-weight:800}
+    pre{
+      margin:0;padding:16px;white-space:pre-wrap;word-break:break-word;
+      color:#eceef2;font:13px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;
+      max-height:calc(100vh - 220px);overflow:auto;
+    }
+
+    .right{
+      display:grid;grid-template-rows:1fr auto;background:#0b0b0c;
+    }
+    .chat{
+      min-height:0;overflow:auto;padding:26px 28px;
+      display:flex;flex-direction:column;gap:18px;
+    }
+    .chat-empty{
+      margin:auto;text-align:center;color:#d6d8dd;
+    }
+    .chat-icon{
+      width:56px;height:56px;margin:0 auto 14px;display:grid;place-items:center;
+      border-radius:18px;background:#24262a;color:#b7bbc3;font-size:26px;
+    }
+    .message{
+      max-width:78%;padding:14px 16px;border-radius:16px;line-height:1.5;
+      border:1px solid var(--border);
+    }
+    .message.user{align-self:flex-end;background:#202226}
+    .message.ai{align-self:flex-start;background:#121316}
+    .message-label{
+      display:block;color:var(--muted);font-size:11px;font-weight:800;
+      text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;
+    }
+    .composer{padding:16px 20px 20px}
+    .composer-box{
+      border:1px solid var(--border);background:#111214;border-radius:24px;padding:14px;
+    }
+    .composer textarea{
+      width:100%;min-height:110px;border:0;resize:none;outline:none;color:var(--text);
+      background:#18191c;border-radius:12px;padding:12px;
+    }
+    .composer-help{
+      color:var(--muted);font-size:12px;line-height:1.45;margin-top:9px;
+    }
+    .actions{display:flex;justify-content:flex-end;margin-top:10px}
+    .send{
+      border:0;border-radius:12px;background:#f5f5f5;color:#111;
+      padding:10px 16px;font-weight:900;cursor:pointer;
+    }
+
+    @media(max-width:980px){
+      body{overflow:auto}
+      .app{height:auto;min-height:100vh}
+      .workspace{grid-template-columns:1fr}
+      .left{min-height:760px}
+      .right{min-height:680px}
+    }
+  </style>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <button>←</button>
+    <button>↩ Back</button>
+    <button>Forw →</button>
+    <div class="title">first example custom</div>
+    <span class="badge">Draft</span>
+  </header>
+
+  <main class="workspace">
+    <section class="left">
+      <nav class="tabs">
+        <button class="tab active" data-tab="manage">manage</button>
+        <button class="tab" data-tab="leads">leads</button>
+        <button class="tab locked" data-tab="auto" id="tab-auto">auto</button>
+        <button class="tab locked" data-tab="base" id="tab-base">base</button>
+      </nav>
+
+      <div class="content">
+        <section class="section active" id="manage">
+          <h2>prompt settings</h2>
+          <div class="sub">Ustawienia promptu. Bez przycisków delete, compare, code i save w górnym pasku.</div>
+          <div class="card">
+            <div class="field">
+              <label>name</label>
+              <input class="input" value="first example custom">
+            </div>
+            <div class="field">
+              <label>description</label>
+              <textarea class="textarea">first example for custom prompt for open ai provider</textarea>
+            </div>
+            <div class="field">
+              <label>category</label>
+              <input class="input" value="our custom prompt">
+            </div>
+            <div class="field">
+              <label>status</label>
+              <input class="input" value="draft">
+            </div>
+          </div>
+        </section>
+
+        <section class="section" id="leads">
+          <h2>choose lead</h2>
+          <div class="sub">Po wyborze leada odblokują się zakładki auto i base.</div>
+
+          <div class="search">
+            <span>⌕</span>
+            <input id="leadSearch" placeholder="Search leads...">
+          </div>
+
+          <div class="list" id="leadList">
+            <article class="item" data-name="26-07-27_pn_Klaudia_delfin">
+              <div class="item-title">26-07-27_pn_Klaudia_delfin</div>
+              <div class="meta">Warszawa · latest activity 27/07/2026</div>
+            </article>
+            <article class="item" data-name="26-07-23_pn_Roza">
+              <div class="item-title">26-07-23_pn_Roza</div>
+              <div class="meta">Warszawa · latest activity 23/07/2026</div>
+            </article>
+            <article class="item" data-name="26-07-23_pn_Ayisha">
+              <div class="item-title">26-07-23_pn_Ayisha</div>
+              <div class="meta">Warszawa · latest activity 23/07/2026</div>
+            </article>
+            <article class="item" data-name="26-07-10_ni_zosia">
+              <div class="item-title">26-07-10_ni_zosia</div>
+              <div class="meta">Kraków · latest activity 10/07/2026</div>
+            </article>
+          </div>
+        </section>
+
+        <section class="section" id="auto">
+          <h2>auto context</h2>
+          <div class="sub">AI automatycznie wybiera conversation i report. Oba wybory można zmienić ręcznie.</div>
+
+          <div class="locked-box" id="autoLocked">Wybierz lead w zakładce <strong>leads</strong>.</div>
+
+          <div id="autoContent" style="display:none">
+            <label>conversation</label>
+            <div class="list" id="convList">
+              <article class="item ai selected">
+                <div class="item-row">
+                  <div>
+                    <div class="item-title">Claudia Delfin — WhatsApp</div>
+                    <div class="meta">basis: automatic match (phone/name)<br>preview: „Wracając do naszego spotkania...”</div>
+                    <span class="selected-note">currently selected</span>
+                  </div>
+                  <span class="ai-chip">AI pick</span>
+                </div>
+              </article>
+              <article class="item">
+                <div class="item-title">Claudia — Instagram</div>
+                <div class="meta">manual alternative · older conversation</div>
+              </article>
+              <article class="item">
+                <div class="item-title">none</div>
+                <div class="meta">Do not attach any conversation.</div>
+              </article>
+            </div>
+
+            <div class="hint">
+              <strong>Pomarańczowa rekomendacja AI nigdy nie znika</strong>, nawet jeśli użytkownik wybierze inną rozmowę.
+            </div>
+
+            <div style="height:22px"></div>
+
+            <label>report</label>
+            <div class="list" id="reportList">
+              <article class="item ai selected">
+                <div class="item-row">
+                  <div>
+                    <div class="item-title">26-07-27 — daygame report</div>
+                    <div class="meta">category: approaches · strongest date/name match</div>
+                    <span class="selected-note">currently selected</span>
+                  </div>
+                  <span class="ai-chip">AI pick</span>
+                </div>
+              </article>
+              <article class="item">
+                <div class="item-title">26-07-27 — notes</div>
+                <div class="meta">manual alternative · partial context</div>
+              </article>
+              <article class="item">
+                <div class="item-title">none</div>
+                <div class="meta">Do not attach any report.</div>
+              </article>
+            </div>
+
+            <div class="hint">
+              <strong>Pomarańczowa rekomendacja AI pozostaje widoczna</strong> także po ręcznej zmianie raportu.
+            </div>
+          </div>
+        </section>
+
+        <section class="section" id="base">
+          <h2>final prompt</h2>
+          <div class="sub">Cały prompt, który zostanie wysłany do OpenAI — razem z dodatkowym tekstem z prawego pola.</div>
+
+          <div class="locked-box" id="baseLocked">Wybierz lead w zakładce <strong>leads</strong>.</div>
+
+          <div class="base-box" id="baseContent" style="display:none">
+            <div class="base-head">
+              <span class="base-title">request preview</span>
+              <span class="base-status">live preview</span>
+            </div>
+            <pre id="promptPreview"></pre>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section class="right">
+      <div class="chat" id="chat">
+        <div class="chat-empty" id="chatEmpty">
+          <div class="chat-icon">▢</div>
+          <h2>Your conversation will appear here</h2>
+          <div class="sub">Wybierz lead, sprawdź auto context i wyślij prompt.</div>
+        </div>
+      </div>
+
+      <div class="composer">
+        <div class="composer-box">
+          <textarea id="additionalInput" placeholder="Additional input (optional) — appended to the base prompt"></textarea>
+          <div class="composer-help">
+            Ten tekst nie zastępuje bazowego promptu. Zostanie tylko doklejony do pełnego requestu widocznego w zakładce <strong>base</strong>.
+          </div>
+          <div class="actions">
+            <button class="send" id="sendBtn">➤ Send</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+  const tabs = [...document.querySelectorAll('.tab')];
+  const sections = [...document.querySelectorAll('.section')];
+  const input = document.getElementById('additionalInput');
+  const preview = document.getElementById('promptPreview');
+  const chat = document.getElementById('chat');
+  const chatEmpty = document.getElementById('chatEmpty');
+
+  let selectedLead = '';
+  let selectedConv = 'Claudia Delfin — WhatsApp';
+  let selectedReport = '26-07-27 — daygame report';
+
+  function openTab(name){
+    const tab = document.querySelector(`[data-tab="${name}"]`);
+    if (!tab || tab.classList.contains('locked')) return;
+    tabs.forEach(t => t.classList.toggle('active', t === tab));
+    sections.forEach(s => s.classList.toggle('active', s.id === name));
+  }
+
+  tabs.forEach(tab => tab.addEventListener('click', () => openTab(tab.dataset.tab)));
+
+  function buildPrompt(){
+    if (!selectedLead) return '';
+    const extra = input.value.trim();
+    return `<current_case>
+
+name: ${selectedLead}
+
+report:
+${selectedReport === 'none' ? '[not found]' : '[selected report body: ' + selectedReport + ']'}
+
+conversation:
+${selectedConv === 'none' ? '[not found]' : '[selected conversation body: ' + selectedConv + ']'}
+
+my_question:
+Przeanalizuj tę sytuację według materiału mentora i powiedz co teraz zrobić.
+
+</current_case>${extra ? `
+
+<additional_user_input>
+${extra}
+</additional_user_input>` : ''}`;
+  }
+
+  function refreshPreview(){
+    preview.textContent = buildPrompt();
+  }
+
+  document.querySelectorAll('#leadList .item').forEach(item => {
+    item.addEventListener('click', () => {
+      document.querySelectorAll('#leadList .item').forEach(x => x.classList.remove('selected'));
+      item.classList.add('selected');
+      selectedLead = item.dataset.name;
+
+      document.getElementById('tab-auto').classList.remove('locked');
+      document.getElementById('tab-base').classList.remove('locked');
+      document.getElementById('autoLocked').style.display = 'none';
+      document.getElementById('baseLocked').style.display = 'none';
+      document.getElementById('autoContent').style.display = 'block';
+      document.getElementById('baseContent').style.display = 'block';
+
+      refreshPreview();
+      openTab('auto');
+    });
+  });
+
+  function wireSelections(containerId, type){
+    document.querySelectorAll(`#${containerId} .item`).forEach(item => {
+      item.addEventListener('click', () => {
+        document.querySelectorAll(`#${containerId} .item`).forEach(x => {
+          x.classList.remove('selected');
+          const note = x.querySelector('.selected-note');
+          if (note) note.remove();
+        });
+        item.classList.add('selected');
+
+        const note = document.createElement('span');
+        note.className = 'selected-note';
+        note.textContent = 'currently selected';
+        const target = item.querySelector('.item-row > div') || item;
+        target.appendChild(note);
+
+        const title = item.querySelector('.item-title').textContent;
+        if (type === 'conv') selectedConv = title;
+        if (type === 'report') selectedReport = title;
+        refreshPreview();
+      });
+    });
+  }
+
+  wireSelections('convList','conv');
+  wireSelections('reportList','report');
+
+  input.addEventListener('input', refreshPreview);
+
+  document.getElementById('leadSearch').addEventListener('input', event => {
+    const query = event.target.value.toLowerCase();
+    document.querySelectorAll('#leadList .item').forEach(item => {
+      item.style.display = item.textContent.toLowerCase().includes(query) ? '' : 'none';
+    });
+  });
+
+  document.getElementById('sendBtn').addEventListener('click', () => {
+    if (!selectedLead) {
+      openTab('leads');
+      return;
+    }
+
+    const userText = input.value.trim() || '(send base prompt without additional input)';
+    chatEmpty.style.display = 'none';
+
+    const user = document.createElement('div');
+    user.className = 'message user';
+    user.innerHTML = `<span class="message-label">you</span>${userText}`;
+    chat.appendChild(user);
+
+    const ai = document.createElement('div');
+    ai.className = 'message ai';
+    ai.innerHTML = `<span class="message-label">ChatGPT</span>Mock AI response for ${selectedLead}. The full context was taken from the selected conversation and report.`;
+    chat.appendChild(ai);
+
+    chat.scrollTop = chat.scrollHeight;
+  });
+
+  refreshPreview();
+</script>
+</body>
+</html>

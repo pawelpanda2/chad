@@ -306,7 +306,8 @@ async function loadLeadCandidates(): Promise<LeadLinkCandidate[]> {
   return out;
 }
 
-async function loadConversationCandidates(): Promise<ConversationLinkCandidate[]> {
+/** Every non-spam, non-merged Beeper contact for the caller's repo, newest first — the same list the Links page uses for manual lead↔conversation linking. */
+export async function loadConversationCandidates(): Promise<ConversationLinkCandidate[]> {
   const db = await getBeeperMongoDb(getCurrentRepoGuid());
   const contacts = db.collection("contacts");
   const rows = await contacts
