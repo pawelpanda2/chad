@@ -365,7 +365,7 @@ items" w drugiej linii przycisków), tooltip po kliknięciu zamiast po
 najechaniu. Powstało po tym, jak layout Beepera trzeba było poprawiać kilka
 razy w Story 99/101, bo te wzorce nie były jeszcze nigdzie spisane.
 
-**Lokalizacja:** `ai-docs/gui-standard/` (nowy folder specjalizacji, Story
+**Lokalizacja:** `ai-docs/gui-standard/` (folder specjalizacji, Story
 99/101 follow-up, 2026-08-02 — analogiczny do `ai-docs/beeper/`).
 
 **Zacznij od:** [`ai-docs/gui-standard/ai-start.md`](../gui-standard/ai-start.md).
@@ -374,6 +374,26 @@ razy w Story 99/101, bo te wzorce nie były jeszcze nigdzie spisane.
 wewnątrz zakładki, split-view (lista + szczegół), tabeli bez edycji inline,
 albo skróconych nagłówków/ikon wymagających tooltipa — **przed** zgadywaniem
 rozwiązania od zera.
+
+---
+
+## GUI standards — Forms & Views (Save / Full View / tabela pól)
+
+**Opis:** Obowiązkowy układ formularzy add/edit i list Views: Save frame z
+**Save + Full View + wygenerowaną nazwą w jednej linii** (ramka Save może być
+szersza niż ramka pól), Full View zawsze do pełnej listy (nie menu Forms),
+tabela pól w stylu amber cells (Daily Entry), `returnTo` z `+ Add`, kolejność
+draftów nagrań Draft → Continue → nazwa. Wypracowane 2026-08-03 przy restylu
+Add Lead / Action / Recording / Prompt.
+
+**Lokalizacja:** `ai-docs/gui-standards/` (liczba mnoga — osobno od
+`gui-standard/` z wzorcami Beepera).
+
+**Zacznij od:** [`ai-docs/gui-standards/ai-start.md`](../gui-standards/ai-start.md)
+→ [`forms-and-views.md`](../gui-standards/forms-and-views.md).
+
+**Czytać gdy:** nowy lub restylowany formularz w Forms, lista w Views,
+przyciski Save/Full View, tabela pól, albo `+ Add` / drafty.
 
 ---
 

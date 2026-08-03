@@ -23,64 +23,31 @@ dashboard nav, no new form/view system.
   report editable** (Preview **and** Editor tabs, Save) — see below.
 - dba layer: see `documentation/dba/features/report-entries.md`.
 
-## Two-stage form (Story 53)
+## Three-frame form (2026-08-03 restyle; was two-stage Create in Story 53–56)
 
-**Stage 1 — metadata panel** (rounded frame, shown first, before any
-editor). **Story 56 reorganized its internal rows** (previous layout:
-Date/Kind/Suffix row, then Generated name row, then Create on its own row
-— see Story 55's history below): now **row 1** is `Create` (left) followed
-by the read-only `Generated name` field, and **row 2** below it holds
-Date (`<input type="date">`), Report kind (Select: Daygame `dg` /
-Nightgame `ng` / Organized party `op` / Other `other`), and "Rest of the
-name" (free text, e.g. `galeria mokotów`). Same single frame as before —
-Story 56 only reordered the rows within it, per an explicit user
-correction that arrived mid-Story (see `backlog/stories/56/
-01_input.md` Input 2) overriding that Story's own original "separate top
-frame" text. Generated name recomputes live from the three inputs as
-`{YY-MM-DD}_{kind}_{suffix}` (e.g. `26-05-06_dg_galeria mokotów`) via
-`generateReportName` in `forms/page.tsx` (a separate function from the
-unrelated Actions form's `generateActionTitle` — different kind union,
-different feature).
+Three separate rounded frames (same Save / amber-fields pattern as Add Lead /
+Add Action — see `ai-docs/gui-standards/forms-and-views.md`):
 
-*Pre-Story-56 history, for context:* Story 53 first introduced the
-two-stage flow; Story 55 moved Create to its own row (previously shared a
-row with Generated name) at all breakpoints, after a UX review concluded
-one layout was clearer than a mobile/desktop split.
+1. **Save frame** — `Save` (was Create) + `Full View` →
+   `/dashboard/views?view=reports` + readonly generated name (**no**
+   “Generated name” label), one line (`flex-nowrap` / `w-fit`).
+2. **Fields frame** — amber table: Date, Report kind, Rest of the name.
+   Locked after first successful Save (server-confirmed `itemName` / `loca`).
+3. **Record frame** — voice dictation (`VoiceRecordingPanel`) + report body
+   (`TextEditorWithToolbar` with `showSave={false}`; body Save is the top
+   Save button). Editor is always visible (not gated on create).
 
-Clicking Create calls `POST /api/forms/reports` with
-`{ content: "", itemName: <generated name> }` (no `loca`). On success:
-- the metadata panel's date/kind/suffix inputs become `disabled`,
-- the Generated name field switches from the live memo to the
-  server-confirmed name (`reportItemName` state) — **this name is now the
-  report's permanent identity**: there is no re-generate/rename path, and
-  the date/kind/suffix inputs never become editable again for this report.
-  Changing any of them requires creating a new report (Back to the Forms
-  menu resets all report state via `resetReportsForm`).
-- Stage 2 appears below the (now-locked) metadata panel.
+First Save POSTs `{ content, itemName }` (create). Later Saves POST
+`{ content, loca }` (update). Move from the voice panel uses the same
+create-or-update path.
 
-**Stage 2 — editor**: the existing shared `TextEditorWithToolbar` component,
-stacked below the metadata panel inside the same `EditorPageShell` column —
-two independent rounded frames (the metadata panel uses the same
-`rounded-xl border bg-card shadow-sm` classes as `DashboardPageShell`'s
-frame; `TextEditorWithToolbar` already renders its own identical frame).
-Only the report's body content is editable here; its own Save button
-calls `handleReportSave`, which always updates the already-known `loca`
-(never `PostParentItem` again).
+Generated name still recomputes live before first Save as
+`{YY-MM-DD}_{kind}_{suffix}` via `generateReportName`.
 
-**Story 55 additions to Stage 2:**
-- `defaultTab="editor"` is passed, so a freshly created report opens
-  straight on the Editor tab instead of the component's normal default
-  (Preview) — Preview of empty just-created content was useless. See
-  `documentation/dashboard/common/features/shared-text-editor-toolbar.md`
-  for the general `defaultTab` prop this relies on.
-
-**Story 56 replaced the in-toolbar voice button with a standalone
-recording panel:** `components/shared/voice-recording-panel.tsx` renders
-as its own rounded frame between the metadata panel and the editor (not
-inside `TextEditorWithToolbar`'s `toolbarExtra` anymore — that slot is
-now unused by Reports, though it still exists for other consumers). See
-`documentation/dashboard/common/features/voice-recording.md` for the full
-architecture and the Move flow.
+*History:* Story 53 introduced two-stage Create→editor; Story 55/56
+reordered Create + Generated name rows and added the standalone voice
+panel. 2026-08-03 replaced Create with Save and split metadata into the
+three-frame layout above without changing the create-then-update API.
 
 ## Navigation (Story 56)
 

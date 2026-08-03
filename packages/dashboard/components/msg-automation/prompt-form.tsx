@@ -174,14 +174,19 @@ export function PromptForm({
     <form onSubmit={handleSubmit} className={cn(FRAME_SECTION_SPACE_Y_CLASS, FRAME_SECTION_GAP_CLASS)}>
       <div
         className={cn(
-          "flex flex-wrap items-center gap-3 max-w-[500px] rounded-lg border bg-muted/10",
+          "flex w-fit flex-nowrap items-center gap-3 rounded-lg border bg-muted/10",
           SAVE_FRAME_PADDING_CLASS
         )}
       >
-        <Button type="submit" disabled={saving || loading}>
+        <Button type="submit" disabled={saving || loading} className="shrink-0">
           {saving ? "Saving..." : "Save"}
         </Button>
-        <Button type="button" variant="outline" onClick={() => router.push(returnTo)}>
+        <Button
+          type="button"
+          variant="outline"
+          className="shrink-0"
+          onClick={() => router.push(returnTo)}
+        >
           Full View
         </Button>
         <Input
@@ -190,12 +195,16 @@ export function PromptForm({
           tabIndex={-1}
           aria-label="Prompt name"
           placeholder="Name"
-          className="h-9 min-w-[140px] flex-1 bg-muted font-mono"
+          className="h-9 w-[260px] shrink-0 bg-muted font-mono"
         />
-        {loading && <span className="text-sm text-muted-foreground">Loading…</span>}
+        {loading && (
+          <span className="shrink-0 whitespace-nowrap text-sm text-muted-foreground">
+            Loading…
+          </span>
+        )}
         {result && (
           <span
-            className={`flex items-center gap-1 text-sm ${
+            className={`flex shrink-0 items-center gap-1 whitespace-nowrap text-sm ${
               result.type === "success" ? "text-green-600" : "text-red-600"
             }`}
           >
