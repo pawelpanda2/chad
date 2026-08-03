@@ -217,31 +217,35 @@ export function BeeperConversationView({
     }
   }
 
-  function renderBubble(msg: ParsedWhatsAppMessage) {
+  function renderBubble(msg: ParsedWhatsAppMessage, opts?: { growTowardEdge?: boolean }) {
     const selected = selectedMessageId === msg.id;
+    const grow = Boolean(opts?.growTowardEdge);
     return (
       <div
         className={cn(
-          compact ? "max-w-[88%]" : "max-w-[72%]",
-          "rounded-[14px] border px-3 py-2.5 text-sm leading-snug shadow-sm",
+          grow ? "w-fit max-w-full min-w-[120px]" : compact ? "max-w-[88%]" : "max-w-[72%]",
+          "rounded-2xl border px-3 py-2.5 text-sm leading-snug shadow-sm",
           msg.sender === "system" &&
             "mx-auto border-transparent bg-muted text-center text-xs text-muted-foreground",
-          msg.isOwn && "rounded-br-sm border-primary bg-primary text-primary-foreground",
-          !msg.isOwn && msg.sender !== "system" && "rounded-bl-sm border-border bg-card text-card-foreground",
+          msg.isOwn && "rounded-br-[5px] border-primary bg-primary text-primary-foreground",
+          !msg.isOwn && msg.sender !== "system" && "rounded-bl-[5px] border-border bg-card text-card-foreground",
           selected && !compact && "outline outline-[3px] outline-[rgba(30,110,255,0.18)] border-[#4384ff]"
         )}
       >
-        <p className="whitespace-pre-wrap break-words">{normalizeMessageText(msg.message)}</p>
+        <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+          {normalizeMessageText(msg.message)}
+        </p>
         {msg.timestamp &&
           (() => {
             const number = showMessageNumbers ? messageNumberById.get(msg.id) : undefined;
+            // Mock v7: always "(n) · timestamp" — number is a label, not side-dependent.
             const timestampText =
-              number === undefined ? msg.timestamp : msg.isOwn ? `(${number}) ${msg.timestamp}` : `${msg.timestamp} (${number})`;
+              number === undefined ? msg.timestamp : `(${number}) · ${msg.timestamp}`;
             return (
               <span
                 className={cn(
-                  "mt-1 block text-[11px] opacity-60",
-                  msg.isOwn ? "text-primary-foreground" : "text-muted-foreground"
+                  "mt-1.5 block text-[10px]",
+                  msg.isOwn ? "text-primary-foreground/70" : "text-muted-foreground"
                 )}
               >
                 {timestampText}
@@ -256,37 +260,30 @@ export function BeeperConversationView({
     const action =
       showActions && !compact && renderMessageAction ? renderMessageAction(msg) : null;
 
-    const bubbleCol = (
-      <div
-        className={cn(
-          "flex min-w-0",
-          msg.isOwn ? "justify-end" : msg.sender === "system" ? "justify-center" : "justify-start"
-        )}
-      >
-        {renderBubble(msg)}
-      </div>
-    );
-    const actionCol = <div className="flex items-center justify-center">{action}</div>;
-
-    // Action renders in the space beside the bubble, on whichever side is
-    // otherwise empty: own (right-aligned) messages get it on the left,
-    // others (left-aligned) get it on the right — never overlapping the
-    // bubble itself. Plain column order swap, not a fixed "always right"
-    // slot (Story 99 follow-up — markers used to sit in a fixed right-hand
-    // column regardless of bubble side, wasting the actual empty gap).
-    const rowInner = msg.isOwn ? (
-      <>
-        {actionCol}
-        {bubbleCol}
-      </>
-    ) : (
-      <>
-        {bubbleCol}
-        {actionCol}
-      </>
-    );
-
+    // Msg-workout mock layout (examples/CHAD_beeper_msg_workout_layout_mock_v7.html):
+    // flex row; bubble grows toward the opposite edge; fixed ~96px side for chips.
     if (showActions && !compact) {
+      const side = (
+        <div
+          className={cn(
+            "flex w-24 shrink-0 items-center sm:w-24",
+            msg.isOwn ? "justify-end" : "justify-start"
+          )}
+        >
+          {action}
+        </div>
+      );
+      const bubbleWrap = (
+        <div
+          className={cn(
+            "flex min-w-0 basis-[calc(100%-103px)]",
+            msg.isOwn ? "justify-end" : "justify-start"
+          )}
+        >
+          {renderBubble(msg, { growTowardEdge: true })}
+        </div>
+      );
+
       return (
         <div
           key={msg.id}
@@ -301,12 +298,22 @@ export function BeeperConversationView({
             }
           }}
           className={cn(
-            "grid w-full grid-cols-1 items-center gap-3",
-            msg.isOwn ? "sm:grid-cols-[190px_minmax(0,1fr)]" : "sm:grid-cols-[minmax(0,1fr)_190px]",
+            "my-3 flex w-full items-stretch gap-[7px]",
+            msg.isOwn ? "justify-end" : "justify-start",
             onSelectMessage && "cursor-pointer"
           )}
         >
-          {rowInner}
+          {msg.isOwn ? (
+            <>
+              {side}
+              {bubbleWrap}
+            </>
+          ) : (
+            <>
+              {bubbleWrap}
+              {side}
+            </>
+          )}
         </div>
       );
     }

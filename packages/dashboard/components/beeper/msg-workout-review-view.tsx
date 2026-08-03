@@ -270,7 +270,7 @@ export function MsgWorkoutReviewView({
 
       <section
         className={cn(
-          "relative flex min-h-0 min-w-0 flex-1 overflow-hidden rounded-xl border",
+          "relative flex min-h-0 min-w-0 flex-1 overflow-hidden",
           !hasSelection && "hidden md:flex"
         )}
       >
@@ -279,21 +279,9 @@ export function MsgWorkoutReviewView({
             type="button"
             onClick={clearSelection}
             aria-label="Back to conversation list"
-            className="absolute left-1.5 top-1.5 z-10 flex h-7 w-7 items-center justify-center rounded-full border bg-card text-muted-foreground shadow-sm hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:hidden"
+            className="absolute left-1.5 top-10 z-10 flex h-7 w-7 items-center justify-center rounded-full border bg-card text-muted-foreground shadow-sm hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:hidden"
           >
             <ChevronLeft className="h-4 w-4" />
-          </button>
-        )}
-        {hasSelection && !expandedWorkout && (loadingWorkoutLinks || syncingWorkouts || workoutLinks.leadName) && (
-          <button
-            type="button"
-            onClick={handleSyncWorkouts}
-            disabled={syncingWorkouts || loadingWorkoutLinks || !workoutLinks.leadName}
-            aria-label="Sync msg workouts"
-            title={loadingWorkoutLinks ? "Loading msg workouts…" : syncingWorkouts ? "Syncing…" : "Sync msg workouts"}
-            className="absolute right-1.5 top-1.5 z-10 flex h-7 w-7 items-center justify-center rounded-full border bg-card text-muted-foreground shadow-sm hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
-          >
-            <RefreshCw className={cn("h-4 w-4", (syncingWorkouts || loadingWorkoutLinks) && "animate-spin")} />
           </button>
         )}
         {loadingConversation ? (
@@ -301,15 +289,38 @@ export function MsgWorkoutReviewView({
             <RefreshCw className="h-4 w-4 animate-spin" />
           </div>
         ) : showConversation ? (
-          <>
-            <div className={cn("flex h-full min-h-0 min-w-0 flex-1 flex-col", expandedWorkout && "hidden md:flex")}>
+          // Full body: 50/50 Conversation | Msg workout. List stays ~198px.
+          <div className="flex h-full min-h-0 w-full gap-2 overflow-hidden p-0 md:p-0">
+            <div
+              className={cn(
+                "flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border bg-card",
+                expandedWorkout ? "md:w-1/2 md:flex-1" : "min-w-0 flex-1",
+                expandedWorkout && "hidden md:flex"
+              )}
+            >
+              <div className="flex h-9 shrink-0 items-center justify-between gap-2 border-b px-[11px] text-[11px] font-semibold">
+                <span>Conversation</span>
+                {(loadingWorkoutLinks || syncingWorkouts || workoutLinks.leadName) && (
+                  <button
+                    type="button"
+                    onClick={handleSyncWorkouts}
+                    disabled={syncingWorkouts || loadingWorkoutLinks || !workoutLinks.leadName}
+                    aria-label="Sync msg workouts"
+                    title={loadingWorkoutLinks ? "Loading msg workouts…" : syncingWorkouts ? "Syncing…" : "Sync msg workouts"}
+                    className="flex h-6 w-6 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                  >
+                    <RefreshCw className={cn("h-3.5 w-3.5", (syncingWorkouts || loadingWorkoutLinks) && "animate-spin")} />
+                  </button>
+                )}
+              </div>
               <UndatedMsgWorkouts entries={workoutLinks.undated} onOpen={setExpandedWorkout} />
-              <div ref={conversationScrollRef} className="min-h-0 flex-1 overflow-y-auto">
+              <div ref={conversationScrollRef} className="min-h-0 flex-1 overflow-y-auto px-[10px] pb-5 pt-3 sm:px-[14px]">
                 <BeeperConversationView
                   messages={conversationMessages}
                   endRef={messagesEndRef}
                   showActions
                   showMessageNumbers
+                  className="!gap-0 !p-0"
                   renderMessageAction={(msg) => (
                     <MsgWorkoutMarker
                       linked={msg.dbId ? workoutLinks.linksByMessageId[msg.dbId] ?? [] : []}
@@ -320,27 +331,39 @@ export function MsgWorkoutReviewView({
                 />
               </div>
             </div>
+
             {rightPanelOpen && (
-              <div className="flex h-full w-full min-h-0 flex-col border-t md:w-[320px] md:shrink-0 md:border-l md:border-t-0 lg:w-[420px]">
-                {expandedWorkout ? (
-                  <MsgWorkoutPanel entry={expandedWorkout} onClose={() => setExpandedWorkout(null)} />
-                ) : loadingWorkoutLinks ? (
-                  <div className="flex h-full items-center justify-center text-muted-foreground">
-                    <RefreshCw className="h-4 w-4 animate-spin" />
-                  </div>
-                ) : (
-                  <MsgWorkoutAssignmentList
-                    workouts={workoutLinks.allWorkouts}
-                    messageOptions={messageOptions}
-                    numberByMessageId={numberByMessageId}
-                    onOpen={setExpandedWorkout}
-                    onAssign={(w, n) => void handleAssign(w, n)}
-                    assigningLoca={assigningLoca}
-                  />
+              <aside
+                className={cn(
+                  "flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-xl border bg-card md:shrink-0",
+                  // Full body: half the workspace; list stays narrow (~198px).
+                  expandedWorkout ? "md:w-1/2 md:flex-1" : "md:w-[198px]"
                 )}
-              </div>
+              >
+                <div className="flex h-9 shrink-0 items-center border-b px-[11px] text-[11px] font-semibold">
+                  Msg workout
+                </div>
+                <div className="min-h-0 flex-1 overflow-hidden">
+                  {expandedWorkout ? (
+                    <MsgWorkoutPanel entry={expandedWorkout} onClose={() => setExpandedWorkout(null)} />
+                  ) : loadingWorkoutLinks ? (
+                    <div className="flex h-full items-center justify-center text-muted-foreground">
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                    </div>
+                  ) : (
+                    <MsgWorkoutAssignmentList
+                      workouts={workoutLinks.allWorkouts}
+                      messageOptions={messageOptions}
+                      numberByMessageId={numberByMessageId}
+                      onOpen={setExpandedWorkout}
+                      onAssign={(w, n) => void handleAssign(w, n)}
+                      assigningLoca={assigningLoca}
+                    />
+                  )}
+                </div>
+              </aside>
             )}
-          </>
+          </div>
         ) : (
           <div className="h-full w-full" />
         )}
