@@ -10,12 +10,22 @@ import { getNormalizedContactLink, getSafeReturnTo } from "@/lib/lead-links";
 import {
   RefreshCw,
   AlertCircle,
-  User,
   MessageCircle,
   Plus,
   Loader2,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+
+/** Same retype-confirm pattern as Folders / AI Prompts. */
+const DELETE_CONFIRM_WORDS = ["DELETE", "CONFIRM", "USUN", "PERMANENT"];
 
 // ============================================================================
 // Types
@@ -151,6 +161,11 @@ function LeadDetailsPageContent() {
   const [creatingWorkout, setCreatingWorkout] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [limitInput, setLimitInput] = useState<string>("-5");
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteConfirmWord, setDeleteConfirmWord] = useState("");
+  const [deleteConfirmInput, setDeleteConfirmInput] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   /** Load lead details */
   const loadDetails = useCallback(async () => {
@@ -250,6 +265,36 @@ function LeadDetailsPageContent() {
     }
   }, [leadName, leadLoca, loadDetails]);
 
+  /** Opens the delete confirmation dialog with a freshly-picked random word. */
+  const openDeleteDialog = () => {
+    setDeleteConfirmWord(DELETE_CONFIRM_WORDS[Math.floor(Math.random() * DELETE_CONFIRM_WORDS.length)]);
+    setDeleteConfirmInput("");
+    setDeleteError(null);
+    setDeleteDialogOpen(true);
+  };
+
+  /** Permanently deletes the lead (and its own children) — see dba's deleteLead. */
+  const handleDeleteLead = async () => {
+    if (!leadLoca || deleteConfirmInput.trim() !== deleteConfirmWord) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      const res = await fetch(`/api/leads-dashboard/details?leadLoca=${encodeURIComponent(leadLoca)}`, {
+        method: "DELETE",
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.error || `Failed to delete: ${res.status}`);
+      }
+      setDeleteDialogOpen(false);
+      router.push(returnTo || "/dashboard/views?view=leads");
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : "Failed to delete lead");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   // ========================================================================
   // Render
   // ========================================================================
@@ -307,13 +352,12 @@ function LeadDetailsPageContent() {
 
   return (
     <DashboardPageShell upLevel={upLevel} contentClassName="gap-1">
+      {/* 400px preferred width — grows only if a card's own content needs more. */}
+      <div className="flex w-fit min-w-[400px] max-w-full flex-col gap-1">
       {/* Lead Header Card */}
       <Card className="gap-0 py-0">
         <CardContent className="px-[14px] py-[12px]">
           <div className="flex items-start gap-3">
-            <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-              <User className="h-5 w-5 text-primary" />
-            </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
                 <h1 className="text-base font-semibold leading-tight truncate">{details.leadName}</h1>
@@ -332,17 +376,16 @@ function LeadDetailsPageContent() {
       {/* Contacts Card */}
       <Card className="gap-0 py-0">
         <CardContent className="px-[14px] py-[10px]">
-          <h2 className="text-sm font-semibold mb-2">Contacts</h2>
-
-          {details.contactsError ? (
-            <div className="flex items-center gap-2 text-amber-600 bg-amber-50 p-3 rounded-lg text-sm">
-              <AlertCircle className="h-4 w-4" />
-              <span>{details.contactsError}</span>
+          {details.contactsError || !details.contacts ? (
+            <div className="flex items-center gap-2 text-sm">
+              <h2 className="font-semibold">Contacts</h2>
+              <span className="text-muted-foreground">·</span>
+              <span className="text-muted-foreground">empty</span>
             </div>
-          ) : !details.contacts ? (
-            <div className="text-sm text-muted-foreground">No contacts</div>
           ) : (
-            <div className="space-y-1.5">
+            <>
+              <h2 className="text-sm font-semibold mb-2">Contacts</h2>
+              <div className="space-y-1.5">
               {(() => {
                 const orderedKeys = CONTACT_FIELD_CONFIG.map((c) => c.key).filter((key) => {
                   const values = toContactValues(details.contacts?.[key]);
@@ -379,7 +422,8 @@ function LeadDetailsPageContent() {
                   );
                 });
               })()}
-            </div>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
@@ -476,6 +520,56 @@ function LeadDetailsPageContent() {
           )}
         </CardContent>
       </Card>
+
+      {/* Delete zone — own frame, separate from the data above. */}
+      <Card className="gap-0 py-0 border-destructive/30">
+        <CardContent className="px-[14px] py-[10px]">
+          <div className="flex items-center gap-3">
+            <Button variant="outline" size="sm" className="h-8 text-destructive shrink-0" onClick={openDeleteDialog}>
+              Delete
+            </Button>
+            <div>
+              <h2 className="text-sm font-semibold">Delete lead</h2>
+              <p className="text-xs text-muted-foreground">
+                Permanently removes this lead and its contacts/msg workouts. Cannot be undone.
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+      </div>
+
+      <Dialog open={deleteDialogOpen} onOpenChange={(open) => !deleting && setDeleteDialogOpen(open)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete this lead?</DialogTitle>
+            <DialogDescription>
+              Permanently removes <strong>{details.leadName}</strong> and its contacts/msg workouts. Type{" "}
+              <span className="font-mono font-bold">{deleteConfirmWord}</span> to confirm.
+            </DialogDescription>
+          </DialogHeader>
+          <Input
+            value={deleteConfirmInput}
+            onChange={(e) => setDeleteConfirmInput(e.target.value)}
+            placeholder={deleteConfirmWord}
+            autoFocus
+            autoComplete="off"
+          />
+          {deleteError && <p className="text-sm text-destructive">{deleteError}</p>}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} disabled={deleting}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => void handleDeleteLead()}
+              disabled={deleting || deleteConfirmInput.trim() !== deleteConfirmWord}
+            >
+              {deleting ? "Deleting…" : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DashboardPageShell>
   );
 }
