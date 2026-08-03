@@ -17,7 +17,7 @@ import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
 import { FRAME_SECTION_GAP_CLASS } from "@/components/shared/layout-tokens";
 import { ErrorBox } from "@/components/shared/error-box";
 import { cn } from "@/lib/utils";
-import { RefreshCw, User, ExternalLink } from "lucide-react";
+import { RefreshCw, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 
 const REVEAL_CONFIRM_WORDS = ["REVEAL", "SHOW", "SECRET", "ODKRYJ", "POKAZ", "HASLO"];
@@ -168,7 +168,7 @@ function HistoryMenuPage() {
 }
 
 /**
- * History -> Google Sheets. Header card (User avatar) shows the current
+ * History -> Google Sheets. Header card shows the current
  * user's own CHAD username and their spreadsheet link (never another
  * user's — resolved server-side from the session, see
  * /api/google-sheets/info) in the same rounded-card layout as
@@ -287,9 +287,6 @@ function GoogleSheetsViewContent() {
           <Card className="gap-0 py-0">
             <CardContent className="px-[14px] py-[12px]">
               <div className="flex items-start gap-3">
-                <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                  <User className="h-5 w-5 text-primary" />
-                </div>
                 <div className="min-w-0 flex-1">
                   <h1 className="text-base font-semibold leading-tight truncate">
                     {data.chadUsername || "Unknown user"}
