@@ -5,15 +5,14 @@
 Plain conversation browsing: `beeper-conversations-view.tsx` (Story 94).
 
 Msg workout linking review: `msg-workout-review-view.tsx` (Beeper →
-**Msg workout** tab). Same split-view shape, plus:
+**Msg workout** tab). Layout source of truth:
+`examples/CHAD_beeper_msg_workout_layout_mock_v7.html` —
 
-- per-message numbers (`showMessageNumbers` on `BeeperConversationView`) —
-  display order top→bottom (`1` = first visible row); numbers are GUI-only;
-- right pane: `MsgWorkoutAssignmentList` (all workouts) or `MsgWorkoutPanel`
-  (full body after clicking a name);
-- `PATCH /api/msg-workout/set-link` for assign / reassign / unlink
-  (`messageId: null`), always writing stable Mongo `dbId` via
-  `setMsgWorkoutMessageAssignment` (never the GUI number).
+- conversation panel | thin separator | ~198px Msg workout side;
+- chips in a ~96px side slot beside each bubble (bubble grows toward the
+  opposite edge); meta `(n) · timestamp`;
+- side rows: `?`/`•` · name · AI number · tiny select;
+- `PATCH /api/msg-workout/set-link` maps GUI number → Mongo `dbId`.
 
 ## The one hard rule
 
