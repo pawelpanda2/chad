@@ -16,6 +16,13 @@ interface DashboardPageShellProps {
    */
   title?: string;
   /**
+   * Optional control rendered ABOVE the frame, in row 1, immediately after
+   * the `pl-14` menu-handle gap and BEFORE `NavGroup` (Back/Forw). Used by
+   * Beeper for the view-toolbar collapse chevron that sits between the
+   * fixed sidebar menu handle and Back. Omit on every other page.
+   */
+  toolbarLeading?: ReactNode;
+  /**
    * Optional controls rendered ABOVE the frame, after NavGroup/`title`.
    * Kept outside the frame so it never scrolls with the content. New pages
    * should prefer `title` + `toolbarSecondRow` over putting page-specific
@@ -82,6 +89,7 @@ interface DashboardPageShellProps {
 export function DashboardPageShell({
   children,
   title,
+  toolbarLeading,
   toolbar,
   toolbarSecondRow,
   upLevel,
@@ -95,12 +103,12 @@ export function DashboardPageShell({
   return (
     <div className={cn("flex h-full min-h-0 w-full flex-col gap-0.5", className)}>
       {/*
-        Row 1: `NavGroup` (Back/Forw) first, then the short `title`, then any
-        remaining `toolbar` content — left-aligned, wraps to a second line if
-        it doesn't fit. `NavGroup` renders FIRST (it positions itself
-        left-aligned, no `ml-auto` — see nav-group.tsx) so the standard
-        left-to-right reading order is always `Back, Forw, TITLE` (Story 62).
-        Page-specific controls belong in `toolbarSecondRow`, not here.
+        Row 1: optional `toolbarLeading` (e.g. Beeper collapse), then
+        `NavGroup` (Back/Forw), then the short `title`, then any remaining
+        `toolbar` content — left-aligned, wraps to a second line if it
+        doesn't fit. Without `toolbarLeading`, order stays
+        `Back, Forw, TITLE` (Story 62). Page-specific controls belong in
+        `toolbarSecondRow`, not here.
 
         The row is ALWAYS rendered (even without a title/toolbar) and
         reserves left space (`pl-14`) + a min height for the fixed menu
@@ -108,6 +116,7 @@ export function DashboardPageShell({
         covers frame content.
       */}
       <div className="flex min-h-9 shrink-0 flex-wrap items-center gap-x-3 gap-y-1 pl-14">
+        {toolbarLeading}
         <NavGroup upLevel={upLevel} />
         {title && <h2 className="text-sm font-bold tracking-wide">{title}</h2>}
         {toolbar}

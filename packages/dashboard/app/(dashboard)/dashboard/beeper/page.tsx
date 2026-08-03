@@ -2,7 +2,7 @@
 
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Search } from "lucide-react";
+import { ChevronDown, ChevronUp, Search } from "lucide-react";
 import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -40,61 +40,27 @@ function isViewTab(value: string | null): value is ViewTab {
  * full-page contact profile/merge editor, still linked from Msg Auto →
  * Links) — reusing it here would collide with that route's own meaning.
  *
- * Layout (responsive-layout-standard, matches Daily Tracker's own
- * above-the-table filter row — packages/dashboard/app/(dashboard)/dashboard/
- * views/page.tsx, Story 62 Round 3/6): tabs + All groups + Search render as
- * plain children INSIDE the DashboardPageShell frame (never via `toolbar`/
- * `toolbarSecondRow`, which sit outside it and never scroll) — the standard
- * shell frame owns the frame + scrollbar for Permissions/Groups (plain
- * tables, no internal scroll of their own — scrolling the shell far enough
- * already scrolls the tabs out of view there).
- *
- * Conversations/Msg workout are different: their contact list and
- * conversation pane each keep their OWN independent scrollbar (see
- * ai-docs/gui-standard/ai-start.md, "split-view with collapsing header") —
- * a chat-style split view needs that, unlike a plain table. On top of that,
- * the wrapper around the split-view (`h-full shrink-0` — NOT `flex-1
- * min-h-0`) is deliberately sized to the shell's *full* content height
- * regardless of the tabs+filter block above it, instead of only "whatever
- * space is left". That makes the shell's own scroll content taller than its
- * viewport by exactly the tabs+filter block's height, so the shell's own
- * (real, native) scrollbar can smoothly scroll that block out of view —
- * scroll down and the tabs recede as the split-view slides up to fill the
- * freed space; scroll back to the top and they return. No JS scroll
- * listener, no collapse animation to keep in sync with anything — it's the
- * same native scroll as any other page, just with the split-view
- * intentionally "oversized" by the header's own height. This is why the
- * split-view's own internal auto-scroll-to-latest-message (see
- * beeper-conversations-view.tsx) never touches the tabs: it's a completely
- * separate scroll container from the shell's. Selecting a conversation DOES
- * still scroll the shell down automatically (see the effect on
- * `hasOpenConversation` below) — that's a deliberate, separate action from
- * the local auto-scroll-to-latest-message, using `scrollContainerRef`
- * (forwarded into `DashboardPageShell`) to reach the shell's own scroll div.
+ * Layout: the Beeper frame always fits the available viewport height —
+ * `scroll={false}` on DashboardPageShell, no main/page vertical scrollbar.
+ * Height for the chat panes is recovered by collapsing the in-frame
+ * tabs/filters (`toolbarLeading` chevron → `isViewToolbarCollapsed`), not
+ * by scrolling them away. Conversations / Msg workout use `flex-1 min-h-0`
+ * and keep their own panel scrollbars (list / conversation / workout).
+ * Permissions / Groups scroll inside their own `flex-1` pane when the
+ * table is tall. Do not reintroduce the old `h-full shrink-0` "oversized
+ * split-view" trick that forced a shell scrollbar.
  *
  * `group` (Story 101): filters Conversations/Permissions/Msg workout to one
  * contact group, or "All groups"/"— no group —" for everyone/ungrouped.
  * The Groups tab has its own, finer-grained per-group toggle pills instead
- * (see beeper-groups-view.tsx) — a single-select combobox stopped making
- * sense there once you could toggle several groups' visibility at once, so
- * it isn't shown on this tab at all (not even as a placeholder). On first
- * load with no `?group=` in the URL at all, the user's default group
- * (Groups → Manage) is applied instead of "All groups" — see the one-time
+ * (see beeper-groups-view.tsx). On first load with no `?group=` in the URL,
+ * the user's default group (Groups → Manage) is applied — see the one-time
  * effect below.
  *
  * Row 2 (All groups + Search) hides on mobile once a conversation is open
- * (`hasOpenConversation`): the contact list/aside is also hidden then (see
- * beeper-conversations-view.tsx), so the filter/search controlling that list
- * have nothing left to act on — hiding them lets the conversation start
- * right under the tabs instead of under the now-pointless filter row. Kept
- * visible on desktop (`md:flex`), where the contact list stays on screen
- * next to the open conversation.
+ * (`hasOpenConversation`). Kept visible on desktop (`md:flex`).
  *
- * `contactsCount` (Permissions/Groups→List): lifted here instead of each
- * view rendering its own "N contacts" in a separate row — a standalone row
- * with nothing else in it (Permissions) was pure wasted vertical space.
- * Rendered inline at the end of row 2 instead, packed left with everything
- * else (no `ml-auto`).
+ * `contactsCount` (Permissions/Groups→List): inline at the end of row 2.
  */
 function BeeperContactsPageInner() {
 	const router = useRouter();
@@ -104,8 +70,13 @@ function BeeperContactsPageInner() {
 	const [searchQuery, setSearchQuery] = useState("");
 	const [permFilter, setPermFilter] = useState<PermissionFilter>("all");
 	const [contactsCount, setContactsCount] = useState<number | null>(null);
+	/** Hides only the in-frame tabs/filters block (not NavGroup / title / panels). */
+	const [isViewToolbarCollapsed, setIsViewToolbarCollapsed] = useState(false);
 	const appliedDefaultGroupRef = useRef(false);
-	const shellScrollRef = useRef<HTMLDivElement>(null);
+
+	const toggleViewToolbar = useCallback(() => {
+		setIsViewToolbarCollapsed((collapsed) => !collapsed);
+	}, []);
 
 	const tabParam = searchParams.get("tab");
 	const view: ViewTab = isViewTab(tabParam) ? tabParam : "conversations";
@@ -160,30 +131,6 @@ function BeeperContactsPageInner() {
 			.catch(() => {});
 	}, []);
 
-	// Selecting a conversation (Conversations/Msg workout only) scrolls the
-	// shell's own scrollbar all the way down, retracting the tabs+filter row
-	// out of view — same mechanism as scrolling it manually (see the doc
-	// comment above), just triggered automatically so the extra room shows up
-	// right away instead of only on request. Never fires for
-	// Groups/Permissions (no `contact` param there). Double rAF waits for the
-	// oversized split-view to paint so scrollHeight is correct; keyed only on
-	// contact open/change — not on every message/workout fetch.
-	useEffect(() => {
-		if (!hasOpenConversation) return;
-		let cancelled = false;
-		const outer = requestAnimationFrame(() => {
-			requestAnimationFrame(() => {
-				if (cancelled) return;
-				const el = shellScrollRef.current;
-				if (el) el.scrollTop = el.scrollHeight;
-			});
-		});
-		return () => {
-			cancelled = true;
-			cancelAnimationFrame(outer);
-		};
-	}, [hasOpenConversation, contactParam]);
-
 	const handleGroupChange = useCallback(
 		(groupId: string | undefined) => {
 			// Changing the group filter drops the currently open conversation —
@@ -206,17 +153,37 @@ function BeeperContactsPageInner() {
 		</div>
 	);
 
+	// Same visual recipe as the fixed sidebar menu handle in
+	// app/(dashboard)/layout.tsx — size/border/radius/hover/icon — but
+	// in-flow (not `fixed`), so it sits between that handle and Back.
+	const viewToolbarToggle = (
+		<button
+			type="button"
+			onClick={toggleViewToolbar}
+			aria-label={isViewToolbarCollapsed ? "Pokaż pasek widoku Beeper" : "Ukryj pasek widoku Beeper"}
+			aria-expanded={!isViewToolbarCollapsed}
+			title={isViewToolbarCollapsed ? "Pokaż pasek widoku" : "Ukryj pasek widoku"}
+			className="flex h-9 w-12 shrink-0 items-center justify-center rounded-md border bg-card/95 text-muted-foreground shadow-md backdrop-blur hover:text-foreground"
+		>
+			{isViewToolbarCollapsed ? (
+				<ChevronDown className="h-5 w-5" />
+			) : (
+				<ChevronUp className="h-5 w-5" />
+			)}
+		</button>
+	);
+
 	return (
 		<DashboardPageShell
 			title="Beeper"
 			upLevel={{ href: "/dashboard/msg-automation" }}
-			scrollContainerRef={shellScrollRef}
+			scroll={false}
+			toolbarLeading={viewToolbarToggle}
 		>
-			{/* Tabs + filters live INSIDE the frame, same convention as Daily
-			    Tracker's own filter row above its table — never `toolbar`/
-			    `toolbarSecondRow`, which render outside/above the frame. On
-			    Conversations/Msg workout this block scrolls out of view via the
-			    shell's own native scroll — see the doc comment above. */}
+			{/* Tabs + filters INSIDE the frame (Daily Tracker convention). Hidden
+			    via `toolbarLeading` chevron — that is how height is recovered;
+			    there is no shell/page vertical scrollbar. */}
+			{!isViewToolbarCollapsed && (
 			<div className="mb-1.5 flex w-full shrink-0 flex-col gap-1.5">
 				<Tabs value={view} onValueChange={handleTabChange}>
 					<TabsList aria-label="Beeper view">
@@ -264,25 +231,30 @@ function BeeperContactsPageInner() {
 					)}
 				</div>
 			</div>
+			)}
 
 			{isPermissions ? (
-				<BeeperPermissionsView
-					groupFilter={groupParam}
-					query={searchQuery}
-					onQueryChange={setSearchQuery}
-					permFilter={permFilter}
-					onCountChange={setContactsCount}
-				/>
+				<div className="min-h-0 flex-1 overflow-y-auto">
+					<BeeperPermissionsView
+						groupFilter={groupParam}
+						query={searchQuery}
+						onQueryChange={setSearchQuery}
+						permFilter={permFilter}
+						onCountChange={setContactsCount}
+					/>
+				</div>
 			) : isGroups ? (
-				<BeeperGroupsView
-					onGroupsChanged={() => setGroupsRefreshKey((k) => k + 1)}
-					subTab={groupsSubTab}
-					query={searchQuery}
-					onQueryChange={setSearchQuery}
-					onCountChange={setContactsCount}
-				/>
+				<div className="min-h-0 flex-1 overflow-y-auto">
+					<BeeperGroupsView
+						onGroupsChanged={() => setGroupsRefreshKey((k) => k + 1)}
+						subTab={groupsSubTab}
+						query={searchQuery}
+						onQueryChange={setSearchQuery}
+						onCountChange={setContactsCount}
+					/>
+				</div>
 			) : (
-				<div className="h-full shrink-0 overflow-hidden">
+				<div className="min-h-0 flex-1 overflow-hidden">
 					{view === "conversations" ? (
 						<BeeperConversationsView
 							initialContactId={contactParam}

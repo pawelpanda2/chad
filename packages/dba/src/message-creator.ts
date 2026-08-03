@@ -545,6 +545,10 @@ export async function getLeadConversationForCreator(
   /** Which tier actually produced this result — reported directly by the
    *  branch that matched, never re-derived/guessed by a caller. */
   basis: LeadConversationMatchBasis;
+  /** Beeper contact id when resolved via saved-link / live-match. */
+  conversationId?: string | null;
+  /** Human Beeper display name (e.g. "Claudia Delfin"), not an opaque id. */
+  displayName?: string | null;
 }> {
   if (leadLoca) {
     try {
@@ -558,12 +562,18 @@ export async function getLeadConversationForCreator(
         const contact = await getBeeperContact(match.conversationId);
         const body = contact ? formatBeeperMessagesForExport(contact.messages) : "";
         if (body) {
+          const displayName =
+            (typeof contact?.contact?.displayName === "string" && contact.contact.displayName.trim()) ||
+            match.conversationName ||
+            null;
           return {
             found: true,
             body,
             channel: match.channel ?? contact?.channels[0]?.title ?? null,
             hash: hashConversationContent(body),
             basis: saved ? "saved-link" : "live-match",
+            conversationId: match.conversationId,
+            displayName,
           };
         }
       }
@@ -583,6 +593,8 @@ export async function getLeadConversationForCreator(
     hash: hashConversationContent(body),
     error: result.error,
     basis: found ? "legacy-fallback" : "not-found",
+    conversationId: null,
+    displayName: found ? leadName : null,
   };
 }
 

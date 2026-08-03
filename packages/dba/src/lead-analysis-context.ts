@@ -36,6 +36,10 @@ export interface LeadAnalysisConversationOption {
   basis: "saved-link" | "live-match" | "legacy-fallback" | "not-found";
   preview: string | null;
   error?: string;
+  /** Beeper contact id when known (saved-link / live-match). */
+  conversationId?: string | null;
+  /** Human Beeper display name for GUI links (not an opaque id). */
+  displayName?: string | null;
 }
 
 export interface LeadAnalysisConversationCandidate {
@@ -94,6 +98,8 @@ export async function getLeadAnalysisContext(
     basis: conversationResult.basis,
     preview: previewLines(conversationResult.body),
     error: conversationResult.error,
+    conversationId: conversationResult.conversationId ?? null,
+    displayName: conversationResult.displayName ?? null,
   };
 
   const conversationCandidates: LeadAnalysisConversationCandidate[] = conversationCandidatesRaw.map((c) => ({

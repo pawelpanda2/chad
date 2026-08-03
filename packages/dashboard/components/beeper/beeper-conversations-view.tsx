@@ -34,16 +34,11 @@ export interface BeeperConversationsViewProps {
  * (`msg-workout-review-view.tsx`), not here, per explicit direction:
  * Conversations should stay a simple message browser.
  *
- * Two of the three scrollbars described in ai-docs/gui-standard/ai-start.md
- * ("split-view with collapsing header") live here: the contact list
- * (`aside`) and the conversation (`section`, in its own rounded-corner
- * frame) each own their scroll and fill the available height exactly, same
- * as any other chat-style split view. The third (the page shell's own
- * scrollbar, which scrolls the tabs+filter row out of view) is entirely
- * outside this component — see beeper/page.tsx's `h-full shrink-0` wrapper
- * around whichever of this/MsgWorkoutReviewView is active. Because that's a
- * completely separate scroll container, this component's own
- * auto-scroll-to-latest-message (below) never touches it.
+ * Contact list (`aside`) and conversation (`section`) each own their
+ * scroll and fill the available height (`h-full` from beeper/page.tsx's
+ * `flex-1 min-h-0` pane). There is no page/shell vertical scrollbar —
+ * height for these panes is recovered by collapsing the Beeper tabs/
+ * filters chevron on the page, not by scrolling the shell.
  */
 export function BeeperConversationsView({
   initialContactId,
@@ -126,13 +121,8 @@ export function BeeperConversationsView({
   }, []);
 
   useEffect(() => {
-    // Set scrollTop directly on the local container instead of
-    // messagesEndRef.scrollIntoView(): scrollIntoView walks up *every*
-    // scrollable ancestor (including the page shell's own scrollbar, which
-    // has genuine overflow by design — see ai-docs/gui-standard/ai-start.md)
-    // and nudges each one, which visibly collapsed the tabs+filter row the
-    // instant a conversation opened. Setting scrollTop on just this one
-    // element can't ever touch anything outside it.
+    // scrollTop on the conversation pane only — never scrollIntoView()
+    // (walks every scrollable ancestor).
     if (conversationScrollRef.current && conversationMessages.length > 0) {
       conversationScrollRef.current.scrollTop = conversationScrollRef.current.scrollHeight;
     }

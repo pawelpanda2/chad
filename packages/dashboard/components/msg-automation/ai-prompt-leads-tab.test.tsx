@@ -56,7 +56,7 @@ describe("AiPromptLeadsTab", () => {
     );
     render(<AiPromptLeadsTab selectedLead={null} onSelectLead={() => {}} />);
     await screen.findByText("26-02-17_pi_Ira_Babenko");
-    fireEvent.change(screen.getByPlaceholderText(/search leads/i), { target: { value: "Ira" } });
+    fireEvent.change(screen.getByPlaceholderText(/^search$/i), { target: { value: "Ira" } });
     expect(screen.getByText("26-02-17_pi_Ira_Babenko")).toBeTruthy();
     expect(screen.queryByText("26-03-01_pn_Second")).toBeNull();
   });

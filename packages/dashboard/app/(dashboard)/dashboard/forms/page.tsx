@@ -1339,21 +1339,25 @@ function FormsPageContent() {
     return (
       <DashboardPageShell
         contentClassName={FRAME_SECTION_GAP_CLASS}
+        scroll={false}
         upLevel={{ onClick: isEditingEntry ? () => router.push("/dashboard/views?view=tracker") : handleFormBack }}
         title={isEditingEntry ? "Edit Daily Entry" : "Add Daily Entry"}
       >
             {entryLoadFailed && (
               <ErrorBox message="Could not load this entry — it may have been changed or removed. Go back and try again." />
             )}
-            <form onSubmit={handleAddActionSubmit} className={FRAME_SECTION_SPACE_Y_CLASS}>
-              {/* Save lives in its own top frame — Story 62 standard: save
-                  controls always live at the top, inside the main frame,
-                  even when there's no generated-name field to group it with.
-                  Delete (edit mode only) lives here too — real deletion via
-                  the Mongo backend (Story 72 follow-up), unlike the old
-                  Content-Provider-only "blank the fields" workaround Date
-                  Entries below still use. */}
-              <div className={cn("flex flex-wrap items-center gap-3 max-w-[460px] rounded-lg border bg-muted/10", SAVE_FRAME_PADDING_CLASS)}>
+            <form onSubmit={handleAddActionSubmit} className={cn("flex min-h-0 flex-1 flex-col", FRAME_SECTION_SPACE_Y_CLASS)}>
+              {/* Save + fields share one common frame, one shared scrollbar
+                  (min-h-0 + flex-1 + overflow-y-auto on the frame itself) —
+                  no more separate Save box + fields box. */}
+              <div className="flex min-h-0 flex-1 flex-col overflow-y-auto max-w-[460px] rounded-lg border bg-muted/10">
+              {/* Save controls always live at the top, inside the main
+                  frame, even when there's no generated-name field to group
+                  it with. Delete (edit mode only) lives here too — real
+                  deletion via the Mongo backend (Story 72 follow-up),
+                  unlike the old Content-Provider-only "blank the fields"
+                  workaround Date Entries below still use. */}
+              <div className={cn("flex flex-wrap items-center gap-3", SAVE_FRAME_PADDING_CLASS)}>
                 <Button type="submit" disabled={isSubmitting || entryStillLoading}>
                   {isSubmitting ? "Saving..." : "Save"}
                 </Button>
@@ -1388,15 +1392,12 @@ function FormsPageContent() {
                 )}
               </div>
 
-              {/* Inner frame holds the form itself — no duplicate title row
-                  inside (the shell's own `title` above is the only title).
-                  Narrowed to ~80% of the previous max-width per feedback. */}
-              <div className="max-w-[460px] rounded-lg border bg-muted/10 p-2">
+              <div className="p-2">
                 <table className="w-full border-collapse text-sm">
                   <tbody>
                     {dailyRows.map((row) => (
                       <tr key={row.key}>
-                        <td className="whitespace-nowrap border bg-muted/60 px-3 py-2 font-semibold">{row.label}</td>
+                        <td className="w-px whitespace-nowrap border bg-muted/60 px-3 py-2 font-semibold">{row.label}</td>
                         <td className="border bg-amber-50 dark:bg-amber-950/30 px-2 py-1.5">
                           {row.type === "date" && (
                             <Input
@@ -1431,6 +1432,7 @@ function FormsPageContent() {
                     ))}
                   </tbody>
                 </table>
+              </div>
               </div>
             </form>
 
