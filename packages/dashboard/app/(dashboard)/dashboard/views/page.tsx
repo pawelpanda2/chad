@@ -618,8 +618,8 @@ function ViewsPageContent() {
             <Input
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
-              placeholder="Filter leads..."
-              className="pl-7 h-7 text-xs w-[220px]"
+              placeholder="Search"
+              className="pl-7 h-7 text-xs w-[140px]"
             />
           </div>
           <Button
@@ -664,9 +664,6 @@ function ViewsPageContent() {
                         className="flex flex-shrink-0 items-center gap-2 rounded-lg"
                         aria-label={`Open lead details for ${lead.leadName}`}
                       >
-                        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-primary">
-                          <User className="h-3.5 w-3.5" />
-                        </span>
                         <span className="text-xs text-muted-foreground flex-shrink-0">
                           {lead.leadKey}.
                         </span>
@@ -682,14 +679,6 @@ function ViewsPageContent() {
                         >
                           {lead.leadName}
                         </Link>
-                        {lead.hasContacts ? (
-                          <span className="flex items-center gap-1 text-xs text-green-600">
-                            <CheckCircle2 className="h-3.5 w-3.5" />
-                            Contacts
-                          </span>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">No contacts</span>
-                        )}
                       </div>
                     </div>
                   </div>
