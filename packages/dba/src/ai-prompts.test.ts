@@ -5,6 +5,8 @@
  * existing fake-provider pattern). No real Content Provider needed.
  */
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import {
   listAiPrompts,
   getAiPrompt,
@@ -18,9 +20,11 @@ import {
   type AiPromptsOps,
   type CreateAiPromptInput,
 } from "./ai-prompts.js";
+import { CHAD_SHARED_REPO_GUID } from "./knowledge.js";
 import type { CpItem } from "./cp-model.js";
 
-const REPO = "21d11bdc-f1f4-44d1-b61a-3fa6b039c641";
+/** Every fake-ops test below roots the registry at chad_shared, matching production. */
+const REPO = CHAD_SHARED_REPO_GUID;
 
 function folderItem(address: string, name: string): CpItem {
   return { _id: address, config: { id: address, address, type: "Folder", name }, body: "" };
@@ -42,9 +46,9 @@ function fakeOps(seed: CpItem[] = []): { ops: AiPromptsOps; items: Map<string, C
   }
 
   const ops: AiPromptsOps = {
-    async findOrCreateFolderChain(names: string[]) {
-      let parent: CpItem = items.get(REPO) ?? folderItem(REPO, "root");
-      if (!items.has(REPO)) items.set(REPO, parent);
+    async findOrCreateFolderChainFrom(rootAddress: string, names: string[]) {
+      let parent: CpItem = items.get(rootAddress) ?? folderItem(rootAddress, "root");
+      if (!items.has(rootAddress)) items.set(rootAddress, parent);
       for (const name of names) {
         const existing = findChild(parent.config.address, name);
         if (existing) {
@@ -244,14 +248,38 @@ describe("version increment", () => {
   });
 });
 
-describe("repo context isolation", () => {
-  it("ai-prompts.ts never accepts a repoGuid parameter — isolation is entirely the injected ops/data-router path", () => {
-    // Static/API-shape assertion: every public function's signature (see imports
-    // above) takes only business params + optional `ops`, matching
-    // chad-user-data-isolation.md's rule that per-user scoping is exclusively
-    // getCurrentRepoGuid()/runWithRepoContext, never a caller-supplied id.
+describe("shared registry (deliberate exception to per-user isolation)", () => {
+  it("ai-prompts.ts never accepts a repoGuid parameter — every public function takes only business params + optional ops", () => {
     expect(createAiPrompt.length).toBeLessThanOrEqual(2);
     expect(listAiPrompts.length).toBeLessThanOrEqual(1);
+  });
+
+  it("source never calls getCurrentRepoGuid() and always roots storage at CHAD_SHARED_REPO_GUID", () => {
+    // Static source-text guard for the explicit product decision (see this
+    // file's header doc comment): AI Prompts is the one `dba` feature that
+    // is NOT scoped by the caller's own repo — every user reads/writes the
+    // exact same chad_shared-backed list. This directly encodes that
+    // invariant so a future edit can't silently reintroduce per-user
+    // scoping (e.g. by switching back to findOrCreateFolderChain()).
+    const source = readFileSync(fileURLToPath(new URL("./ai-prompts.ts", import.meta.url)), "utf8");
+    // Never imports (and so can never call) getCurrentRepoGuid — the doc
+    // comment above is allowed to name it in prose explaining the exception.
+    expect(source).not.toMatch(/import\s*\{[^}]*getCurrentRepoGuid/);
+    expect(source).toContain("CHAD_SHARED_REPO_GUID");
+    expect(source).toContain("findOrCreateFolderChainFrom(CHAD_SHARED_REPO_GUID");
+  });
+
+  it("two different repo contexts (fake ops, same registry root) see the identical shared list — not isolated per user", async () => {
+    const { ops } = fakeOps([]);
+    // Simulates two different logged-in users' requests: both only ever
+    // pass the same fixed root (CHAD_SHARED_REPO_GUID) to the ops seam,
+    // regardless of which user is "calling" — there is no per-caller
+    // branch in production code for this feature at all.
+    const created = await createAiPrompt(baseInput, ops);
+    const asUserA = await listAiPrompts(ops);
+    const asUserB = await listAiPrompts(ops);
+    expect(asUserA).toEqual(asUserB);
+    expect(asUserA.map((p) => p.id)).toContain(created.id);
   });
 });
 
@@ -259,8 +287,8 @@ describe("promptKind mapping + conditional validation", () => {
   it("exposes stable kind values in AI_PROMPT_KIND_LABELS", async () => {
     const { AI_PROMPT_KIND_LABELS, normalizeAiPromptKind } = await import("./ai-prompts.js");
     expect(Object.keys(AI_PROMPT_KIND_LABELS).sort()).toEqual(["openai_managed", "our_custom"]);
-    expect(AI_PROMPT_KIND_LABELS.our_custom).toBe("Our Custom Prompt");
-    expect(AI_PROMPT_KIND_LABELS.openai_managed).toBe("OpenAI Managed Prompt");
+    expect(AI_PROMPT_KIND_LABELS.our_custom).toBe("our custom prompt");
+    expect(AI_PROMPT_KIND_LABELS.openai_managed).toBe("openai published prompt");
     expect(normalizeAiPromptKind(undefined)).toBe("our_custom");
     expect(normalizeAiPromptKind("chad_custom")).toBe("our_custom");
     expect(normalizeAiPromptKind("openai_managed")).toBe("openai_managed");

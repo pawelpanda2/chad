@@ -1,7 +1,7 @@
 /**
- * AI Prompts (Story 88) — provider-neutral prompt registry backing the
- * Dashboard's Msg Auto → AI Prompts editor and the Message Creator's AI
- * execution boundary.
+ * AI Prompts (Story 88, later amended) — provider-neutral prompt registry
+ * backing the Dashboard's Msg Auto → AI Prompts editor and the Message
+ * Creator's AI execution boundary.
  *
  * Storage: one Content Provider Text item, `msg-auto / ai prompts`, lazily
  * created on first write (same find-or-create pattern
@@ -11,19 +11,33 @@
  *
  *   { "schemaVersion": 1, "prompts": AiPromptDefinition[] }
  *
+ * **Deliberate exception to this repo's usual per-user isolation.** Unlike
+ * every other `dba` feature, AI Prompts is a single **global, shared**
+ * resource: the registry always lives under `chad_shared`
+ * (`CHAD_SHARED_REPO_GUID`, the same repo Knowledge already reads — see
+ * `knowledge.ts`), never under the calling user's own repo, and never keyed
+ * by `getCurrentRepoGuid()`. Every logged-in user reads and writes the exact
+ * same list — there is currently no owner/permission model (no read-only
+ * users, no per-prompt owner) by explicit product decision; that is a
+ * planned future layer, not an oversight. API routes still authenticate
+ * the caller and still wrap calls in `runWithRepoContext(user, ...)`, but
+ * only so the user's own identity is best-effort stamped as the *actor* on
+ * the Postgres history trigger (`setMutationContext`) — it has no bearing
+ * on *where* this feature's data is stored.
+ *
  * All Content Provider access goes through `item-ops.ts` (already
  * backend-agnostic via `getDataRouter()`); this file never calls
  * `invokeContentProvider` directly and never accepts a `repoGuid` from a
- * caller — isolation is exclusively `getCurrentRepoGuid()`/
- * `runWithRepoContext` (see `repo-context.ts`).
+ * caller.
  */
 
 import { randomUUID } from "node:crypto";
 import {
-  findOrCreateFolderChain as realFindOrCreateFolderChain,
+  findOrCreateFolderChainFrom as realFindOrCreateFolderChainFrom,
   createOrGetChild as realCreateOrGetChild,
   putItemBody as realPutItemBody,
 } from "./item-ops.js";
+import { CHAD_SHARED_REPO_GUID } from "./knowledge.js";
 import type { CpItem } from "./cp-model.js";
 
 // ---------------------------------------------------------------------------
@@ -46,8 +60,8 @@ export type AiPromptActionType =
   | "custom";
 
 export const AI_PROMPT_KIND_LABELS: Record<AiPromptKind, string> = {
-  our_custom: "Our Custom Prompt",
-  openai_managed: "OpenAI Managed Prompt",
+  our_custom: "our custom prompt",
+  openai_managed: "openai published prompt",
 };
 
 export interface AiPromptMessage {
@@ -226,13 +240,13 @@ interface AiPromptsRegistryBody {
 const EMPTY_REGISTRY_BODY = JSON.stringify({ schemaVersion: SCHEMA_VERSION, prompts: [] }, null, 2);
 
 export interface AiPromptsOps {
-  findOrCreateFolderChain: typeof realFindOrCreateFolderChain;
+  findOrCreateFolderChainFrom: typeof realFindOrCreateFolderChainFrom;
   createOrGetChild: typeof realCreateOrGetChild;
   putItemBody: typeof realPutItemBody;
 }
 
 const defaultOps: AiPromptsOps = {
-  findOrCreateFolderChain: realFindOrCreateFolderChain,
+  findOrCreateFolderChainFrom: realFindOrCreateFolderChainFrom,
   createOrGetChild: realCreateOrGetChild,
   putItemBody: realPutItemBody,
 };
@@ -274,7 +288,9 @@ export function serializeAiPromptsRegistryBody(prompts: AiPromptDefinition[]): s
 }
 
 async function ensureRegistryItem(ops: AiPromptsOps): Promise<CpItem> {
-  const folder = await ops.findOrCreateFolderChain([MSG_AUTO_FOLDER]);
+  // Always rooted at chad_shared — see the file-header doc comment. Never
+  // the caller's own repo, regardless of who's logged in.
+  const folder = await ops.findOrCreateFolderChainFrom(CHAD_SHARED_REPO_GUID, [MSG_AUTO_FOLDER]);
   return ops.createOrGetChild(folder, AI_PROMPTS_ITEM, "Text", EMPTY_REGISTRY_BODY);
 }
 

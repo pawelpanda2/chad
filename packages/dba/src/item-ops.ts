@@ -77,23 +77,37 @@ export async function createOrGetChild(
 }
 
 /**
- * Find-or-create a nested folder chain from the repo root (e.g.
- * `["views", "reports"]`) — the generalized form of the CP `PostParentItem`
- * chain every "ensure folder path exists" flow already used.
+ * Find-or-create a nested folder chain starting at an explicit root address
+ * (e.g. `chad_shared`'s GUID, or any other repo's root) — the generalized
+ * form of the CP `PostParentItem` chain, usable outside the calling user's
+ * own repo context. `findOrCreateFolderChain` below is the common case
+ * (current user's own repo) built on top of this.
  */
-export async function findOrCreateFolderChain(names: string[]): Promise<CpItem> {
-  const repoGuid = getCurrentRepoGuid();
-  let parent: CpItem | null = await getItemByAddress(repoGuid);
+export async function findOrCreateFolderChainFrom(rootAddress: string, names: string[]): Promise<CpItem> {
+  let parent: CpItem | null = await getItemByAddress(rootAddress);
   if (!parent) {
-    // Synthetic stand-in for the repo root when it isn't itself a real,
-    // migrated item yet (matches the existing Mongo-only helper this
-    // replaces) — `createOrGetChild` only reads `_id`/`config.address`.
-    parent = { _id: repoGuid, config: { id: repoGuid, address: repoGuid, type: "Folder", name: "root" }, body: "" };
+    // Synthetic stand-in for the root when it isn't itself a real, migrated
+    // item yet (matches the existing Mongo-only helper this replaces) —
+    // `createOrGetChild` only reads `_id`/`config.address`.
+    parent = {
+      _id: rootAddress,
+      config: { id: rootAddress, address: rootAddress, type: "Folder", name: "root" },
+      body: "",
+    };
   }
   for (const name of names) {
     parent = await createOrGetChild(parent, name, "Folder");
   }
   return parent;
+}
+
+/**
+ * Find-or-create a nested folder chain from the repo root (e.g.
+ * `["views", "reports"]`) — the generalized form of the CP `PostParentItem`
+ * chain every "ensure folder path exists" flow already used.
+ */
+export async function findOrCreateFolderChain(names: string[]): Promise<CpItem> {
+  return findOrCreateFolderChainFrom(getCurrentRepoGuid(), names);
 }
 
 /** Overwrites an existing item's body in place (never re-allocates address/id). */
