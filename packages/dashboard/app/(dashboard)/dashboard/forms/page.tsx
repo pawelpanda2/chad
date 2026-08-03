@@ -1339,13 +1339,17 @@ function FormsPageContent() {
     return (
       <DashboardPageShell
         contentClassName={FRAME_SECTION_GAP_CLASS}
+        scroll={false}
         upLevel={{ onClick: isEditingEntry ? () => router.push("/dashboard/views?view=tracker") : handleFormBack }}
         title={isEditingEntry ? "Edit Daily Entry" : "Add Daily Entry"}
       >
             {entryLoadFailed && (
               <ErrorBox message="Could not load this entry — it may have been changed or removed. Go back and try again." />
             )}
-            <form onSubmit={handleAddActionSubmit} className={FRAME_SECTION_SPACE_Y_CLASS}>
+            {/* One own scroll for the whole form — its two frames (save row +
+                data table) scroll together as if inside one invisible frame,
+                instead of the page shell's own (now disabled) main scroll. */}
+            <form onSubmit={handleAddActionSubmit} className={cn("min-h-0 flex-1 overflow-y-auto", FRAME_SECTION_SPACE_Y_CLASS)}>
               {/* Save lives in its own top frame — Story 62 standard: save
                   controls always live at the top, inside the main frame,
                   even when there's no generated-name field to group it with.
@@ -1396,7 +1400,7 @@ function FormsPageContent() {
                   <tbody>
                     {dailyRows.map((row) => (
                       <tr key={row.key}>
-                        <td className="whitespace-nowrap border bg-muted/60 px-3 py-2 font-semibold">{row.label}</td>
+                        <td className="w-px whitespace-nowrap border bg-muted/60 px-3 py-2 font-semibold">{row.label}</td>
                         <td className="border bg-amber-50 dark:bg-amber-950/30 px-2 py-1.5">
                           {row.type === "date" && (
                             <Input
