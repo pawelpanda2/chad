@@ -18,3 +18,9 @@ Working tree was clean at start — no checkpoint commit needed.
 Daily Tracker/Dates render `+ Add` because `canEditRows` is true and pushes
 `/dashboard/forms?form=add_action|date_entry`. Leads toolbar only had Filter +
 Refresh — no Add button and no form link.
+
+## FINAL_SHA
+
+```
+FINAL_SHA=0e4eb4de98a81aaf51d521bf6579596f18b88e40
+```
