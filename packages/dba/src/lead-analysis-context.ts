@@ -10,6 +10,9 @@
 
 import { listLeadReportsForCreator, getLeadConversationForCreator } from "./message-creator.js";
 import { buildLeadAnalysisCurrentCase } from "./lead-analysis-prompt.js";
+import { loadConversationCandidates } from "./lead-beeper-links.js";
+import { getBeeperContact } from "./beeper-crm.js";
+import { formatBeeperMessagesForExport } from "./whatsapp-messages.js";
 
 function previewLines(text: string | null, maxLines = 8): string | null {
   if (!text) return null;
@@ -35,6 +38,13 @@ export interface LeadAnalysisConversationOption {
   error?: string;
 }
 
+export interface LeadAnalysisConversationCandidate {
+  conversationId: string;
+  conversationName: string;
+  displayName: string;
+  channel?: string;
+}
+
 export interface LeadAnalysisContext {
   leadName: string;
   leadLoca: string | null;
@@ -42,6 +52,15 @@ export interface LeadAnalysisContext {
   /** First found report's address — same "use the first match" default as console. */
   recommendedReportAddress: string | null;
   conversation: LeadAnalysisConversationOption;
+  /**
+   * Every Beeper contact the user could manually attach instead — the same
+   * list the Msg Auto → Links page uses, never a separate/weaker lookup.
+   * `getLeadConversationForCreator` doesn't expose a conversation id for
+   * the recommended match, so this list is not de-duplicated against it —
+   * the GUI labels it "browse other conversations" and search makes the
+   * occasional duplicate harmless.
+   */
+  conversationCandidates: LeadAnalysisConversationCandidate[];
   /** `<current_case>` built from the recommended report + resolved conversation, default question. */
   basePrompt: string;
 }
@@ -50,9 +69,10 @@ export async function getLeadAnalysisContext(
   leadName: string,
   leadLoca?: string | null
 ): Promise<LeadAnalysisContext> {
-  const [reportSummaries, conversationResult] = await Promise.all([
+  const [reportSummaries, conversationResult, conversationCandidatesRaw] = await Promise.all([
     listLeadReportsForCreator(leadName),
     getLeadConversationForCreator(leadName, leadLoca ?? undefined),
+    loadConversationCandidates().catch(() => []),
   ]);
 
   const reports: LeadAnalysisReportOption[] = reportSummaries
@@ -76,6 +96,13 @@ export async function getLeadAnalysisContext(
     error: conversationResult.error,
   };
 
+  const conversationCandidates: LeadAnalysisConversationCandidate[] = conversationCandidatesRaw.map((c) => ({
+    conversationId: c.conversationId,
+    conversationName: c.conversationName,
+    displayName: c.displayName,
+    channel: c.channel,
+  }));
+
   const basePrompt = buildLeadAnalysisCurrentCase({
     leadName,
     reportBody: reports[0]?.body ?? null,
@@ -88,6 +115,32 @@ export async function getLeadAnalysisContext(
     reports,
     recommendedReportAddress,
     conversation,
+    conversationCandidates,
     basePrompt,
+  };
+}
+
+export interface BeeperConversationBody {
+  conversationId: string;
+  conversationName: string;
+  channel: string | null;
+  body: string | null;
+}
+
+/**
+ * Fetches the message body for a Beeper conversation the user picked
+ * manually (auto tab's "browse other conversations"), by id — same
+ * export/formatting helpers `getLeadConversationForCreator` already uses,
+ * not a new read path.
+ */
+export async function getBeeperConversationBodyById(conversationId: string): Promise<BeeperConversationBody | null> {
+  const contact = await getBeeperContact(conversationId);
+  if (!contact) return null;
+  const body = formatBeeperMessagesForExport(contact.messages) || null;
+  return {
+    conversationId,
+    conversationName: contact.contact.displayName || conversationId,
+    channel: contact.channels[0]?.title ?? null,
+    body,
   };
 }

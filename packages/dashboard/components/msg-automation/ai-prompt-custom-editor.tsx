@@ -17,11 +17,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { AlertCircle, Loader2, Plus } from "lucide-react";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AiPromptDeleteDialog } from "@/components/msg-automation/ai-prompt-delete-dialog";
-import { AiPromptConversationPanel } from "@/components/msg-automation/ai-prompt-conversation-panel";
+import { AiPromptWorkspace } from "@/components/msg-automation/ai-prompt-workspace";
 import { slugifyPromptName } from "@/components/msg-automation/ai-prompt-kind";
-import { cn } from "@/lib/utils";
 
 interface VariableRow {
   key: string;
@@ -53,7 +51,6 @@ export function AiPromptCustomEditor({ promptId }: AiPromptCustomEditorProps) {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
-  const [showCode, setShowCode] = useState(false);
 
   const [name, setName] = useState(isNew ? "New prompt" : "");
   const [slug, setSlug] = useState("");
@@ -242,6 +239,181 @@ export function AiPromptCustomEditor({ promptId }: AiPromptCustomEditorProps) {
     );
   }
 
+  const manageContent = (
+    <div className="mx-auto max-w-xl space-y-4">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-base font-semibold">prompt settings</h2>
+        <Button size="sm" className="h-8" onClick={() => void handleSave()} disabled={saving}>
+          {saving ? "Saving…" : "Save"}
+        </Button>
+      </div>
+
+      <div className="space-y-3 rounded-xl border p-4">
+        <div className="text-sm font-semibold">Prompt</div>
+        <div className="space-y-1.5">
+          <Label htmlFor="custom-description">Description</Label>
+          <Textarea
+            id="custom-description"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            className="min-h-16 rounded-xl"
+            placeholder="What this prompt is for"
+          />
+        </div>
+        <Textarea
+          value={promptBody}
+          onChange={(e) => setPromptBody(e.target.value)}
+          className="min-h-[160px] rounded-xl"
+          placeholder="Describe desired model behavior (tone, tool usage, response style)"
+        />
+        <button
+          type="button"
+          className="flex w-full items-center justify-between py-1 text-left text-sm font-medium"
+          onClick={() => setExtraMessages((prev) => [...prev, { role: "user", content: "" }])}
+        >
+          <span>Add messages to prompt</span>
+          <Plus className="h-4 w-4" />
+        </button>
+        {extraMessages.map((m, i) => (
+          <Textarea
+            key={i}
+            value={m.content}
+            onChange={(e) =>
+              setExtraMessages((prev) => prev.map((row, idx) => (idx === i ? { ...row, content: e.target.value } : row)))
+            }
+            className="min-h-20 rounded-xl"
+            placeholder="Additional message"
+          />
+        ))}
+      </div>
+
+      <div className="space-y-3 rounded-xl border p-4">
+        <div className="text-sm font-semibold">Model</div>
+        <div className="grid grid-cols-[120px_1fr] items-center gap-2 text-sm">
+          <Label>Model</Label>
+          <Select value={model} onValueChange={setModel}>
+            <SelectTrigger className="h-9 rounded-lg">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="gpt-5.5">gpt-5.5</SelectItem>
+              <SelectItem value="gpt-4o">gpt-4o</SelectItem>
+              <SelectItem value="Provider default">Provider default</SelectItem>
+            </SelectContent>
+          </Select>
+          <Label>Text format</Label>
+          <Select value={textFormat} onValueChange={(v) => setTextFormat(v as "text" | "json_schema")}>
+            <SelectTrigger className="h-9 rounded-lg">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="text">text</SelectItem>
+              <SelectItem value="json_schema">json_schema</SelectItem>
+            </SelectContent>
+          </Select>
+          <Label>Reasoning mode</Label>
+          <Select value={reasoningMode} onValueChange={setReasoningMode}>
+            <SelectTrigger className="h-9 rounded-lg">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="standard">standard</SelectItem>
+              <SelectItem value="minimal">minimal</SelectItem>
+            </SelectContent>
+          </Select>
+          <Label>Reasoning effort</Label>
+          <Select value={reasoningEffort} onValueChange={setReasoningEffort}>
+            <SelectTrigger className="h-9 rounded-lg">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="low">low</SelectItem>
+              <SelectItem value="medium">medium</SelectItem>
+              <SelectItem value="high">high</SelectItem>
+            </SelectContent>
+          </Select>
+          <Label>Verbosity</Label>
+          <Select value={verbosity} onValueChange={setVerbosity}>
+            <SelectTrigger className="h-9 rounded-lg">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="low">low</SelectItem>
+              <SelectItem value="medium">medium</SelectItem>
+              <SelectItem value="high">high</SelectItem>
+            </SelectContent>
+          </Select>
+          <Label>Summary</Label>
+          <Select value={summary} onValueChange={setSummary}>
+            <SelectTrigger className="h-9 rounded-lg">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="auto">auto</SelectItem>
+              <SelectItem value="none">none</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex items-center justify-between pt-1">
+          <span className="text-sm">Store logs</span>
+          <Switch checked={storeLogs} onCheckedChange={setStoreLogs} />
+        </div>
+      </div>
+
+      <div className="space-y-3 rounded-xl border p-4">
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-semibold">Variables</span>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1"
+            onClick={() => setVariables((prev) => [...prev, { key: "", label: "", required: false, description: "" }])}
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Add
+          </Button>
+        </div>
+        {variables.map((v, i) => (
+          <Input
+            key={i}
+            value={v.key}
+            onChange={(e) =>
+              setVariables((prev) => prev.map((row, idx) => (idx === i ? { ...row, key: e.target.value } : row)))
+            }
+            placeholder="variable_key"
+            className="h-8 text-xs"
+          />
+        ))}
+      </div>
+
+      <div className="space-y-2 rounded-xl border p-4">
+        <div className="text-sm font-semibold">Hosted tools</div>
+        {HOSTED_TOOLS.map((tool) => (
+          <div key={tool} className="flex items-center justify-between py-1 text-sm">
+            <span>{tool}</span>
+            <Switch
+              checked={Boolean(tools[tool])}
+              onCheckedChange={(checked) => setTools((prev) => ({ ...prev, [tool]: checked }))}
+            />
+          </div>
+        ))}
+      </div>
+
+      {!isNew && (
+        <div className="flex items-center justify-between rounded-xl border border-destructive/30 p-4">
+          <div className="text-sm">
+            <div className="font-semibold">Delete prompt</div>
+            <div className="text-muted-foreground">This cannot be undone.</div>
+          </div>
+          <Button variant="outline" size="sm" className="h-8 text-destructive" onClick={() => setDeleteOpen(true)}>
+            Delete
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <EditorPageShell>
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b px-2 py-1.5 pl-14">
@@ -257,31 +429,6 @@ export function AiPromptCustomEditor({ promptId }: AiPromptCustomEditorProps) {
             {status === "published" ? "Published" : status === "archived" ? "Archived" : "Draft"}
           </span>
         </div>
-        {!isNew && (
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-8 text-destructive"
-            onClick={() => setDeleteOpen(true)}
-          >
-            Delete
-          </Button>
-        )}
-        <Button variant="outline" size="sm" className="h-8" type="button" disabled title="Coming soon">
-          Compare
-        </Button>
-        <Button
-          size="sm"
-          className="h-8"
-          variant={showCode ? "default" : "outline"}
-          type="button"
-          onClick={() => setShowCode((v) => !v)}
-        >
-          Code
-        </Button>
-        <Button size="sm" className="h-8" onClick={() => void handleSave()} disabled={saving}>
-          {saving ? "Saving…" : "Save"}
-        </Button>
       </div>
 
       {error && (
@@ -291,232 +438,7 @@ export function AiPromptCustomEditor({ promptId }: AiPromptCustomEditorProps) {
         </div>
       )}
 
-      <Tabs defaultValue="conversation" className="flex min-h-0 flex-1 flex-col gap-0">
-        <TabsList className="mx-2 mt-1.5 w-fit shrink-0">
-          <TabsTrigger value="conversation">conversation</TabsTrigger>
-          <TabsTrigger value="manage">manage</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="conversation" className="mt-0 flex min-h-0 flex-1 flex-col">
-          <AiPromptConversationPanel promptId={promptId} />
-        </TabsContent>
-
-        <TabsContent
-          value="manage"
-          className={cn(
-            "mt-0 grid min-h-0 flex-1",
-            showCode
-              ? "grid-cols-1 lg:grid-cols-[340px_minmax(240px,320px)]"
-              : "grid-cols-1 lg:grid-cols-[340px_minmax(0,1fr)]"
-          )}
-        >
-        <aside className="min-h-0 overflow-y-auto border-b lg:border-b-0 lg:border-r">
-          <section className="space-y-3 border-b p-4">
-            <div className="flex items-center justify-between text-sm font-semibold">
-              <span>Prompt</span>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="custom-description">Description</Label>
-              <Textarea
-                id="custom-description"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                className="min-h-16 rounded-xl"
-                placeholder="What this prompt is for"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <Button type="button" variant="outline" size="sm" className="h-9 text-xs" disabled>
-                Generate prompt
-              </Button>
-              <Button type="button" variant="outline" size="sm" className="h-9 text-xs" disabled>
-                Templates
-              </Button>
-            </div>
-            <Textarea
-              value={promptBody}
-              onChange={(e) => setPromptBody(e.target.value)}
-              className="min-h-[160px] rounded-xl"
-              placeholder="Describe desired model behavior (tone, tool usage, response style)"
-            />
-            <button
-              type="button"
-              className="flex w-full items-center justify-between py-1 text-left text-sm font-medium"
-              onClick={() =>
-                setExtraMessages((prev) => [...prev, { role: "user", content: "" }])
-              }
-            >
-              <span>Add messages to prompt</span>
-              <Plus className="h-4 w-4" />
-            </button>
-            {extraMessages.map((m, i) => (
-              <Textarea
-                key={i}
-                value={m.content}
-                onChange={(e) =>
-                  setExtraMessages((prev) =>
-                    prev.map((row, idx) => (idx === i ? { ...row, content: e.target.value } : row))
-                  )
-                }
-                className="min-h-20 rounded-xl"
-                placeholder="Additional message"
-              />
-            ))}
-          </section>
-
-          <section className="space-y-3 border-b p-4">
-            <div className="text-sm font-semibold">Model</div>
-            <div className="grid grid-cols-[120px_1fr] items-center gap-2 text-sm">
-              <Label>Model</Label>
-              <Select value={model} onValueChange={setModel}>
-                <SelectTrigger className="h-9 rounded-lg">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="gpt-5.5">gpt-5.5</SelectItem>
-                  <SelectItem value="gpt-4o">gpt-4o</SelectItem>
-                  <SelectItem value="Provider default">Provider default</SelectItem>
-                </SelectContent>
-              </Select>
-              <Label>Text format</Label>
-              <Select
-                value={textFormat}
-                onValueChange={(v) => setTextFormat(v as "text" | "json_schema")}
-              >
-                <SelectTrigger className="h-9 rounded-lg">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="text">text</SelectItem>
-                  <SelectItem value="json_schema">json_schema</SelectItem>
-                </SelectContent>
-              </Select>
-              <Label>Reasoning mode</Label>
-              <Select value={reasoningMode} onValueChange={setReasoningMode}>
-                <SelectTrigger className="h-9 rounded-lg">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="standard">standard</SelectItem>
-                  <SelectItem value="minimal">minimal</SelectItem>
-                </SelectContent>
-              </Select>
-              <Label>Reasoning effort</Label>
-              <Select value={reasoningEffort} onValueChange={setReasoningEffort}>
-                <SelectTrigger className="h-9 rounded-lg">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="low">low</SelectItem>
-                  <SelectItem value="medium">medium</SelectItem>
-                  <SelectItem value="high">high</SelectItem>
-                </SelectContent>
-              </Select>
-              <Label>Verbosity</Label>
-              <Select value={verbosity} onValueChange={setVerbosity}>
-                <SelectTrigger className="h-9 rounded-lg">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="low">low</SelectItem>
-                  <SelectItem value="medium">medium</SelectItem>
-                  <SelectItem value="high">high</SelectItem>
-                </SelectContent>
-              </Select>
-              <Label>Summary</Label>
-              <Select value={summary} onValueChange={setSummary}>
-                <SelectTrigger className="h-9 rounded-lg">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="auto">auto</SelectItem>
-                  <SelectItem value="none">none</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex items-center justify-between pt-1">
-              <span className="text-sm">Store logs</span>
-              <Switch checked={storeLogs} onCheckedChange={setStoreLogs} />
-            </div>
-          </section>
-
-          <section className="space-y-3 border-b p-4">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-semibold">Variables</span>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-8 gap-1"
-                onClick={() =>
-                  setVariables((prev) => [
-                    ...prev,
-                    { key: "", label: "", required: false, description: "" },
-                  ])
-                }
-              >
-                <Plus className="h-3.5 w-3.5" />
-                Add
-              </Button>
-            </div>
-            {variables.map((v, i) => (
-              <Input
-                key={i}
-                value={v.key}
-                onChange={(e) =>
-                  setVariables((prev) =>
-                    prev.map((row, idx) => (idx === i ? { ...row, key: e.target.value } : row))
-                  )
-                }
-                placeholder="variable_key"
-                className="h-8 text-xs"
-              />
-            ))}
-          </section>
-
-          <section className="space-y-2 p-4">
-            <div className="text-sm font-semibold">Hosted tools</div>
-            {HOSTED_TOOLS.map((tool) => (
-              <div key={tool} className="flex items-center justify-between py-1 text-sm">
-                <span>{tool}</span>
-                <Switch
-                  checked={Boolean(tools[tool])}
-                  onCheckedChange={(checked) =>
-                    setTools((prev) => ({ ...prev, [tool]: checked }))
-                  }
-                />
-              </div>
-            ))}
-          </section>
-        </aside>
-
-        {showCode && (
-          <aside className="min-h-0 overflow-y-auto border-t bg-muted/20 p-3 lg:border-l lg:border-t-0">
-            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Code
-            </div>
-            <pre className="overflow-x-auto rounded-lg border bg-background p-3 text-xs leading-relaxed">
-              {JSON.stringify(
-                {
-                  name,
-                  model,
-                  textFormat,
-                  reasoningMode,
-                  reasoningEffort,
-                  verbosity,
-                  summary,
-                  storeLogs,
-                  messages: buildMessages(),
-                  variables: variables.filter((v) => v.key.trim()).map((v) => v.key),
-                },
-                null,
-                2
-              )}
-            </pre>
-          </aside>
-        )}
-        </TabsContent>
-      </Tabs>
+      <AiPromptWorkspace promptId={promptId} manageContent={manageContent} />
 
       <AiPromptDeleteDialog
         open={deleteOpen}
