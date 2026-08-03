@@ -6,13 +6,13 @@ import {
 } from "./ai-prompt-kind";
 
 describe("ai-prompt-kind mapping", () => {
-  it("exposes only Our Custom and OpenAI Managed labels", () => {
+  it("exposes lowercase our-custom / openai-published labels", () => {
     expect(AI_PROMPT_KIND_OPTIONS.map((o) => o.value).sort()).toEqual([
       "openai_managed",
       "our_custom",
     ]);
-    expect(aiPromptKindLabel("our_custom")).toBe("Our Custom Prompt");
-    expect(aiPromptKindLabel("openai_managed")).toBe("OpenAI Managed Prompt");
+    expect(aiPromptKindLabel("our_custom")).toBe("our custom prompt");
+    expect(aiPromptKindLabel("openai_managed")).toBe("openai published prompt");
   });
 
   it("normalizes legacy chad_custom and missing to our_custom", () => {

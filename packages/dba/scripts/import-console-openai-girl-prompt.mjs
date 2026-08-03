@@ -1,26 +1,23 @@
 #!/usr/bin/env node
 /**
- * Idempotent import of the console OpenAI stored prompt into a real user's
- * AI Prompts registry — same shape as Msg Auto → AI Prompts → OpenAI
- * Managed Prompt created via GUI (openai_managed + bindings), plus the
- * user-message template the stored prompt expects as `input`.
+ * Idempotent import of the console OpenAI stored prompt into the AI Prompts
+ * registry — same shape as Msg Auto → AI Prompts → openai published prompt
+ * created via GUI (openai_managed + bindings), plus the user-message
+ * template the stored prompt expects as `input`.
+ *
+ * **Amended (post Story 88):** AI Prompts is now a single global registry
+ * shared by every logged-in user, always stored under the fixed
+ * `chad_shared` repo (`CHAD_SHARED_REPO_GUID` in `knowledge.ts`) — see
+ * `ai-prompts.ts`'s file-header doc comment for the full rationale. This
+ * script no longer creates a per-user record: `createAiPrompt`/
+ * `getAiPrompt`/`listAiPrompts` never read `[username]`'s own repo at all
+ * — the `[username]` argument below is kept only so `runWithRepoContext`
+ * has a real actor identity to best-effort stamp on the Postgres history
+ * trigger; it has no bearing on where the created prompt is stored or who
+ * can see it (everyone can, by design, at this stage).
  *
  * Creates a **draft** (does NOT auto-publish). Re-run is a no-op when the
- * same slug or openaiPromptId already exists (checked against the target
- * user's own registry only — never scans other users' data).
- *
- * Every other dba write goes through `runWithRepoContext({ repoGuid,
- * username }, ...)` (see `repo-context.ts`) — `createAiPrompt`/
- * `getAiPrompt`/`listAiPrompts` all call `getCurrentRepoGuid()` internally
- * and throw outside that context. This script previously called them bare
- * at module scope, which is why running it never actually created a
- * record (immediate `getCurrentRepoGuid() called outside of a
- * request-scoped repo context` crash, exit 1, no write). Fixed by
- * resolving the target username's real `repoGuid` from the real
- * `chad_admin/users/users-list` (via `getUsersListBody()`, same source
- * `findUserByUsername` in the dashboard's login path reads — never
- * invented) and wrapping every call in `runWithRepoContext`, mirroring
- * `provision-google-viewer-secrets.mjs`'s existing pattern.
+ * same slug or openaiPromptId already exists in the shared registry.
  *
  * Usage (repo context / env as for other DBA writes — e.g. run inside the
  * local-mac-docker dashboard container so DBA_PRIMARY_BACKEND/POSTGRES_URI/
@@ -30,8 +27,8 @@
  *
  * [username] defaults to "pawel_f" (the real account that owns the console
  * CLI's data — see `human-docs/console/features/openai-prepared-prompt.md`
- * and `packages/console/src/openai/askOpenAiAboutGirl.ts`), never a shared/
- * global fallback — the record is created for exactly one real user.
+ * and `packages/console/src/openai/askOpenAiAboutGirl.ts`) purely for the
+ * actor-stamp resolution above; any valid username works identically.
  */
 
 import yaml from "js-yaml";
@@ -104,9 +101,8 @@ async function main() {
     // the input template and settings the Responses call needs.
     const created = await createAiPrompt({
       slug: SLUG,
-      name: "Console girl (OpenAI managed)",
-      description:
-        "OpenAI stored prompt from console askOpenAiAboutGirl. Same fields as GUI managed prompt.",
+      name: "first console",
+      description: "first console prompt version",
       actionType: "custom",
       promptKind: "openai_managed",
       provider: "openai",

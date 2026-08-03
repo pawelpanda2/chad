@@ -114,6 +114,9 @@ services:
       - POSTGRES_QNAP_PASSWORD=${POSTGRES_QNAP_PASSWORD:-}
       - MONGO_ROOT_USERNAME=${MONGO_ROOT_USERNAME:-}
       - MONGO_ROOT_PASSWORD=${MONGO_ROOT_PASSWORD:-}
+      # AI Prompts (Story 88 follow-up) — server-side only, read exclusively
+      # by packages/dba/src/ai-prompts-openai.ts; never sent to the browser.
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       # Beeper Server Mongo credentials — required for Dev Panel → Server Mongo
       # (runtime rebuild of :12041 URI). Never reuse MONGO_ROOT_* (legacy CHAD).
       - BEEPER_MONGO_ROOT_USERNAME=${BEEPER_MONGO_ROOT_USERNAME:-}

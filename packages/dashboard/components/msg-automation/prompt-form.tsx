@@ -25,7 +25,7 @@ export const PROMPT_KIND_OPTIONS = AI_PROMPT_KIND_OPTIONS.map(({ value, label })
   label,
 }));
 
-/** Category — for now a single Msg Creator option (Our Custom Prompt only). */
+/** Category — for now a single Msg Creator option (our custom prompt only). */
 export const PROMPT_CATEGORY_OPTIONS = [
   { value: "custom", label: "Msg Creator" },
 ] as const;
