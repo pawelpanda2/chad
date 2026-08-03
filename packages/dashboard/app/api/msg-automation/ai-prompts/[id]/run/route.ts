@@ -2,17 +2,36 @@
  * POST /api/msg-automation/ai-prompts/[id]/run
  *
  * AI Prompts → editor → **conversation** tab: executes an already-saved
- * prompt (by id) with one explicit user-typed message. Thin adapter only —
- * reads the prompt through `dba` (`getAiPrompt`, scoped to the caller's own
- * repo via `runWithRepoContext`) and executes it through the existing
- * `ai-prompts-openai.ts` boundary (`executeAiPrompt`). Never accepts a full
- * prompt definition from the client, never a `repoGuid`, never returns the
- * API key. Does not save the result anywhere (Message Creator/Msg Workout
- * are separate save paths) — conversation here is a test/run surface only.
+ * prompt (by id) against a lead analysis request — GUI equivalent of
+ * console's `askOpenAiAboutGirlFlow` → `callOpenAiPreparedPrompt`. Never a
+ * plain freestanding chat message: `leadName` is required, and the
+ * `<current_case>` sent to OpenAI is always assembled server-side from
+ * `reportBody`/`conversationBody` (the caller's selection — "none" is
+ * `null`/omitted) via `buildLeadAnalysisCurrentCase`, then
+ * `appendAdditionalUserInput` appends (never replaces) the optional
+ * free-text `additionalUserInput`. This is the *only* place that text is
+ * assembled for the real request — the client's "final prompt preview" is
+ * a separate, side-effect-free call to `lead-context/preview` that uses the
+ * exact same two functions, so preview and actual request can never drift.
+ *
+ * Otherwise unchanged: reads the prompt through `dba` (`getAiPrompt`,
+ * scoped to the caller's own repo via `runWithRepoContext`) and executes it
+ * through the existing `ai-prompts-openai.ts` boundary (`executeAiPrompt`).
+ * Never accepts a full prompt definition from the client, never a
+ * `repoGuid`, never returns the API key. Does not save the result anywhere
+ * (Message Creator/Msg Workout are separate save paths) — conversation here
+ * is a test/run surface only.
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getAiPrompt, executeAiPrompt, runWithRepoContext, AiPromptsOperationError } from "dba";
+import {
+  getAiPrompt,
+  executeAiPrompt,
+  runWithRepoContext,
+  AiPromptsOperationError,
+  buildLeadAnalysisCurrentCase,
+  appendAdditionalUserInput,
+} from "dba";
 import { getCurrentUserFromCookies } from "@/lib/session";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -29,10 +48,16 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ success: false, error: "Invalid JSON body" }, { status: 400 });
   }
   const input = (body ?? {}) as Record<string, unknown>;
-  const message = typeof input.message === "string" ? input.message.trim() : "";
-  if (!message) {
-    return NextResponse.json({ success: false, error: "message is required" }, { status: 400 });
+  const leadName = typeof input.leadName === "string" ? input.leadName.trim() : "";
+  if (!leadName) {
+    return NextResponse.json({ success: false, error: "leadName is required" }, { status: 400 });
   }
+  const reportBody = typeof input.reportBody === "string" ? input.reportBody : null;
+  const conversationBody = typeof input.conversationBody === "string" ? input.conversationBody : null;
+  const additionalUserInput = typeof input.additionalUserInput === "string" ? input.additionalUserInput : "";
+
+  const basePrompt = buildLeadAnalysisCurrentCase({ leadName, reportBody, conversationBody });
+  const message = appendAdditionalUserInput(basePrompt, additionalUserInput);
 
   try {
     const data = await runWithRepoContext(user, async () => {
