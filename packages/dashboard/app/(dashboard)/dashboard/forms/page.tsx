@@ -663,7 +663,13 @@ function FormsPageContent() {
       if (!response.ok) throw new Error(result.error || "Unknown error");
       setSubmitResult({ type: "success", message: `Lead "${leadName}" saved successfully!` });
       toast.success(`Lead "${leadName}" saved successfully!`);
-      setTimeout(() => { setSubmitResult(null); resetLeadForm(); router.push(pathname); }, 3000);
+      const afterSave =
+        searchParams.get("returnTo") || "/dashboard/views?view=leads";
+      setTimeout(() => {
+        setSubmitResult(null);
+        resetLeadForm();
+        router.push(afterSave);
+      }, 1200);
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : "Unknown error";
       setSubmitResult({ type: "error", message: errorMsg });
@@ -1480,117 +1486,195 @@ function FormsPageContent() {
   }
 
   // ============================================================================
-  // Render: Lead Form
+  // Render: Lead Form — same shell / save-frame / table layout as Add Daily Entry
   // ============================================================================
+
+  const leadReturnTo = searchParams.get("returnTo") || null;
 
   return (
     <DashboardPageShell
       contentClassName={FRAME_SECTION_GAP_CLASS}
-      upLevel={{ onClick: handleFormBack }}
+      upLevel={{
+        onClick: () =>
+          leadReturnTo ? router.push(leadReturnTo) : handleFormBack(),
+      }}
       title="Add Lead"
     >
-          <form onSubmit={handleLeadSubmit} className={FRAME_SECTION_SPACE_Y_CLASS}>
+      <form onSubmit={handleLeadSubmit} className={FRAME_SECTION_SPACE_Y_CLASS}>
+        <div
+          className={cn(
+            "flex max-w-[460px] flex-wrap items-center gap-3 rounded-lg border bg-muted/10",
+            SAVE_FRAME_PADDING_CLASS
+          )}
+        >
+          <Button type="submit" disabled={isSubmitting || !isLeadFormValid}>
+            {isSubmitting ? "Saving..." : "Save"}
+          </Button>
+          {submitResult && (
+            <span
+              className={`flex items-center gap-1 text-sm ${
+                submitResult.type === "success" ? "text-green-600" : "text-red-600"
+              }`}
+            >
+              {submitResult.type === "success" ? (
+                <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
+              ) : (
+                <AlertCircle className="h-4 w-4 flex-shrink-0" />
+              )}
+              {submitResult.message}
+            </span>
+          )}
+        </div>
 
-            {/* Top frame: Save + generated name, left-aligned (Story 62
-                standard). Generated name shown as a greyed, locked input,
-                same as ADD ACTION's Title field — not a plain span. */}
-            <div className={cn("flex max-w-[500px] flex-wrap items-end gap-3 rounded-lg border bg-muted/10", SAVE_FRAME_PADDING_CLASS)}>
-              <Button type="submit" disabled={isSubmitting || !isLeadFormValid}>
-                {isSubmitting ? "Saving..." : "Save"}
-              </Button>
-              <div className="space-y-1">
-                <Label>Title</Label>
-                <Input value={leadNamePreview} readOnly className="bg-muted font-mono w-[260px]" />
-              </div>
-            </div>
-
-            {/* Lead Name/Id Section */}
-            <div className="border-2 border-primary/30 rounded-lg p-3">
-              <div className="flex items-center gap-2 mb-2">
-                <h3 className="text-sm font-semibold text-primary">Lead Name/Id</h3>
-              </div>
-              <div className="grid gap-2 md:grid-cols-5">
-                <div className="space-y-1">
-                  <Label htmlFor="meetingDay" className="text-xs">Meeting Date *</Label>
-                  <Input id="meetingDay" type="date" value={leadData.meetingDay} onChange={e => setLeadData({ ...leadData, meetingDay: e.target.value })} required className="h-8" />
-                </div>
-                <div className="space-y-1">
-                  <Label htmlFor="source" className="text-xs">Source *</Label>
-                  <Select value={leadData.approachKind} onValueChange={v => setLeadData({ ...leadData, approachKind: v })} required>
-                    <SelectTrigger id="source" className="h-8"><SelectValue placeholder="Select" /></SelectTrigger>
+        <div className="max-w-[460px] rounded-lg border bg-muted/10 p-2">
+          <table className="w-full border-collapse text-sm">
+            <tbody>
+              <tr>
+                <td className="whitespace-nowrap border bg-muted/60 px-3 py-2 font-semibold">Title</td>
+                <td className="border bg-amber-50 px-2 py-1.5 dark:bg-amber-950/30">
+                  <Input
+                    value={leadNamePreview}
+                    readOnly
+                    className="h-8 border-0 bg-transparent font-mono shadow-none focus-visible:ring-1"
+                  />
+                </td>
+              </tr>
+              <tr>
+                <td className="whitespace-nowrap border bg-muted/60 px-3 py-2 font-semibold">
+                  Meeting Date *
+                </td>
+                <td className="border bg-amber-50 px-2 py-1.5 dark:bg-amber-950/30">
+                  <Input
+                    id="meetingDay"
+                    type="date"
+                    value={leadData.meetingDay}
+                    onChange={(e) => setLeadData({ ...leadData, meetingDay: e.target.value })}
+                    required
+                    className="h-8 border-0 bg-transparent shadow-none focus-visible:ring-1"
+                  />
+                </td>
+              </tr>
+              <tr>
+                <td className="whitespace-nowrap border bg-muted/60 px-3 py-2 font-semibold">
+                  Source *
+                </td>
+                <td className="border bg-amber-50 px-2 py-1.5 dark:bg-amber-950/30">
+                  <Select
+                    value={leadData.approachKind}
+                    onValueChange={(v) => setLeadData({ ...leadData, approachKind: v })}
+                    required
+                  >
+                    <SelectTrigger
+                      id="source"
+                      className="h-8 border-0 bg-transparent shadow-none focus:ring-1"
+                    >
+                      <SelectValue placeholder="Select" />
+                    </SelectTrigger>
                     <SelectContent>
-                      {APPROACH_KINDS.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}
+                      {APPROACH_KINDS.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
-                </div>
-                <div className="space-y-1">
-                  <Label htmlFor="name" className="text-xs">Name</Label>
-                  <Input id="name" placeholder="e.g. Ania" value={leadData.name} onChange={e => setLeadData({ ...leadData, name: e.target.value })} className="h-8" />
-                </div>
-                <div className="space-y-1">
-                  <Label htmlFor="surname" className="text-xs">Surname</Label>
-                  <Input id="surname" placeholder="e.g. Styk" value={leadData.surname} onChange={e => setLeadData({ ...leadData, surname: e.target.value })} className="h-8" />
-                </div>
-                <div className="space-y-1">
-                  <Label htmlFor="postfix" className="text-xs">Postfix</Label>
-                  <Input id="postfix" placeholder="e.g. redhead" value={leadData.postfix} onChange={e => setLeadData({ ...leadData, postfix: e.target.value })} className="h-8" />
-                </div>
-              </div>
+                </td>
+              </tr>
+              <tr>
+                <td className="whitespace-nowrap border bg-muted/60 px-3 py-2 font-semibold">Name</td>
+                <td className="border bg-amber-50 px-2 py-1.5 dark:bg-amber-950/30">
+                  <Input
+                    id="name"
+                    placeholder="e.g. Ania"
+                    value={leadData.name}
+                    onChange={(e) => setLeadData({ ...leadData, name: e.target.value })}
+                    className="h-8 border-0 bg-transparent shadow-none focus-visible:ring-1"
+                  />
+                </td>
+              </tr>
+              <tr>
+                <td className="whitespace-nowrap border bg-muted/60 px-3 py-2 font-semibold">
+                  Surname
+                </td>
+                <td className="border bg-amber-50 px-2 py-1.5 dark:bg-amber-950/30">
+                  <Input
+                    id="surname"
+                    placeholder="e.g. Styk"
+                    value={leadData.surname}
+                    onChange={(e) => setLeadData({ ...leadData, surname: e.target.value })}
+                    className="h-8 border-0 bg-transparent shadow-none focus-visible:ring-1"
+                  />
+                </td>
+              </tr>
+              <tr>
+                <td className="whitespace-nowrap border bg-muted/60 px-3 py-2 font-semibold">
+                  Postfix
+                </td>
+                <td className="border bg-amber-50 px-2 py-1.5 dark:bg-amber-950/30">
+                  <Input
+                    id="postfix"
+                    placeholder="e.g. redhead"
+                    value={leadData.postfix}
+                    onChange={(e) => setLeadData({ ...leadData, postfix: e.target.value })}
+                    className="h-8 border-0 bg-transparent shadow-none focus-visible:ring-1"
+                  />
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div className="max-w-[460px] rounded-lg border bg-muted/10 p-2">
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <span className="text-sm font-semibold">Contacts</span>
+            <Select value={newContactType} onValueChange={setNewContactType}>
+              <SelectTrigger className="h-8 w-[120px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {CONTACT_TYPES.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button type="button" variant="outline" size="sm" onClick={addContact} className="h-8 gap-1 px-2">
+              <Plus className="h-3 w-3" />
+              New
+            </Button>
+          </div>
+
+          {contacts.length === 0 ? (
+            <div className="py-2 text-center text-xs text-muted-foreground">
+              No contacts yet. Select type and click &quot;+ New&quot;.
             </div>
-
-            {/* Contacts Section */}
-            <div className="border-2 border-border rounded-lg p-3">
-              <div className="flex items-center gap-2 mb-2">
-                <h3 className="text-sm font-semibold">Contacts</h3>
-                <Select value={newContactType} onValueChange={setNewContactType}>
-                  <SelectTrigger className="h-8 w-[120px]"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {CONTACT_TYPES.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-                <Button type="button" variant="outline" size="sm" onClick={addContact} className="h-8 gap-1 px-2">
-                  <Plus className="h-3 w-3" />New
-                </Button>
-              </div>
-
-              {contacts.length === 0 ? (
-                <div className="text-xs text-muted-foreground text-center py-2">
-                  No contacts yet. Select type and click &quot;+ New&quot;.
+          ) : (
+            <div className="space-y-1">
+              {contacts.map((contact) => (
+                <div key={contact.id} className="flex items-center gap-2">
+                  <span className="w-[80px] truncate text-sm text-muted-foreground">{contact.type}</span>
+                  <Input
+                    placeholder="Value"
+                    value={contact.value}
+                    onChange={(e) => updateContact(contact.id, e.target.value)}
+                    className="h-8 flex-1"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => removeContact(contact.id)}
+                    className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
                 </div>
-              ) : (
-                <div className="space-y-1">
-                  {contacts.map((contact) => (
-                    <div key={contact.id} className="flex items-center gap-2">
-                      <span className="text-sm text-muted-foreground w-[80px] truncate">{contact.type}</span>
-                      <Input
-                        placeholder="Value"
-                        value={contact.value}
-                        onChange={e => updateContact(contact.id, e.target.value)}
-                        className="flex-1 h-8"
-                      />
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => removeContact(contact.id)}
-                        className="text-muted-foreground hover:text-destructive h-8 w-8 p-0"
-                      >
-                        <X className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              )}
+              ))}
             </div>
-
-            {/* Submit Result */}
-            {submitResult && (
-              <div className={`p-2 rounded-lg flex items-center gap-2 text-sm ${submitResult.type === "success" ? "bg-green-50 text-green-700 border border-green-200" : "bg-red-50 text-red-700 border border-red-200"}`}>
-                {submitResult.type === "success" ? <CheckCircle2 className="h-4 w-4 flex-shrink-0" /> : <AlertCircle className="h-4 w-4 flex-shrink-0" />}
-                <span>{submitResult.message}</span>
-              </div>
-            )}
-          </form>
+          )}
+        </div>
+      </form>
     </DashboardPageShell>
   );
 }
