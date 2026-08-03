@@ -890,17 +890,6 @@ function ViewsPageContent() {
                       >
                         {draft.status === "error" ? "Error" : draft.status === "finalizing" ? "Finalizing" : "Draft"}
                       </span>
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate font-medium text-sm">
-                          {draft.displayName || draft.recordedDate}
-                        </div>
-                        <div className="truncate text-xs text-muted-foreground">
-                          {draft.recordedDate}
-                          {` · ${formatDurationClock(draft.totalDurationMs) ?? "00:00"}`}
-                          {draft.segmentsCount > 1 ? ` · ${draft.segmentsCount} segments` : ""}
-                          {draft.status === "error" && draft.error ? ` · ${draft.error}` : ""}
-                        </div>
-                      </div>
                       <Button
                         variant="outline"
                         size="sm"
@@ -913,6 +902,17 @@ function ViewsPageContent() {
                       >
                         Continue
                       </Button>
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate font-medium text-sm">
+                          {draft.displayName || draft.recordedDate}
+                        </div>
+                        <div className="truncate text-xs text-muted-foreground">
+                          {draft.recordedDate}
+                          {` · ${formatDurationClock(draft.totalDurationMs) ?? "00:00"}`}
+                          {draft.segmentsCount > 1 ? ` · ${draft.segmentsCount} segments` : ""}
+                          {draft.status === "error" && draft.error ? ` · ${draft.error}` : ""}
+                        </div>
+                      </div>
                     </div>
                   ))}
                 </div>

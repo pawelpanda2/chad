@@ -652,18 +652,24 @@ export function AudioRecordingForm({
     <div className={cn(FRAME_SECTION_SPACE_Y_CLASS, FRAME_SECTION_GAP_CLASS)}>
       <div
         className={cn(
-          "flex max-w-[500px] flex-wrap items-center gap-3 rounded-lg border bg-muted/10",
+          "flex w-fit flex-nowrap items-center gap-3 rounded-lg border bg-muted/10",
           SAVE_FRAME_PADDING_CLASS,
         )}
       >
         <Button
           type="button"
+          className="shrink-0"
           onClick={() => void handleSave()}
           disabled={phase === "saving" || isBusyRecording || !apiSupported}
         >
           {phase === "saving" ? "Saving..." : "Save"}
         </Button>
-        <Button type="button" variant="outline" onClick={() => router.push(returnTo)}>
+        <Button
+          type="button"
+          variant="outline"
+          className="shrink-0"
+          onClick={() => router.push(returnTo)}
+        >
           Full View
         </Button>
         <Input
@@ -672,11 +678,11 @@ export function AudioRecordingForm({
           tabIndex={-1}
           aria-label="Recording name"
           placeholder="Recording name"
-          className="h-9 min-w-[160px] flex-1 bg-muted font-mono"
+          className="h-9 w-[260px] shrink-0 bg-muted font-mono"
         />
         {result && (
           <span
-            className={`flex items-center gap-1 text-sm ${
+            className={`flex shrink-0 items-center gap-1 whitespace-nowrap text-sm ${
               result.type === "success" ? "text-green-600" : "text-red-600"
             }`}
           >

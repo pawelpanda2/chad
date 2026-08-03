@@ -3,7 +3,6 @@ import { Suspense, useState, useEffect, useCallback, useMemo } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
 import { FRAME_SECTION_GAP_CLASS, FRAME_SECTION_SPACE_Y_CLASS, SAVE_FRAME_PADDING_CLASS } from "@/components/shared/layout-tokens";
@@ -273,11 +272,10 @@ function FormsPageContent() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitResult, setSubmitResult] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
-  // Reports form state — two stages. Stage 1 (reportLoca === null): the
-  // metadata panel is editable and the generated name recomputes live from
-  // date/kind/suffix. Create locks the metadata and reveals stage 2: the
-  // editor, saved via the same loca (never PostParentItem again) so
-  // repeated saves never create duplicate reports under views/reports.
+  // Reports form state — metadata editable until first Save creates the item
+  // (locks date/kind/suffix + server-confirmed name). Further Saves update
+  // body under the same loca. Three frames: Save/Full View/name · fields ·
+  // Record (voice + editor).
   const [reportDate, setReportDate] = useState(getTodayDate());
   const [reportKind, setReportKind] = useState<"dg" | "ng" | "op" | "other">("dg");
   const [reportSuffix, setReportSuffix] = useState("");
@@ -288,8 +286,8 @@ function FormsPageContent() {
   const [reportSaved, setReportSaved] = useState(false);
   const [reportError, setReportError] = useState<string | null>(null);
 
-  // Generated name is only "live" before Create — once reportItemName is
-  // set (Create succeeded), that locked, server-confirmed name is shown
+  // Generated name is only "live" before first Save — once reportItemName is
+  // set (Save succeeded), that locked, server-confirmed name is shown
   // instead, and date/kind/suffix can no longer change it (see prompt: the
   // generated name becomes the report's identity, not a display refreshed
   // on every keystroke).
@@ -776,14 +774,17 @@ function FormsPageContent() {
     }
   };
 
-  const handleReportCreate = async () => {
+  const handleReportCreate = async (): Promise<boolean> => {
     setReportSaving(true);
     setReportError(null);
     try {
       const response = await fetch("/api/forms/reports", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: "", itemName: generatedReportName }),
+        body: JSON.stringify({
+          content: reportContent,
+          itemName: generatedReportName,
+        }),
       });
       const result = await response.json();
       if (!result.success) {
@@ -791,11 +792,15 @@ function FormsPageContent() {
       }
       setReportLoca(result.loca);
       setReportItemName(result.itemName);
-      toast.success(`Report "${result.itemName}" created`);
+      setReportSaved(true);
+      toast.success(`Report "${result.itemName}" saved`);
+      setTimeout(() => setReportSaved(false), 3000);
+      return true;
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : "Unknown error";
       setReportError(errorMsg);
       toast.error(`Error: ${errorMsg}`);
+      return false;
     } finally {
       setReportSaving(false);
     }
@@ -838,17 +843,55 @@ function FormsPageContent() {
     }
   };
 
+  /** Top Save frame: create on first save, update thereafter. */
+  const handleReportTopSave = async () => {
+    if (reportLoca) {
+      await handleReportSave();
+    } else {
+      await handleReportCreate();
+    }
+  };
+
   const handleReportContentChange = (value: string) => {
     setReportContent(value);
     if (reportSaved) setReportSaved(false);
   };
 
   /** Move: append the recording panel's transcript to the report body and
-   * save it immediately, through the same `handleReportSave` the Save
-   * button uses — never a second, duplicated save path. */
+   * save it immediately, through the same create/update path as top Save —
+   * never a second, duplicated save path. */
   const handleReportVoiceMove = async (text: string): Promise<boolean> => {
     const combined = reportContent.trim() ? `${reportContent}\n${text}` : text;
     setReportContent(combined);
+    if (!reportLoca) {
+      // Create with the combined body in one shot (fields still editable until success).
+      setReportSaving(true);
+      setReportError(null);
+      try {
+        const response = await fetch("/api/forms/reports", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: combined, itemName: generatedReportName }),
+        });
+        const result = await response.json();
+        if (!result.success) {
+          throw new Error(result.error || "Unknown error");
+        }
+        setReportLoca(result.loca);
+        setReportItemName(result.itemName);
+        setReportSaved(true);
+        toast.success(`Report "${result.itemName}" saved`);
+        setTimeout(() => setReportSaved(false), 3000);
+        return true;
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : "Unknown error";
+        setReportError(errorMsg);
+        toast.error(`Error: ${errorMsg}`);
+        return false;
+      } finally {
+        setReportSaving(false);
+      }
+    }
     return handleReportSave(combined);
   };
 
@@ -930,7 +973,7 @@ function FormsPageContent() {
     return (
       <DashboardPageShell
         contentClassName={FRAME_SECTION_GAP_CLASS}
-        upLevel={{ onClick: handleFormBack }}
+        upLevel={{ onClick: () => router.push(returnTo) }}
         title="Add Recording"
       >
         <AudioRecordingForm returnTo={returnTo} initialDraftId={draftId} />
@@ -944,18 +987,19 @@ function FormsPageContent() {
 
   if (selectedForm === "add_prompt") {
     const promptId = searchParams.get("promptId");
+    const promptReturnTo =
+      searchParams.get("returnTo") || "/dashboard/msg-automation/ai-prompts";
     return (
       <DashboardPageShell
         contentClassName={FRAME_SECTION_GAP_CLASS}
         upLevel={{
-          onClick: () =>
-            router.push(promptId ? "/dashboard/msg-automation/ai-prompts" : "/dashboard/forms"),
+          onClick: () => router.push(promptReturnTo),
         }}
         title={promptId ? "Edit Prompt" : "Add Prompt"}
       >
         <PromptForm
           promptId={promptId}
-          returnTo={promptId ? "/dashboard/msg-automation/ai-prompts" : "/dashboard/forms"}
+          returnTo={promptReturnTo}
         />
       </DashboardPageShell>
     );
@@ -967,96 +1011,149 @@ function FormsPageContent() {
 
   if (selectedForm === "reports") {
     const isReportCreated = reportLoca !== null;
+    const reportReturnTo =
+      searchParams.get("returnTo") || "/dashboard/views?view=reports";
     return (
       <DashboardPageShell
         scroll={!isReportCreated}
         contentClassName={FRAME_SECTION_GAP_CLASS}
-        upLevel={{ onClick: handleFormBack }}
+        upLevel={{ onClick: () => router.push(reportReturnTo) }}
         title="Add Report"
       >
         <ErrorBox message={reportError} className="shrink-0" />
 
-        {/* Inner frame: Create (or its locked Generated name placeholder)
-            first, then Generated name — both left-aligned, top of the
-            frame (Story 62 standard: save/create controls at the top,
-            grouped with the generated name). */}
-        <div className={cn("shrink-0 rounded-lg border bg-muted/10", SAVE_FRAME_PADDING_CLASS)}>
-          <div className="flex flex-wrap items-end gap-3">
-            {!isReportCreated && (
-              <Button onClick={handleReportCreate} disabled={reportSaving}>
-                {reportSaving ? "Creating..." : "Create"}
-              </Button>
-            )}
-            <div className="space-y-1">
-              <Label>Generated name</Label>
-              <Input value={displayedReportName} readOnly className="bg-muted font-mono w-[320px]" />
-            </div>
-          </div>
-
-          {/* Row 2: the rest of the metadata, locked once the report exists. */}
-          <div className="mt-3 grid gap-3 md:grid-cols-[auto_auto_1fr] items-end">
-            <div className="space-y-1">
-              <Label>Date</Label>
-              <Input
-                type="date"
-                value={reportDate}
-                onChange={e => setReportDate(e.target.value)}
-                disabled={isReportCreated}
-                className="w-[160px]"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>Report kind</Label>
-              <Select
-                value={reportKind}
-                onValueChange={v => setReportKind(v as "dg" | "ng" | "op" | "other")}
-                disabled={isReportCreated}
-              >
-                <SelectTrigger className="w-[170px]"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="dg">Daygame</SelectItem>
-                  <SelectItem value="ng">Nightgame</SelectItem>
-                  <SelectItem value="op">Organized party</SelectItem>
-                  <SelectItem value="other">Other</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label>Rest of the name</Label>
-              <Input
-                placeholder="e.g. galeria mokotów"
-                value={reportSuffix}
-                onChange={e => setReportSuffix(e.target.value)}
-                disabled={isReportCreated}
-              />
-            </div>
-          </div>
+        {/* 1) Save frame — Save + Full View + generated name, one line */}
+        <div
+          className={cn(
+            "flex w-fit shrink-0 flex-nowrap items-center gap-3 rounded-lg border bg-muted/10",
+            SAVE_FRAME_PADDING_CLASS
+          )}
+        >
+          <Button
+            type="button"
+            className="shrink-0"
+            onClick={() => void handleReportTopSave()}
+            disabled={reportSaving}
+          >
+            {reportSaving ? "Saving..." : "Save"}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="shrink-0"
+            onClick={() => router.push(reportReturnTo)}
+          >
+            Full View
+          </Button>
+          <Input
+            value={displayedReportName}
+            readOnly
+            aria-label="Generated report name"
+            className="h-8 w-[320px] shrink-0 bg-muted font-mono"
+          />
+          {reportSaved && (
+            <span className="flex shrink-0 items-center gap-1 whitespace-nowrap text-sm text-green-600">
+              <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
+              Saved
+            </span>
+          )}
         </div>
 
-        <VoiceRecordingPanel
-          reportCreated={isReportCreated}
-          saving={reportSaving}
-          onMove={handleReportVoiceMove}
-        />
+        {/* 2) Fields frame — amber table (locked after first Save) */}
+        <div className="max-w-[460px] shrink-0 rounded-lg border bg-muted/10 p-2">
+          <table className="w-full border-collapse text-sm">
+            <tbody>
+              <tr>
+                <td className="whitespace-nowrap border bg-muted/60 px-3 py-2 font-semibold">
+                  Date
+                </td>
+                <td className="border bg-amber-50 px-2 py-1.5 dark:bg-amber-950/30">
+                  <Input
+                    type="date"
+                    value={reportDate}
+                    onChange={(e) => setReportDate(e.target.value)}
+                    disabled={isReportCreated}
+                    className="h-8 border-0 bg-transparent shadow-none focus-visible:ring-1"
+                  />
+                </td>
+              </tr>
+              <tr>
+                <td className="whitespace-nowrap border bg-muted/60 px-3 py-2 font-semibold">
+                  Report kind
+                </td>
+                <td className="border bg-amber-50 px-2 py-1.5 dark:bg-amber-950/30">
+                  <Select
+                    value={reportKind}
+                    onValueChange={(v) =>
+                      setReportKind(v as "dg" | "ng" | "op" | "other")
+                    }
+                    disabled={isReportCreated}
+                  >
+                    <SelectTrigger className="h-8 border-0 bg-transparent shadow-none focus:ring-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="dg">Daygame</SelectItem>
+                      <SelectItem value="ng">Nightgame</SelectItem>
+                      <SelectItem value="op">Organized party</SelectItem>
+                      <SelectItem value="other">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </td>
+              </tr>
+              <tr>
+                <td className="whitespace-nowrap border bg-muted/60 px-3 py-2 font-semibold">
+                  Rest of the name
+                </td>
+                <td className="border bg-amber-50 px-2 py-1.5 dark:bg-amber-950/30">
+                  <Input
+                    placeholder="e.g. galeria mokotów"
+                    value={reportSuffix}
+                    onChange={(e) => setReportSuffix(e.target.value)}
+                    disabled={isReportCreated}
+                    className="h-8 border-0 bg-transparent shadow-none focus-visible:ring-1"
+                  />
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
 
-        {isReportCreated && (
+        {/* 3) Record frame — voice dictation + report body */}
+        <div
+          className={cn(
+            "flex min-h-0 flex-1 flex-col gap-[10px] rounded-lg border bg-muted/10",
+            SAVE_FRAME_PADDING_CLASS,
+            isReportCreated ? "overflow-hidden" : "shrink-0"
+          )}
+        >
+          <VoiceRecordingPanel
+            reportCreated={true}
+            saving={reportSaving}
+            onMove={handleReportVoiceMove}
+            className="rounded-lg border bg-background shadow-none"
+          />
           <TextEditorWithToolbar
             value={reportContent}
             onChange={handleReportContentChange}
-            onSave={handleReportSave}
+            onSave={() => void handleReportTopSave()}
             saving={reportSaving}
             saved={reportSaved}
+            showSave={false}
             placeholder="Write your report..."
             defaultTab="editor"
-            className="h-full"
+            className={cn(
+              "min-h-[240px] rounded-lg border bg-background",
+              isReportCreated ? "h-full flex-1" : "h-[320px]"
+            )}
           />
-        )}
+        </div>
       </DashboardPageShell>
     );
   }
 
   // ============================================================================
-  // Render: Action Form
+  // Render: Action Form — same shell / save-frame / table layout as Add Lead
   // ============================================================================
 
   if (selectedForm === "action") {
@@ -1066,45 +1163,106 @@ function FormsPageContent() {
         upLevel={{ onClick: handleFormBack }}
         title="Add Action"
       >
-            <form onSubmit={handleActionSubmit} className={FRAME_SECTION_SPACE_Y_CLASS}>
-              {/* Top frame: Save + generated name, left-aligned (Story 62
-                  standard — save controls live at the top, grouped with the
-                  generated name when one exists). Inner frames left-anchor
-                  to a 500px default width rather than stretching full-width. */}
-              <div className={cn("flex max-w-[500px] flex-wrap items-center gap-3 rounded-lg border bg-muted/10", SAVE_FRAME_PADDING_CLASS)}>
-                <Button type="submit" disabled={isSubmitting}>
-                  {isSubmitting ? "Saving..." : "Save"}
-                </Button>
-                <Input value={actionData.actionTitle} readOnly className="bg-muted font-mono w-[200px]" />
-              </div>
+        <form onSubmit={handleActionSubmit} className={FRAME_SECTION_SPACE_Y_CLASS}>
+          {/* Save frame may be wider than the fields frame — keep Save /
+              Full View / generated name on one line (do not flex-wrap). */}
+          <div
+            className={cn(
+              "flex w-fit flex-nowrap items-center gap-3 rounded-lg border bg-muted/10",
+              SAVE_FRAME_PADDING_CLASS
+            )}
+          >
+            <Button type="submit" disabled={isSubmitting} className="shrink-0">
+              {isSubmitting ? "Saving..." : "Save"}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleFormBack}
+              className="shrink-0"
+            >
+              Full View
+            </Button>
+            <Input
+              value={actionData.actionTitle}
+              readOnly
+              aria-label="Generated action title"
+              className="h-8 w-[260px] shrink-0 bg-muted font-mono"
+            />
+            {submitResult && (
+              <span
+                className={`flex shrink-0 items-center gap-1 whitespace-nowrap text-sm ${
+                  submitResult.type === "success" ? "text-green-600" : "text-red-600"
+                }`}
+              >
+                {submitResult.type === "success" ? (
+                  <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
+                ) : (
+                  <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                )}
+                {submitResult.message}
+              </span>
+            )}
+          </div>
 
-              {/* Second frame: the rest of the fields. */}
-              <div className="max-w-[500px] space-y-3 rounded-lg border bg-muted/10 p-4">
-                <div className="grid gap-3 md:grid-cols-3 items-end">
-                  <div className="space-y-1">
-                    <Label>Type</Label>
-                    <Select value={actionData.actionType} onValueChange={v => setActionData({ ...actionData, actionType: v as "dg" | "ng" })}>
-                      <SelectTrigger className="w-[120px]"><SelectValue /></SelectTrigger>
+          <div className="max-w-[460px] rounded-lg border bg-muted/10 p-2">
+            <table className="w-full border-collapse text-sm">
+              <tbody>
+                <tr>
+                  <td className="whitespace-nowrap border bg-muted/60 px-3 py-2 font-semibold">Type</td>
+                  <td className="border bg-amber-50 px-2 py-1.5 dark:bg-amber-950/30">
+                    <Select
+                      value={actionData.actionType}
+                      onValueChange={(v) =>
+                        setActionData({ ...actionData, actionType: v as "dg" | "ng" })
+                      }
+                    >
+                      <SelectTrigger className="h-8 border-0 bg-transparent shadow-none focus:ring-1">
+                        <SelectValue />
+                      </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="dg">Daygame</SelectItem>
                         <SelectItem value="ng">Nightgame</SelectItem>
                       </SelectContent>
                     </Select>
-                  </div>
-                  <div className="space-y-1">
-                    <Label>Suffix (optional)</Label>
-                    <Input placeholder="e.g. gallery" value={actionData.optionalTitleSuffix} onChange={e => setActionData({ ...actionData, optionalTitleSuffix: e.target.value })} />
-                  </div>
-                  <div className="space-y-1">
-                    <Label>Date</Label>
-                    <Input type="date" value={actionData.actionDate} onChange={e => setActionData({ ...actionData, actionDate: e.target.value })} className="w-[160px]" />
-                  </div>
-                </div>
-                <div className="grid gap-3 md:grid-cols-2">
-                  <div className="space-y-1">
-                    <Label>City</Label>
-                    <Select value={actionData.city} onValueChange={v => setActionData({ ...actionData, city: v })}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
+                  </td>
+                </tr>
+                <tr>
+                  <td className="whitespace-nowrap border bg-muted/60 px-3 py-2 font-semibold">
+                    Suffix
+                  </td>
+                  <td className="border bg-amber-50 px-2 py-1.5 dark:bg-amber-950/30">
+                    <Input
+                      placeholder="e.g. gallery"
+                      value={actionData.optionalTitleSuffix}
+                      onChange={(e) =>
+                        setActionData({ ...actionData, optionalTitleSuffix: e.target.value })
+                      }
+                      className="h-8 border-0 bg-transparent shadow-none focus-visible:ring-1"
+                    />
+                  </td>
+                </tr>
+                <tr>
+                  <td className="whitespace-nowrap border bg-muted/60 px-3 py-2 font-semibold">Date</td>
+                  <td className="border bg-amber-50 px-2 py-1.5 dark:bg-amber-950/30">
+                    <Input
+                      type="date"
+                      value={actionData.actionDate}
+                      onChange={(e) => setActionData({ ...actionData, actionDate: e.target.value })}
+                      className="h-8 border-0 bg-transparent shadow-none focus-visible:ring-1"
+                    />
+                  </td>
+                </tr>
+                <tr>
+                  <td className="whitespace-nowrap border bg-muted/60 px-3 py-2 font-semibold">City</td>
+                  <td className="border bg-amber-50 px-2 py-1.5 dark:bg-amber-950/30">
+                    <Select
+                      value={actionData.city}
+                      onValueChange={(v) => setActionData({ ...actionData, city: v })}
+                    >
+                      <SelectTrigger className="h-8 border-0 bg-transparent shadow-none focus:ring-1">
+                        <SelectValue />
+                      </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="warszawa">Warsaw</SelectItem>
                         <SelectItem value="krakow">Krakow</SelectItem>
@@ -1112,24 +1270,40 @@ function FormsPageContent() {
                         <SelectItem value="gdansk">Gdansk</SelectItem>
                       </SelectContent>
                     </Select>
-                  </div>
-                  <div className="space-y-1">
-                    <Label>Start Time</Label>
-                    <Input type="time" value={actionData.actionStartTime} onChange={e => setActionData({ ...actionData, actionStartTime: e.target.value })} />
-                  </div>
-                </div>
-                <div className="space-y-1">
-                  <Label>Notes</Label>
-                  <Input value={actionData.notes} onChange={e => setActionData({ ...actionData, notes: e.target.value })} placeholder="Optional notes..." />
-                </div>
-              </div>
-            </form>
-        {submitResult && (
-          <div className={`mt-3 p-3 rounded-lg flex items-center gap-2 ${submitResult.type === "success" ? "bg-green-50 text-green-700 border border-green-200" : "bg-red-50 text-red-700 border border-red-200"}`}>
-            {submitResult.type === "success" ? <CheckCircle2 className="h-5 w-5 flex-shrink-0" /> : <AlertCircle className="h-5 w-5 flex-shrink-0" />}
-            <span className="text-sm">{submitResult.message}</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td className="whitespace-nowrap border bg-muted/60 px-3 py-2 font-semibold">
+                    Start Time
+                  </td>
+                  <td className="border bg-amber-50 px-2 py-1.5 dark:bg-amber-950/30">
+                    <Input
+                      type="time"
+                      value={actionData.actionStartTime}
+                      onChange={(e) =>
+                        setActionData({ ...actionData, actionStartTime: e.target.value })
+                      }
+                      className="h-8 border-0 bg-transparent shadow-none focus-visible:ring-1"
+                    />
+                  </td>
+                </tr>
+                <tr>
+                  <td className="whitespace-nowrap border bg-muted/60 px-3 py-2 font-semibold">
+                    Notes
+                  </td>
+                  <td className="border bg-amber-50 px-2 py-1.5 dark:bg-amber-950/30">
+                    <Input
+                      value={actionData.notes}
+                      onChange={(e) => setActionData({ ...actionData, notes: e.target.value })}
+                      placeholder="Optional notes..."
+                      className="h-8 border-0 bg-transparent shadow-none focus-visible:ring-1"
+                    />
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
-        )}
+        </form>
       </DashboardPageShell>
     );
   }
@@ -1501,15 +1675,37 @@ function FormsPageContent() {
       title="Add Lead"
     >
       <form onSubmit={handleLeadSubmit} className={FRAME_SECTION_SPACE_Y_CLASS}>
+        {/* Save frame may be wider than the fields frame — keep Save /
+            Full View / generated name on one line (do not flex-wrap). */}
         <div
           className={cn(
-            "flex max-w-[460px] flex-wrap items-center gap-3 rounded-lg border bg-muted/10",
+            "flex w-fit flex-nowrap items-center gap-3 rounded-lg border bg-muted/10",
             SAVE_FRAME_PADDING_CLASS
           )}
         >
-          <Button type="submit" disabled={isSubmitting || !isLeadFormValid}>
+          <Button
+            type="submit"
+            disabled={isSubmitting || !isLeadFormValid}
+            className="shrink-0"
+          >
             {isSubmitting ? "Saving..." : "Save"}
           </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="shrink-0"
+            onClick={() =>
+              router.push(leadReturnTo || "/dashboard/views?view=leads")
+            }
+          >
+            Full View
+          </Button>
+          <Input
+            value={leadNamePreview}
+            readOnly
+            aria-label="Generated lead name"
+            className="h-8 w-[260px] shrink-0 bg-muted font-mono"
+          />
           {submitResult && (
             <span
               className={`flex items-center gap-1 text-sm ${
@@ -1529,16 +1725,6 @@ function FormsPageContent() {
         <div className="max-w-[460px] rounded-lg border bg-muted/10 p-2">
           <table className="w-full border-collapse text-sm">
             <tbody>
-              <tr>
-                <td className="whitespace-nowrap border bg-muted/60 px-3 py-2 font-semibold">Title</td>
-                <td className="border bg-amber-50 px-2 py-1.5 dark:bg-amber-950/30">
-                  <Input
-                    value={leadNamePreview}
-                    readOnly
-                    className="h-8 border-0 bg-transparent font-mono shadow-none focus-visible:ring-1"
-                  />
-                </td>
-              </tr>
               <tr>
                 <td className="whitespace-nowrap border bg-muted/60 px-3 py-2 font-semibold">
                   Meeting Date *
