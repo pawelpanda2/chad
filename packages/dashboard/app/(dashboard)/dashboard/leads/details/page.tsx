@@ -10,7 +10,6 @@ import { getNormalizedContactLink, getSafeReturnTo } from "@/lib/lead-links";
 import {
   RefreshCw,
   AlertCircle,
-  User,
   MessageCircle,
   Plus,
   Loader2,
@@ -359,9 +358,6 @@ function LeadDetailsPageContent() {
       <Card className="gap-0 py-0">
         <CardContent className="px-[14px] py-[12px]">
           <div className="flex items-start gap-3">
-            <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-              <User className="h-5 w-5 text-primary" />
-            </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
                 <h1 className="text-base font-semibold leading-tight truncate">{details.leadName}</h1>
@@ -380,17 +376,16 @@ function LeadDetailsPageContent() {
       {/* Contacts Card */}
       <Card className="gap-0 py-0">
         <CardContent className="px-[14px] py-[10px]">
-          <h2 className="text-sm font-semibold mb-2">Contacts</h2>
-
-          {details.contactsError ? (
-            <div className="flex items-center gap-2 text-amber-600 bg-amber-50 p-3 rounded-lg text-sm">
-              <AlertCircle className="h-4 w-4" />
-              <span>{details.contactsError}</span>
+          {details.contactsError || !details.contacts ? (
+            <div className="flex items-center gap-2 text-sm">
+              <h2 className="font-semibold">Contacts</h2>
+              <span className="text-muted-foreground">·</span>
+              <span className="text-muted-foreground">empty</span>
             </div>
-          ) : !details.contacts ? (
-            <div className="text-sm text-muted-foreground">No contacts</div>
           ) : (
-            <div className="space-y-1.5">
+            <>
+              <h2 className="text-sm font-semibold mb-2">Contacts</h2>
+              <div className="space-y-1.5">
               {(() => {
                 const orderedKeys = CONTACT_FIELD_CONFIG.map((c) => c.key).filter((key) => {
                   const values = toContactValues(details.contacts?.[key]);
@@ -427,7 +422,8 @@ function LeadDetailsPageContent() {
                   );
                 });
               })()}
-            </div>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
