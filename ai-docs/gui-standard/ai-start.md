@@ -37,6 +37,12 @@ scrollami + kolapsującym nagłówkiem (poniżej), i drobne, powtarzalne wzorce
 tooltip po kliknięciu) wypracowane przy Beeperze, które nadają się do
 ponownego użycia w innych zakładkach.
 
+**Forms / Views (Save frame, Full View, tabela amber, `returnTo`, drafty):**
+patrz osobny folder
+[`ai-docs/gui-standards/`](../gui-standards/ai-start.md)
+(liczba mnoga) — [forms-and-views.md](../gui-standards/forms-and-views.md).
+Nie mieszaj tych standardów z Beeper split-view poniżej.
+
 ## Wzorzec: split-view z dwoma niezależnymi scrollami + kolapsujący nagłówek
 
 **Gdzie:** `packages/dashboard/app/(dashboard)/dashboard/beeper/page.tsx`
@@ -162,5 +168,7 @@ raz są mylące.
 
 - [../../human-docs/dashboard/common/features/responsive-layout-standard.md](../../human-docs/dashboard/common/features/responsive-layout-standard.md) —
   ogólny standard ramki/scrolla/tabeli z edycją inline (czytaj najpierw).
+- [../gui-standards/ai-start.md](../gui-standards/ai-start.md) —
+  Forms + Views (Save / Full View / tabela pól / `returnTo`).
 - [../beeper/ai-start.md](../beeper/ai-start.md) — architektura Beeper sync/Mongo.
 - [../msg-workout/ai-start.md](../msg-workout/ai-start.md) — Story 99 msg workout ↔ Beeper linking.
