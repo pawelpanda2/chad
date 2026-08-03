@@ -658,28 +658,25 @@ function ViewsPageContent() {
                     key={lead.leadKey}
                     className={`flex items-center group ${LIST_ROW_CLASS}`}
                   >
-                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <Link
+                        href={buildLeadDetailsHref({
+                          leadName: lead.leadName,
+                          leadLoca: lead.loca,
+                          returnTo,
+                        })}
+                        className="font-medium text-sm truncate hover:text-primary hover:underline"
+                      >
+                        {lead.leadName}
+                      </Link>
                       <Link
                         href={getLeadDetailsHref(lead.leadName, lead.loca)}
-                        className="flex flex-shrink-0 items-center gap-2 rounded-lg"
+                        className="flex flex-shrink-0 items-center gap-1 text-xs text-muted-foreground hover:text-primary"
                         aria-label={`Open lead details for ${lead.leadName}`}
                       >
-                        <span className="text-xs text-muted-foreground flex-shrink-0">
-                          {lead.leadKey}.
-                        </span>
+                        <span aria-hidden="true">·</span>
+                        {lead.leadKey}
                       </Link>
-                      <div className="flex items-center gap-2 min-w-0 flex-1">
-                        <Link
-                          href={buildLeadDetailsHref({
-                            leadName: lead.leadName,
-                            leadLoca: lead.loca,
-                            returnTo,
-                          })}
-                          className="font-medium text-sm truncate hover:text-primary hover:underline"
-                        >
-                          {lead.leadName}
-                        </Link>
-                      </div>
                     </div>
                   </div>
                 ))}
