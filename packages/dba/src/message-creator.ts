@@ -531,6 +531,8 @@ export async function saveMyProposals(leadLoca: string, text: string): Promise<{
  * sync or have no phone number to match on — never a regression for
  * those, only an upgrade for leads that do have live data.
  */
+export type LeadConversationMatchBasis = "saved-link" | "live-match" | "legacy-fallback" | "not-found";
+
 export async function getLeadConversationForCreator(
   leadName: string,
   leadLoca?: string
@@ -540,6 +542,9 @@ export async function getLeadConversationForCreator(
   channel: string | null;
   hash: string | null;
   error?: string;
+  /** Which tier actually produced this result — reported directly by the
+   *  branch that matched, never re-derived/guessed by a caller. */
+  basis: LeadConversationMatchBasis;
 }> {
   if (leadLoca) {
     try {
@@ -558,6 +563,7 @@ export async function getLeadConversationForCreator(
             body,
             channel: match.channel ?? contact?.channels[0]?.title ?? null,
             hash: hashConversationContent(body),
+            basis: saved ? "saved-link" : "live-match",
           };
         }
       }
@@ -569,12 +575,14 @@ export async function getLeadConversationForCreator(
 
   const result = await chad_FindConversationByLeadName(leadName);
   const body = result.body;
+  const found = Boolean(result.found && body);
   return {
-    found: Boolean(result.found && body),
+    found,
     body,
     channel: result.channel,
     hash: hashConversationContent(body),
     error: result.error,
+    basis: found ? "legacy-fallback" : "not-found",
   };
 }
 

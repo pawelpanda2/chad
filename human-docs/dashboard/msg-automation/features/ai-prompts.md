@@ -95,6 +95,38 @@ Story 88's `06_others_from_report.md`):
   by `findPublishedAiPrompt` (Content Provider has no working Delete, so
   history isn't erased, just excluded from resolution).
 
+## Conversation tab — lead analysis flow (Story 102)
+
+GUI equivalent of `packages/console/src/openai/askOpenAiAboutGirl.ts`'s
+`askOpenAiAboutGirlFlow` — not a context-free chat. The editor's
+**conversation** tab (`ai-prompt-conversation-panel.tsx`) is a two-panel
+layout:
+
+- **Left — context** (`ai-lead-context-panel.tsx`): pick a lead from the
+  caller's own repo (`GET /api/leads-dashboard`, search + newest-first, no
+  auto-request until a lead is picked), which automatically fetches report
+  and source-conversation candidates
+  (`GET /api/msg-automation/ai-prompts/lead-context`, backed by
+  `dba`'s `getLeadAnalysisContext` → the *same*
+  `listLeadReportsForCreator` / `getLeadConversationForCreator` Message
+  Creator uses — saved-link → live phone/name match → legacy fallback, never
+  a separate/weaker algorithm). Both selections default to console's own
+  behavior (first found report; the resolved conversation if any) and can be
+  changed to any other report or to "none". The base `<current_case>` prompt
+  and the final prompt (base + optional additional input) are always shown
+  in full, built exclusively by `dba`'s `buildLeadAnalysisCurrentCase` /
+  `appendAdditionalUserInput` (`lead-analysis-prompt.ts`) via
+  `POST .../lead-context/preview` — never assembled in React.
+- **Right — chat**: conversation history, an "additional input" textarea
+  (appended to, never replacing, the base prompt), and Send. Send is
+  disabled until the prompt is saved *and* a lead is selected; an empty
+  additional-input textarea still sends (the base prompt alone).
+
+`POST .../[id]/run` requires `leadName` (never a bare `message`) and rebuilds
+the exact same `<current_case>` + additional-input text server-side before
+calling `executeAiPrompt` — the preview endpoint and the real request can
+never drift apart because both call the same two `dba` functions.
+
 ## Message Creator integration
 
 `findPublishedAiPrompt({ actionType, schoolId })` (`ai-prompts.ts`) resolves

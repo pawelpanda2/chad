@@ -16,7 +16,7 @@ describe("msg-automation ai-prompts run API", () => {
     const res = await fetch(`${BASE}/api/msg-automation/ai-prompts/some-id/run`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: "hi" }),
+      body: JSON.stringify({ leadName: "some-lead" }),
     });
     expect(res.status).toBe(401);
     const json = await res.json();

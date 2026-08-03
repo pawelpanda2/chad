@@ -70,6 +70,12 @@ export default defineConfig({
       // AI Prompts editor conversation tab — no-auto-request/explicit-Send/
       // idle-sending-success-error-provider-not-configured state coverage.
       "packages/dashboard/components/msg-automation/ai-prompt-conversation-panel.test.tsx",
+      // AI Prompts conversation tab — lead analysis context panel (report/
+      // conversation selection, base/final prompt preview wiring).
+      "packages/dashboard/components/msg-automation/ai-lead-context-panel.test.tsx",
+      // Lead analysis `<current_case>` prompt building — console-format
+      // parity (askOpenAiAboutGirl.ts) and additional-input append-only.
+      "packages/dba/src/lead-analysis-prompt.test.ts",
       // Story 90 — Lead ↔ Beeper Links (phone match / save validation).
       "packages/dba/src/lead-beeper-links.test.ts",
       // Story 99 — msg workout ↔ Beeper message matching engine (pure) and

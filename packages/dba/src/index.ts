@@ -37,6 +37,8 @@ export * from './audio-recordings.js';
 export * from './audio-recording-drafts.js';
 export * from './message-creator.js';
 export * from './lead-beeper-links.js';
+export * from './lead-analysis-prompt.js';
+export * from './lead-analysis-context.js';
 export * from './statuses-dashboard.js';
 export * from './headers-parser.js';
 export * from './trace.js';
