@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
 import { ErrorBox } from "@/components/shared/error-box";
 import { TextEditorWithToolbar } from "@/components/shared/text-editor-with-toolbar";
+import { parseFolderChildNameMap, type FolderSorting } from "@/components/folders/folder-sorting";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -75,6 +76,8 @@ interface CpConfig {
   type: string;
   name: string;
   address: string;
+  /** Folder-only, optional, GUI-only — see folder-sorting.ts. Missing/invalid falls back to "asc". */
+  sorting?: FolderSorting;
   [key: string]: unknown;
 }
 
@@ -168,19 +171,6 @@ function relativeLoca(address: string, repoGuid: string): string {
   return address.startsWith(prefix) ? address.slice(prefix.length) : "";
 }
 
-function parseChildNameMap(body: string): Array<{ index: string; name: string }> {
-  try {
-    const parsed: unknown = JSON.parse(body);
-    if (parsed && typeof parsed === "object") {
-      return Object.entries(parsed as Record<string, string>)
-        .map(([index, name]) => ({ index, name }))
-        .sort((a, b) => Number(a.index) - Number(b.index));
-    }
-  } catch {
-    // Falls through to [] — an unparseable Body shows no children rather than crashing the page.
-  }
-  return [];
-}
 
 export default function FoldersPage() {
   const [repos, setRepos] = useState<RepoOption[]>([]);
@@ -880,7 +870,7 @@ export default function FoldersPage() {
                   {createNotice && <p className="text-sm text-muted-foreground italic">{createNotice}</p>}
 
                   <div className="space-y-1">
-                    {parseChildNameMap(currentItem.Body).map(({ index, name }) => (
+                    {parseFolderChildNameMap(currentItem.Body, currentItem.Config.sorting).map(({ index, name }) => (
                       <div key={index} className="flex items-center gap-2">
                         <span className="w-8 shrink-0 font-mono text-xs text-muted-foreground">{index}</span>
                         <Button
@@ -893,7 +883,7 @@ export default function FoldersPage() {
                         </Button>
                       </div>
                     ))}
-                    {parseChildNameMap(currentItem.Body).length === 0 && (
+                    {parseFolderChildNameMap(currentItem.Body, currentItem.Config.sorting).length === 0 && (
                       <p className="text-sm italic text-muted-foreground">Brak elementów</p>
                     )}
                   </div>
