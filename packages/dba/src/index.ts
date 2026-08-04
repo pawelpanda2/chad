@@ -108,6 +108,7 @@ export * from './msg-workout-linking.js';
 export * from './msg-workout-proposals.js';
 export * from './msg-workout-analyze.js';
 export * from './msg-workout-gui-data.js';
+export * from './msg-workout-entry.js';
 export {
   runWithGoogleSheetsTxnBuffer,
   deferGoogleSheetsJob,

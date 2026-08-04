@@ -30,3 +30,9 @@ export interface MsgWorkoutConversationLinksResponse {
   undated: MsgWorkoutEntry[];
   allWorkouts: MsgWorkoutListEntry[];
 }
+
+/** v11 — structured entry composed in the editor (mirrors dba's MsgWorkoutEntryInput). */
+export type MsgWorkoutEntryInput =
+  | { type: "dash"; text: string }
+  | { type: "ver"; text: string }
+  | { type: "advice"; author: string; text: string };
