@@ -13,6 +13,7 @@ export * from './repo-access.js';
 export * from './leads.js';
 export * from './reports.js';
 export * from './report-entries.js';
+export * from './report-browse.js';
 export * from './beeper.js';
 export * from './mongo.js';
 export * from './postgres.js';

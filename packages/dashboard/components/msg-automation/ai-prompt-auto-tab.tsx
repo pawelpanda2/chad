@@ -1,10 +1,17 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Button } from "@/components/ui/button";
+import { useEffect, useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { AlertCircle, Loader2, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
+import type { UserReportSelection } from "@/lib/effective-report";
 
 export interface AiPromptReportOption {
   address: string;
@@ -25,141 +32,49 @@ export type AiPromptConversationSelection =
   | { kind: "none" }
   | { kind: "manual"; conversationId: string; conversationName: string };
 
-const NONE = "__none__";
-
-/** Orange chip — permanent AI recommendation label. */
-function AutoPickChip() {
-  return (
-    <span className="shrink-0 rounded-md bg-amber-400 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-amber-950 dark:bg-amber-500 dark:text-amber-950">
-      Auto Pick
-    </span>
-  );
+interface ReportCategoryOption {
+  id: string;
+  displayName: string;
 }
 
-/** Green chip — user's current selection. */
-function YourPickChip() {
-  return (
-    <span className="shrink-0 rounded-md bg-green-500 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-white dark:bg-green-600">
-      Your Pick
-    </span>
-  );
+interface ReportBrowseItem {
+  address: string;
+  name: string;
 }
 
-/** Amber "AI pick" chip for report rows (legacy report UI). */
-function AiPickChip() {
-  return (
-    <span className="shrink-0 rounded-full bg-amber-400 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-amber-950 dark:bg-amber-500 dark:text-amber-950">
-      AI pick
-    </span>
-  );
-}
-
-function SelectedNote() {
-  return (
-    <span className="mt-1 inline-flex text-xs font-semibold text-green-600 dark:text-green-400">
-      currently selected
-    </span>
-  );
-}
-
-function CandidateRow({
-  title,
-  meta,
-  isAiRecommended,
-  isSelected,
-  onClick,
-}: {
-  title: string;
-  meta?: string;
-  isAiRecommended: boolean;
-  isSelected: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      role="radio"
-      aria-checked={isSelected}
-      onClick={onClick}
-      className={cn(
-        "relative block w-full rounded-lg border px-3 py-2.5 pl-4 text-left text-sm transition-colors",
-        isAiRecommended
-          ? "border-amber-500/60 bg-amber-500/10 dark:bg-amber-500/15"
-          : isSelected
-            ? "border-primary/60 bg-muted"
-            : "hover:bg-muted",
-      )}
-    >
-      {isAiRecommended && (
-        <span className="absolute inset-y-2 left-0 w-1 rounded-r bg-amber-500" aria-hidden="true" />
-      )}
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="font-medium">{title}</div>
-          {meta && <div className="mt-0.5 text-xs text-muted-foreground">{meta}</div>}
-          {isSelected && <SelectedNote />}
-        </div>
-        {isAiRecommended && <AiPickChip />}
-      </div>
-    </button>
-  );
-}
-
-function PreviewLink({
+function TextAction({
   label,
   onClick,
-  disabled,
 }: {
   label: string;
   onClick: () => void;
-  disabled?: boolean;
 }) {
-  if (disabled) return null;
   return (
     <button
       type="button"
       onClick={onClick}
-      className="text-left text-sm font-medium text-primary underline underline-offset-2 hover:text-primary/80"
+      className="text-sm text-primary underline underline-offset-2 hover:text-primary/80"
     >
       {label}
     </button>
   );
 }
 
-function ScrollPicker({
-  search,
-  onSearchChange,
-  searchPlaceholder,
-  children,
-  emptyLabel,
-  hasItems,
+function PlainNameLink({
+  label,
+  onClick,
 }: {
-  search: string;
-  onSearchChange: (value: string) => void;
-  searchPlaceholder: string;
-  children: React.ReactNode;
-  emptyLabel: string;
-  hasItems: boolean;
+  label: string;
+  onClick: () => void;
 }) {
   return (
-    <div className="space-y-1.5 rounded-lg border p-2">
-      <div className="relative">
-        <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          value={search}
-          onChange={(e) => onSearchChange(e.target.value)}
-          placeholder={searchPlaceholder}
-          className="h-8 pl-8 text-xs"
-        />
-      </div>
-      <div className="max-h-40 overflow-y-auto">
-        {!hasItems ? (
-          <div className="px-1 py-1.5 text-xs text-muted-foreground">{emptyLabel}</div>
-        ) : (
-          children
-        )}
-      </div>
-    </div>
+    <button
+      type="button"
+      onClick={onClick}
+      className="text-left text-sm font-medium text-foreground underline underline-offset-2 hover:text-primary"
+    >
+      {label}
+    </button>
   );
 }
 
@@ -167,18 +82,14 @@ interface AiPromptAutoTabProps {
   loading: boolean;
   error: string | null;
 
-  reports: AiPromptReportOption[];
-  aiRecommendedReportAddress: string | null;
-  selectedReportAddress: string;
-  onSelectReport: (address: string) => void;
-  onOpenReport: () => void;
+  autoReportAddress: string | null;
+  autoReportName: string | null;
+  userReport: UserReportSelection;
+  userReportName: string | null;
+  onSelectUserReport: (selection: UserReportSelection) => void;
 
   conversationFound: boolean;
   conversationChannel: string | null;
-  conversationBasis: string;
-  conversationPreview: string | null;
-  conversationError?: string;
-  /** Beeper display name for the AI-found conversation (e.g. "Claudia Delfin"). */
   conversationDisplayName: string | null;
   aiRecommendedConversationIsFound: boolean;
   conversationCandidates: AiPromptConversationCandidate[];
@@ -188,18 +99,17 @@ interface AiPromptAutoTabProps {
 }
 
 /**
- * AI Prompts → editor workspace, "auto" tab. Conversation: compact Auto Pick
- * (orange) + Your Pick (green) rows; Change reveals the browse list. Report
- * section still shows AI recommendation vs current selection independently.
+ * Compact Auto context: two lines under Conversation and Report
+ * (Auto Pick + Your Pick). Pickers open only via Change / Your Pick name.
  */
 export function AiPromptAutoTab({
   loading,
   error,
-  reports,
-  aiRecommendedReportAddress,
-  selectedReportAddress,
-  onSelectReport,
-  onOpenReport,
+  autoReportAddress,
+  autoReportName,
+  userReport,
+  userReportName,
+  onSelectUserReport,
   conversationFound,
   conversationChannel,
   conversationDisplayName,
@@ -211,20 +121,30 @@ export function AiPromptAutoTab({
 }: AiPromptAutoTabProps) {
   const [conversationChangeOpen, setConversationChangeOpen] = useState(false);
   const [conversationSearch, setConversationSearch] = useState("");
+  const [reportChangeOpen, setReportChangeOpen] = useState(false);
   const [reportSearch, setReportSearch] = useState("");
+  const [categories, setCategories] = useState<ReportCategoryOption[]>([]);
+  const [categoryId, setCategoryId] = useState("");
+  const [browseReports, setBrowseReports] = useState<ReportBrowseItem[]>([]);
+  const [browseLoading, setBrowseLoading] = useState(false);
+  const [browseError, setBrowseError] = useState<string | null>(null);
 
-  const autoPickLabel = aiRecommendedConversationIsFound
+  const autoPickConversation = aiRecommendedConversationIsFound
     ? conversationDisplayName?.trim() || conversationChannel || "Conversation"
-    : "none";
+    : "None";
 
-  const yourPickLabel = useMemo(() => {
-    if (conversationSelection.kind === "none") return "none";
+  const yourPickConversation = useMemo(() => {
+    if (conversationSelection.kind === "none") return "None";
     if (conversationSelection.kind === "found") {
       return conversationDisplayName?.trim() || conversationChannel || "Conversation";
     }
     const match = conversationCandidates.find((c) => c.conversationId === conversationSelection.conversationId);
     return match?.displayName?.trim() || conversationSelection.conversationName;
   }, [conversationSelection, conversationDisplayName, conversationChannel, conversationCandidates]);
+
+  const autoPickReport = autoReportAddress ? autoReportName?.trim() || "Report" : "None";
+  const yourPickReport =
+    userReport.status === "report" ? userReportName?.trim() || "Report" : "None";
 
   const filteredCandidates = useMemo(() => {
     const q = conversationSearch.trim().toLowerCase();
@@ -237,22 +157,78 @@ export function AiPromptAutoTab({
     );
   }, [conversationCandidates, conversationSearch]);
 
-  const filteredReports = useMemo(() => {
+  const filteredBrowseReports = useMemo(() => {
     const q = reportSearch.trim().toLowerCase();
-    if (!q) return reports;
-    return reports.filter(
-      (r) =>
-        (r.name ?? "").toLowerCase().includes(q) ||
-        (r.category ?? "").toLowerCase().includes(q) ||
-        (r.preview ?? "").toLowerCase().includes(q),
-    );
-  }, [reports, reportSearch]);
+    if (!q) return browseReports;
+    return browseReports.filter((r) => r.name.toLowerCase().includes(q));
+  }, [browseReports, reportSearch]);
 
-  const selectedReport = reports.find((r) => r.address === selectedReportAddress) ?? null;
-  const reportLinkLabel =
-    selectedReportAddress !== NONE && selectedReport
-      ? selectedReport.name?.trim() || selectedReport.category || "Report"
-      : null;
+  useEffect(() => {
+    if (!reportChangeOpen) return;
+    let cancelled = false;
+    (async () => {
+      setBrowseLoading(true);
+      setBrowseError(null);
+      try {
+        const res = await fetch("/api/reports/categories");
+        const json = await res.json();
+        if (cancelled) return;
+        if (!res.ok || !json.success) throw new Error(json.error || "Failed to load categories");
+        const cats: ReportCategoryOption[] = Array.isArray(json.categories)
+          ? json.categories.map((c: { id: string; displayName: string }) => ({
+              id: c.id,
+              displayName: c.displayName,
+            }))
+          : [];
+        setCategories(cats);
+        setCategoryId((prev) => (prev && cats.some((c) => c.id === prev) ? prev : cats[0]?.id ?? ""));
+      } catch (err) {
+        if (!cancelled) setBrowseError(err instanceof Error ? err.message : String(err));
+      } finally {
+        if (!cancelled) setBrowseLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [reportChangeOpen]);
+
+  useEffect(() => {
+    if (!reportChangeOpen || !categoryId) {
+      if (reportChangeOpen && !categoryId) setBrowseReports([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      setBrowseLoading(true);
+      setBrowseError(null);
+      try {
+        const params = new URLSearchParams({ category: categoryId });
+        const res = await fetch(`/api/reports?${params.toString()}`);
+        const json = await res.json();
+        if (cancelled) return;
+        if (!res.ok || !json.success) throw new Error(json.error || "Failed to load reports");
+        setBrowseReports(
+          Array.isArray(json.reports)
+            ? json.reports.map((r: { address: string; name: string }) => ({
+                address: r.address,
+                name: r.name,
+              }))
+            : [],
+        );
+      } catch (err) {
+        if (!cancelled) {
+          setBrowseError(err instanceof Error ? err.message : String(err));
+          setBrowseReports([]);
+        }
+      } finally {
+        if (!cancelled) setBrowseLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [reportChangeOpen, categoryId]);
 
   if (loading) {
     return (
@@ -278,157 +254,200 @@ export function AiPromptAutoTab({
     setConversationSearch("");
   }
 
+  function pickReport(selection: UserReportSelection) {
+    onSelectUserReport(selection);
+    setReportChangeOpen(false);
+    setReportSearch("");
+  }
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border">
-        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-3">
-          <section className="space-y-2">
-            <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">conversation</div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sm font-medium">{autoPickLabel}</span>
-              <AutoPickChip />
+        <div className="min-h-0 flex-1 space-y-6 overflow-y-auto p-3">
+          <section className="space-y-1.5">
+            <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Conversation
             </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-7 px-2 text-xs"
+            <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-1 text-sm">
+              <span className="font-medium">{autoPickConversation}</span>
+              <span className="text-muted-foreground">(Auto Pick)</span>
+              <TextAction
+                label="(Change)"
                 onClick={() => setConversationChangeOpen((v) => !v)}
-              >
-                Change
-              </Button>
-              {yourPickLabel !== "none" ? (
-                <PreviewLink label={yourPickLabel} onClick={onOpenConversation} />
+              />
+            </div>
+            <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-1 text-sm">
+              {yourPickConversation !== "None" ? (
+                <PlainNameLink label={yourPickConversation} onClick={onOpenConversation} />
               ) : (
-                <span className="text-sm font-medium text-muted-foreground">none</span>
+                <span className="font-medium text-muted-foreground">None</span>
               )}
-              <YourPickChip />
+              <span className="text-muted-foreground">(Your Pick)</span>
             </div>
 
             {conversationChangeOpen && (
-              <ScrollPicker
-                search={conversationSearch}
-                onSearchChange={setConversationSearch}
-                searchPlaceholder="Search conversations…"
-                emptyLabel="No matches."
-                hasItems
-              >
-                {conversationFound && (
-                  <button
-                    type="button"
-                    onClick={() => pickConversation({ kind: "found" })}
-                    className={cn(
-                      "block w-full truncate rounded px-2 py-1 text-left text-xs hover:bg-muted",
-                      conversationSelection.kind === "found" && "bg-primary/10 font-medium text-primary",
-                    )}
-                  >
-                    {autoPickLabel}
-                    <span className="text-muted-foreground"> · auto</span>
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => pickConversation({ kind: "none" })}
-                  className={cn(
-                    "block w-full truncate rounded px-2 py-1 text-left text-xs hover:bg-muted",
-                    conversationSelection.kind === "none" && "bg-primary/10 font-medium text-primary",
+              <div className="space-y-1.5 rounded-lg border p-2">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={conversationSearch}
+                    onChange={(e) => setConversationSearch(e.target.value)}
+                    placeholder="Search conversations…"
+                    className="h-8 pl-8 text-xs"
+                  />
+                </div>
+                <div className="max-h-40 overflow-y-auto">
+                  {conversationFound && (
+                    <button
+                      type="button"
+                      onClick={() => pickConversation({ kind: "found" })}
+                      className={cn(
+                        "block w-full truncate rounded px-2 py-1 text-left text-xs hover:bg-muted",
+                        conversationSelection.kind === "found" && "bg-primary/10 font-medium text-primary",
+                      )}
+                    >
+                      {autoPickConversation}
+                    </button>
                   )}
-                >
-                  none
-                </button>
-                {filteredCandidates.map((c) => (
                   <button
-                    key={c.conversationId}
                     type="button"
-                    onClick={() =>
-                      pickConversation({
-                        kind: "manual",
-                        conversationId: c.conversationId,
-                        conversationName: c.conversationName,
-                      })
-                    }
+                    onClick={() => pickConversation({ kind: "none" })}
                     className={cn(
                       "block w-full truncate rounded px-2 py-1 text-left text-xs hover:bg-muted",
-                      conversationSelection.kind === "manual" &&
-                        conversationSelection.conversationId === c.conversationId &&
-                        "bg-primary/10 font-medium text-primary",
+                      conversationSelection.kind === "none" && "bg-primary/10 font-medium text-primary",
                     )}
                   >
-                    {c.displayName || c.conversationName}
-                    {c.channel ? (
-                      <span className="text-muted-foreground"> · {c.channel}</span>
-                    ) : null}
+                    None
                   </button>
-                ))}
-              </ScrollPicker>
+                  {filteredCandidates.map((c) => (
+                    <button
+                      key={c.conversationId}
+                      type="button"
+                      onClick={() =>
+                        pickConversation({
+                          kind: "manual",
+                          conversationId: c.conversationId,
+                          conversationName: c.conversationName,
+                        })
+                      }
+                      className={cn(
+                        "block w-full truncate rounded px-2 py-1 text-left text-xs hover:bg-muted",
+                        conversationSelection.kind === "manual" &&
+                          conversationSelection.conversationId === c.conversationId &&
+                          "bg-primary/10 font-medium text-primary",
+                      )}
+                    >
+                      {c.displayName || c.conversationName}
+                    </button>
+                  ))}
+                </div>
+              </div>
             )}
           </section>
 
-          <section className="space-y-2">
-            <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              report {reports.length > 0 && <span className="normal-case">({reports.length} found)</span>}
+          <section className="space-y-1.5">
+            <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Report</div>
+            <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-1 text-sm">
+              <span className="font-medium">{autoPickReport}</span>
+              <span className="text-muted-foreground">(Auto Pick)</span>
+              <TextAction label="(Change)" onClick={() => setReportChangeOpen((v) => !v)} />
             </div>
-            <div role="radiogroup" aria-label="report" className="space-y-1.5">
-              {aiRecommendedReportAddress &&
-                (() => {
-                  const aiReport = reports.find((r) => r.address === aiRecommendedReportAddress);
-                  if (!aiReport) return null;
-                  return (
-                    <CandidateRow
-                      title={`${aiReport.category ?? "report"} — ${aiReport.name ?? "full report"}`}
-                      meta={aiReport.preview ? aiReport.preview.split(/\r?\n/)[0] : undefined}
-                      isAiRecommended
-                      isSelected={selectedReportAddress === aiReport.address}
-                      onClick={() => onSelectReport(aiReport.address)}
-                    />
-                  );
-                })()}
-              {selectedReport &&
-                selectedReport.address !== aiRecommendedReportAddress && (
-                  <CandidateRow
-                    title={`${selectedReport.category ?? "report"} — ${selectedReport.name ?? "full report"}`}
-                    meta={selectedReport.preview ? selectedReport.preview.split(/\r?\n/)[0] : undefined}
-                    isAiRecommended={false}
-                    isSelected
-                    onClick={() => onSelectReport(selectedReport.address)}
+            <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-1 text-sm">
+              {yourPickReport !== "None" ? (
+                <PlainNameLink label={yourPickReport} onClick={() => setReportChangeOpen(true)} />
+              ) : (
+                <TextAction label="None" onClick={() => setReportChangeOpen(true)} />
+              )}
+              <span className="text-muted-foreground">(Your Pick)</span>
+            </div>
+
+            {reportChangeOpen && (
+              <div className="space-y-1.5 rounded-lg border p-2">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={reportSearch}
+                    onChange={(e) => setReportSearch(e.target.value)}
+                    placeholder="Search reports..."
+                    className="h-8 pl-8 text-xs"
                   />
-                )}
-              <CandidateRow
-                title="none"
-                meta="Do not attach any report."
-                isAiRecommended={aiRecommendedReportAddress === null}
-                isSelected={selectedReportAddress === NONE}
-                onClick={() => onSelectReport(NONE)}
-              />
-            </div>
-
-            {reportLinkLabel && <PreviewLink label={reportLinkLabel} onClick={onOpenReport} />}
-
-            <ScrollPicker
-              search={reportSearch}
-              onSearchChange={setReportSearch}
-              searchPlaceholder="Search reports…"
-              emptyLabel={reports.length === 0 ? "No reports available." : "No matches."}
-              hasItems={filteredReports.length > 0}
-            >
-              {filteredReports.map((r) => (
-                <button
-                  key={r.address}
-                  type="button"
-                  onClick={() => onSelectReport(r.address)}
-                  className={cn(
-                    "block w-full truncate rounded px-2 py-1 text-left text-xs hover:bg-muted",
-                    selectedReportAddress === r.address && "bg-primary/10 font-medium text-primary",
-                  )}
+                </div>
+                <Select
+                  value={categoryId || undefined}
+                  onValueChange={(v) => {
+                    setCategoryId(v);
+                    setReportSearch("");
+                  }}
+                  disabled={categories.length === 0 || browseLoading}
                 >
-                  {r.name ?? "full report"}
-                  {r.category ? <span className="text-muted-foreground"> · {r.category}</span> : null}
-                </button>
-              ))}
-            </ScrollPicker>
+                  <SelectTrigger size="sm" className="h-8 w-full text-xs">
+                    <SelectValue placeholder="Report type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {categories.map((c) => (
+                      <SelectItem key={c.id} value={c.id} className="text-xs">
+                        {c.displayName}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {browseError && (
+                  <div className="px-1 text-xs text-destructive">{browseError}</div>
+                )}
+                <div className="max-h-40 overflow-y-auto">
+                  {browseLoading ? (
+                    <div className="flex items-center gap-2 px-1 py-1.5 text-xs text-muted-foreground">
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      Loading…
+                    </div>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => pickReport({ status: "none" })}
+                        className={cn(
+                          "block w-full truncate rounded px-2 py-1 text-left text-xs hover:bg-muted",
+                          userReport.status === "none" && "bg-primary/10 font-medium text-primary",
+                        )}
+                      >
+                        None
+                      </button>
+                      {autoReportAddress && (
+                        <button
+                          type="button"
+                          onClick={() => pickReport({ status: "unset" })}
+                          className={cn(
+                            "block w-full truncate rounded px-2 py-1 text-left text-xs hover:bg-muted",
+                            userReport.status === "unset" && "bg-primary/10 font-medium text-primary",
+                          )}
+                        >
+                          {autoPickReport}
+                          <span className="text-muted-foreground"> · use Auto Pick</span>
+                        </button>
+                      )}
+                      {filteredBrowseReports.map((r) => (
+                        <button
+                          key={r.address}
+                          type="button"
+                          onClick={() => pickReport({ status: "report", address: r.address })}
+                          className={cn(
+                            "block w-full truncate rounded px-2 py-1 text-left text-xs hover:bg-muted",
+                            userReport.status === "report" &&
+                              userReport.address === r.address &&
+                              "bg-primary/10 font-medium text-primary",
+                          )}
+                        >
+                          {r.name}
+                        </button>
+                      ))}
+                      {!browseLoading && filteredBrowseReports.length === 0 && (
+                        <div className="px-1 py-1.5 text-xs text-muted-foreground">No reports.</div>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
           </section>
         </div>
       </div>
@@ -436,4 +455,5 @@ export function AiPromptAutoTab({
   );
 }
 
-export { NONE as AI_PROMPT_NONE_REPORT_ADDRESS };
+/** @deprecated kept for callers that still import the constant */
+export const AI_PROMPT_NONE_REPORT_ADDRESS = "__none__";
