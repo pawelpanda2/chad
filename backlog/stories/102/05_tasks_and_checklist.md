@@ -8,7 +8,7 @@
 | 2 | Thin API `/api/reports/categories` + `/api/reports` + `/item` | implemented |
 | 3 | Views Reports: combobox + search + text list | implemented |
 | 4 | Creator Auto: compact Conv/Report + picker + effectiveReport | PASS unit |
-| 5 | Tests, build, local Docker smoke, commit | |
+| 5 | Tests, build, local Docker smoke, commit | PASS unit + build + local Docker; commit `03eaff6` |
 
 ## Task write-ups
 
