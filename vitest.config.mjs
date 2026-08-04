@@ -87,6 +87,9 @@ export default defineConfig({
       "packages/dba/src/msg-workout-matching.test.ts",
       "packages/dba/src/msg-workout-cp.test.ts",
       "packages/dba/src/msg-workout-linking.test.ts",
+      // v11 — structured entry composer (dash/ver/advice) for the shared
+      // Msg Workout editor (Beeper → Msg workout, Msg Auto → Msg Workout).
+      "packages/dba/src/msg-workout-entry.test.ts",
       // Story 94 — Beeper Conversations split-view pure logic (filter,
       // handle icon/aria-label, empty-state gate).
       "packages/dashboard/components/beeper/beeper-conversations-logic.test.ts",

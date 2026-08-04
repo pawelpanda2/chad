@@ -4,8 +4,8 @@ export const AI_PROMPT_KIND_OPTIONS: Array<{
   value: AiPromptKind;
   label: string;
 }> = [
-  { value: "our_custom", label: "our custom prompt" },
-  { value: "openai_managed", label: "openai published prompt" },
+  { value: "our_custom", label: "our custom" },
+  { value: "openai_managed", label: "openai published" },
 ];
 
 export function normalizeAiPromptKind(
