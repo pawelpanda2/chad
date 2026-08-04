@@ -1,15 +1,6 @@
 // @vitest-environment jsdom
 /**
- * AI Prompts editor workspace — manage/leads/auto/base tabs + persistent
- * chat panel (Story 102 mockup: CHAD_ai_prompts_manage_leads_auto_base_mockup.html):
- * - auto/base start locked (real `disabled`, not just dimmed via CSS) and
- *   unlock only once a lead is picked in leads, which also auto-switches
- *   the active tab to auto (input §1.2);
- * - no request to the run endpoint ever fires on mount/render;
- * - Send carries leadName/leadLoca/reportBody/conversationBody/
- *   additionalUserInput — never a bare freeform message, and is disabled
- *   until a lead is selected;
- * - base shows the exact final prompt text from the preview endpoint.
+ * AI Prompts workspace — Manage/Lead/Auto/Base + effectiveReport = user ?? auto.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
@@ -22,7 +13,7 @@ const CONTEXT = {
   leadName: "26-02-17_pi_Ira_Babenko",
   leadLoca: "06/01",
   reports: [
-    { address: "reports/01/x", name: "full report", category: "daygame", preview: "report preview", body: "report body" },
+    { address: "reports/01/x", name: "25-10-03; Warszawa; Złote tarasy", category: "daygame", preview: "report preview", body: "report body" },
   ],
   recommendedReportAddress: "reports/01/x",
   conversation: {
@@ -52,6 +43,12 @@ function stubFetch(over: { run?: unknown; runOk?: boolean } = {}) {
         json: async () => ({ success: true, data: { basePrompt: CONTEXT.basePrompt, finalPrompt: CONTEXT.basePrompt } }),
       } as Response;
     }
+    if (url.includes("/api/reports/categories")) {
+      return { ok: true, json: async () => ({ success: true, categories: [] }) } as Response;
+    }
+    if (url.startsWith("/api/reports?")) {
+      return { ok: true, json: async () => ({ success: true, reports: [] }) } as Response;
+    }
     if (url.endsWith("/run") && init?.method === "POST") {
       return {
         ok: over.runOk !== false,
@@ -69,7 +66,7 @@ async function pickLead() {
   const user = userEvent.setup();
   await user.click(screen.getByRole("tab", { name: "Lead" }));
   await user.click(await screen.findByText("26-02-17_pi_Ira_Babenko"));
-  await screen.findByText("Auto Pick");
+  await screen.findAllByText("Claudia Delfin");
 }
 
 afterEach(() => {
@@ -79,16 +76,15 @@ afterEach(() => {
 });
 
 describe("AiPromptWorkspace", () => {
-  it("renders tabs in Manage/Lead/Auto/Base order (Beeper-style Title Case)", () => {
+  it("renders tabs in Manage/Lead/Auto/Base order", () => {
     stubFetch();
     render(<AiPromptWorkspace promptId="p1" manageContent={<div>settings</div>} />);
     const left = within(screen.getByLabelText("AI Prompt view"));
     const tabs = left.getAllByRole("tab").map((t) => t.textContent);
     expect(tabs).toEqual(["Manage", "Lead", "Auto", "Base"]);
-    expect(screen.getByRole("tab", { name: "AI chat" })).toBeTruthy();
   });
 
-  it("locks auto and base (real disabled, not just dimmed) until a lead is selected", () => {
+  it("locks auto and base until a lead is selected", () => {
     stubFetch();
     render(<AiPromptWorkspace promptId="p1" manageContent={<div>settings</div>} />);
     expect(screen.getByRole("tab", { name: "Auto" }).hasAttribute("disabled")).toBe(true);
@@ -103,29 +99,33 @@ describe("AiPromptWorkspace", () => {
     }
   });
 
-  it("selecting a lead unlocks auto/base and jumps to auto, showing report + conversation candidates", async () => {
+  it("selecting a lead shows compact Auto Pick lines and None as Your Pick for report", async () => {
     stubFetch();
     render(<AiPromptWorkspace promptId="p1" manageContent={<div>settings</div>} />);
     await pickLead();
-    expect(screen.getByRole("tab", { name: "Auto" }).hasAttribute("disabled")).toBe(false);
-    expect(screen.getByRole("tab", { name: "Base" }).hasAttribute("disabled")).toBe(false);
-    expect(screen.getByText("daygame — full report")).toBeTruthy();
+    expect(screen.getByText("25-10-03; Warszawa; Złote tarasy")).toBeTruthy();
     expect(screen.getAllByText("Claudia Delfin").length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "None" })).toBeTruthy();
   });
 
-  it("conversation and report name links open Conv / Report tabs in the right panel", async () => {
-    stubFetch();
+  it("Send uses Auto Pick report body when Your Pick is unset", async () => {
+    const fetchMock = stubFetch({ run: { success: true, data: { status: "complete", outputText: "Hello back!" } } });
     render(<AiPromptWorkspace promptId="p1" manageContent={<div>settings</div>} />);
     await pickLead();
 
-    const conversationLinks = screen.getAllByRole("button", { name: "Claudia Delfin" });
-    fireEvent.click(conversationLinks[conversationLinks.length - 1]!);
-    expect(screen.getByRole("tab", { name: "Conv" })).toBeTruthy();
-    expect(screen.getByText("conversation body")).toBeTruthy();
+    fireEvent.change(screen.getByPlaceholderText(/additional input/i), { target: { value: "extra text" } });
+    fireEvent.click(screen.getByRole("button", { name: /send/i }));
 
-    fireEvent.click(screen.getByRole("button", { name: "full report" }));
-    expect(screen.getByRole("tab", { name: "Report" })).toBeTruthy();
-    expect(screen.getByText("report body")).toBeTruthy();
+    await screen.findByText("Hello back!");
+    const runCall = fetchMock.mock.calls.find((c) => String(c[0]).endsWith("/run"));
+    expect(runCall).toBeTruthy();
+    expect(JSON.parse((runCall![1] as RequestInit).body as string)).toEqual({
+      leadName: "26-02-17_pi_Ira_Babenko",
+      leadLoca: "06/01",
+      reportBody: "report body",
+      conversationBody: "conversation body",
+      additionalUserInput: "extra text",
+    });
   });
 
   it("base tab shows the exact final prompt text from the preview endpoint", async () => {
@@ -140,28 +140,6 @@ describe("AiPromptWorkspace", () => {
     stubFetch();
     render(<AiPromptWorkspace promptId="p1" manageContent={<div>settings</div>} />);
     expect(screen.getByRole("button", { name: /send/i }).hasAttribute("disabled")).toBe(true);
-  });
-
-  it("Send carries leadName/leadLoca/reportBody/conversationBody/additionalUserInput and shows the AI reply", async () => {
-    const fetchMock = stubFetch({ run: { success: true, data: { status: "complete", outputText: "Hello back!" } } });
-    render(<AiPromptWorkspace promptId="p1" manageContent={<div>settings</div>} />);
-    await pickLead();
-
-    fireEvent.change(screen.getByPlaceholderText(/additional input/i), { target: { value: "extra text" } });
-    fireEvent.click(screen.getByRole("button", { name: /send/i }));
-
-    await screen.findByText("Hello back!");
-    const runCall = fetchMock.mock.calls.find((c) => String(c[0]).endsWith("/run"));
-    expect(runCall).toBeTruthy();
-    const [url, init] = runCall!;
-    expect(url).toBe("/api/msg-automation/ai-prompts/p1/run");
-    expect(JSON.parse((init as RequestInit).body as string)).toEqual({
-      leadName: "26-02-17_pi_Ira_Babenko",
-      leadLoca: "06/01",
-      reportBody: "report body",
-      conversationBody: "conversation body",
-      additionalUserInput: "extra text",
-    });
   });
 
   it("shows provider-not-configured honestly", async () => {

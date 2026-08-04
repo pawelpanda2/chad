@@ -55,6 +55,8 @@ export default defineConfig({
       // fake-ops-based, no real DB needed.
       "packages/dba/src/ai-prompts.test.ts",
       "packages/dba/src/ai-prompts-openai.test.ts",
+      // Story 102 — root `reports` category browse + effectiveReportAddress.
+      "packages/dba/src/report-browse.test.ts",
       "packages/dba/src/audio-recordings.test.ts",
       // Story 93 follow-up — draft recordings (segments, isolation,
       // idempotent finalize, real-fixture merge via ffmpeg+mkvmerge).
@@ -95,6 +97,8 @@ export default defineConfig({
       "packages/dashboard/components/beeper/beeper-conversations-logic.test.ts",
       // Story 99 follow-up — GUI number ↔ stable Mongo dbId mapping.
       "packages/dashboard/components/beeper/msg-workout-message-numbers.test.ts",
+      // Folders — Config.sorting (asc/desc, numeric) for direct-children ordering.
+      "packages/dashboard/components/folders/folder-sorting.test.ts",
       // tests/ reorg (2026-07-28) — only the Vitest-based files from each
       // pillar's unit/integration dirs; the node:test-based files in the
       // same directories (no-chad-mongo-runtime, config-validator,

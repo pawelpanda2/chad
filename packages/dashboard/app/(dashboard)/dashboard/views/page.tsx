@@ -28,6 +28,13 @@ import { toast } from "sonner";
 import { DATE_ENTRY_DOMAIN_COLUMNS, DAILY_ENTRY_DOMAIN_COLUMNS, ITEM_NUMBER_COLUMN, type SheetColumnGroup } from "dba/table-columns";
 import { formatDurationClock } from "@/components/forms/audio-recording-utils";
 import { SequentialAudioPlayer } from "@/components/forms/sequential-audio-player";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 // Fields computed server-side on every read (computeDailyAutoFieldsByDate in
 // dba) — never editable, never sent back on save. Kept as a Set so the edit
@@ -68,6 +75,14 @@ interface ReportEntry {
   itemName: string;
   loca: string;
   body?: string;
+  address?: string;
+}
+
+interface ReportCategoryOption {
+  id: string;
+  logicalName: string;
+  displayName: string;
+  loca: string;
 }
 
 interface AudioRecordingListItem {
@@ -163,6 +178,9 @@ function ViewsPageContent() {
   const [dailyEntries, setDailyEntries] = useState<DailyEntryRecord[]>([]);
   const [leads, setLeads] = useState<LeadDashboardItem[]>([]);
   const [reports, setReports] = useState<ReportEntry[]>([]);
+  const [reportCategories, setReportCategories] = useState<ReportCategoryOption[]>([]);
+  const [selectedReportCategoryId, setSelectedReportCategoryId] = useState<string>("");
+  const [reportsLoading, setReportsLoading] = useState(false);
   const [recordings, setRecordings] = useState<AudioRecordingListItem[]>([]);
   const [recordingDrafts, setRecordingDrafts] = useState<AudioDraftListItem[]>([]);
   const [reportsError, setReportsError] = useState<string | null>(null);
@@ -214,15 +232,13 @@ function ViewsPageContent() {
     setReportsError(null);
     setRecordingsError(null);
     try {
-      const [viewsRes, leadsRes, reportsRes, recordingsRes] = await Promise.all([
+      const [viewsRes, leadsRes, recordingsRes] = await Promise.all([
         fetch("/api/views"),
         fetch("/api/leads-dashboard"),
-        fetch("/api/views/reports"),
         fetch("/api/views/recordings"),
       ]);
       const viewsResult = await viewsRes.json();
       const leadsResult = await leadsRes.json();
-      const reportsResult = await reportsRes.json();
       const recordingsResult = await recordingsRes.json();
 
       if (viewsResult.success) {
@@ -246,16 +262,6 @@ function ViewsPageContent() {
 
       if (Array.isArray(leadsResult)) {
         setLeads(leadsResult);
-      }
-
-      // Reports errors are kept separate from the tracker/dates error above
-      // so a Reports-only failure (e.g. views/reports not found) doesn't
-      // block the other views, and is never silently shown as "no reports".
-      if (reportsResult.success) {
-        setReports(reportsResult.reports || []);
-      } else {
-        setReportsError(reportsResult.error || "Failed to fetch reports");
-        setReports([]);
       }
 
       if (recordingsResult.success) {
@@ -489,13 +495,116 @@ function ViewsPageContent() {
     [recordings, selectedRecordingId],
   );
 
-  // Sync the editable copy when a (different) report is selected — keyed on
-  // the loca, not on `selectedReport` itself, so an in-progress edit isn't
-  // clobbered by a background refetch of the same report.
+  // Root `reports` categories (Story 102) — load when entering Reports view.
   useEffect(() => {
-    setEditedReportContent(selectedReport?.body ?? "");
-    setReportSaved(false);
-  }, [selectedReportLoca]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (selectedView !== "reports") return;
+    let cancelled = false;
+    const requestId = Date.now();
+    (async () => {
+      setReportsLoading(true);
+      setReportsError(null);
+      try {
+        const res = await fetch("/api/reports/categories");
+        const json = await res.json();
+        if (cancelled) return;
+        if (!res.ok || !json.success) {
+          throw new Error(json.error || "Failed to load report categories");
+        }
+        const cats: ReportCategoryOption[] = Array.isArray(json.categories) ? json.categories : [];
+        setReportCategories(cats);
+        setSelectedReportCategoryId((prev) => {
+          if (prev && cats.some((c) => c.id === prev)) return prev;
+          return cats[0]?.id ?? "";
+        });
+      } catch (err) {
+        if (!cancelled) {
+          setReportsError(err instanceof Error ? err.message : String(err));
+          setReportCategories([]);
+          setSelectedReportCategoryId("");
+          setReports([]);
+        }
+      } finally {
+        if (!cancelled) setReportsLoading(false);
+      }
+      void requestId;
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedView]);
+
+  // Text items for the selected category — client-side search only after this load.
+  useEffect(() => {
+    if (selectedView !== "reports" || !selectedReportCategoryId) {
+      if (selectedView === "reports" && !selectedReportCategoryId) setReports([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      setReportsLoading(true);
+      setReportsError(null);
+      try {
+        const params = new URLSearchParams({ category: selectedReportCategoryId });
+        const res = await fetch(`/api/reports?${params.toString()}`);
+        const json = await res.json();
+        if (cancelled) return;
+        if (!res.ok || !json.success) {
+          throw new Error(json.error || "Failed to load reports");
+        }
+        const items: ReportEntry[] = Array.isArray(json.reports)
+          ? json.reports.map((r: { name: string; loca: string; address: string; preview?: string | null }) => ({
+              itemName: r.name,
+              loca: r.loca,
+              address: r.address,
+              body: undefined,
+            }))
+          : [];
+        setReports(items);
+      } catch (err) {
+        if (!cancelled) {
+          setReportsError(err instanceof Error ? err.message : String(err));
+          setReports([]);
+        }
+      } finally {
+        if (!cancelled) setReportsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedView, selectedReportCategoryId]);
+
+  // Load full body when opening a report (list endpoint omits bodies).
+  useEffect(() => {
+    if (!selectedReportLoca) {
+      setEditedReportContent("");
+      setReportSaved(false);
+      return;
+    }
+    const fromList = reports.find((r) => r.loca === selectedReportLoca);
+    if (!fromList?.address) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const params = new URLSearchParams({ address: fromList.address! });
+        const res = await fetch(`/api/reports/item?${params.toString()}`);
+        const json = await res.json();
+        if (cancelled) return;
+        if (!res.ok || !json.success) throw new Error(json.error || "Failed to load report");
+        setEditedReportContent(typeof json.data?.body === "string" ? json.data.body : "");
+        setReportSaved(false);
+      } catch {
+        if (!cancelled) {
+          setEditedReportContent("");
+          setReportSaved(false);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // Re-run when the matching list row gains an address after category load.
+  }, [selectedReportLoca, selectedReport?.address]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleReportEditorChange = (value: string) => {
     setEditedReportContent(value);
@@ -718,23 +827,47 @@ function ViewsPageContent() {
         ) : (
           <>
             <div className="flex shrink-0 flex-wrap items-center gap-3">
+              <Select
+                value={selectedReportCategoryId || undefined}
+                onValueChange={(v) => {
+                  setSelectedReportCategoryId(v);
+                  setFilter("");
+                }}
+                disabled={reportCategories.length === 0 || reportsLoading}
+              >
+                <SelectTrigger size="sm" className="h-7 w-[260px] text-xs">
+                  <SelectValue placeholder="Report type" />
+                </SelectTrigger>
+                <SelectContent>
+                  {reportCategories.map((c) => (
+                    <SelectItem key={c.id} value={c.id} className="text-xs">
+                      {c.displayName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <div className="relative">
                 <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                 <Input
                   value={filter}
                   onChange={(e) => setFilter(e.target.value)}
-                  placeholder="Filter reports..."
-                  className="pl-7 h-7 text-xs w-[220px]"
+                  placeholder="Search reports"
+                  className="pl-7 h-7 text-xs w-[180px]"
                 />
               </div>
               <Button
                 variant="outline"
                 size="sm"
-                onClick={handleRefresh}
-                disabled={isLoading}
+                onClick={() => {
+                  // Re-trigger category load by clearing then setting id.
+                  const id = selectedReportCategoryId;
+                  setSelectedReportCategoryId("");
+                  queueMicrotask(() => setSelectedReportCategoryId(id));
+                }}
+                disabled={reportsLoading}
                 className="gap-2 h-7 text-xs"
               >
-                <RefreshCw className={`h-3 w-3 ${isLoading ? "animate-spin" : ""}`} />
+                <RefreshCw className={`h-3 w-3 ${reportsLoading ? "animate-spin" : ""}`} />
                 Refresh
               </Button>
               <span className="text-xs text-muted-foreground">
@@ -743,16 +876,21 @@ function ViewsPageContent() {
             </div>
 
             <ErrorBox message={reportsError} className="mb-2" />
-            <div className={LIST_ROW_WRAPPER_CLASS}>
-            {isLoading ? (
+            <div className={cn(LIST_ROW_WRAPPER_CLASS, "flex min-h-0 w-[400px] max-w-[400px] flex-1 flex-col overflow-y-auto")}>
+            {reportsLoading ? (
               <div className="flex items-center gap-2 py-4 text-muted-foreground">
                 <RefreshCw className="h-4 w-4 animate-spin" />
                 <span>Loading reports...</span>
               </div>
-            ) : reportsError ? null : filteredReports.length === 0 ? (
+            ) : reportsError ? null : reportCategories.length === 0 ? (
               <div className="flex items-center gap-3 py-4 text-muted-foreground">
                 <FileText className="h-8 w-8 opacity-20" />
-                <span className="text-sm">No reports yet. Use Forms to add one.</span>
+                <span className="text-sm">No report categories found.</span>
+              </div>
+            ) : filteredReports.length === 0 ? (
+              <div className="flex items-center gap-3 py-4 text-muted-foreground">
+                <FileText className="h-8 w-8 opacity-20" />
+                <span className="text-sm">No reports in this category.</span>
               </div>
             ) : (
               <div className="divide-y">
@@ -761,11 +899,8 @@ function ViewsPageContent() {
                     key={report.loca}
                     type="button"
                     onClick={() => pushViewState({ report: report.loca })}
-                    className={`flex w-full items-center gap-3 text-left ${LIST_ROW_CLASS}`}
+                    className={`flex w-full items-center text-left ${LIST_ROW_CLASS}`}
                   >
-                    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-primary">
-                      <FileText className="h-3.5 w-3.5" />
-                    </span>
                     <span className="font-medium text-sm truncate">{report.itemName}</span>
                   </button>
                 ))}

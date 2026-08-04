@@ -11,12 +11,10 @@ import {
   AiPromptAutoTab,
   type AiPromptConversationCandidate,
   type AiPromptConversationSelection,
-  type AiPromptReportOption,
 } from "@/components/msg-automation/ai-prompt-auto-tab";
 import { AiPromptBaseTab } from "@/components/msg-automation/ai-prompt-base-tab";
 import { BeeperConversationView } from "@/components/shared/beeper-conversation-view";
-
-const NONE = "__none__";
+import { effectiveReportAddress, type UserReportSelection } from "@/lib/effective-report";
 
 type RightPanelTab = "ai-chat" | "conv" | "report";
 
@@ -78,9 +76,11 @@ export function AiPromptWorkspace({ promptId, manageContent }: AiPromptWorkspace
   const [contextLoading, setContextLoading] = useState(false);
   const [contextError, setContextError] = useState<string | null>(null);
 
-  const [aiRecommendedReportAddress, setAiRecommendedReportAddress] = useState<string | null>(null);
+  const [autoReportAddress, setAutoReportAddress] = useState<string | null>(null);
   const [aiRecommendedConversationIsFound, setAiRecommendedConversationIsFound] = useState(false);
-  const [selectedReportAddress, setSelectedReportAddress] = useState<string>(NONE);
+  const [userReport, setUserReport] = useState<UserReportSelection>({ status: "unset" });
+  const [userReportName, setUserReportName] = useState<string | null>(null);
+  const [userReportBody, setUserReportBody] = useState<string | null>(null);
   const [conversationSelection, setConversationSelection] = useState<AiPromptConversationSelection>({ kind: "none" });
 
   const [manualConversationBody, setManualConversationBody] = useState<string | null>(null);
@@ -130,9 +130,11 @@ export function AiPromptWorkspace({ promptId, manageContent }: AiPromptWorkspace
       if (!res.ok || !json.success) throw new Error(json.error || `Failed to load context (${res.status})`);
       const data = json.data as LeadAnalysisContextResponse;
       setContext(data);
-      setAiRecommendedReportAddress(data.recommendedReportAddress);
+      setAutoReportAddress(data.recommendedReportAddress);
       setAiRecommendedConversationIsFound(data.conversation.found);
-      setSelectedReportAddress(data.recommendedReportAddress ?? NONE);
+      setUserReport({ status: "unset" });
+      setUserReportName(null);
+      setUserReportBody(null);
       setConversationSelection(data.conversation.found ? { kind: "found" } : { kind: "none" });
       setManualConversationBody(null);
       setActiveTab("auto");
@@ -161,10 +163,45 @@ export function AiPromptWorkspace({ promptId, manageContent }: AiPromptWorkspace
     }
   }
 
+  async function handleSelectUserReport(selection: UserReportSelection) {
+    setUserReport(selection);
+    if (selection.status !== "report") {
+      setUserReportName(null);
+      setUserReportBody(null);
+      return;
+    }
+    const fromContext = context?.reports.find((r) => r.address === selection.address);
+    if (fromContext) {
+      setUserReportName(fromContext.name);
+      setUserReportBody(fromContext.body ?? null);
+      openReportPreview();
+      return;
+    }
+    setUserReportName(null);
+    setUserReportBody(null);
+    try {
+      const params = new URLSearchParams({ address: selection.address });
+      const res = await fetch(`/api/reports/item?${params.toString()}`);
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.error || "Failed to load report");
+      setUserReportName(typeof json.data?.name === "string" ? json.data.name : null);
+      setUserReportBody(typeof json.data?.body === "string" ? json.data.body : null);
+      openReportPreview();
+    } catch {
+      setUserReportName(null);
+      setUserReportBody(null);
+    }
+  }
+
+  const effectiveAddress = effectiveReportAddress(autoReportAddress, userReport);
+  const autoReportName =
+    context?.reports.find((r) => r.address === autoReportAddress)?.name ?? null;
   const reportBody =
-    selectedReportAddress === NONE
+    effectiveAddress == null
       ? null
-      : (context?.reports.find((r) => r.address === selectedReportAddress)?.body ?? null);
+      : userReport.status === "report" && userReport.address === effectiveAddress
+        ? userReportBody
+        : (context?.reports.find((r) => r.address === effectiveAddress)?.body ?? userReportBody);
   const conversationBody =
     conversationSelection.kind === "none"
       ? null
@@ -263,9 +300,6 @@ export function AiPromptWorkspace({ promptId, manageContent }: AiPromptWorkspace
     }
   }
 
-  const reportOptions: AiPromptReportOption[] =
-    context?.reports.map((r) => ({ address: r.address, name: r.name, category: r.category, preview: r.preview })) ?? [];
-
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-background lg:flex-row">
       <div className="flex min-h-0 flex-col border-b lg:w-[42%] lg:shrink-0 lg:border-b-0 lg:border-r">
@@ -306,16 +340,13 @@ export function AiPromptWorkspace({ promptId, manageContent }: AiPromptWorkspace
                 <AiPromptAutoTab
                   loading={contextLoading}
                   error={contextError}
-                  reports={reportOptions}
-                  aiRecommendedReportAddress={aiRecommendedReportAddress}
-                  selectedReportAddress={selectedReportAddress}
-                  onSelectReport={setSelectedReportAddress}
-                  onOpenReport={openReportPreview}
+                  autoReportAddress={autoReportAddress}
+                  autoReportName={autoReportName}
+                  userReport={userReport}
+                  userReportName={userReportName}
+                  onSelectUserReport={(sel) => void handleSelectUserReport(sel)}
                   conversationFound={context?.conversation.found ?? false}
                   conversationChannel={context?.conversation.channel ?? null}
-                  conversationBasis={context?.conversation.basis ?? "not-found"}
-                  conversationPreview={context?.conversation.preview ?? null}
-                  conversationError={context?.conversation.error}
                   conversationDisplayName={context?.conversation.displayName ?? null}
                   aiRecommendedConversationIsFound={aiRecommendedConversationIsFound}
                   conversationCandidates={context?.conversationCandidates ?? []}
