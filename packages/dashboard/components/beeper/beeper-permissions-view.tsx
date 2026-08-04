@@ -159,10 +159,11 @@ export function BeeperPermissionsView({
 					<span>No contacts found.</span>
 				</div>
 			) : (
-				// Shell owns the frame + scrollbar. table-fixed + explicit widths
-				// (+ trailing empty column) so columns never reflow when the group
-				// filter/search changes which rows are visible — matches the
-				// Groups tab's own table (8px left, 16px between columns).
+				// table-fixed + explicit widths (+ trailing empty column) so
+				// columns never reflow when the group filter/search changes
+				// which rows are visible — matches Groups (8px left, 16px
+				// between). Vertical scroll lives on beeper/page.tsx's
+				// flex-1 pane (no shell/page scrollbar).
 				<div className="overflow-x-auto">
 					<table className="w-full min-w-[420px] table-fixed text-left text-sm">
 						<thead>

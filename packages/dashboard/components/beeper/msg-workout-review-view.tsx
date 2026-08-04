@@ -190,8 +190,7 @@ export function MsgWorkoutReviewView({
 
   useEffect(() => {
     // scrollTop on the local container directly — see BeeperConversationsView
-    // for why (scrollIntoView climbs every scrollable ancestor, including
-    // the page shell's, which visibly collapsed the tabs).
+    // for why (scrollIntoView climbs every scrollable ancestor).
     if (conversationScrollRef.current && conversationMessages.length > 0) {
       conversationScrollRef.current.scrollTop = conversationScrollRef.current.scrollHeight;
     }

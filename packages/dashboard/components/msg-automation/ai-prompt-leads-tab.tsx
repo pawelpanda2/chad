@@ -54,19 +54,12 @@ export function AiPromptLeadsTab({ selectedLead, onSelectLead }: AiPromptLeadsTa
 
   return (
     <div className="space-y-3">
-      <div>
-        <h2 className="text-base font-semibold">choose lead</h2>
-        <p className="mt-0.5 text-xs text-muted-foreground">
-          Selecting a lead unlocks the auto and base tabs.
-        </p>
-      </div>
-
       <div className="relative">
         <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
         <Input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search leads…"
+          placeholder="Search"
           className="h-9 pl-8 text-sm"
         />
       </div>

@@ -14,8 +14,11 @@ import {
   type AiPromptReportOption,
 } from "@/components/msg-automation/ai-prompt-auto-tab";
 import { AiPromptBaseTab } from "@/components/msg-automation/ai-prompt-base-tab";
+import { BeeperConversationView } from "@/components/shared/beeper-conversation-view";
 
 const NONE = "__none__";
+
+type RightPanelTab = "ai-chat" | "conv" | "report";
 
 interface LeadAnalysisContextResponse {
   leadName: string;
@@ -29,6 +32,8 @@ interface LeadAnalysisContextResponse {
     basis: string;
     preview: string | null;
     error?: string;
+    conversationId?: string | null;
+    displayName?: string | null;
   };
   conversationCandidates: AiPromptConversationCandidate[];
   basePrompt: string;
@@ -90,13 +95,34 @@ export function AiPromptWorkspace({ promptId, manageContent }: AiPromptWorkspace
   const [status, setStatus] = useState<AiPromptRunStatus>("idle");
   const [error, setError] = useState<string | null>(null);
 
+  const [rightTab, setRightTab] = useState<RightPanelTab>("ai-chat");
+  const [convTabOpen, setConvTabOpen] = useState(false);
+  const [reportTabOpen, setReportTabOpen] = useState(false);
+
   const leadUnlocked = Boolean(selectedLead);
+
+  function resetRightPanel() {
+    setRightTab("ai-chat");
+    setConvTabOpen(false);
+    setReportTabOpen(false);
+  }
+
+  function openConversationPreview() {
+    setConvTabOpen(true);
+    setRightTab("conv");
+  }
+
+  function openReportPreview() {
+    setReportTabOpen(true);
+    setRightTab("report");
+  }
 
   async function handleSelectLead(lead: AiPromptLeadListItem) {
     setSelectedLead(lead);
     setContext(null);
     setContextLoading(true);
     setContextError(null);
+    resetRightPanel();
     try {
       const params = new URLSearchParams({ leadName: lead.leadName, leadLoca: lead.loca });
       const res = await fetch(`/api/msg-automation/ai-prompts/lead-context?${params.toString()}`);
@@ -248,25 +274,34 @@ export function AiPromptWorkspace({ promptId, manageContent }: AiPromptWorkspace
           onValueChange={(v) => setActiveTab(v as typeof activeTab)}
           className="flex min-h-0 flex-1 flex-col gap-0"
         >
-          <TabsList className="mx-3 mt-2 w-fit shrink-0">
-            <TabsTrigger value="manage">manage</TabsTrigger>
-            <TabsTrigger value="leads">leads</TabsTrigger>
+          {/* Same TabsList/TabsTrigger recipe as Beeper (Conversations /
+              Permissions / …): default shell, Title Case labels. */}
+          <TabsList aria-label="AI Prompt view" className="mx-3 mt-2 w-fit shrink-0">
+            <TabsTrigger value="manage">Manage</TabsTrigger>
+            <TabsTrigger value="leads">Lead</TabsTrigger>
             <TabsTrigger value="auto" disabled={!leadUnlocked}>
-              auto
+              Auto
             </TabsTrigger>
             <TabsTrigger value="base" disabled={!leadUnlocked}>
-              base
+              Base
             </TabsTrigger>
           </TabsList>
 
-          <div className="min-h-0 flex-1 overflow-y-auto p-4">
+          <div
+            className={cn(
+              "min-h-0 flex-1 p-4",
+              activeTab === "base" || activeTab === "auto"
+                ? "flex flex-col overflow-hidden"
+                : "overflow-y-auto",
+            )}
+          >
             <TabsContent value="manage" className="mt-0">
               {manageContent}
             </TabsContent>
             <TabsContent value="leads" className="mt-0">
               <AiPromptLeadsTab selectedLead={selectedLead} onSelectLead={(lead) => void handleSelectLead(lead)} />
             </TabsContent>
-            <TabsContent value="auto" className="mt-0">
+            <TabsContent value="auto" className="mt-0 flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden">
               {leadUnlocked ? (
                 <AiPromptAutoTab
                   loading={contextLoading}
@@ -275,15 +310,18 @@ export function AiPromptWorkspace({ promptId, manageContent }: AiPromptWorkspace
                   aiRecommendedReportAddress={aiRecommendedReportAddress}
                   selectedReportAddress={selectedReportAddress}
                   onSelectReport={setSelectedReportAddress}
+                  onOpenReport={openReportPreview}
                   conversationFound={context?.conversation.found ?? false}
                   conversationChannel={context?.conversation.channel ?? null}
                   conversationBasis={context?.conversation.basis ?? "not-found"}
                   conversationPreview={context?.conversation.preview ?? null}
                   conversationError={context?.conversation.error}
+                  conversationDisplayName={context?.conversation.displayName ?? null}
                   aiRecommendedConversationIsFound={aiRecommendedConversationIsFound}
                   conversationCandidates={context?.conversationCandidates ?? []}
                   conversationSelection={conversationSelection}
                   onSelectConversation={(sel) => void handleSelectConversation(sel)}
+                  onOpenConversation={openConversationPreview}
                 />
               ) : (
                 <LockedBox />
@@ -295,7 +333,7 @@ export function AiPromptWorkspace({ promptId, manageContent }: AiPromptWorkspace
                 </div>
               )}
             </TabsContent>
-            <TabsContent value="base" className="mt-0">
+            <TabsContent value="base" className="mt-0 flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden">
               {leadUnlocked ? (
                 <AiPromptBaseTab finalPrompt={finalPrompt || basePrompt} loading={previewLoading} />
               ) : (
@@ -307,91 +345,137 @@ export function AiPromptWorkspace({ promptId, manageContent }: AiPromptWorkspace
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col">
-        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
-          {messages.length === 0 ? (
-            <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center text-muted-foreground">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted">
-                <MessageSquare className="h-5 w-5" />
-              </div>
-              <div className="text-lg font-semibold text-foreground">Your conversation will appear here</div>
-              {!promptId ? (
-                <div className="text-sm">Save the prompt first to send a message.</div>
-              ) : !selectedLead ? (
-                <div className="text-sm">Select a lead in the leads tab to get started.</div>
-              ) : null}
-            </div>
-          ) : (
-            messages.map((m) => (
-              <div key={m.id} className={cn("flex", m.role === "user" ? "justify-end" : "justify-start")}>
-                <div
-                  className={cn(
-                    "max-w-[80%] whitespace-pre-wrap rounded-2xl border px-3 py-2.5 text-sm leading-snug shadow-sm",
-                    m.role === "user"
-                      ? "rounded-br-[5px] border-primary bg-primary text-primary-foreground"
-                      : "rounded-bl-[5px] bg-muted/40"
-                  )}
-                >
-                  {m.content}
+        <Tabs
+          value={rightTab}
+          onValueChange={(v) => setRightTab(v as RightPanelTab)}
+          className="flex min-h-0 flex-1 flex-col gap-0"
+        >
+          <TabsList aria-label="AI Prompt right panel" className="mx-3 mt-2 w-fit shrink-0">
+            <TabsTrigger value="ai-chat">AI chat</TabsTrigger>
+            {convTabOpen && <TabsTrigger value="conv">Conv</TabsTrigger>}
+            {reportTabOpen && <TabsTrigger value="report">Report</TabsTrigger>}
+          </TabsList>
+
+          <TabsContent value="ai-chat" className="mt-0 flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden">
+            <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
+              {messages.length === 0 ? (
+                <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center text-muted-foreground">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted">
+                    <MessageSquare className="h-5 w-5" />
+                  </div>
+                  <div className="text-lg font-semibold text-foreground">Your conversation will appear here</div>
+                  {!promptId ? (
+                    <div className="text-sm">Save the prompt first to send a message.</div>
+                  ) : !selectedLead ? (
+                    <div className="text-sm">Select a lead in the Lead tab to get started.</div>
+                  ) : null}
                 </div>
-              </div>
-            ))
-          )}
-
-          {status === "sending" && (
-            <div className="flex justify-start">
-              <div className="flex items-center gap-2 rounded-2xl rounded-bl-[5px] bg-muted/40 px-3 py-2.5 text-sm text-muted-foreground">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                Waiting for a response…
-              </div>
-            </div>
-          )}
-
-          {(status === "error" || status === "provider-not-configured") && error && (
-            <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-              <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-              <span>
-                {status === "provider-not-configured" ? "Provider not configured: " : "Error: "}
-                {error}
-              </span>
-            </div>
-          )}
-        </div>
-
-        <div className="mx-auto mb-6 w-[min(670px,calc(100%-3rem))] rounded-3xl border p-4 shadow-sm">
-          <Textarea
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            placeholder={
-              !promptId
-                ? "Save the prompt first…"
-                : !selectedLead
-                  ? "Select a lead first…"
-                  : "Additional input (optional) — appended to the base prompt"
-            }
-            disabled={!promptId || !selectedLead || status === "sending"}
-            className="min-h-[60px] resize-none border-0 p-0 shadow-none focus-visible:ring-0"
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                if (canSend) void handleSend();
-              }
-            }}
-          />
-          <div className="mt-1.5 text-xs text-muted-foreground">
-            This text never replaces the base prompt — it&apos;s only appended to the full request shown in the{" "}
-            <strong>base</strong> tab.
-          </div>
-          <div className="mt-2 flex justify-end">
-            <Button type="button" size="sm" className="gap-1.5" disabled={!canSend} onClick={() => void handleSend()}>
-              {status === "sending" ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
               ) : (
-                <Send className="h-3.5 w-3.5" />
+                messages.map((m) => (
+                  <div key={m.id} className={cn("flex", m.role === "user" ? "justify-end" : "justify-start")}>
+                    <div
+                      className={cn(
+                        "max-w-[80%] whitespace-pre-wrap rounded-2xl border px-3 py-2.5 text-sm leading-snug shadow-sm",
+                        m.role === "user"
+                          ? "rounded-br-[5px] border-primary bg-primary text-primary-foreground"
+                          : "rounded-bl-[5px] bg-muted/40",
+                      )}
+                    >
+                      {m.content}
+                    </div>
+                  </div>
+                ))
               )}
-              Send
-            </Button>
-          </div>
-        </div>
+
+              {status === "sending" && (
+                <div className="flex justify-start">
+                  <div className="flex items-center gap-2 rounded-2xl rounded-bl-[5px] bg-muted/40 px-3 py-2.5 text-sm text-muted-foreground">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Waiting for a response…
+                  </div>
+                </div>
+              )}
+
+              {(status === "error" || status === "provider-not-configured") && error && (
+                <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+                  <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  <span>
+                    {status === "provider-not-configured" ? "Provider not configured: " : "Error: "}
+                    {error}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            <div className="mx-auto mb-6 w-[min(670px,calc(100%-3rem))] rounded-3xl border p-4 shadow-sm">
+              <Textarea
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                placeholder={
+                  !promptId
+                    ? "Save the prompt first…"
+                    : !selectedLead
+                      ? "Select a lead first…"
+                      : "Additional input (optional) — appended to the base prompt"
+                }
+                disabled={!promptId || !selectedLead || status === "sending"}
+                className="min-h-[60px] resize-none border-0 p-0 shadow-none focus-visible:ring-0"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    if (canSend) void handleSend();
+                  }
+                }}
+              />
+              <div className="mt-1.5 text-xs text-muted-foreground">
+                This text never replaces the base prompt — it&apos;s only appended to the full request shown in the{" "}
+                <strong>base</strong> tab.
+              </div>
+              <div className="mt-2 flex justify-end">
+                <Button type="button" size="sm" className="gap-1.5" disabled={!canSend} onClick={() => void handleSend()}>
+                  {status === "sending" ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Send className="h-3.5 w-3.5" />
+                  )}
+                  Send
+                </Button>
+              </div>
+            </div>
+          </TabsContent>
+
+          {convTabOpen && (
+            <TabsContent value="conv" className="mt-0 flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden">
+              <div className="min-h-0 flex-1 overflow-y-auto bg-muted/40">
+                {manualConversationLoading ? (
+                  <div className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Loading conversation…
+                  </div>
+                ) : (
+                  <BeeperConversationView
+                    content={conversationBody}
+                    emptyLabel="No conversation selected"
+                    emptyHint="Pick a conversation in Auto, then open it from the name link."
+                  />
+                )}
+              </div>
+            </TabsContent>
+          )}
+
+          {reportTabOpen && (
+            <TabsContent value="report" className="mt-0 flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden">
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden m-3 rounded-lg border">
+                <div className="flex shrink-0 items-center border-b bg-muted/40 px-3 py-1.5 text-xs font-semibold">
+                  report
+                </div>
+                <pre className="min-h-0 flex-1 overflow-y-auto whitespace-pre-wrap break-words p-3 text-sm leading-relaxed">
+                  {reportBody || "No report selected."}
+                </pre>
+              </div>
+            </TabsContent>
+          )}
+        </Tabs>
       </div>
     </div>
   );
@@ -400,7 +484,7 @@ export function AiPromptWorkspace({ promptId, manageContent }: AiPromptWorkspace
 function LockedBox() {
   return (
     <div className="rounded-lg border border-dashed px-6 py-8 text-center text-sm text-muted-foreground">
-      Select a lead in the <strong>leads</strong> tab.
+      Select a lead in the <strong>Lead</strong> tab.
     </div>
   );
 }

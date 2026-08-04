@@ -12,7 +12,7 @@
  * - base shows the exact final prompt text from the preview endpoint.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AiPromptWorkspace } from "./ai-prompt-workspace.js";
 
@@ -31,6 +31,8 @@ const CONTEXT = {
     channel: "whatsapp",
     basis: "live-match",
     preview: "conversation preview",
+    displayName: "Claudia Delfin",
+    conversationId: "conv-1",
   },
   conversationCandidates: [],
   basePrompt: "<current_case>...</current_case>",
@@ -65,9 +67,9 @@ function stubFetch(over: { run?: unknown; runOk?: boolean } = {}) {
 
 async function pickLead() {
   const user = userEvent.setup();
-  await user.click(screen.getByRole("tab", { name: "leads" }));
+  await user.click(screen.getByRole("tab", { name: "Lead" }));
   await user.click(await screen.findByText("26-02-17_pi_Ira_Babenko"));
-  await screen.findByText(/auto context/i);
+  await screen.findByText("Auto Pick");
 }
 
 afterEach(() => {
@@ -77,18 +79,20 @@ afterEach(() => {
 });
 
 describe("AiPromptWorkspace", () => {
-  it("renders tabs in manage/leads/auto/base order, all lowercase", () => {
+  it("renders tabs in Manage/Lead/Auto/Base order (Beeper-style Title Case)", () => {
     stubFetch();
     render(<AiPromptWorkspace promptId="p1" manageContent={<div>settings</div>} />);
-    const tabs = screen.getAllByRole("tab").map((t) => t.textContent);
-    expect(tabs).toEqual(["manage", "leads", "auto", "base"]);
+    const left = within(screen.getByLabelText("AI Prompt view"));
+    const tabs = left.getAllByRole("tab").map((t) => t.textContent);
+    expect(tabs).toEqual(["Manage", "Lead", "Auto", "Base"]);
+    expect(screen.getByRole("tab", { name: "AI chat" })).toBeTruthy();
   });
 
   it("locks auto and base (real disabled, not just dimmed) until a lead is selected", () => {
     stubFetch();
     render(<AiPromptWorkspace promptId="p1" manageContent={<div>settings</div>} />);
-    expect(screen.getByRole("tab", { name: "auto" }).hasAttribute("disabled")).toBe(true);
-    expect(screen.getByRole("tab", { name: "base" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("tab", { name: "Auto" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("tab", { name: "Base" }).hasAttribute("disabled")).toBe(true);
   });
 
   it("never calls the run endpoint on render", () => {
@@ -103,17 +107,32 @@ describe("AiPromptWorkspace", () => {
     stubFetch();
     render(<AiPromptWorkspace promptId="p1" manageContent={<div>settings</div>} />);
     await pickLead();
-    expect(screen.getByRole("tab", { name: "auto" }).hasAttribute("disabled")).toBe(false);
-    expect(screen.getByRole("tab", { name: "base" }).hasAttribute("disabled")).toBe(false);
+    expect(screen.getByRole("tab", { name: "Auto" }).hasAttribute("disabled")).toBe(false);
+    expect(screen.getByRole("tab", { name: "Base" }).hasAttribute("disabled")).toBe(false);
     expect(screen.getByText("daygame — full report")).toBeTruthy();
-    expect(screen.getByText("whatsapp conversation")).toBeTruthy();
+    expect(screen.getAllByText("Claudia Delfin").length).toBeGreaterThan(0);
+  });
+
+  it("conversation and report name links open Conv / Report tabs in the right panel", async () => {
+    stubFetch();
+    render(<AiPromptWorkspace promptId="p1" manageContent={<div>settings</div>} />);
+    await pickLead();
+
+    const conversationLinks = screen.getAllByRole("button", { name: "Claudia Delfin" });
+    fireEvent.click(conversationLinks[conversationLinks.length - 1]!);
+    expect(screen.getByRole("tab", { name: "Conv" })).toBeTruthy();
+    expect(screen.getByText("conversation body")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "full report" }));
+    expect(screen.getByRole("tab", { name: "Report" })).toBeTruthy();
+    expect(screen.getByText("report body")).toBeTruthy();
   });
 
   it("base tab shows the exact final prompt text from the preview endpoint", async () => {
     stubFetch();
     render(<AiPromptWorkspace promptId="p1" manageContent={<div>settings</div>} />);
     await pickLead();
-    await userEvent.setup().click(screen.getByRole("tab", { name: "base" }));
+    await userEvent.setup().click(screen.getByRole("tab", { name: "Base" }));
     await screen.findByText((_c, node) => node?.textContent === CONTEXT.basePrompt);
   });
 
