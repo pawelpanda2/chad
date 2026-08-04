@@ -11,8 +11,8 @@ describe("ai-prompt-kind mapping", () => {
       "openai_managed",
       "our_custom",
     ]);
-    expect(aiPromptKindLabel("our_custom")).toBe("our custom prompt");
-    expect(aiPromptKindLabel("openai_managed")).toBe("openai published prompt");
+    expect(aiPromptKindLabel("our_custom")).toBe("our custom");
+    expect(aiPromptKindLabel("openai_managed")).toBe("openai published");
   });
 
   it("normalizes legacy chad_custom and missing to our_custom", () => {

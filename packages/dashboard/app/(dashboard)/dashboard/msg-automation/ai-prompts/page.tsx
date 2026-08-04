@@ -3,7 +3,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
-import { FRAME_SECTION_GAP_CLASS } from "@/components/shared/layout-tokens";
+import {
+  FRAME_SECTION_GAP_CLASS,
+  LIST_ROW_CLASS,
+  LIST_ROW_WRAPPER_CLASS,
+} from "@/components/shared/layout-tokens";
 import { Button } from "@/components/ui/button";
 import { ErrorBox } from "@/components/shared/error-box";
 import { cn } from "@/lib/utils";
@@ -24,24 +28,17 @@ interface AiPromptSummary {
 }
 
 /**
- * Fixed column widths so header cells and row cells share the same left edges.
- * Last cell is an empty flex spacer (no chevron). Left-packed, phone-friendly.
+ * Fixed column widths for a ~560px list frame (Leads is 400px; prompts need
+ * more room for Ver./Name/Category/Description).
  */
-const ROW = "flex w-full items-stretch text-left";
+const ROW = "flex w-full items-center text-left";
 
-const VER_CELL =
-  "flex w-12 shrink-0 items-center border-border border-r px-[3px] py-[1px]";
+const VER_CELL = "w-10 shrink-0";
+const NAME_CELL = "w-[9.5rem] shrink-0";
+const CATEGORY_CELL = "w-[8.5rem] shrink-0";
+const DESCRIPTION_CELL = "min-w-0 flex-1";
 
-const NAME_CELL =
-  "flex w-[9.5rem] shrink-0 items-center border-border border-r px-[3px] py-[1px] sm:w-[14rem]";
-
-const CATEGORY_CELL =
-  "flex w-[10.75rem] shrink-0 items-center border-border border-r px-[3px] py-[1px] sm:w-[12.5rem]";
-
-const DESCRIPTION_CELL =
-  "flex w-[8rem] shrink-0 items-center border-border border-r px-[3px] py-[1px] sm:w-[12rem]";
-
-const SPACER_CELL = "min-w-0 flex-1";
+const LIST_WIDTH_CLASS = "w-[560px] max-w-[560px]";
 
 export default function AiPromptsListPage() {
   const router = useRouter();
@@ -78,9 +75,10 @@ export default function AiPromptsListPage() {
     <DashboardPageShell
       title="AI Prompts"
       upLevel={{ href: "/dashboard/msg-automation", label: "Msg Auto" }}
+      scroll={false}
       contentClassName={FRAME_SECTION_GAP_CLASS}
     >
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex shrink-0 flex-wrap items-center gap-3">
         <Button
           variant="outline"
           size="sm"
@@ -94,29 +92,37 @@ export default function AiPromptsListPage() {
 
       <ErrorBox message={error} className="shrink-0" />
 
-      <div className="min-h-0 flex-1 overflow-auto rounded-lg border bg-muted/10 px-[3px] py-[2px]">
+      {/* Column headers sit above the list frame (Leads-style frame below). */}
+      <div className={cn("shrink-0 px-2", LIST_WIDTH_CLASS)}>
+        <div
+          className={cn(
+            ROW,
+            "px-[10px] text-xs font-semibold uppercase tracking-wide text-muted-foreground",
+          )}
+        >
+          <div className={VER_CELL}>Ver.</div>
+          <div className={NAME_CELL}>Name</div>
+          <div className={CATEGORY_CELL}>Category</div>
+          <div className={DESCRIPTION_CELL}>Description</div>
+        </div>
+      </div>
+
+      <div
+        className={cn(
+          LIST_ROW_WRAPPER_CLASS,
+          LIST_WIDTH_CLASS,
+          "flex min-h-0 flex-1 flex-col overflow-y-auto",
+        )}
+      >
         {loading ? (
-          <div className="flex items-center gap-2 px-[3px] py-[2px] text-sm text-muted-foreground">
+          <div className="flex items-center gap-2 py-4 text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
-            Loading prompts…
+            <span className="text-sm">Loading prompts…</span>
           </div>
         ) : prompts.length === 0 ? (
-          <div className="px-[3px] py-[2px] text-sm text-muted-foreground">No prompts yet</div>
+          <div className="py-4 text-sm text-muted-foreground">No prompts yet</div>
         ) : (
-          <div className="space-y-px">
-            {/* Transparent border matches row box model so columns line up. */}
-            <div
-              className={cn(
-                ROW,
-                "rounded-xl border border-transparent text-xs font-semibold uppercase tracking-wide text-muted-foreground"
-              )}
-            >
-              <div className={VER_CELL}>Ver.</div>
-              <div className={NAME_CELL}>Name</div>
-              <div className={CATEGORY_CELL}>Category</div>
-              <div className={DESCRIPTION_CELL}>Description</div>
-              <div className={SPACER_CELL} aria-hidden />
-            </div>
+          <div className="divide-y">
             {prompts.map((p) => {
               const kind = normalizeAiPromptKind(p.promptKind);
               const category = aiPromptKindLabel(kind);
@@ -127,35 +133,31 @@ export default function AiPromptsListPage() {
                   data-testid="ai-prompt-row"
                   data-prompt-kind={kind}
                   onClick={() => openPrompt(p)}
-                  className={cn(
-                    ROW,
-                    "rounded-xl border border-border bg-background transition-colors hover:bg-accent/60"
-                  )}
+                  className={cn(ROW, "group w-full", LIST_ROW_CLASS)}
                 >
-                  <div className={cn(VER_CELL, "font-semibold text-muted-foreground")}>
+                  <div className={cn(VER_CELL, "text-sm font-medium text-muted-foreground")}>
                     v{p.version}
                   </div>
-                  <div className={NAME_CELL}>
-                    <span className="w-full truncate text-sm font-semibold">{p.name}</span>
+                  <div className={cn(NAME_CELL, "min-w-0 pr-2")}>
+                    <span className="block truncate text-sm font-medium">{p.name}</span>
                   </div>
-                  <div className={CATEGORY_CELL}>
+                  <div className={cn(CATEGORY_CELL, "min-w-0 pr-2")}>
                     <span
                       className={cn(
-                        "inline-flex max-w-full truncate rounded-full px-[3px] py-0 text-xs font-semibold",
+                        "inline-flex max-w-full truncate rounded-full px-2 py-0.5 text-xs font-semibold",
                         kind === "openai_managed"
                           ? "bg-blue-50 text-blue-800 dark:bg-blue-950/40 dark:text-blue-200"
-                          : "bg-violet-50 text-violet-800 dark:bg-violet-950/40 dark:text-violet-200"
+                          : "bg-violet-50 text-violet-800 dark:bg-violet-950/40 dark:text-violet-200",
                       )}
                     >
                       {category}
                     </span>
                   </div>
-                  <div className={DESCRIPTION_CELL}>
-                    <span className="w-full truncate text-xs text-muted-foreground">
+                  <div className={cn(DESCRIPTION_CELL, "min-w-0")}>
+                    <span className="block truncate text-xs text-muted-foreground">
                       {p.description?.trim() || ""}
                     </span>
                   </div>
-                  <div className={SPACER_CELL} aria-hidden />
                 </button>
               );
             })}
