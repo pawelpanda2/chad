@@ -43,76 +43,40 @@ patrz osobny folder
 (liczba mnoga) — [forms-and-views.md](../gui-standards/forms-and-views.md).
 Nie mieszaj tych standardów z Beeper split-view poniżej.
 
-## Wzorzec: split-view z dwoma niezależnymi scrollami + kolapsujący nagłówek
+## Wzorzec: Beeper split-view — panele scrollują, brak głównego scrolla
 
 **Gdzie:** `packages/dashboard/app/(dashboard)/dashboard/beeper/page.tsx`
 (Conversations/Msg workout tabs) + `components/beeper/beeper-conversations-view.tsx`,
 `msg-workout-review-view.tsx`, `beeper-conversation-list.tsx`.
 
-**Kiedy używać:** zakładka typu "lista kontaktów/wątków | szczegół" (czat,
-skrzynka mail-podobna) — NIE dla zwykłych tabel (te używają wzorca niżej,
-"Widok tabeli").
+**Kiedy używać:** zakładka typu "lista kontaktów/wątków | szczegół" (czat).
 
-**Problem, który to rozwiązuje** (Story 99 follow-up, dokładny opis
-użytkownika): przy takim split-view standardowa `DashboardPageShell`
-(zakładki + pasek filtrów + treść, wszystko w jednej ramce z jednym
-scrollem) nie działa dobrze, bo lista kontaktów i konwersacja **muszą** mieć
-własny, niezależny scroll (typowy layout czatu) — więc treść zakładki
-zawsze dokładnie wypełnia dostępną wysokość i nigdy nie ma nadmiaru do
-przewinięcia na poziomie całej strony. To był pierwotny bug: nie dało się
-"zjechać niżej", żeby zakładki (Conversations/Permissions/...) i pasek
-filtrów schowały się i zrobiły więcej miejsca — ani na telefonie, ani na
-desktopie.
+**Zasada wysokości (2026-08-03):** cały widok Beeper **zawsze mieści się**
+w dostępnej wysokości okna. `DashboardPageShell` na Beeperze ma
+`scroll={false}` — **nie ma** głównego pionowego scrollbara ramki.
+Wysokość dla paneli odzyskuje się przez zwinięcie bloku tabs/filters
+(chevron ↑/↓ w `toolbarLeading`, stan `isViewToolbarCollapsed`), nie przez
+przewijanie shella. Split-view siedzi w
+`<div className="min-h-0 flex-1 overflow-hidden">` (NIE w starym
+`h-full shrink-0`, które celowo robiło overflow pod shell scroll).
 
-**Rozwiązanie — trzy niezależne scrolle, żaden nie jest udawany:**
+**Zwijanie paska zakładek:** tylko blok tabs/filters wewnątrz ramki.
+Nie ruszać pozycji scrollbarów paneli, nie owijać ich scroll containerów,
+nie używać `direction`.
 
-1. **Lista kontaktów** (`<aside>` → `BeeperConversationList`) — `h-full` +
-   własny `overflow-y-auto`. Wypełnia dokładnie dostępną wysokość, własny
-   pasek przewijania.
-2. **Konwersacja** (`<section>`) — **własna ramka z zaokrąglonymi rogami**
-   (`rounded-xl border`, dokładnie ta sama estetyka co ramka główna, tylko
-   mniejsza) + własny `overflow-y-auto` wewnątrz. Auto-scroll do najnowszej
-   wiadomości ustawia `scrollTop` **bezpośrednio na tym elemencie** — **NIGDY
-   `element.scrollIntoView()`**, bo `scrollIntoView()` przewija WSZYSTKICH
-   scrollowalnych przodków w łańcuchu, łącznie z głównym scrollem strony (co
-   właśnie powodowało, że samo otwarcie konwersacji chowało zakładki — realny
-   bug znaleziony i naprawiony w tym Story). `element.scrollTop = element.scrollHeight`
-   na referencji do lokalnego kontenera nigdy nie dotyka niczego poza nim.
-3. **Główna ramka** (`DashboardPageShell`, poza tym komponentem) — jej
-   `overflow-y-auto` jest zawsze obecne (to standardowy mechanizm shella), a
-   robi się **naprawdę scrollowalne** (nie tylko technicznie, ale z realnym
-   nadmiarem treści) dzięki temu, że wrapper wokół split-view w `page.tsx`
-   ma `h-full shrink-0` (NIE `flex-1 min-h-0`):
-   ```
-   <div className="h-full shrink-0 overflow-hidden">
-     <BeeperConversationsView .../>
-   </div>
-   ```
-   `h-full` na flex-childzie liczy się względem **wysokości kontenera
-   scrolla** (czyli pełnej dostępnej wysokości ramki), a nie "tego, co
-   zostało po zakładkach" — to inna semantyka niż `flex-1` (który dzieli
-   pozostałą przestrzeń). Efekt: całkowita wysokość treści w scrollu =
-   wysokość paska zakładek+filtrów + pełna wysokość split-view — czyli scroll
-   ma dokładnie tyle nadmiaru, ile wynosi wysokość paska zakładek. Przewijając
-   go w dół o tyle właśnie, pasek zakładek płynnie znika (natywny scroll
-   przeglądarki, bez JS, bez animacji do zsynchronizowania), a split-view
-   przesuwa się i wypełnia całą ramkę. Przewijając z powrotem do góry, pasek
-   wraca. Zweryfikowane: `scrollHeight - clientHeight` głównego kontenera
-   równe dokładnie wysokości paska zakładek+filtrów (np. 88px), scrollowanie
-   w dół chowa pasek całkowicie, split-view wypełnia ramkę, kontakt +
-   konwersacja pozostają w pełni widoczne i użyteczne.
+**Scrollują wyłącznie panele:**
 
-**Dlaczego nie JS (collapse-on-scroll state)?** Pierwsza wersja tego
-rozwiązania próbowała chować pasek zakładek przez `useState`+`onScroll`
-nasłuchujący scrolla wewnątrz listy/konwersacji, z animacją `max-height`.
-Odrzucone po realnym teście z użytkownikiem: (1) każde otwarcie dłuższej
-konwersacji samo w sobie wywoływało scroll wewnętrzny (auto-scroll do
-najnowszej wiadomości), co natychmiast chowało pasek — mylące, wyglądało na
-zepsute; (2) "trzeci scrollbar" (główny) był w tamtej wersji całkowicie
-nieaktywny (żadnego realnego nadmiaru), czyli technicznie niewidoczny —
-użytkownik chciał, żeby to WŁAŚNIE główny scrollbar wykonywał to
-przewinięcie, płynnie, bez JS. Rozwiązanie CSS-owe (oversized content) nie
-ma żadnej z tych wad.
+1. **Lista kontaktów** — własny `overflow-y-auto`.
+2. **Konwersacja** — własna ramka + własny `overflow-y-auto`. Auto-scroll
+   do najnowszej wiadomości: `scrollTop` **bezpośrednio** na tym elemencie —
+   **NIGDY `element.scrollIntoView()`** (przewijałoby przodków).
+3. **Msg workout** (gdy otwarty) — własny scroll panelu.
+4. **Permissions / Groups** — własny `min-h-0 flex-1 overflow-y-auto` na
+   poziomie `beeper/page.tsx` (tabele), bo nie ma już shell scrolla.
+
+**Historia (nie przywracać):** wcześniejszy wzorzec „oversized”
+(`h-full shrink-0` + shell `overflow-y-auto`) celowo tworzył trzeci scrollbar
+żeby zjechać zakładki. Zastąpiony chevronem collapse + `scroll={false}`.
 
 ## Widok tabeli (bez edycji inline) — Beeper Permissions/Groups→List
 
