@@ -8,7 +8,11 @@
  * definition itself lives in `chad_shared`.
  */
 
-import { listLeadReportsForCreator, getLeadConversationForCreator } from "./message-creator.js";
+import {
+  listLeadReportsForCreator,
+  getLeadConversationForCreator,
+  type LeadConversationMatchBasis,
+} from "./message-creator.js";
 import { buildLeadAnalysisCurrentCase } from "./lead-analysis-prompt.js";
 import { loadConversationCandidates } from "./lead-beeper-links.js";
 import { getBeeperContact } from "./beeper-crm.js";
@@ -33,7 +37,7 @@ export interface LeadAnalysisConversationOption {
   body: string | null;
   channel: string | null;
   /** Which tier resolved this conversation — reported by getLeadConversationForCreator itself. */
-  basis: "saved-link" | "live-match" | "legacy-fallback" | "not-found";
+  basis: LeadConversationMatchBasis;
   preview: string | null;
   error?: string;
   /** Beeper contact id when known (saved-link / live-match). */

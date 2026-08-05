@@ -80,6 +80,36 @@ Git SHA before this Story: `1e88ba3ed2464330dd01ffe86a1868313a695390`.
   `runWithRepoContext({repoGuid, username}, ...)` looped-over-every-user
   pattern the scheduler's `runForAllUsers()` follows.
 
+## GUI redesign phase (mockup-driven, Task 11)
+
+- Base commit for this phase: `81207b7` — checkpoint of the pre-existing
+  Task 1–10 backend + first-pass GUI (found uncommitted at the start of
+  this phase, matching the checklist's already-DONE tasks exactly;
+  committed as-is before any redesign edits, per the mandatory
+  return-point rule).
+- `examples/` had 9 mockup files; `CHAD_links_v2_redesign_mockup_v10.html`
+  was the only one both named for Links V2 and the newest by mtime
+  (2026-08-06, vs. `..._v5.html` from 2026-07-26) — no ambiguity to
+  resolve.
+- The mockup's own inline `<script>` (vanilla JS, direct
+  `style.gridTemplateColumns` mutation on drag, `dataTransfer` for DnD
+  payloads) was read as the literal interaction spec, not just the CSS —
+  `_lib/resize.ts` and `page.tsx`'s drag handlers are a direct React port
+  of that logic (min/centerMin clamp formulas included), not a
+  reinterpretation.
+- No existing drag-and-drop pattern anywhere else in `packages/dashboard`
+  (confirmed by grep before starting) — this is the first HTML5 native
+  DnD usage in the codebase. Kept deliberately plain (native `draggable`/
+  `dataTransfer`, no library) rather than introducing a new dependency
+  for one page.
+- Full research pass on reusable pieces before writing GUI code (see
+  `06_others_from_report.md` for the source agent's findings): confirmed
+  `listBeeperContacts`/`getBeeperContact` (`beeper-crm.ts`) as the
+  full-list/single-conversation reads (distinct from `beeper.ts`'s older
+  lead-scoped walker), `BeeperPlatformIcon` as the one icon component to
+  reuse, and the Google Contacts page's inline avatar-circle pattern
+  (no shared `Avatar` component exists) as the visual to copy.
+
 ## Story-standard / GUI conventions
 
 - `ai-docs/begin_here/03_story-standard.md`, `05_endpoint-rules.md` — this

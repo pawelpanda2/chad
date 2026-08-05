@@ -26,7 +26,7 @@ function parseBeeperEntries(raw: unknown): BeeperLinkEntry[] {
       chatId: typeof e.chatId === "string" ? e.chatId : "",
       type: typeof e.type === "string" ? e.type : "",
       method: e.method === "manual" ? ("manual" as const) : ("automatic" as const),
-      matchedOn: "phone" as const,
+      matchedOn: e.matchedOn === "manual" ? ("manual" as const) : ("phone" as const),
       updatedAt: typeof e.updatedAt === "string" ? e.updatedAt : "",
     }))
     .filter((e) => e.chatId);
@@ -41,7 +41,7 @@ function parseGoogleContactsEntries(raw: unknown): GoogleContactsLinkEntry[] {
       displayName: typeof e.displayName === "string" ? e.displayName : "",
       phone: typeof e.phone === "string" ? e.phone : "",
       method: e.method === "manual" ? ("manual" as const) : ("automatic" as const),
-      matchedOn: "phone" as const,
+      matchedOn: e.matchedOn === "manual" ? ("manual" as const) : ("phone" as const),
       updatedAt: typeof e.updatedAt === "string" ? e.updatedAt : "",
     }))
     .filter((e) => e.resourceName);

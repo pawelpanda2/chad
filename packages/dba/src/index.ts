@@ -127,4 +127,10 @@ export type { LeadLinksData, BeeperLinkEntry, GoogleContactsLinkEntry } from './
 export { readLeadLinks, writeLeadLinks, parseLeadLinksYaml } from './links-v2/links-item.js';
 export { syncLinksV2ForCurrentRepo, type LinksV2SyncReport } from './links-v2/sync.js';
 export { startLinksV2DailySchedulerIfEnabled, isDailySyncDue } from './links-v2/scheduler.js';
-export { getLinksV2PageLeads, type LinksV2LeadSummary } from './links-v2/page-data.js';
+export { getLinksV2PageLeads, getLeadLinksV2ByLoca, type LinksV2LeadSummary } from './links-v2/page-data.js';
+export {
+  linkBeeperConversationToLead,
+  unlinkBeeperConversationFromLead,
+  linkGoogleContactToLead,
+  unlinkGoogleContactFromLead,
+} from './links-v2/manual-links.js';

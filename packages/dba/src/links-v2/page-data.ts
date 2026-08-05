@@ -33,3 +33,12 @@ export async function getLinksV2PageLeads(): Promise<LinksV2LeadSummary[]> {
     })
   );
 }
+
+/** A single lead's already-stored Links V2 links, by `loca` — used by consumers outside the Links V2 page itself (e.g. Message Creator's conversation resolver) that need one lead's links without listing every lead. `{ beeper: [], googleContacts: [] }` when the lead has no `links` item yet. */
+export async function getLeadLinksV2ByLoca(loca: string): Promise<LeadLinksData> {
+  const repoGuid = getCurrentRepoGuid();
+  const address = repoAndLocaToAddress(repoGuid, loca);
+  const leadItem = await getItemByAddress(address);
+  if (!leadItem) return { beeper: [], googleContacts: [] };
+  return readLeadLinks(leadItem);
+}
