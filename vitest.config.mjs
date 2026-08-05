@@ -62,6 +62,7 @@ export default defineConfig({
       "packages/dashboard/lib/google-contacts-people.test.ts",
       "packages/dashboard/lib/google-contacts-oauth-state.test.ts",
       "packages/dashboard/lib/google-contacts-public-origin.test.ts",
+      "packages/dashboard/lib/google-contacts-filter.test.ts",
       "packages/dba/src/audio-recordings.test.ts",
       // Story 93 follow-up — draft recordings (segments, isolation,
       // idempotent finalize, real-fixture merge via ffmpeg+mkvmerge).

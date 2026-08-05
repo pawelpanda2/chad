@@ -17,6 +17,7 @@ Git SHA before this Story: `235b3e653398b15e5915c3d015d443ae719d36ea` (clean tre
 | 7 | Real Google OAuth + live People API | **PASS lokalnie** — authorize OK after Console redirect URI; callback `?connected=1`; status `connected:true`; list **451** contacts; no token leaks in JSON |
 | 8 | Compose env passthrough + public callback origin + redirectUri in status/GUI | implemented + Docker redeploy PASS |
 | 9 | Commit follow-up | see git log |
+| 10 | Search + group pills + ~400px panel | PASS unit + local Docker GUI smoke |
 
 ## Task notes
 
