@@ -13,7 +13,8 @@ export interface BeeperLinkEntry {
   chatId: string;
   type: string;
   method: "automatic" | "manual";
-  matchedOn: "phone";
+  /** "manual" — GUI drag & drop assign (Story 104 GUI redesign); "phone" — automatic provider match. */
+  matchedOn: "phone" | "manual";
   updatedAt: string;
 }
 
@@ -22,7 +23,8 @@ export interface GoogleContactsLinkEntry {
   displayName: string;
   phone: string;
   method: "automatic" | "manual";
-  matchedOn: "phone";
+  /** "manual" — GUI drag & drop assign (Story 104 GUI redesign); "phone" — automatic provider match. */
+  matchedOn: "phone" | "manual";
   updatedAt: string;
 }
 

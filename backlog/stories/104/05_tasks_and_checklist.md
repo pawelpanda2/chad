@@ -12,6 +12,7 @@
 | 8 | DONE      |             | Lead Details → Beeper section (linked conversations) |
 | 9 | DONE      |             | Lead Details → Google Contacts section (linked contacts) |
 | 10 | DONE     |             | Old Links (V1) unaffected — still works exactly as before |
+| 11 | DONE     |             | GUI redesign per `examples/CHAD_links_v2_redesign_mockup_v10.html` — Leads/Conv/Google tabs, resize, drag & drop |
 
 **Note on "Tested" below:** this sandbox has no Tailscale/QNAP network
 access and no `test3` password, so a real logged-in click-through could
@@ -239,3 +240,92 @@ lives in entirely separate files/routes/package folders throughout.
 behavior.
 
 **Status: DONE**
+
+# Task 11 — GUI redesign per `examples/CHAD_links_v2_redesign_mockup_v10.html`
+
+**Requested:** Rebuild the Links V2 page around the accepted mockup —
+three main tabs (Leads / Conv / Google), a compact tri/dual-panel
+resizable layout, drag & drop assign/unlink, no extra headers/labels
+beyond what the mockup shows. Base commit for this phase: `81207b7`
+(checkpoint of the pre-existing Task 1–10 backend + first-pass GUI,
+committed before this redesign started).
+
+**Done:**
+- **Leads tab** (`left: leads | center: Links/Conv tabs | right: Beeper
+  conversations`) — left panel shows lead name + linked-conversation
+  count (no avatars, no "N linked conversations" text); center shows the
+  selected lead's linked Beeper entries with a compact `REMOVE` drop
+  target and an inner `Links`/`Conv` tab pair (`Conv` hidden until a
+  conversation is picked); right panel is the full Beeper conversation
+  list (icon + name + optional last-message preview), draggable onto the
+  center list to assign.
+- **Conv tab** (`left: Beeper conversations | right: leads`, no center
+  panel) — left rows show the linked lead's name + a red ✕ (unlink, with
+  a "Unlink lead from this conversation? Yes/No" confirm) or nothing at
+  all when unlinked; leads are dragged from the right onto a conversation
+  row to assign; assigning over an already-linked conversation shows a
+  "Replace linked lead?" confirm instead of silently overwriting.
+- **Google tab** (`left: leads | center: linked Google Contacts | right:
+  full Google Contacts`) — center has no search box (small list by
+  design), drag from the right assigns, drag from the center onto
+  `REMOVE` unlinks (same pattern as Leads' `REMOVE`, not a per-row
+  Unlink button).
+- **Resizable panels** — `_lib/resize.ts`, a `mousedown`→`mousemove`
+  drag that mutates `gridTemplateColumns` directly (no per-pixel React
+  re-render, matching the mockup's own approach for a lag-free drag).
+  Side panels floor at 200px, center floors at 100px (Leads/Google) or
+  200px (Conv, both sides) — enforced in the same clamp math as the
+  mockup. A wide invisible hit-area (±8px) sits over each thin visible
+  grip so the handle is easy to grab.
+- **Manual link/unlink DBA contracts** — the automatic sync pass
+  (Task 2/3) had no per-entry manual assign/unlink primitive, so the
+  smallest necessary addition was made: `packages/dba/src/links-v2/manual-links.ts`
+  (`linkBeeperConversationToLead`, `unlinkBeeperConversationFromLead`,
+  `linkGoogleContactToLead`, `unlinkGoogleContactFromLead`), built on the
+  same `readLeadLinks`/`writeLeadLinks`/`mergeBeeperEntries`/
+  `mergeGoogleContactsEntries` primitives Task 1 already established —
+  no new storage model, no logic in Dashboard. `BeeperLinkEntry`/
+  `GoogleContactsLinkEntry.matchedOn` widened from the literal `"phone"`
+  to `"phone" | "manual"` (types.ts + links-item.ts's parse functions) to
+  distinguish a drag-and-drop assignment from an automatic phone match.
+  Four new thin route adapters:
+  `POST /api/msg-automation/links-v2/{beeper-link,beeper-unlink,google-link,google-unlink}`.
+- **One-conversation-one-lead is a GUI-level contract, not a storage
+  constraint** — `manual-links.ts` itself allows a chat to be written to
+  two leads' `links` items independently (see its own test: "supports one
+  conversation linked to two different leads at the storage layer"); the
+  uniqueness the spec asks for is enforced client-side in `page.tsx`
+  (`assignBeeperToLead`), which reads the already-loaded page data to
+  detect an existing owner and shows the "Replace linked lead?" confirm
+  before calling unlink-then-link. No uniqueness is enforced for Google
+  Contacts (the spec only stated the one-lead rule for Beeper
+  conversations, not Google Contacts — not invented here).
+- Old `page.tsx`'s "Synchronize" button + report is kept (still required
+  by this Story's original acceptance criteria, "✔ Synchronize działa"),
+  moved into `DashboardPageShell`'s `toolbarSecondRow` (above the frame,
+  not inside it) and shrunk to a single compact line so it doesn't
+  compete with the mockup's own clean top bar.
+
+**Files changed:**
+`packages/dashboard/app/(dashboard)/dashboard/msg-automation/links-v2/{page.tsx,_lib/resize.ts}`,
+`packages/dashboard/app/api/msg-automation/links-v2/{beeper-link,beeper-unlink,google-link,google-unlink}/route.ts`,
+`packages/dba/src/links-v2/{manual-links.ts,manual-links.test.ts,types.ts,links-item.ts,index.ts}`,
+`packages/dba/src/index.ts`, `vitest.config.mjs`.
+
+**Tested:** `packages/dba/src/links-v2/manual-links.test.ts` (10 tests —
+idempotent link, unlink preserves other entries, unlink-of-unlinked is a
+no-op with zero extra writes, unknown-lead throws, Google Contacts
+denormalization, storage allows dual-lead linkage so the uniqueness test
+above is meaningful). Full `links-v2` vitest suite: 48/48 pass (38
+pre-existing + 10 new). `pnpm test:tables-sync`: 26 pass / 7 skip / 0
+fail — identical to the pre-redesign baseline, no regression.
+`pnpm --filter dba build` and `pnpm --filter dashboard build` both
+succeed (the dashboard build performs full `tsc` type-checking via
+`next build`). Local Docker rebuild + unauthenticated-route smoke test
++ live click-through — see the report appended after this checklist.
+
+**Status: DONE** (pending the user's own live click-through confirmation
+in their QNAP-connected environment for the drag & drop / resize feel,
+same sandbox limitation as every other Task in this Story — see
+Limitations in `06_others_from_report.md`).
+

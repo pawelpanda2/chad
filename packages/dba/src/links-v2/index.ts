@@ -6,3 +6,4 @@ export * from "./google-contacts-provider.js";
 export * from "./draft-leads.js";
 export * from "./sync.js";
 export * from "./scheduler.js";
+export * from "./manual-links.js";
