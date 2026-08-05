@@ -89,6 +89,17 @@ export default defineConfig({
       "packages/dba/src/lead-analysis-prompt.test.ts",
       // Story 90 — Lead ↔ Beeper Links (phone match / save validation).
       "packages/dba/src/lead-beeper-links.test.ts",
+      // Story 104 — Links V2 (Lead → Link Provider → Beeper/Google Contacts
+      // providers → future providers): links-item YAML parse/dump/merge,
+      // phone matching, per-provider match logic, Draft Lead naming, sync
+      // orchestration, and the daily scheduler's date-gating decision.
+      "packages/dba/src/links-v2/links-item.test.ts",
+      "packages/dba/src/links-v2/phone-utils.test.ts",
+      "packages/dba/src/links-v2/beeper-provider.test.ts",
+      "packages/dba/src/links-v2/google-contacts-provider.test.ts",
+      "packages/dba/src/links-v2/draft-leads.test.ts",
+      "packages/dba/src/links-v2/sync.test.ts",
+      "packages/dba/src/links-v2/scheduler.test.ts",
       // Story 99 — msg workout ↔ Beeper message matching engine (pure) and
       // config.links.beeper / proposal-tree CP write paths (Postgres,
       // throwaway repoGuids — same local test Postgres as leads-postgres.test.ts).

@@ -354,6 +354,36 @@ wiadomością; ta specjalizacja czyta z tamtej, nigdy nie zapisuje.
 
 ---
 
+## Links V2 — Lead ↔ Beeper/Google Contacts (Story 104)
+
+**Opis:** Nowa, równoległa wersja linkowania leada z zewnętrznymi źródłami
+(Beeper, Google Contacts, przyszłe providery) — obowiązkowa architektura
+`Lead → Link Provider → Beeper Provider → Google Contacts Provider →
+przyszłe providery`. W przeciwieństwie do starego modułu Links (Story 90,
+`lead-beeper-links.ts`, Beeper Mongo `lead_conversation_links`), Links V2
+zapisuje linki jako Text Item `links` (YAML) w folderze samego leada —
+nigdy w config, nigdy w bazie Beeper. Stary moduł Links pozostaje bez
+zmian i działa równolegle. Obejmuje też Draft Leads — automatyczne
+tworzenie leada dla niedopasowanego kontaktu Beeper — i codzienny
+scheduler (~05:00).
+
+**Lokalizacja:** `packages/dba/src/links-v2/` (kod), route
+`/dashboard/msg-automation/links-v2` (GUI), API pod
+`/api/msg-automation/links-v2/**`.
+
+**Zacznij od:** [`links-v2.md`](../../human-docs/dashboard/msg-automation/features/links-v2.md)
+— pełny model YAML, architektura providerów, matching, Draft Leads,
+scheduler, GUI, testy.
+
+**Czytać gdy:** zadanie dotyczy linkowania leada z Beeperem/Google
+Contacts, `packages/dba/src/links-v2/**`, strony Msg Automation → LINKS V2,
+sekcji Beeper/Google Contacts w Lead Details, albo odznaki Draft na liście
+leadów (`views/page.tsx`). **Nie** mylić ze starym modułem Links (Story 90)
+ani z Msg workout ↔ Beeper linking (Story 99, sekcja wyżej) — trzy osobne,
+nienachodzące na siebie mechanizmy.
+
+---
+
 ## GUI standard (layout/scroll wzorce współdzielone między zakładkami)
 
 **Opis:** Uzupełnienie `human-docs/dashboard/common/features/responsive-layout-standard.md`

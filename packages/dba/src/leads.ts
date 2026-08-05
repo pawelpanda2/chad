@@ -32,6 +32,8 @@ import {
   prepareSheetSyncFactoryInTxn,
 } from "./google-sheets/sync.js";
 import { runWithGoogleSheetsTxnBuffer } from "./google-sheets/txn-hook.js";
+import { readLeadLinks } from "./links-v2/links-item.js";
+import type { LeadLinksData } from "./links-v2/types.js";
 import yaml from "js-yaml";
 
 /**
@@ -571,6 +573,8 @@ export interface LeadDashboardItem {
   leadName: string;
   loca: string;
   hasContacts: boolean;
+  /** Links V2 (Story 104) — true when this lead was auto-created from an unmatched Beeper contact (`links-v2/draft-leads.ts`), read straight off the Folder's own `config.draft` (no extra CP call). */
+  draft: boolean;
 }
 
 /**
@@ -601,6 +605,7 @@ export async function getAllLeadsWithContacts(): Promise<LeadDashboardItem[]> {
       leadName: lead.config.name,
       loca: addressToRepoAndLoca(lead.config.address).loca,
       hasContacts,
+      draft: lead.config.draft === true,
     };
   });
 
@@ -2064,6 +2069,8 @@ export interface LeadDetailsDataWithWorkouts extends LeadDetailsData {
   msgWorkouts: MsgWorkoutItem[];
   msgWorkoutsError?: string;
   msgWorkoutsNotFound: boolean;
+  /** Links V2 (Story 104) — Beeper/Google Contacts links from the lead's `links` item, `{ beeper: [], googleContacts: [] }` if none exist yet. */
+  links: LeadLinksData;
 }
 
 /**
@@ -2098,11 +2105,22 @@ export async function getLeadDetailsWithWorkouts(leadName: string, leadLoca: str
   // Get msg workouts using GetByNames2 with the known leadLoca
   const msgWorkoutsResult = await getLeadMsgWorkoutsByLoca(leadLoca);
 
+  // Links V2 (Story 104) — best-effort: a lead without a `links` item yet,
+  // or an unreadable one, must never break the details page.
+  let links: LeadLinksData = { beeper: [], googleContacts: [] };
+  try {
+    const leadItem = await getItemByAddress(repoAndLocaToAddress(getCurrentRepoGuid(), leadLoca));
+    if (leadItem) links = await readLeadLinks(leadItem);
+  } catch (e) {
+    console.error(`[getLeadDetailsWithWorkouts] readLeadLinks failed for "${leadLoca}":`, e instanceof Error ? e.message : String(e));
+  }
+
   return {
     ...basicDetails,
     msgWorkouts: msgWorkoutsResult.workouts,
     msgWorkoutsError: msgWorkoutsResult.error,
     msgWorkoutsNotFound: msgWorkoutsResult.notFound,
+    links,
   };
 }
 

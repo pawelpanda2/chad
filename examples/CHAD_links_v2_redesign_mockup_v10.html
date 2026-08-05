@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CHAD Links V2 mockup v9</title>
+<style>
+:root{--bg:#101113;--p:#18191b;--p2:#1d1f22;--b:#303238;--t:#f1f1f2;--m:#9b9da3;--wa:#25d366;--ig:#f43f6e}
+*{box-sizing:border-box}html,body{height:100%}body{margin:0;background:var(--bg);color:var(--t);font:14px Inter,system-ui,sans-serif;overflow:hidden}
+button,input{font:inherit;color:inherit}.app{height:100vh;display:grid;grid-template-columns:190px 1fr}
+.sidebar{background:#18191b;border-right:1px solid var(--b);padding:14px 8px;display:flex;flex-direction:column}
+.brand{display:flex;gap:10px;align-items:center;font-size:24px;font-weight:800;padding:0 4px 15px;border-bottom:1px solid var(--b)}
+.brandmark{width:40px;height:40px;border-radius:11px;background:#eee;color:#111;display:grid;place-items:center}
+.navtitle{margin:18px 14px 7px;color:var(--m);font-size:12px;font-weight:800}.navitem{padding:11px 14px;border-radius:11px;color:#b4b5ba;margin:2px 0}.navitem.on{background:#efeff0;color:#111}
+.main{min-width:0;display:grid;grid-template-rows:46px 1fr}.top{display:flex;align-items:center;gap:7px;padding:5px 10px;border-bottom:1px solid var(--b);background:#0e0f10}
+.top button{height:34px;padding:0 10px;border:1px solid var(--b);border-radius:9px;background:#17181a}.title{font-size:18px;font-weight:800;margin-left:3px}
+.work{min-height:0;padding:10px}.frame{height:100%;display:grid;grid-template-rows:auto 1fr;border:1px solid var(--b);border-radius:16px;overflow:hidden;background:var(--p)}
+.main-tabs{display:flex;gap:0;padding:0 10px;border-bottom:1px solid var(--b);background:#1b1c1e}.main-tab{border:0;background:transparent;color:#96989d;padding:10px 14px;border-bottom:2px solid transparent}.main-tab.on{color:#fff;border-bottom-color:#fff}
+.mode{display:none;min-height:0;height:100%}.mode.on{display:grid}
+#mode-leads{grid-template-columns:300px 14px minmax(100px,1fr) 14px 360px}
+#mode-conv{grid-template-columns:minmax(200px,1fr) 14px minmax(200px,1fr)}
+#mode-google{grid-template-columns:300px 14px minmax(100px,1fr) 14px 300px}
+.panel,.center{min-width:0;min-height:0;background:#17181a;display:grid;grid-template-rows:auto 1fr}
+.panel+.center,.center+.panel{border-left:0}.search{margin:8px 9px;height:34px;border:1px solid var(--b);border-radius:10px;background:#1f2023;padding:0 10px}
+.list{overflow:auto;overflow-x:hidden;padding:0 7px 8px}.item{min-width:0;display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;padding:7px 8px;min-height:42px;border-bottom:1px solid #2c2e33;cursor:pointer}
+.item:hover,.item.on{background:#222429}.item strong,.item span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.item small{display:block;color:var(--m);font-size:11px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.count{font-size:11px;color:#aaa}
+.conv-item{grid-template-columns:28px minmax(0,1fr) auto}.icon{width:28px;height:28px;display:grid;place-items:center}.icon svg{width:25px;height:25px}.wa{color:var(--wa)}.ig{color:var(--ig)}
+.center-head{display:grid;grid-template-rows:auto auto;border-bottom:1px solid var(--b)}.inner-tabs{display:flex;padding:0 10px;border-bottom:1px solid var(--b)}.inner-tab{border:0;background:transparent;color:#96989d;padding:8px 14px;border-bottom:2px solid transparent}.inner-tab.on{color:#fff;border-bottom-color:#fff}.lead-name{padding:9px 11px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.view{display:none;min-height:0;overflow:auto;padding:10px}.view.on{display:block}.remove{display:inline-flex;align-items:center;height:23px;padding:0 7px;border:1px solid #8f2d34;border-radius:6px;background:#3a171a;color:#ff737b;font-size:10px;font-weight:800;letter-spacing:.7px;margin-bottom:8px}
+.remove.hot{background:#641f26;color:#fff}.linkrow{display:grid;grid-template-columns:28px minmax(0,1fr);gap:8px;align-items:center;padding:8px;border:1px solid var(--b);border-radius:9px;margin-bottom:7px;background:#1d1f22;cursor:grab}.linkrow.on{outline:1px solid #63666e}
+.messages{border:1px solid var(--b);border-radius:12px;padding:12px;background:#1c1e21}.msg{max-width:72%;padding:9px 11px;border-radius:13px;margin:8px 0}.msg.in{background:#2b2d31}.msg.out{margin-left:auto;background:#eee;color:#111}
+.resizer{position:relative;background:#202226;cursor:col-resize;min-width:14px}.resizer:before{content:"";position:absolute;inset:0 -10px}.resizer:after{content:"";position:absolute;left:50%;top:50%;width:5px;height:64px;transform:translate(-50%,-50%);border-radius:5px;background:#64676e}.resizer:hover,.resizer.hot{background:#2d3035}.resizer:hover:after,.resizer.hot:after{background:#a9abb0}
+body.resize{cursor:col-resize;user-select:none}
+.assign-note{padding:8px 10px;color:var(--m);border-bottom:1px solid var(--b);font-size:12px}
+.google-list{overflow:auto;padding:7px}.gcontact{display:grid;grid-template-columns:42px minmax(0,1fr);gap:11px;align-items:center;padding:10px 14px;border-bottom:1px solid #2d2f34}.avatar{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;font-size:19px;background:#0c79bd}.gcontact:nth-child(3n+1) .avatar{background:#c9360f}.gcontact:nth-child(3n+2) .avatar{background:#00695c}.gcontact strong,.gcontact small{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.gcontact small{color:var(--m);margin-top:2px}
+@media(max-width:1100px){.app{grid-template-columns:170px 1fr}#mode-leads{grid-template-columns:240px 14px minmax(280px,1fr) 14px 280px}#mode-google{grid-template-columns:240px 14px minmax(360px,1fr) 14px 240px}}
+</style>
+</head>
+<body>
+<div class="app">
+<aside class="sidebar">
+  <div class="brand"><div class="brandmark">⌘</div>pawel_f</div>
+  <div class="navtitle">PAGES</div><div class="navitem">▣ &nbsp; Forms</div><div class="navitem">▦ &nbsp; Views</div><div class="navitem on">▢ &nbsp; Msg Auto</div><div class="navitem">▤ &nbsp; Knowledge</div>
+  <div class="navtitle">OTHERS</div><div class="navitem">◴ &nbsp; History</div><div class="navitem">▱ &nbsp; Folders</div><div class="navitem">⚙ &nbsp; Settings</div>
+  <div class="navtitle">ADMIN</div><div class="navitem">♙ &nbsp; Users</div><div class="navitem" style="margin-top:auto">↪ &nbsp; Wyloguj</div>
+</aside>
+<section class="main">
+<header class="top"><button>←</button><button>↩ Back</button><button>Forw →</button><div class="title">Links V2</div></header>
+<div class="work"><section class="frame">
+  <div class="main-tabs"><button class="main-tab on" data-mode="leads">Leads</button><button class="main-tab" data-mode="conv">Conv</button><button class="main-tab" data-mode="google">Google</button></div>
+
+  <div class="mode on" id="mode-leads">
+    <aside class="panel"><input class="search" placeholder="Search"><div class="list leads-list"></div></aside>
+    <div class="resizer" data-resize="leads-left"></div>
+    <main class="center">
+      <div class="center-head"><div class="inner-tabs"><button class="inner-tab on" data-view="links">Links</button><button class="inner-tab conv-tab" data-view="conv" hidden>Conv</button></div><div class="lead-name">26-07-23_pn_Ayisha</div></div>
+      <div class="view on" id="lead-links"><div class="remove">REMOVE</div><div class="linked-list"></div></div>
+      <div class="view" id="lead-conv"><div class="messages"><div class="msg out">siema robię dzisiaj domówkę</div><div class="msg in">Czeeeść 🙋</div><div class="msg in">Kiedy następna domówka? ;)</div></div></div>
+    </main>
+    <div class="resizer" data-resize="leads-right"></div>
+    <aside class="panel"><input class="search" placeholder="Search"><div class="list beeper-list"></div></aside>
+  </div>
+
+  <div class="mode" id="mode-conv">
+    <aside class="panel"><input class="search" placeholder="Search"><div class="list conv-left"></div></aside>
+    <div class="resizer" data-resize="conv"></div>
+    <aside class="panel"><input class="search" placeholder="Search"><div class="list conv-leads"></div></aside>
+  </div>
+
+  <div class="mode" id="mode-google">
+    <aside class="panel"><input class="search" placeholder="Search"><div class="list google-leads"></div></aside>
+    <div class="resizer" data-resize="google-left"></div>
+    <main class="center"><div class="google-list google-linked-center"></div></main>
+    <div class="resizer" data-resize="google-right"></div>
+    <aside class="panel"><input class="search" placeholder="Search"><div class="google-list google-all"></div></aside>
+  </div>
+</section></div>
+</section>
+</div>
+<script>
+const WA=`<div class="icon wa"><svg viewBox="0 0 24 24" fill="none"><path d="M20.1 11.7a8.1 8.1 0 0 1-12 7.1L4 20l1.3-3.9a8.1 8.1 0 1 1 14.8-4.4Z" stroke="currentColor" stroke-width="1.9"/><path d="M8.4 7.8c.5-1 1-.5 1.4.1l.9 1.8c.2.4-.3.9-.7 1.3.8 1.5 1.7 2.4 3.2 3.1.5-.5.9-1.1 1.4-.9l1.9.9c.8.4.2 1.7-.5 2.3-1.7 1.4-5.1-.4-7.2-2.5-2.1-2.2-3.2-4.6-.4-6.1Z" fill="currentColor"/></svg></div>`;
+const IG=`<div class="icon ig"><svg viewBox="0 0 24 24" fill="none"><rect x="3.2" y="3.2" width="17.6" height="17.6" rx="5.2" stroke="currentColor" stroke-width="1.9"/><circle cx="12" cy="12" r="4.1" stroke="currentColor" stroke-width="1.9"/><circle cx="17.4" cy="6.8" r="1.15" fill="currentColor"/></svg></div>`;
+const leads=["26-08-01_nn_latina","26-05-03_wi_Alonitka_sprzatanie","26-08-01_nn_Asia_tygmont","26-07-27_pn_Klaudia_delfin","26-07-23_pn_Roza","26-07-23_pn_Ayisha","26-07-06_pn_Karolina_ruda","26-07-04_pi_Karolina","26-05-04_pi_Magda_Kamińska","26-06-22_pi_Ramona","23-08-16_pi_Natalia"];
+const convs=[["Claudia Delfin","wa"],["Ayisha2","wa"],["Martina Jurco","ig"],["Olia","wa"],["Liza","ig"],["Karolina","wa"]];
+const gcontacts=[["Krk: Sprawdzanie Auta 2","+48532999939"],["dzwonił; 24-03-14","+48787651381"],["Gustaw","664754864"],["Robert Sitko","+48794646910"],["kra_kamper2","512606609"],["Kierowca Mateuszek","507132823"],["kr_ps_centrum-gestalt","+48512251022"],["Kawalerka Nowy Kleparz","606953019"],["Piotr Czudowski","507307513"],["ME_CH_Pan_Paweł","600505165"],["Mechanik","501223344"]];
+function fillLeads(sel,counts=false){document.querySelectorAll(sel).forEach(list=>{list.innerHTML=leads.map((n,i)=>`<div class="item" data-name="${n}"><strong>${n}</strong><span class="count">${counts?(i%3?0:1):i%3}</span></div>`).join("")})}
+fillLeads(".leads-list");fillLeads(".conv-leads");fillLeads(".google-leads");
+function convHtml(n,p,i){
+      const assigned=i%3?0:1;
+      const assignedLead=assigned?leads[i%leads.length]:"";
+      return `<div class="item conv-item" draggable="true" data-name="${n}" data-assigned-lead="${assignedLead}">
+        ${p==="wa"?WA:IG}
+        <div><strong>${n}</strong>${assignedLead?`<small>${assignedLead}</small>`:""}</div>
+        <span class="count">${assigned}</span>
+      </div>`
+    }
+document.querySelector(".beeper-list").innerHTML=convs.map((x,i)=>convHtml(x[0],x[1],i)).join("");
+document.querySelector(".conv-left").innerHTML=convs.map((x,i)=>convHtml(x[0],x[1],i)).join("");
+document.querySelector(".linked-list").innerHTML=convHtml("Ayisha2","wa",1)+convHtml("ayisha.travel","ig",1);
+document.querySelector(".google-linked-center").innerHTML=gcontacts.slice(0,3).map(x=>`<div class="gcontact"><div class="avatar">${x[0][0]}</div><div><strong>${x[0]}</strong><small>${x[1]}</small></div></div>`).join("");
+document.querySelector(".google-all").innerHTML=gcontacts.map(x=>`<div class="gcontact"><div class="avatar">${x[0][0]}</div><div><strong>${x[0]}</strong><small>${x[1]}</small></div></div>`).join("");
+
+document.querySelectorAll(".main-tab").forEach(b=>b.onclick=()=>{document.querySelectorAll(".main-tab").forEach(x=>x.classList.remove("on"));document.querySelectorAll(".mode").forEach(x=>x.classList.remove("on"));b.classList.add("on");document.getElementById("mode-"+b.dataset.mode).classList.add("on")});
+const inner=document.querySelectorAll(".inner-tab"),views={links:document.getElementById("lead-links"),conv:document.getElementById("lead-conv")};
+inner.forEach(b=>b.onclick=()=>{inner.forEach(x=>x.classList.remove("on"));Object.values(views).forEach(x=>x.classList.remove("on"));b.classList.add("on");views[b.dataset.view].classList.add("on")});
+function showConv(name){const ct=document.querySelector(".conv-tab");ct.hidden=false;ct.click();document.querySelectorAll(".beeper-list .item,.linked-list .item").forEach(x=>x.classList.toggle("on",x.dataset.name===name))}
+document.querySelectorAll(".beeper-list .item,.linked-list .item").forEach(x=>x.onclick=()=>showConv(x.dataset.name));
+
+
+let pickedConv=null;
+document.querySelectorAll(".conv-left .item").forEach(x=>{
+  x.onclick=()=>{
+    pickedConv=x.dataset.name;
+    document.querySelectorAll(".conv-left .item").forEach(y=>y.classList.toggle("on",y===x));
+  };
+});
+let draggedLead=null;
+document.querySelectorAll(".conv-leads .item").forEach(x=>{
+  x.setAttribute("draggable","true");
+  x.addEventListener("dragstart",()=>draggedLead=x);
+});
+document.querySelectorAll(".conv-left .item").forEach(conv=>{
+  conv.addEventListener("dragover",e=>{if(draggedLead)e.preventDefault()});
+  conv.addEventListener("drop",e=>{
+    e.preventDefault();
+    if(!draggedLead)return;
+    const leadName=draggedLead.dataset.name;
+    conv.dataset.assignedLead=leadName;
+    conv.querySelector(".count").textContent="1";
+    const textBox=conv.children[1];
+    let small=textBox.querySelector("small");
+    if(!small){small=document.createElement("small");textBox.appendChild(small)}
+    small.textContent=leadName;
+    draggedLead=null;
+  });
+});
+
+document.querySelectorAll(".search").forEach(inp=>inp.oninput=()=>{const q=inp.value.toLowerCase();const box=inp.nextElementSibling;if(!box)return;box.querySelectorAll(".item,.gcontact").forEach(x=>x.style.display=x.textContent.toLowerCase().includes(q)?"grid":"none")});
+
+function resizeMode(mode,handle,side){
+ const min=200,centerMin=100,startCols=()=>getComputedStyle(mode).gridTemplateColumns.split(" ").map(parseFloat);
+ handle.onmousedown=e=>{e.preventDefault();document.body.classList.add("resize");handle.classList.add("hot");const sx=e.clientX,cols=startCols();
+  const move=ev=>{const dx=ev.clientX-sx,w=mode.getBoundingClientRect().width;
+   if(side==="left"){const left=Math.max(min,Math.min(cols[0]+dx,w-cols[4]-centerMin-28));mode.style.gridTemplateColumns=`${left}px 14px minmax(${centerMin}px,1fr) 14px ${cols[4]}px`}
+   else if(side==="right"){const right=Math.max(min,Math.min(cols[4]-dx,w-cols[0]-centerMin-28));mode.style.gridTemplateColumns=`${cols[0]}px 14px minmax(${centerMin}px,1fr) 14px ${right}px`}
+   else{const left=Math.max(min,Math.min(cols[0]+dx,w-min-12));mode.style.gridTemplateColumns=`${left}px 14px minmax(${min}px,1fr)`}
+  },up=()=>{document.body.classList.remove("resize");handle.classList.remove("hot");window.removeEventListener("mousemove",move);window.removeEventListener("mouseup",up)};
+  window.addEventListener("mousemove",move);window.addEventListener("mouseup",up)
+ }
+}
+resizeMode(document.getElementById("mode-leads"),document.querySelector('[data-resize="leads-left"]'),"left");
+resizeMode(document.getElementById("mode-leads"),document.querySelector('[data-resize="leads-right"]'),"right");
+resizeMode(document.getElementById("mode-conv"),document.querySelector('[data-resize="conv"]'),"single");
+resizeMode(document.getElementById("mode-google"),document.querySelector('[data-resize="google-left"]'),"left");
+resizeMode(document.getElementById("mode-google"),document.querySelector('[data-resize="google-right"]'),"right");
+</script>
+</body></html>
