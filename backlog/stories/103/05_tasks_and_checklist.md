@@ -15,7 +15,7 @@ Git SHA before this Story: `235b3e653398b15e5915c3d015d443ae719d36ea` (clean tre
 | 5 | Unit tests (map/people/oauth-state) | PASS 9/9 vitest |
 | 6 | Local Docker rebuild + smoke | PASS deploy `06_deploy.sh`; login 200; API status 401 without session; pages redirect to login (307) |
 | 7 | Real Google OAuth + live People API | **not run** — no test OAuth credentials in env (`not_configured` expected) |
-| 8 | Commit | see final report |
+| 8 | Commit | PASS `6c01c2a74ae0f89d4bf7ac663af36a60815c24d4` |
 
 ## Task notes
 

@@ -8,5 +8,5 @@
 6. **Model auth i storage:** per-user OAuth `contacts.readonly`; encrypted refresh in CP Text `integrations/google-contacts/oauth-tokens`; signed OAuth state.
 7. **Testy:** vitest 9/9 PASS (map, pagination, auth_expired leak guard, oauth state); typecheck google-contacts PASS; real Google OAuth **not run**.
 8. **Lokalny Docker:** `06_deploy.sh` EXIT 0; image `chad-dashboard:260805_211451`; login 200; unauth API 401.
-9. **Commit SHA:** (filled after commit)
+9. **Commit SHA:** 6c01c2a74ae0f89d4bf7ac663af36a60815c24d4
 10. **Blokady:** real OAuth/People smoke blocked until `GOOGLE_CONTACTS_*` credentials are configured locally.
