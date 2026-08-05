@@ -1,0 +1,25 @@
+{
+  "name": "google-contacts",
+  "version": "1.0.0",
+  "description": "Google Contacts (People API) client + OAuth helpers and DTO mapping for CHAD. No UI/HTTP server — consumed by dashboard/dba adapters.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "license": "MIT",
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "typescript": "^5.3.3"
+  }
+}
