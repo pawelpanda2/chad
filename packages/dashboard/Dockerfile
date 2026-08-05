@@ -41,9 +41,10 @@ RUN pnpm install --offline --frozen-lockfile
 
 ENV NEXT_TELEMETRY_DISABLED=1
 
-# Workspace libs must build first — dashboard imports their dist/ (workspace:*)
-RUN pnpm --filter dba build \
- && pnpm --filter google-contacts build
+# Workspace libs must build first — dashboard/dba import their dist/ (workspace:*).
+# google-contacts before dba: dba may depend on google-contacts types/dist.
+RUN pnpm --filter google-contacts build \
+ && pnpm --filter dba build
 
 RUN pnpm --filter dashboard exec prisma generate
 

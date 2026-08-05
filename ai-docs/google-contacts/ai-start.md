@@ -4,7 +4,9 @@ Story 103. Read-only Google Contacts via People API for Msg Automation.
 
 ## Package
 
-`packages/google-contacts` — DTO, Person→DTO map, OAuth helpers, People client (pagination).
+`packages/google-contacts` — DTO, Person→DTO map (incl. memberships), contactGroups.list,
+local `filterGoogleContacts` (search + multi group / — no group —), OAuth helpers,
+People client (pagination).
 
 ## Auth
 

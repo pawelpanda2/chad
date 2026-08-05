@@ -1,13 +1,19 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
 import { FRAME_SECTION_GAP_CLASS, LIST_ROW_CLASS, LIST_ROW_WRAPPER_CLASS } from "@/components/shared/layout-tokens";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { ErrorBox } from "@/components/shared/error-box";
 import { cn } from "@/lib/utils";
 import { Loader2, RefreshCw, Unplug } from "lucide-react";
+import {
+  GOOGLE_CONTACTS_NO_GROUP_ID,
+  filterGoogleContacts,
+  isGoogleContactsPillGroup,
+} from "google-contacts";
 
 interface GoogleContactRow {
   resourceName: string;
@@ -16,6 +22,14 @@ interface GoogleContactRow {
   emails: string[];
   photoUrl: string | null;
   organizations: string[];
+  groupResourceNames: string[];
+}
+
+interface GoogleGroupRow {
+  resourceName: string;
+  name: string;
+  groupType: string | null;
+  memberCount: number | null;
 }
 
 type PageState =
@@ -24,8 +38,10 @@ type PageState =
   | { kind: "not_connected" }
   | { kind: "auth_error"; message: string }
   | { kind: "empty" }
-  | { kind: "list"; contacts: GoogleContactRow[] }
+  | { kind: "list"; contacts: GoogleContactRow[]; groups: GoogleGroupRow[] }
   | { kind: "error"; message: string };
+
+const PANEL_CLASS = "w-full max-w-[400px]";
 
 export default function GoogleContactsPage() {
   return (
@@ -41,6 +57,8 @@ function GoogleContactsPageContent() {
   const [state, setState] = useState<PageState>({ kind: "loading" });
   const [busy, setBusy] = useState(false);
   const [redirectUri, setRedirectUri] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
 
   const load = useCallback(async () => {
     const oauthError = oauthErrorParam;
@@ -54,7 +72,6 @@ function GoogleContactsPageContent() {
               ? "OAuth state validation failed. Try connecting again."
               : `Connection failed (${oauthError}).`,
       });
-      // Still fetch status for redirectUri hint / connected recovery.
     } else {
       setState({ kind: "loading" });
     }
@@ -102,8 +119,14 @@ function GoogleContactsPageContent() {
         setState({ kind: "error", message: listJson.error || "Failed to load contacts" });
         return;
       }
-      const contacts: GoogleContactRow[] = Array.isArray(listJson.contacts) ? listJson.contacts : [];
-      setState(contacts.length === 0 ? { kind: "empty" } : { kind: "list", contacts });
+      const contacts: GoogleContactRow[] = Array.isArray(listJson.contacts)
+        ? listJson.contacts.map((c: GoogleContactRow) => ({
+            ...c,
+            groupResourceNames: Array.isArray(c.groupResourceNames) ? c.groupResourceNames : [],
+          }))
+        : [];
+      const groups: GoogleGroupRow[] = Array.isArray(listJson.groups) ? listJson.groups : [];
+      setState(contacts.length === 0 ? { kind: "empty" } : { kind: "list", contacts, groups });
     } catch (err) {
       setState({ kind: "error", message: err instanceof Error ? err.message : String(err) });
     }
@@ -112,6 +135,29 @@ function GoogleContactsPageContent() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const pillGroups = useMemo(() => {
+    if (state.kind !== "list") return [] as GoogleGroupRow[];
+    return state.groups
+      .filter((g) => isGoogleContactsPillGroup(g.resourceName))
+      .slice()
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [state]);
+
+  const pillGroupIds = useMemo(() => pillGroups.map((g) => g.resourceName), [pillGroups]);
+
+  const visibleContacts = useMemo(() => {
+    if (state.kind !== "list") return [] as GoogleContactRow[];
+    return filterGoogleContacts(state.contacts, {
+      query,
+      selectedGroupIds,
+      pillGroupIds,
+    });
+  }, [state, query, selectedGroupIds, pillGroupIds]);
+
+  function toggleGroup(id: string) {
+    setSelectedGroupIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  }
 
   async function handleConnect() {
     setBusy(true);
@@ -137,11 +183,16 @@ function GoogleContactsPageContent() {
     setBusy(true);
     try {
       await fetch("/api/google-contacts/disconnect", { method: "POST" });
+      setQuery("");
+      setSelectedGroupIds([]);
       setState({ kind: "not_connected" });
     } finally {
       setBusy(false);
     }
   }
+
+  const totalCount = state.kind === "list" ? state.contacts.length : 0;
+  const showPanel = state.kind === "list" || state.kind === "empty";
 
   return (
     <DashboardPageShell
@@ -150,7 +201,7 @@ function GoogleContactsPageContent() {
       scroll={false}
       contentClassName={FRAME_SECTION_GAP_CLASS}
     >
-      <div className="flex shrink-0 flex-wrap items-center gap-2">
+      <div className={cn("flex shrink-0 flex-wrap items-center gap-2", PANEL_CLASS)}>
         {(state.kind === "not_connected" || state.kind === "auth_error" || state.kind === "not_configured") && (
           <Button
             type="button"
@@ -163,7 +214,7 @@ function GoogleContactsPageContent() {
             Connect Google account
           </Button>
         )}
-        {(state.kind === "list" || state.kind === "empty") && (
+        {showPanel && (
           <>
             <Button
               type="button"
@@ -190,7 +241,9 @@ function GoogleContactsPageContent() {
           </>
         )}
         {state.kind === "list" && (
-          <span className="text-xs text-muted-foreground">{state.contacts.length} contacts</span>
+          <span className="text-xs text-muted-foreground">
+            {visibleContacts.length} / {totalCount} contacts
+          </span>
         )}
       </div>
 
@@ -219,51 +272,103 @@ function GoogleContactsPageContent() {
       )}
 
       {state.kind === "empty" && (
-        <div className="rounded-lg border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
+        <div className={cn("rounded-lg border border-dashed px-4 py-8 text-center text-sm text-muted-foreground", PANEL_CLASS)}>
           No contacts found on this Google account.
         </div>
       )}
 
       {state.kind === "list" && (
-        <div
-          className={cn(
-            LIST_ROW_WRAPPER_CLASS,
-            "flex min-h-0 w-full max-w-[720px] flex-1 flex-col overflow-y-auto",
-          )}
-        >
-          <div className="divide-y">
-            {state.contacts.map((c) => (
-              <div key={c.resourceName} className={cn("flex gap-3", LIST_ROW_CLASS)}>
-                {c.photoUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={c.photoUrl}
-                    alt=""
-                    className="h-9 w-9 shrink-0 rounded-full object-cover bg-muted"
-                    referrerPolicy="no-referrer"
-                  />
-                ) : (
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">
-                    {(c.displayName || "?").slice(0, 1).toUpperCase()}
-                  </div>
-                )}
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-medium">
-                    {c.displayName || <span className="text-muted-foreground">(no name)</span>}
-                  </div>
-                  {c.phones.length > 0 && (
-                    <div className="truncate text-xs text-muted-foreground">{c.phones.join(" · ")}</div>
+        <div className={cn("flex min-h-0 flex-1 flex-col gap-2", PANEL_CLASS)}>
+          <Input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search name, phone, email…"
+            className="h-8 shrink-0 text-sm"
+            aria-label="Search contacts"
+          />
+
+          <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+            {pillGroups.map((g) => {
+              const active = selectedGroupIds.includes(g.resourceName);
+              return (
+                <button
+                  key={g.resourceName}
+                  type="button"
+                  onClick={() => toggleGroup(g.resourceName)}
+                  className={cn(
+                    "rounded-full border px-2.5 py-1 text-xs transition-colors",
+                    active
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border bg-background text-muted-foreground hover:bg-accent hover:text-foreground",
                   )}
-                  {c.emails.length > 0 && (
-                    <div className="truncate text-xs text-muted-foreground">{c.emails.join(" · ")}</div>
-                  )}
-                  {c.organizations.length > 0 && (
-                    <div className="truncate text-xs text-muted-foreground">{c.organizations.join(" · ")}</div>
-                  )}
-                </div>
-              </div>
-            ))}
+                  aria-pressed={active}
+                >
+                  {g.name}
+                </button>
+              );
+            })}
+            <button
+              type="button"
+              onClick={() => toggleGroup(GOOGLE_CONTACTS_NO_GROUP_ID)}
+              className={cn(
+                "rounded-full border px-2.5 py-1 text-xs transition-colors",
+                selectedGroupIds.includes(GOOGLE_CONTACTS_NO_GROUP_ID)
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-border bg-background text-muted-foreground hover:bg-accent hover:text-foreground",
+              )}
+              aria-pressed={selectedGroupIds.includes(GOOGLE_CONTACTS_NO_GROUP_ID)}
+            >
+              — no group —
+            </button>
           </div>
+
+          {visibleContacts.length === 0 ? (
+            <div className="rounded-lg border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
+              No contacts match the current search or group filters.
+            </div>
+          ) : (
+            <div
+              className={cn(
+                LIST_ROW_WRAPPER_CLASS,
+                "flex min-h-0 w-full flex-1 flex-col overflow-y-auto",
+              )}
+            >
+              <div className="divide-y">
+                {visibleContacts.map((c) => (
+                  <div key={c.resourceName} className={cn("flex gap-3", LIST_ROW_CLASS)}>
+                    {c.photoUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={c.photoUrl}
+                        alt=""
+                        className="h-9 w-9 shrink-0 rounded-full object-cover bg-muted"
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">
+                        {(c.displayName || "?").slice(0, 1).toUpperCase()}
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-medium">
+                        {c.displayName || <span className="text-muted-foreground">(no name)</span>}
+                      </div>
+                      {c.phones.length > 0 && (
+                        <div className="truncate text-xs text-muted-foreground">{c.phones.join(" · ")}</div>
+                      )}
+                      {c.emails.length > 0 && (
+                        <div className="truncate text-xs text-muted-foreground">{c.emails.join(" · ")}</div>
+                      )}
+                      {c.organizations.length > 0 && (
+                        <div className="truncate text-xs text-muted-foreground">{c.organizations.join(" · ")}</div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </DashboardPageShell>
