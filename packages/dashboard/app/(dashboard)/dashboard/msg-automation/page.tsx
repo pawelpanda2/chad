@@ -54,6 +54,13 @@ export default function MsgAutomationPage() {
         >
           <span className="font-semibold text-sm">MANUAL MESSAGES</span>
         </button>
+        <button
+          type="button"
+          onClick={() => router.push("/dashboard/msg-automation/google-contacts")}
+          className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
+        >
+          <span className="font-semibold text-sm">GOOGLE CONTACTS</span>
+        </button>
       </div>
 
       <hr className="border-t my-3" />

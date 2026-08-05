@@ -57,6 +57,10 @@ export default defineConfig({
       "packages/dba/src/ai-prompts-openai.test.ts",
       // Story 102 — root `reports` category browse + effectiveReportAddress.
       "packages/dba/src/report-browse.test.ts",
+      // Story 103 — Google Contacts DTO map + People pagination + OAuth state.
+      "packages/dashboard/lib/google-contacts-map.test.ts",
+      "packages/dashboard/lib/google-contacts-people.test.ts",
+      "packages/dashboard/lib/google-contacts-oauth-state.test.ts",
       "packages/dba/src/audio-recordings.test.ts",
       // Story 93 follow-up — draft recordings (segments, isolation,
       // idempotent finalize, real-fixture merge via ffmpeg+mkvmerge).
