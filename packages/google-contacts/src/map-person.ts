@@ -8,6 +8,9 @@ export interface GooglePersonLike {
   emailAddresses?: Array<{ value?: string | null } | null> | null;
   photos?: Array<{ url?: string | null; default?: boolean | null } | null> | null;
   organizations?: Array<{ name?: string | null; title?: string | null } | null> | null;
+  memberships?: Array<{
+    contactGroupMembership?: { contactGroupResourceName?: string | null } | null;
+  } | null> | null;
 }
 
 function uniqueNonEmpty(values: Array<string | null | undefined>): string[] {
@@ -25,6 +28,7 @@ function uniqueNonEmpty(values: Array<string | null | undefined>): string[] {
 /**
  * Maps a raw Google Person (or test fixture) to a CHAD contact DTO.
  * Missing fields become null / empty arrays — never fabricated.
+ * Groups come only from memberships.contactGroupMembership — never from display name.
  */
 export function mapPersonToContact(person: GooglePersonLike | null | undefined): GoogleContactDto | null {
   if (!person || typeof person !== "object") return null;
@@ -54,6 +58,10 @@ export function mapPersonToContact(person: GooglePersonLike | null | undefined):
     }),
   );
 
+  const groupResourceNames = uniqueNonEmpty(
+    (person.memberships ?? []).map((m) => m?.contactGroupMembership?.contactGroupResourceName ?? null),
+  );
+
   return {
     resourceName,
     displayName,
@@ -61,5 +69,6 @@ export function mapPersonToContact(person: GooglePersonLike | null | undefined):
     emails,
     photoUrl,
     organizations,
+    groupResourceNames,
   };
 }

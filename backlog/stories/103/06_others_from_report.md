@@ -11,3 +11,8 @@
 9. **Commit SHA:** `4601ac7` (docs `4e388f6`)
 10. **Blokady:** none for local OAuth after Console redirect URI save.
     - Real smoke (test3): authorize → callback → `?connected=1` → encrypted refresh stored → People API list **451** contacts; response keys only `success`/`contacts` (no tokens).
+
+## Continuation — Search / groups / 400px
+
+- Local search + multi group pills + — no group —; counter `visible / total`.
+- List panel `max-w-[400px]`; memberships via People API; contactGroups.list.

@@ -117,3 +117,14 @@ export {
   deferGoogleSheetsJobFactory,
   flushPendingGoogleSheetsJobs,
 } from './google-sheets/txn-hook.js';
+// Named (not `export *`) — links-v2/phone-utils.ts's `normalizePhoneDigits`
+// intentionally shares a name with lead-beeper-links.ts's own (unrelated,
+// old-Links-module) helper of the same name; Links V2 keeps its own copy
+// deliberately independent (see links-v2/types.ts's doc comment) rather
+// than reusing the old one, so only the public surface dashboard/API
+// routes actually need is re-exported here to avoid the barrel collision.
+export type { LeadLinksData, BeeperLinkEntry, GoogleContactsLinkEntry } from './links-v2/types.js';
+export { readLeadLinks, writeLeadLinks, parseLeadLinksYaml } from './links-v2/links-item.js';
+export { syncLinksV2ForCurrentRepo, type LinksV2SyncReport } from './links-v2/sync.js';
+export { startLinksV2DailySchedulerIfEnabled, isDailySyncDue } from './links-v2/scheduler.js';
+export { getLinksV2PageLeads, type LinksV2LeadSummary } from './links-v2/page-data.js';

@@ -52,6 +52,23 @@ interface MsgWorkoutItem {
   loca: string;
 }
 
+/** Links V2 (Story 104) — see dba's links-v2/types.ts. */
+interface BeeperLinkEntry {
+  chatId: string;
+  type: string;
+}
+
+interface GoogleContactsLinkEntry {
+  resourceName: string;
+  displayName: string;
+  phone: string;
+}
+
+interface LeadLinksData {
+  beeper: BeeperLinkEntry[];
+  googleContacts: GoogleContactsLinkEntry[];
+}
+
 interface LeadDetailsData {
   leadKey: string;
   leadName: string;
@@ -61,6 +78,12 @@ interface LeadDetailsData {
   msgWorkouts: MsgWorkoutItem[];
   msgWorkoutsError?: string;
   msgWorkoutsNotFound: boolean;
+  links: LeadLinksData;
+}
+
+function googleContactUrl(resourceName: string): string {
+  const id = resourceName.startsWith("people/") ? resourceName.slice("people/".length) : resourceName;
+  return `https://contacts.google.com/person/${id}`;
 }
 
 // ============================================================================
@@ -424,6 +447,63 @@ function LeadDetailsPageContent() {
               })()}
               </div>
             </>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Links V2 — Beeper Card (Story 104) */}
+      <Card className="gap-0 py-0">
+        <CardContent className="px-[14px] py-[10px]">
+          <h2 className="text-sm font-semibold mb-2">Beeper</h2>
+          {details.links.beeper.length === 0 ? (
+            <div className="text-sm text-muted-foreground">No linked conversations</div>
+          ) : (
+            <div className="space-y-1">
+              {details.links.beeper.map((entry) => (
+                <div key={entry.chatId} className="flex items-center gap-2 text-sm">
+                  <span className="text-muted-foreground capitalize">{entry.type || "unknown"}</span>
+                  <Link
+                    href={`/dashboard/beeper?contact=${encodeURIComponent(entry.chatId)}`}
+                    className="text-primary underline underline-offset-4"
+                  >
+                    Open conversation
+                  </Link>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Links V2 — Google Contacts Card (Story 104) */}
+      <Card className="gap-0 py-0">
+        <CardContent className="px-[14px] py-[10px]">
+          <h2 className="text-sm font-semibold mb-2">Google Contacts</h2>
+          {details.links.googleContacts.length === 0 ? (
+            <div className="text-sm text-muted-foreground">No linked contacts</div>
+          ) : (
+            <div className="space-y-1">
+              {details.links.googleContacts.map((entry) => (
+                <div key={entry.resourceName} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+                  <span className="font-medium">{entry.displayName || "(no name)"}</span>
+                  {entry.phone && <span className="text-muted-foreground">{entry.phone}</span>}
+                  <Link
+                    href={googleContactUrl(entry.resourceName)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary underline underline-offset-4"
+                  >
+                    Open in Google Contacts
+                  </Link>
+                  <Link
+                    href="/dashboard/msg-automation/google-contacts"
+                    className="text-muted-foreground underline underline-offset-4"
+                  >
+                    Details
+                  </Link>
+                </div>
+              ))}
+            </div>
           )}
         </CardContent>
       </Card>
