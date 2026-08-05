@@ -14,8 +14,9 @@ Git SHA before this Story: `235b3e653398b15e5915c3d015d443ae719d36ea` (clean tre
 | 4 | GUI page + Msg Automation GOOGLE CONTACTS | implemented |
 | 5 | Unit tests (map/people/oauth-state) | PASS 9/9 vitest |
 | 6 | Local Docker rebuild + smoke | PASS deploy `06_deploy.sh`; login 200; API status 401 without session; pages redirect to login (307) |
-| 7 | Real Google OAuth + live People API | **not run** — no test OAuth credentials in env (`not_configured` expected) |
-| 8 | Commit | PASS `6c01c2a74ae0f89d4bf7ac663af36a60815c24d4` |
+| 7 | Real Google OAuth + live People API | **BLOCKED** at Google authorize: `redirect_uri_mismatch` for `http://localhost:12020/api/google-contacts/callback` (client credentials VALID via token endpoint; callback never reached) |
+| 8 | Compose env passthrough + public callback origin + redirectUri in status/GUI | implemented + Docker redeploy PASS |
+| 9 | Commit follow-up | see git log |
 
 ## Task notes
 

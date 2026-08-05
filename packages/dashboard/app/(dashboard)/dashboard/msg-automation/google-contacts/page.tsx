@@ -37,14 +37,33 @@ export default function GoogleContactsPage() {
 
 function GoogleContactsPageContent() {
   const searchParams = useSearchParams();
+  const oauthErrorParam = searchParams.get("error");
   const [state, setState] = useState<PageState>({ kind: "loading" });
   const [busy, setBusy] = useState(false);
+  const [redirectUri, setRedirectUri] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    setState({ kind: "loading" });
+    const oauthError = oauthErrorParam;
+    if (oauthError) {
+      setState({
+        kind: "auth_error",
+        message:
+          oauthError === "auth_denied"
+            ? "Google authorization was denied."
+            : oauthError === "invalid_state"
+              ? "OAuth state validation failed. Try connecting again."
+              : `Connection failed (${oauthError}).`,
+      });
+      // Still fetch status for redirectUri hint / connected recovery.
+    } else {
+      setState({ kind: "loading" });
+    }
     try {
       const statusRes = await fetch("/api/google-contacts/status");
       const statusJson = await statusRes.json();
+      if (typeof statusJson.redirectUri === "string") {
+        setRedirectUri(statusJson.redirectUri);
+      }
       if (statusRes.status === 401) {
         setState({ kind: "error", message: "Not authenticated" });
         return;
@@ -59,6 +78,9 @@ function GoogleContactsPageContent() {
           message:
             "Google Contacts is not configured on this server (GOOGLE_CONTACTS_CLIENT_ID / CLIENT_SECRET / REDIRECT_URI).",
         });
+        return;
+      }
+      if (oauthError && !statusJson.connected) {
         return;
       }
       if (!statusJson.connected) {
@@ -85,26 +107,11 @@ function GoogleContactsPageContent() {
     } catch (err) {
       setState({ kind: "error", message: err instanceof Error ? err.message : String(err) });
     }
-  }, []);
+  }, [oauthErrorParam]);
 
   useEffect(() => {
     void load();
   }, [load]);
-
-  useEffect(() => {
-    const err = searchParams.get("error");
-    if (err) {
-      setState({
-        kind: "auth_error",
-        message:
-          err === "auth_denied"
-            ? "Google authorization was denied."
-            : err === "invalid_state"
-              ? "OAuth state validation failed. Try connecting again."
-              : `Connection failed (${err}).`,
-      });
-    }
-  }, [searchParams]);
 
   async function handleConnect() {
     setBusy(true);
@@ -196,6 +203,13 @@ function GoogleContactsPageContent() {
 
       {(state.kind === "error" || state.kind === "auth_error" || state.kind === "not_configured") && (
         <ErrorBox message={state.message} />
+      )}
+
+      {(state.kind === "not_connected" || state.kind === "auth_error") && redirectUri && (
+        <div className="rounded-lg border px-3 py-2 text-xs text-muted-foreground">
+          <div className="font-medium text-foreground">OAuth redirect URI (must match Google Cloud Console exactly)</div>
+          <code className="mt-1 block break-all select-all">{redirectUri}</code>
+        </div>
       )}
 
       {state.kind === "not_connected" && (

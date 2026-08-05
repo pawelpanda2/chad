@@ -179,6 +179,14 @@ services:
       # the shared viewing account. Unset = that section just doesn't render.
       - GOOGLE_SHEETS_VIEWER_ACCOUNT_EMAIL=${GOOGLE_SHEETS_VIEWER_ACCOUNT_EMAIL:-}
       - GOOGLE_SHEETS_VIEWER_ACCOUNT_PASSWORD=${GOOGLE_SHEETS_VIEWER_ACCOUNT_PASSWORD:-}
+      # Google Contacts (People API) — user OAuth, read-only. Story 103.
+      - GOOGLE_CONTACTS_CLIENT_ID=${GOOGLE_CONTACTS_CLIENT_ID:-}
+      - GOOGLE_CONTACTS_CLIENT_SECRET=${GOOGLE_CONTACTS_CLIENT_SECRET:-}
+      - GOOGLE_CONTACTS_REDIRECT_URI=${GOOGLE_CONTACTS_REDIRECT_URI:-}
+      # Encrypt per-user OAuth refresh tokens + other cp_item secrets.
+      - SECRETS_ENCRYPTION_KEY=${SECRETS_ENCRYPTION_KEY:-}
+      # Session HMAC; OAuth state falls back to SECRETS_ENCRYPTION_KEY if unset.
+      - SESSION_SIGNING_SECRET=${SESSION_SIGNING_SECRET:-}
       # AES key for decrypting per-repo `secrets` Text items (Google viewer
       # login shown on History -> Google Sheets when viewer env vars are unset).
       - OFFLINE_READONLY_BACKUP_READER_PASSWORD=${OFFLINE_READONLY_BACKUP_READER_PASSWORD:-}

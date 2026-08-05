@@ -1,12 +1,18 @@
-# Story 103 — Final report
+# Story 103 — Final report (updated after OAuth smoke)
 
 1. **Punkt początkowy Git SHA:** `235b3e653398b15e5915c3d015d443ae719d36ea`
 2. **Story:** `backlog/stories/103/`
-3. **Zmienione elementy:** package `google-contacts`; DBA token helpers; API `/api/google-contacts/*`; GUI Msg Automation + page; Dockerfile build order; `.env.local.example`; `ai-docs/google-contacts/` + index entry.
-4. **Package i publiczny kontrakt:** `packages/google-contacts` — `GoogleContactDto`, `mapPersonToContact`, OAuth helpers, `listGoogleContactsPage` / `listAllGoogleContacts`, `GoogleContactsError`.
-5. **Trasa GUI/API:** `/dashboard/msg-automation/google-contacts`; `/api/google-contacts/{status,connect,callback,list,disconnect}`.
-6. **Model auth i storage:** per-user OAuth `contacts.readonly`; encrypted refresh in CP Text `integrations/google-contacts/oauth-tokens`; signed OAuth state.
-7. **Testy:** vitest 9/9 PASS (map, pagination, auth_expired leak guard, oauth state); typecheck google-contacts PASS; real Google OAuth **not run**.
-8. **Lokalny Docker:** `06_deploy.sh` EXIT 0; image `chad-dashboard:260805_211451`; login 200; unauth API 401.
-9. **Commit SHA:** 6c01c2a74ae0f89d4bf7ac663af36a60815c24d4
-10. **Blokady:** real OAuth/People smoke blocked until `GOOGLE_CONTACTS_*` credentials are configured locally.
+3. **Zmienione elementy:** package `google-contacts`; DBA token helpers; API; GUI; Dockerfile; compose env passthrough (`GOOGLE_CONTACTS_*`, `SECRETS_ENCRYPTION_KEY`, `SESSION_SIGNING_SECRET`); public callback origin; status exposes `redirectUri`.
+4. **Package i publiczny kontrakt:** `packages/google-contacts` — DTO/map/OAuth/People client.
+5. **Trasa GUI/API:** `/dashboard/msg-automation/google-contacts`; `/api/google-contacts/*`.
+6. **Model auth i storage:** per-user OAuth `contacts.readonly`; encrypted refresh in CP Text; signed OAuth state.
+7. **Testy:** vitest **11/11 PASS** (map/people/oauth-state/public-origin); typecheck google-contacts PASS.
+8. **Lokalny Docker:** `06_deploy.sh` EXIT 0 (image `chad-dashboard:260805_215740`).
+9. **Commit SHA:** (see latest Story 103 commits)
+10. **Blokady — real OAuth:**
+    - **Etap:** Google authorize (`accounts.google.com/o/oauth2/v2/auth`) — **przed** callback CHAD.
+    - **Błąd:** `400 redirect_uri_mismatch`
+    - **Rzeczywisty `redirect_uri` w żądaniu:** `http://localhost:12020/api/google-contacts/callback`
+    - **client_id:** `481026810910-…ter7hm05.apps.googleusercontent.com` (token endpoint → `invalid_grant` na fake code = credentials OK)
+    - Live probe: Google nadal odrzuca ten URI (i inne typowe localhost) dla tego client_id → lista Authorized redirect URIs w Console nie jest skutecznie powiązana z tym klientem / nie zapisana.
+    - Callback / state / token exchange / zapis refresh / lista kontaktów: **nieosiągnięte** (Google nie zwraca `code`).
