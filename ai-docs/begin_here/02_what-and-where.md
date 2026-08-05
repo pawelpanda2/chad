@@ -435,6 +435,24 @@ funkcje teraz wywołują też tę integrację, patrz architecture.md §1).
 
 ---
 
+## Google Contacts (`packages/google-contacts`) — People API, OAuth użytkownika
+
+**Opis:** Read-only kontakty Google (People API) w Msg Automation. Osobny
+package DTO/map/OAuth/client; Dashboard = cienkie API + GUI; tokeny
+refresh per użytkownik, szyfrowane w Text item pod repo context
+(`integrations/google-contacts/oauth-tokens`). Nie używa service account
+Sheets.
+
+**Lokalizacja:** `ai-docs/google-contacts/` (Story 103, 2026-08-05).
+
+**Zacznij od:** [`ai-docs/google-contacts/ai-start.md`](../google-contacts/ai-start.md).
+
+**Czytać gdy:** zadanie dotyczy `packages/google-contacts`,
+`/api/google-contacts/*`, strony Msg Automation → GOOGLE CONTACTS, albo
+per-user OAuth do kontaktów Google.
+
+---
+
 ## MCP server (`packages/mcp`) — kontrolowany dostęp AI agentów do CpItem
 
 **Opis:** Serwer MCP (Model Context Protocol) udostępniający agentom AI
