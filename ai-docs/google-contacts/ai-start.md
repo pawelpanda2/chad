@@ -21,3 +21,13 @@ Per-user OAuth (`contacts.readonly`). Refresh tokens encrypted with `encryptSecr
 
 - GUI: `/dashboard/msg-automation/google-contacts`
 - API: `/api/google-contacts/{status,connect,callback,list,disconnect}`
+
+## OAuth troubleshooting
+
+`redirect_uri_mismatch` happens at Google’s authorize step (before CHAD
+callback). The authorize request’s `redirect_uri` must be listed under
+**Authorized redirect URIs** for the same OAuth client id as
+`GOOGLE_CONTACTS_CLIENT_ID` (Web application). Live probe: open the
+`authUrl` from `/api/google-contacts/connect` — if Google shows
+`redirect_uri_mismatch`, CHAD never receives `code`. Token endpoint
+`invalid_grant` on a fake code means client id/secret are valid.

@@ -11,12 +11,23 @@ import {
 } from "dba";
 import { getCurrentUserFromCookies } from "@/lib/session";
 import { verifyGoogleContactsOAuthState } from "@/lib/google-contacts-oauth-state";
+import { googleContactsPublicOrigin } from "@/lib/google-contacts-public-origin";
 
 const SUCCESS_PATH = "/dashboard/msg-automation/google-contacts?connected=1";
 const ERROR_PATH = "/dashboard/msg-automation/google-contacts";
 
+function publicOrigin(request: NextRequest): string {
+  return googleContactsPublicOrigin({
+    redirectUriEnv: process.env.GOOGLE_CONTACTS_REDIRECT_URI,
+    forwardedProto: request.headers.get("x-forwarded-proto"),
+    forwardedHost: request.headers.get("x-forwarded-host"),
+    host: request.headers.get("host"),
+    requestUrl: request.url,
+  });
+}
+
 function redirectError(request: NextRequest, code: string) {
-  const url = new URL(ERROR_PATH, request.url);
+  const url = new URL(ERROR_PATH, publicOrigin(request));
   url.searchParams.set("error", code);
   return NextResponse.redirect(url);
 }
@@ -60,7 +71,7 @@ export async function GET(request: NextRequest) {
     } else {
       await runWithRepoContext(user, () => saveGoogleContactsRefreshToken(tokens.refreshToken!));
     }
-    return NextResponse.redirect(new URL(SUCCESS_PATH, request.url));
+    return NextResponse.redirect(new URL(SUCCESS_PATH, publicOrigin(request)));
   } catch (error) {
     const codeName =
       error instanceof GoogleContactsError ? error.code : "api_error";

@@ -14,8 +14,10 @@ export async function GET() {
   }
 
   let configured = true;
+  let redirectUri: string | null = null;
   try {
-    requireGoogleContactsConfig();
+    const config = requireGoogleContactsConfig();
+    redirectUri = config.redirectUri;
   } catch (err) {
     if (err instanceof GoogleContactsError && err.code === "not_configured") configured = false;
     else configured = false;
@@ -25,7 +27,8 @@ export async function GET() {
     const connected = configured
       ? await runWithRepoContext(user, () => hasGoogleContactsConnection())
       : false;
-    return NextResponse.json({ success: true, configured, connected });
+    // redirectUri is public (must match Google Cloud Console); never tokens/secrets.
+    return NextResponse.json({ success: true, configured, connected, redirectUri });
   } catch (error) {
     console.error("[google-contacts/status]", error instanceof Error ? error.message : error);
     return NextResponse.json(
