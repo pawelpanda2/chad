@@ -18,6 +18,7 @@ function contact(partial: Partial<GoogleContactDto> & { resourceName: string }):
 }
 
 const PILL_GROUPS = ["contactGroups/work", "contactGroups/family"];
+const ALL_ON = [...PILL_GROUPS, GOOGLE_CONTACTS_NO_GROUP_ID];
 
 const CONTACTS: GoogleContactDto[] = [
   contact({
@@ -50,24 +51,33 @@ const CONTACTS: GoogleContactDto[] = [
   }),
 ];
 
-describe("filterGoogleContacts", () => {
-  it("filters by a single group", () => {
+describe("filterGoogleContacts (opt-out pills)", () => {
+  it("with all pills enabled shows every contact", () => {
     const out = filterGoogleContacts(CONTACTS, {
-      selectedGroupIds: ["contactGroups/work"],
+      selectedGroupIds: ALL_ON,
       pillGroupIds: PILL_GROUPS,
     });
-    expect(out.map((c) => c.resourceName)).toEqual(["people/1", "people/3"]);
+    expect(out.map((c) => c.resourceName)).toEqual(["people/1", "people/2", "people/3", "people/4"]);
   });
 
-  it("filters by multiple groups with OR semantics", () => {
+  it("deselecting a label hides all contacts that carry it", () => {
     const out = filterGoogleContacts(CONTACTS, {
-      selectedGroupIds: ["contactGroups/work", "contactGroups/family"],
+      selectedGroupIds: ["contactGroups/family", GOOGLE_CONTACTS_NO_GROUP_ID],
       pillGroupIds: PILL_GROUPS,
     });
-    expect(out.map((c) => c.resourceName)).toEqual(["people/1", "people/2", "people/3"]);
+    // work deselected → Ada (work) and Carol (work+family) gone; Bob + Dave remain
+    expect(out.map((c) => c.resourceName)).toEqual(["people/2", "people/4"]);
   });
 
-  it("filters — no group — as contacts outside pill groups", () => {
+  it("deselecting all pills yields zero contacts", () => {
+    const out = filterGoogleContacts(CONTACTS, {
+      selectedGroupIds: [],
+      pillGroupIds: PILL_GROUPS,
+    });
+    expect(out).toHaveLength(0);
+  });
+
+  it("— no group — alone keeps only ungrouped contacts", () => {
     const out = filterGoogleContacts(CONTACTS, {
       selectedGroupIds: [GOOGLE_CONTACTS_NO_GROUP_ID],
       pillGroupIds: PILL_GROUPS,
@@ -76,42 +86,47 @@ describe("filterGoogleContacts", () => {
   });
 
   it("searches by name case-insensitively", () => {
-    const out = filterGoogleContacts(CONTACTS, { query: "ada" });
+    const out = filterGoogleContacts(CONTACTS, {
+      query: "ada",
+      selectedGroupIds: ALL_ON,
+      pillGroupIds: PILL_GROUPS,
+    });
     expect(out.map((c) => c.resourceName)).toEqual(["people/1"]);
   });
 
   it("searches by phone", () => {
-    const out = filterGoogleContacts(CONTACTS, { query: "500600" });
+    const out = filterGoogleContacts(CONTACTS, {
+      query: "500600",
+      selectedGroupIds: ALL_ON,
+      pillGroupIds: PILL_GROUPS,
+    });
     expect(out.map((c) => c.resourceName)).toEqual(["people/2"]);
   });
 
   it("searches by email", () => {
-    const out = filterGoogleContacts(CONTACTS, { query: "CAROL@X" });
+    const out = filterGoogleContacts(CONTACTS, {
+      query: "CAROL@X",
+      selectedGroupIds: ALL_ON,
+      pillGroupIds: PILL_GROUPS,
+    });
     expect(out.map((c) => c.resourceName)).toEqual(["people/3"]);
   });
 
-  it("combines search and group filters", () => {
+  it("combines search and opt-out group filters", () => {
     const out = filterGoogleContacts(CONTACTS, {
-      query: "a",
-      selectedGroupIds: ["contactGroups/work"],
+      query: "lovelace",
+      selectedGroupIds: ["contactGroups/work", GOOGLE_CONTACTS_NO_GROUP_ID],
       pillGroupIds: PILL_GROUPS,
     });
-    // Ada + Carol match "a" and work; Bob has "a" in mail? bob@mail - has a; but not in work
-    expect(out.map((c) => c.resourceName)).toEqual(["people/1", "people/3"]);
+    // family off → Bob/Carol out; Ada matches search + work-only among pills
+    expect(out.map((c) => c.resourceName)).toEqual(["people/1"]);
   });
 
   it("reports visible/total via lengths", () => {
     const visible = filterGoogleContacts(CONTACTS, {
-      selectedGroupIds: ["contactGroups/family"],
+      selectedGroupIds: ALL_ON,
       pillGroupIds: PILL_GROUPS,
     });
-    expect(visible.length).toBe(2);
-    expect(CONTACTS.length).toBe(4);
-    expect(`${visible.length} / ${CONTACTS.length} contacts`).toBe("2 / 4 contacts");
-  });
-
-  it("empty selection shows all (search may still narrow)", () => {
-    expect(filterGoogleContacts(CONTACTS, { selectedGroupIds: [] })).toHaveLength(4);
-    expect(filterGoogleContacts(CONTACTS, { query: "no-such" })).toHaveLength(0);
+    expect(`${visible.length} / ${CONTACTS.length} contacts`).toBe("4 / 4 contacts");
   });
 });
