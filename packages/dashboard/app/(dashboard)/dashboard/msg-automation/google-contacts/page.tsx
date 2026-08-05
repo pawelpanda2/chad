@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
 import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
 import { FRAME_SECTION_GAP_CLASS, LIST_ROW_CLASS, LIST_ROW_WRAPPER_CLASS } from "@/components/shared/layout-tokens";
@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ErrorBox } from "@/components/shared/error-box";
 import { cn } from "@/lib/utils";
-import { Loader2, RefreshCw, Unplug } from "lucide-react";
+import { Loader2, RefreshCw, Unplug, X } from "lucide-react";
 import {
   GOOGLE_CONTACTS_NO_GROUP_ID,
   filterGoogleContacts,
@@ -41,13 +41,22 @@ type PageState =
   | { kind: "list"; contacts: GoogleContactRow[]; groups: GoogleGroupRow[] }
   | { kind: "error"; message: string };
 
-const PANEL_CLASS = "w-full max-w-[400px]";
+const LIST_PANEL_CLASS = "w-full max-w-[400px]";
 
 export default function GoogleContactsPage() {
   return (
     <Suspense fallback={null}>
       <GoogleContactsPageContent />
     </Suspense>
+  );
+}
+
+function DetailSection({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="space-y-1">
+      <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className="text-sm">{children}</div>
+    </div>
   );
 }
 
@@ -59,6 +68,7 @@ function GoogleContactsPageContent() {
   const [redirectUri, setRedirectUri] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
+  const [selectedResourceName, setSelectedResourceName] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const oauthError = oauthErrorParam;
@@ -101,6 +111,7 @@ function GoogleContactsPageContent() {
         return;
       }
       if (!statusJson.connected) {
+        setSelectedResourceName(null);
         setState({ kind: "not_connected" });
         return;
       }
@@ -108,6 +119,7 @@ function GoogleContactsPageContent() {
       const listRes = await fetch("/api/google-contacts/list");
       const listJson = await listRes.json();
       if (listJson.code === "not_connected" || listJson.code === "auth_expired") {
+        setSelectedResourceName(null);
         setState(
           listJson.code === "auth_expired"
             ? { kind: "auth_error", message: "Google authorization expired or was revoked. Connect again." }
@@ -146,6 +158,14 @@ function GoogleContactsPageContent() {
 
   const pillGroupIds = useMemo(() => pillGroups.map((g) => g.resourceName), [pillGroups]);
 
+  const groupNameByResource = useMemo(() => {
+    const map = new Map<string, string>();
+    if (state.kind === "list") {
+      for (const g of state.groups) map.set(g.resourceName, g.name);
+    }
+    return map;
+  }, [state]);
+
   const visibleContacts = useMemo(() => {
     if (state.kind !== "list") return [] as GoogleContactRow[];
     return filterGoogleContacts(state.contacts, {
@@ -154,6 +174,18 @@ function GoogleContactsPageContent() {
       pillGroupIds,
     });
   }, [state, query, selectedGroupIds, pillGroupIds]);
+
+  useEffect(() => {
+    if (!selectedResourceName) return;
+    if (!visibleContacts.some((c) => c.resourceName === selectedResourceName)) {
+      setSelectedResourceName(null);
+    }
+  }, [visibleContacts, selectedResourceName]);
+
+  const selectedContact = useMemo(() => {
+    if (!selectedResourceName || state.kind !== "list") return null;
+    return state.contacts.find((c) => c.resourceName === selectedResourceName) ?? null;
+  }, [selectedResourceName, state]);
 
   function toggleGroup(id: string) {
     setSelectedGroupIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -185,6 +217,7 @@ function GoogleContactsPageContent() {
       await fetch("/api/google-contacts/disconnect", { method: "POST" });
       setQuery("");
       setSelectedGroupIds([]);
+      setSelectedResourceName(null);
       setState({ kind: "not_connected" });
     } finally {
       setBusy(false);
@@ -193,6 +226,7 @@ function GoogleContactsPageContent() {
 
   const totalCount = state.kind === "list" ? state.contacts.length : 0;
   const showPanel = state.kind === "list" || state.kind === "empty";
+  const hasSelection = Boolean(selectedContact);
 
   return (
     <DashboardPageShell
@@ -201,7 +235,7 @@ function GoogleContactsPageContent() {
       scroll={false}
       contentClassName={FRAME_SECTION_GAP_CLASS}
     >
-      <div className={cn("flex shrink-0 flex-wrap items-center gap-2", PANEL_CLASS)}>
+      <div className={cn("flex shrink-0 flex-wrap items-center gap-2", LIST_PANEL_CLASS)}>
         {(state.kind === "not_connected" || state.kind === "auth_error" || state.kind === "not_configured") && (
           <Button
             type="button"
@@ -272,100 +306,218 @@ function GoogleContactsPageContent() {
       )}
 
       {state.kind === "empty" && (
-        <div className={cn("rounded-lg border border-dashed px-4 py-8 text-center text-sm text-muted-foreground", PANEL_CLASS)}>
+        <div className={cn("rounded-lg border border-dashed px-4 py-8 text-center text-sm text-muted-foreground", LIST_PANEL_CLASS)}>
           No contacts found on this Google account.
         </div>
       )}
 
       {state.kind === "list" && (
-        <div className={cn("flex min-h-0 flex-1 flex-col gap-2", PANEL_CLASS)}>
-          <Input
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search name, phone, email…"
-            className="h-8 shrink-0 text-sm"
-            aria-label="Search contacts"
-          />
+        <div className="flex min-h-0 flex-1 gap-2">
+          <div
+            className={cn(
+              "flex min-h-0 flex-col gap-2",
+              LIST_PANEL_CLASS,
+              hasSelection && "hidden md:flex",
+            )}
+          >
+            <Input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search name, phone, email…"
+              className="h-8 shrink-0 text-sm"
+              aria-label="Search contacts"
+            />
 
-          <div className="flex shrink-0 flex-wrap items-center gap-1.5">
-            {pillGroups.map((g) => {
-              const active = selectedGroupIds.includes(g.resourceName);
-              return (
-                <button
-                  key={g.resourceName}
-                  type="button"
-                  onClick={() => toggleGroup(g.resourceName)}
-                  className={cn(
-                    "rounded-full border px-2.5 py-1 text-xs transition-colors",
-                    active
-                      ? "border-primary bg-primary text-primary-foreground"
-                      : "border-border bg-background text-muted-foreground hover:bg-accent hover:text-foreground",
-                  )}
-                  aria-pressed={active}
-                >
-                  {g.name}
-                </button>
-              );
-            })}
-            <button
-              type="button"
-              onClick={() => toggleGroup(GOOGLE_CONTACTS_NO_GROUP_ID)}
-              className={cn(
-                "rounded-full border px-2.5 py-1 text-xs transition-colors",
-                selectedGroupIds.includes(GOOGLE_CONTACTS_NO_GROUP_ID)
-                  ? "border-primary bg-primary text-primary-foreground"
-                  : "border-border bg-background text-muted-foreground hover:bg-accent hover:text-foreground",
-              )}
-              aria-pressed={selectedGroupIds.includes(GOOGLE_CONTACTS_NO_GROUP_ID)}
-            >
-              — no group —
-            </button>
+            <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+              {pillGroups.map((g) => {
+                const active = selectedGroupIds.includes(g.resourceName);
+                return (
+                  <button
+                    key={g.resourceName}
+                    type="button"
+                    onClick={() => toggleGroup(g.resourceName)}
+                    className={cn(
+                      "rounded-full border px-2.5 py-1 text-xs transition-colors",
+                      active
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-border bg-background text-muted-foreground hover:bg-accent hover:text-foreground",
+                    )}
+                    aria-pressed={active}
+                  >
+                    {g.name}
+                  </button>
+                );
+              })}
+              <button
+                type="button"
+                onClick={() => toggleGroup(GOOGLE_CONTACTS_NO_GROUP_ID)}
+                className={cn(
+                  "rounded-full border px-2.5 py-1 text-xs transition-colors",
+                  selectedGroupIds.includes(GOOGLE_CONTACTS_NO_GROUP_ID)
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-border bg-background text-muted-foreground hover:bg-accent hover:text-foreground",
+                )}
+                aria-pressed={selectedGroupIds.includes(GOOGLE_CONTACTS_NO_GROUP_ID)}
+              >
+                — no group —
+              </button>
+            </div>
+
+            {visibleContacts.length === 0 ? (
+              <div className="rounded-lg border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
+                No contacts match the current search or group filters.
+              </div>
+            ) : (
+              <div
+                className={cn(
+                  LIST_ROW_WRAPPER_CLASS,
+                  "flex min-h-0 w-full flex-1 flex-col overflow-y-auto",
+                )}
+              >
+                <div className="divide-y">
+                  {visibleContacts.map((c) => {
+                    const selected = c.resourceName === selectedResourceName;
+                    return (
+                      <button
+                        key={c.resourceName}
+                        type="button"
+                        onClick={() => setSelectedResourceName(c.resourceName)}
+                        className={cn(
+                          "flex w-full gap-3 text-left",
+                          LIST_ROW_CLASS,
+                          selected && "bg-accent",
+                        )}
+                      >
+                        {c.photoUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={c.photoUrl}
+                            alt=""
+                            className="h-9 w-9 shrink-0 rounded-full object-cover bg-muted"
+                            referrerPolicy="no-referrer"
+                          />
+                        ) : (
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">
+                            {(c.displayName || "?").slice(0, 1).toUpperCase()}
+                          </div>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-sm font-medium">
+                            {c.displayName || <span className="text-muted-foreground">(no name)</span>}
+                          </div>
+                          {c.phones.length > 0 && (
+                            <div className="truncate text-xs text-muted-foreground">{c.phones.join(" · ")}</div>
+                          )}
+                          {c.emails.length > 0 && (
+                            <div className="truncate text-xs text-muted-foreground">{c.emails.join(" · ")}</div>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
 
-          {visibleContacts.length === 0 ? (
-            <div className="rounded-lg border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
-              No contacts match the current search or group filters.
-            </div>
-          ) : (
-            <div
-              className={cn(
-                LIST_ROW_WRAPPER_CLASS,
-                "flex min-h-0 w-full flex-1 flex-col overflow-y-auto",
-              )}
-            >
-              <div className="divide-y">
-                {visibleContacts.map((c) => (
-                  <div key={c.resourceName} className={cn("flex gap-3", LIST_ROW_CLASS)}>
-                    {c.photoUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={c.photoUrl}
-                        alt=""
-                        className="h-9 w-9 shrink-0 rounded-full object-cover bg-muted"
-                        referrerPolicy="no-referrer"
-                      />
-                    ) : (
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">
-                        {(c.displayName || "?").slice(0, 1).toUpperCase()}
-                      </div>
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-medium">
-                        {c.displayName || <span className="text-muted-foreground">(no name)</span>}
-                      </div>
-                      {c.phones.length > 0 && (
-                        <div className="truncate text-xs text-muted-foreground">{c.phones.join(" · ")}</div>
-                      )}
-                      {c.emails.length > 0 && (
-                        <div className="truncate text-xs text-muted-foreground">{c.emails.join(" · ")}</div>
-                      )}
-                      {c.organizations.length > 0 && (
-                        <div className="truncate text-xs text-muted-foreground">{c.organizations.join(" · ")}</div>
+          {selectedContact && (
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col rounded-lg border bg-muted/10 md:max-w-[420px]">
+              <div className="flex shrink-0 items-center justify-between gap-2 border-b px-3 py-2">
+                <span className="truncate text-sm font-medium">
+                  {selectedContact.displayName || "(no name)"}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedResourceName(null)}
+                  aria-label="Close contact details"
+                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
+                <div className="flex items-center gap-3">
+                  {selectedContact.photoUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={selectedContact.photoUrl}
+                      alt=""
+                      className="h-14 w-14 shrink-0 rounded-full object-cover bg-muted"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-muted text-lg font-semibold text-muted-foreground">
+                      {(selectedContact.displayName || "?").slice(0, 1).toUpperCase()}
+                    </div>
+                  )}
+                  <div className="min-w-0">
+                    <div className="truncate text-base font-semibold">
+                      {selectedContact.displayName || (
+                        <span className="font-normal text-muted-foreground">(no name)</span>
                       )}
                     </div>
                   </div>
-                ))}
+                </div>
+
+                <DetailSection label="Phones">
+                  {selectedContact.phones.length === 0 ? (
+                    <span className="text-muted-foreground">—</span>
+                  ) : (
+                    <ul className="space-y-1 break-all">
+                      {selectedContact.phones.map((p) => (
+                        <li key={p}>{p}</li>
+                      ))}
+                    </ul>
+                  )}
+                </DetailSection>
+
+                <DetailSection label="Emails">
+                  {selectedContact.emails.length === 0 ? (
+                    <span className="text-muted-foreground">—</span>
+                  ) : (
+                    <ul className="space-y-1 break-all">
+                      {selectedContact.emails.map((e) => (
+                        <li key={e}>{e}</li>
+                      ))}
+                    </ul>
+                  )}
+                </DetailSection>
+
+                <DetailSection label="Organizations">
+                  {selectedContact.organizations.length === 0 ? (
+                    <span className="text-muted-foreground">—</span>
+                  ) : (
+                    <ul className="space-y-1 break-words">
+                      {selectedContact.organizations.map((o) => (
+                        <li key={o}>{o}</li>
+                      ))}
+                    </ul>
+                  )}
+                </DetailSection>
+
+                <DetailSection label="Groups">
+                  {(() => {
+                    const names = selectedContact.groupResourceNames
+                      .map((id) => groupNameByResource.get(id))
+                      .filter((n): n is string => Boolean(n));
+                    if (names.length === 0) {
+                      return <span className="text-muted-foreground">— no group —</span>;
+                    }
+                    return (
+                      <div className="flex flex-wrap gap-1.5">
+                        {names.map((n) => (
+                          <span
+                            key={n}
+                            className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground"
+                          >
+                            {n}
+                          </span>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                </DetailSection>
               </div>
             </div>
           )}
