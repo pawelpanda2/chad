@@ -7,15 +7,16 @@ export interface GoogleContactsFilterOptions {
   /** Case-insensitive substring match against name, phones, emails. Empty = no search filter. */
   query?: string;
   /**
-   * Selected group resource names and/or `GOOGLE_CONTACTS_NO_GROUP_ID`.
-   * Empty / undefined = all contacts (search may still apply).
-   * Multiple selections = OR (contact in any selected group, or no-group).
+   * Enabled group resource names and/or `GOOGLE_CONTACTS_NO_GROUP_ID`.
+   * Empty selection ⇒ no contacts.
+   * A labeled contact is shown only when every one of its pill-group
+   * memberships is still enabled (deselecting a label hides all contacts
+   * that carry that label). Ungrouped contacts require `__no_group__`.
    */
   selectedGroupIds?: readonly string[];
   /**
    * Resource names shown as group pills (used for — no group — semantics).
-   * A contact matches no-group when it has no membership in any of these.
-   * Defaults to: empty memberships only, when omitted.
+   * A contact is ungrouped when it has no membership in any of these.
    */
   pillGroupIds?: readonly string[];
 }
@@ -49,21 +50,29 @@ export function contactMatchesNoGroup(
   return !groups.some((g) => pills.has(g));
 }
 
+/**
+ * Opt-out group filter: pills start enabled; disabling a pill hides every
+ * contact that has that label. Empty `selectedGroupIds` ⇒ match nothing.
+ */
 export function contactMatchesGroupFilter(
   contact: GoogleContactDto,
   selectedGroupIds: readonly string[] | undefined,
   pillGroupIds?: readonly string[],
 ): boolean {
-  if (!selectedGroupIds || selectedGroupIds.length === 0) return true;
-  const groups = contact.groupResourceNames ?? [];
-  for (const id of selectedGroupIds) {
-    if (id === GOOGLE_CONTACTS_NO_GROUP_ID) {
-      if (contactMatchesNoGroup(contact, pillGroupIds)) return true;
-      continue;
-    }
-    if (groups.includes(id)) return true;
+  if (!selectedGroupIds || selectedGroupIds.length === 0) return false;
+  const selected = new Set(selectedGroupIds);
+  const pills = new Set(pillGroupIds ?? []);
+
+  if (contactMatchesNoGroup(contact, pillGroupIds)) {
+    return selected.has(GOOGLE_CONTACTS_NO_GROUP_ID);
   }
-  return false;
+
+  const contactPillGroups = (contact.groupResourceNames ?? []).filter((g) => pills.has(g));
+  if (contactPillGroups.length === 0) {
+    // No pill groups configured / memberships only outside pills.
+    return selected.has(GOOGLE_CONTACTS_NO_GROUP_ID);
+  }
+  return contactPillGroups.every((g) => selected.has(g));
 }
 
 /** Local filter — no Google API calls. Search AND group filters combine. */
