@@ -42,6 +42,13 @@ export default function MsgAutomationPage() {
         </button>
         <button
           type="button"
+          onClick={() => router.push("/dashboard/msg-automation/links-v2")}
+          className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
+        >
+          <span className="font-semibold text-sm">LINKS V2</span>
+        </button>
+        <button
+          type="button"
           onClick={() => router.push("/dashboard/msg-automation/ai-prompts")}
           className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
         >

@@ -69,6 +69,8 @@ interface LeadDashboardItem {
   leadName: string;
   loca: string;
   hasContacts: boolean;
+  /** Links V2 (Story 104) — auto-created from an unmatched Beeper contact. */
+  draft: boolean;
 }
 
 interface ReportEntry {
@@ -780,6 +782,11 @@ function ViewsPageContent() {
                       >
                         {lead.leadName}
                       </Link>
+                      {lead.draft && (
+                        <span className="flex-shrink-0 rounded bg-amber-100 px-1 py-0.5 text-[10px] font-semibold uppercase text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+                          Draft
+                        </span>
+                      )}
                       <Link
                         href={getLeadDetailsHref(lead.leadName, lead.loca)}
                         className="flex flex-shrink-0 items-center gap-1 text-xs text-muted-foreground hover:text-primary"
