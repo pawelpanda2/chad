@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
 import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
 import { FRAME_SECTION_GAP_CLASS, LIST_ROW_CLASS, LIST_ROW_WRAPPER_CLASS } from "@/components/shared/layout-tokens";
@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ErrorBox } from "@/components/shared/error-box";
 import { cn } from "@/lib/utils";
-import { Loader2, RefreshCw, Unplug, X } from "lucide-react";
+import { ListFilter, Loader2, RefreshCw, Unplug, X } from "lucide-react";
 import {
   GOOGLE_CONTACTS_NO_GROUP_ID,
   filterGoogleContacts,
@@ -68,7 +68,9 @@ function GoogleContactsPageContent() {
   const [redirectUri, setRedirectUri] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [selectedResourceName, setSelectedResourceName] = useState<string | null>(null);
+  const groupFiltersSeededRef = useRef(false);
 
   const load = useCallback(async () => {
     const oauthError = oauthErrorParam;
@@ -158,6 +160,34 @@ function GoogleContactsPageContent() {
 
   const pillGroupIds = useMemo(() => pillGroups.map((g) => g.resourceName), [pillGroups]);
 
+  /** All filter pill ids including — no group —. Default selection = all of these. */
+  const allFilterIds = useMemo(
+    () => [...pillGroupIds, GOOGLE_CONTACTS_NO_GROUP_ID],
+    [pillGroupIds],
+  );
+
+  useEffect(() => {
+    if (state.kind !== "list") {
+      groupFiltersSeededRef.current = false;
+      return;
+    }
+    if (allFilterIds.length === 0) return;
+    if (!groupFiltersSeededRef.current) {
+      // Initial open / after reload: every group pill + — no group — on.
+      setSelectedGroupIds(allFilterIds);
+      groupFiltersSeededRef.current = true;
+      return;
+    }
+    // Groups list changed while already seeded: drop removed ids, auto-enable new ones.
+    setSelectedGroupIds((prev) => {
+      const prevSet = new Set(prev);
+      const next = allFilterIds.filter((id) => prevSet.has(id));
+      const added = allFilterIds.filter((id) => !prevSet.has(id));
+      if (added.length === 0 && next.length === prev.length) return prev;
+      return [...next, ...added];
+    });
+  }, [state.kind, allFilterIds]);
+
   const groupNameByResource = useMemo(() => {
     const map = new Map<string, string>();
     if (state.kind === "list") {
@@ -168,12 +198,17 @@ function GoogleContactsPageContent() {
 
   const visibleContacts = useMemo(() => {
     if (state.kind !== "list") return [] as GoogleContactRow[];
+    // Empty selection ⇒ no contacts (all pills deselected).
+    if (selectedGroupIds.length === 0) return [];
     return filterGoogleContacts(state.contacts, {
       query,
       selectedGroupIds,
       pillGroupIds,
     });
   }, [state, query, selectedGroupIds, pillGroupIds]);
+
+  const allFiltersSelected =
+    allFilterIds.length > 0 && allFilterIds.every((id) => selectedGroupIds.includes(id));
 
   useEffect(() => {
     if (!selectedResourceName) return;
@@ -189,6 +224,10 @@ function GoogleContactsPageContent() {
 
   function toggleGroup(id: string) {
     setSelectedGroupIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  }
+
+  function toggleAllFilters() {
+    setSelectedGroupIds(allFiltersSelected ? [] : allFilterIds);
   }
 
   async function handleConnect() {
@@ -256,21 +295,35 @@ function GoogleContactsPageContent() {
               size="sm"
               className="h-7 gap-1.5 text-xs"
               disabled={busy}
-              onClick={() => void load()}
-            >
-              <RefreshCw className={cn("h-3 w-3", busy && "animate-spin")} />
-              Refresh
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-7 gap-1.5 text-xs"
-              disabled={busy}
               onClick={() => void handleDisconnect()}
             >
               <Unplug className="h-3 w-3" />
               Disconnect
+            </Button>
+            {state.kind === "list" && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className={cn("h-7 gap-1.5 text-xs", filtersOpen && "border-primary bg-primary/10")}
+                aria-pressed={filtersOpen}
+                onClick={() => setFiltersOpen((o) => !o)}
+              >
+                <ListFilter className="h-3 w-3" />
+                Filters
+              </Button>
+            )}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-7 w-7 shrink-0 px-0"
+              disabled={busy}
+              onClick={() => void load()}
+              aria-label="Refresh"
+              title="Refresh"
+            >
+              <RefreshCw className={cn("h-3 w-3", busy && "animate-spin")} />
             </Button>
           </>
         )}
@@ -324,45 +377,60 @@ function GoogleContactsPageContent() {
               type="search"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search name, phone, email…"
+              placeholder="Search"
               className="h-8 shrink-0 text-sm"
               aria-label="Search contacts"
             />
 
-            <div className="flex shrink-0 flex-wrap items-center gap-1.5">
-              {pillGroups.map((g) => {
-                const active = selectedGroupIds.includes(g.resourceName);
-                return (
-                  <button
-                    key={g.resourceName}
-                    type="button"
-                    onClick={() => toggleGroup(g.resourceName)}
-                    className={cn(
-                      "rounded-full border px-2.5 py-1 text-xs transition-colors",
-                      active
-                        ? "border-primary bg-primary text-primary-foreground"
-                        : "border-border bg-background text-muted-foreground hover:bg-accent hover:text-foreground",
-                    )}
-                    aria-pressed={active}
-                  >
-                    {g.name}
-                  </button>
-                );
-              })}
-              <button
-                type="button"
-                onClick={() => toggleGroup(GOOGLE_CONTACTS_NO_GROUP_ID)}
-                className={cn(
-                  "rounded-full border px-2.5 py-1 text-xs transition-colors",
-                  selectedGroupIds.includes(GOOGLE_CONTACTS_NO_GROUP_ID)
-                    ? "border-primary bg-primary text-primary-foreground"
-                    : "border-border bg-background text-muted-foreground hover:bg-accent hover:text-foreground",
-                )}
-                aria-pressed={selectedGroupIds.includes(GOOGLE_CONTACTS_NO_GROUP_ID)}
-              >
-                — no group —
-              </button>
-            </div>
+            {filtersOpen && (
+              <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => toggleAllFilters()}
+                  className={cn(
+                    "rounded-full border px-2.5 py-1 text-xs transition-colors",
+                    allFiltersSelected
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border bg-background text-muted-foreground hover:bg-accent hover:text-foreground",
+                  )}
+                  aria-pressed={allFiltersSelected}
+                >
+                  all
+                </button>
+                {pillGroups.map((g) => {
+                  const active = selectedGroupIds.includes(g.resourceName);
+                  return (
+                    <button
+                      key={g.resourceName}
+                      type="button"
+                      onClick={() => toggleGroup(g.resourceName)}
+                      className={cn(
+                        "rounded-full border px-2.5 py-1 text-xs transition-colors",
+                        active
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : "border-border bg-background text-muted-foreground hover:bg-accent hover:text-foreground",
+                      )}
+                      aria-pressed={active}
+                    >
+                      {g.name}
+                    </button>
+                  );
+                })}
+                <button
+                  type="button"
+                  onClick={() => toggleGroup(GOOGLE_CONTACTS_NO_GROUP_ID)}
+                  className={cn(
+                    "rounded-full border px-2.5 py-1 text-xs transition-colors",
+                    selectedGroupIds.includes(GOOGLE_CONTACTS_NO_GROUP_ID)
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border bg-background text-muted-foreground hover:bg-accent hover:text-foreground",
+                  )}
+                  aria-pressed={selectedGroupIds.includes(GOOGLE_CONTACTS_NO_GROUP_ID)}
+                >
+                  — no group —
+                </button>
+              </div>
+            )}
 
             {visibleContacts.length === 0 ? (
               <div className="rounded-lg border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
