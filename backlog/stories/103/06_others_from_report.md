@@ -8,7 +8,7 @@
 6. **Model auth i storage:** per-user OAuth `contacts.readonly`; encrypted refresh in CP Text; signed OAuth state.
 7. **Testy:** vitest **11/11 PASS** (map/people/oauth-state/public-origin); typecheck google-contacts PASS.
 8. **Lokalny Docker:** `06_deploy.sh` EXIT 0 (image `chad-dashboard:260805_215740`).
-9. **Commit SHA:** (see latest Story 103 commits)
+9. **Commit SHA:** 
 10. **Blokady — real OAuth:**
     - **Etap:** Google authorize (`accounts.google.com/o/oauth2/v2/auth`) — **przed** callback CHAD.
     - **Błąd:** `400 redirect_uri_mismatch`
