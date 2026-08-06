@@ -44,3 +44,9 @@ piszesz/zmieniasz jakikolwiek skrypt w `bash-scripts/` — dopiero potem
 Architektura konkretnie CHAD-owego deploymentu (QNAP, shared MongoDB/Content
 Provider, GHCR, porty, Beeper) żyje w `ai-docs/deploy/` — zacznij od
 `ai-docs/deploy/ai-start.md`.
+
+## Beeper-synch helper (Story 105)
+
+Local Mac only: `bash-scripts/beeper-synch/start-helper.sh` +
+`local-helper.mjs` — loopback allowlist for Dashboard **Plugin synch**.
+See `ai-docs/plugin-beeper-synch/ai-start.md`. Not for QNAP/TEST/PROD.

@@ -11,12 +11,16 @@ sam w sobie. Analogiczny do `ai-docs/deploy/ai-start.md` i
 Jeśli pracujesz nad czymkolwiek z tej listy — przeczytaj ten plik PRZED
 czymkolwiek innym w tym katalogu.
 
+**GUI nawigacja (Story 105):** MultiView vs dedicated Beeper (Conv/Settings)
+→ `ai-docs/gui-beeper/ai-start.md`. Plugin synch button →
+`ai-docs/plugin-beeper-synch/ai-start.md`.
+
 **Nie mylić z `packages/dba/src/beeper.ts` / `app/api/beeper/*`** — to
 zupełnie inny, starszy feature (dopasowywanie statycznego eksportu WhatsApp
 z Content Providera do leadów randkowych), nic wspólnego z MongoDB ani z
 tym katalogiem dokumentacji. Ten katalog dotyczy wyłącznie feature'u
-"Beeper CRM" (`beeper-crm.ts`, `/api/beeper-crm/*`, zakładka **Beeper** w
-dashboardzie).
+"Beeper CRM" (`beeper-crm.ts`, `/api/beeper-crm/*`, zakładka **Beeper** /
+**MultiView** w dashboardzie).
 
 ## 0. Zanim zaczniesz — wiążąca decyzja architektoniczna (Story 73)
 

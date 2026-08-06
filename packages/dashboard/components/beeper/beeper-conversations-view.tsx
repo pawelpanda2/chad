@@ -25,20 +25,18 @@ export interface BeeperConversationsViewProps {
 }
 
 /**
- * Beeper Conversations split-view (Story 94): contact list | handle |
- * conversation. Selecting a contact loads its messages inline — never
- * navigates to /dashboard/beeper/[id].
+ * Shared Beeper Conversations split-view (Story 94 / 105): contact list |
+ * handle | conversation. Used by MultiView → Conversations and Beeper →
+ * Conv. Selecting a contact loads messages inline — never navigates to
+ * /dashboard/beeper/[id]. Do not fork this component.
  *
  * Deliberately plain — just the Beeper messages, nothing else. The msg
- * workout linking/review UI (Story 99) lives in its own "Msg workout" tab
- * (`msg-workout-review-view.tsx`), not here, per explicit direction:
- * Conversations should stay a simple message browser.
+ * workout linking/review UI (Story 99) lives in MultiView's "Msg workout"
+ * tab (`msg-workout-review-view.tsx`), not here.
  *
  * Contact list (`aside`) and conversation (`section`) each own their
- * scroll and fill the available height (`h-full` from beeper/page.tsx's
- * `flex-1 min-h-0` pane). There is no page/shell vertical scrollbar —
- * height for these panes is recovered by collapsing the Beeper tabs/
- * filters chevron on the page, not by scrolling the shell.
+ * scroll and fill the available height (`h-full` from the host page's
+ * `flex-1 min-h-0` pane).
  */
 export function BeeperConversationsView({
   initialContactId,
