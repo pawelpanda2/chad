@@ -203,6 +203,12 @@ services:
       - DEV_DB_SOURCE_PREF_PATH=/app/runtime/dev-data-source.json
       # Forms → Add recording (Story 93). Container path; host bind below.
       - CHAD_AUDIO_RECORDINGS_DIR=/app/audio-recordings
+      # Story 105 — local Mac only. Dashboard (Docker) → host helper via
+      # host.docker.internal (helper binds 0.0.0.0:12701 + Bearer token;
+      # Docker Desktop cannot use host UDS / 127.0.0.1-only). Unset on
+      # TEST/PROD. Token from .env.local / start-helper.sh (never commit).
+      - BEEPER_SYNCH_HELPER_URL=${BEEPER_SYNCH_HELPER_URL:-http://host.docker.internal:12701}
+      - BEEPER_SYNCH_HELPER_TOKEN=${BEEPER_SYNCH_HELPER_TOKEN:-}
     volumes:
       - chad-dashboard-local-mac-docker-data:/app/data
       - type: bind

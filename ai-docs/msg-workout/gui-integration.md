@@ -3,8 +3,13 @@
 ## Where it lives
 
 Plain conversation browsing: `beeper-conversations-view.tsx` (Story 94).
+Shared by:
 
-Msg workout linking review: `msg-workout-review-view.tsx` (Beeper →
+- Msg Auto → **MultiView** → Conversations
+  (`/dashboard/msg-automation/multiview`)
+- main nav → **Beeper** → **Conv** (`/dashboard/beeper`)
+
+Msg workout linking review: `msg-workout-review-view.tsx` (MultiView →
 **Msg workout** tab). Layout source of truth:
 `examples/CHAD_beeper_msg_workout_layout_mock_v7.html` —
 
