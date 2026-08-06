@@ -67,6 +67,15 @@ export default defineConfig({
       // Story 93 follow-up — draft recordings (segments, isolation,
       // idempotent finalize, real-fixture merge via ffmpeg+mkvmerge).
       "packages/dba/src/audio-recording-drafts.test.ts",
+      // Google Contacts → per-contact CHAD-local photos: storage/validation/
+      // isolation, plus a mocked-fs file for the two failure paths that
+      // aren't reachable deterministically through the real filesystem.
+      "packages/dba/src/google-contact-photos.test.ts",
+      "packages/dba/src/google-contact-photos-failure-paths.test.ts",
+      // Lead Details → per-lead CHAD-local photos (separate attachment
+      // point from Google Contacts photos, same underlying storage).
+      "packages/dba/src/lead-photos.test.ts",
+      "packages/dba/src/lead-photos-failure-paths.test.ts",
       "packages/dashboard/components/forms/audio-recording-utils.test.ts",
       "packages/dashboard/components/forms/audio-recorder-session.test.ts",
       // Story 98 — shared editor Save-button regression (showPreview=false

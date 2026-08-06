@@ -5,6 +5,11 @@ detail (commands, local vs QNAP TEST vs real-Google-Sheets, PASS/FAIL/
 SKIPPED/BLOCKED semantics) lives in `tests/README.md` — this file is the
 orientation map for AI agents, that one is the reference.
 
+**Driving a real browser against local Docker (Playwright, an AI agent,
+manual smoke test)?** See [`local-smoke-login.md`](local-smoke-login.md)
+first — login credentials already live in `.env.local`, don't ask the user
+for them again.
+
 ## The 4 fixed pillars (2026-07-28 reorg)
 
 ```

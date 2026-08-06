@@ -23,6 +23,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { PhotosSection } from "@/components/shared/photos-section";
 
 /** Same retype-confirm pattern as Folders / AI Prompts. */
 const DELETE_CONFIRM_WORDS = ["DELETE", "CONFIRM", "USUN", "PERMANENT"];
@@ -505,6 +506,23 @@ function LeadDetailsPageContent() {
               ))}
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Photos Card — CHAD-local photos attached to this lead (stable
+          loca, not the lead's display name). Always rendered, even with
+          zero photos, per this feature's own spec. Not the Google Contacts
+          photos above — a lead can be linked to zero or many Google
+          Contacts, so this is a separate attachment point. */}
+      <Card className="gap-0 py-0">
+        <CardContent className="px-[14px] py-[10px]">
+          <PhotosSection
+            basePath="/api/leads/photos"
+            subjectParam="loca"
+            subjectValue={details.loca}
+            deleteHint="This only removes the CHAD-local copy attached to this lead."
+            headingClassName="text-sm font-semibold mb-2"
+          />
         </CardContent>
       </Card>
 
