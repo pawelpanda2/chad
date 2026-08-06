@@ -9,7 +9,7 @@
     "dev": "tsx src/index.ts",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
-    "test": "tsx src/config.test.ts && tsx src/lock.test.ts && tsx src/backoff.test.ts && tsx src/mirror-scheduler.test.ts"
+    "test": "tsx src/config.test.ts && tsx src/lock.test.ts && tsx src/backoff.test.ts && tsx src/mirror-scheduler.test.ts && tsx src/beeper-auth-health.test.ts"
   },
   "dependencies": {
     "dba": "workspace:*",

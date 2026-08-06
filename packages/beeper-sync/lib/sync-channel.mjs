@@ -45,6 +45,23 @@ export async function syncChannel(beeperChatID, options = {}) {
     lastMessageAt: chatInfo.lastActivity ? new Date(chatInfo.lastActivity) : null,
   });
 
+  // Materialize contacts from chat participants even when the only messages
+  // are from self (common for newly renamed / outbound-only chats).
+  const participantItems =
+    chatInfo.participants?.items ??
+    (Array.isArray(chatInfo.participants) ? chatInfo.participants : []);
+  for (const p of participantItems) {
+    if (p?.isSelf || !p?.id) continue;
+    const existing = await contactsCol.findOne({ "identities.senderID": p.id });
+    if (resolveSyncMode(existing) === "exclude") continue;
+    const displayName = p.fullName || p.phoneNumber || chatInfo.title || p.id;
+    const contactID = await upsertContact(p.id, displayName, network, {
+      fullName: p.fullName || undefined,
+      username: p.phoneNumber || undefined,
+    });
+    await addParticipant(channelID, contactID);
+  }
+
   // 2. Sprawdź stan synchronizacji (chyba że force)
   const state = force ? null : await getSyncState(beeperChatID);
   const resumeCursor = state?.oldestSyncedSortKey ?? null;

@@ -1,5 +1,6 @@
 import { resolve } from "node:path";
 import { refreshBeeperMongoMirror } from "dba";
+import { computeHealthy, probeBeeperDesktopAuth, type BeeperAuthProbe } from "./beeper-auth-health.js";
 import { ConfigError, loadConfig } from "./config.js";
 import { acquireLock, LockHeldError, releaseLock } from "./lock.js";
 import { MirrorRunner } from "./mirror-scheduler.js";
@@ -114,16 +115,101 @@ async function main(): Promise<void> {
   );
 
   const startedAt = new Date().toISOString();
+  let authProbeInFlight = false;
+  let lastAuth: BeeperAuthProbe = {
+    beeperDesktopReachable: false,
+    authorizationStatus: "unknown",
+    lastErrorCode: null,
+    lastErrorMessageShort: null,
+  };
+
   const refreshStatus = () => {
+    const syncSnap = sync.snapshot();
+    const wsRunning = ws.isRunning;
+    const oplogRunning = oplog.isRunning;
+    const healthy = computeHealthy({
+      supervisorRunning: true,
+      wsRunning,
+      oplogRunning,
+      authorizationStatus: lastAuth.authorizationStatus,
+      lastSyncExitCode: syncSnap.lastExitCode,
+    });
     writeStatus(config.statusFile, {
       pid: process.pid,
       startedAt,
-      ready: ws.isRunning,
+      ready: wsRunning && lastAuth.authorizationStatus === "authorized",
+      supervisorRunning: true,
+      wsRunning,
+      oplogRunning,
+      lastSyncStatus:
+        syncSnap.lastExitCode === null
+          ? syncSnap.running
+            ? "running"
+            : "unknown"
+          : syncSnap.lastExitCode === 0
+            ? "ok"
+            : "failed",
+      lastSuccessfulSyncAt: syncSnap.lastSuccessAt,
+      beeperDesktopReachable: lastAuth.beeperDesktopReachable,
+      authorizationStatus: lastAuth.authorizationStatus,
+      lastErrorCode: lastAuth.lastErrorCode,
+      lastErrorMessageShort: lastAuth.lastErrorMessageShort,
+      healthy,
       beeperWs: ws.snapshot(),
-      beeperSync: sync.snapshot(),
+      beeperSync: syncSnap,
       beeperOplog: oplog.snapshot(),
       beeperMongoMirror: mirror.snapshot(),
     });
+
+    if (!authProbeInFlight) {
+      authProbeInFlight = true;
+      void probeBeeperDesktopAuth({
+        restUrl: config.beeperRestUrl,
+        apiKey: process.env.BEEPER_API_KEY || "",
+      })
+        .then((probe) => {
+          lastAuth = probe;
+          // Re-write with fresh auth (no nested probe).
+          const syncSnap2 = sync.snapshot();
+          const ws2 = ws.isRunning;
+          const oplog2 = oplog.isRunning;
+          writeStatus(config.statusFile, {
+            pid: process.pid,
+            startedAt,
+            ready: ws2 && probe.authorizationStatus === "authorized",
+            supervisorRunning: true,
+            wsRunning: ws2,
+            oplogRunning: oplog2,
+            lastSyncStatus:
+              syncSnap2.lastExitCode === null
+                ? syncSnap2.running
+                  ? "running"
+                  : "unknown"
+                : syncSnap2.lastExitCode === 0
+                  ? "ok"
+                  : "failed",
+            lastSuccessfulSyncAt: syncSnap2.lastSuccessAt,
+            beeperDesktopReachable: probe.beeperDesktopReachable,
+            authorizationStatus: probe.authorizationStatus,
+            lastErrorCode: probe.lastErrorCode,
+            lastErrorMessageShort: probe.lastErrorMessageShort,
+            healthy: computeHealthy({
+              supervisorRunning: true,
+              wsRunning: ws2,
+              oplogRunning: oplog2,
+              authorizationStatus: probe.authorizationStatus,
+              lastSyncExitCode: syncSnap2.lastExitCode,
+            }),
+            beeperWs: ws.snapshot(),
+            beeperSync: syncSnap2,
+            beeperOplog: oplog.snapshot(),
+            beeperMongoMirror: mirror.snapshot(),
+          });
+        })
+        .finally(() => {
+          authProbeInFlight = false;
+        });
+    }
   };
 
   ws.on("change", refreshStatus);

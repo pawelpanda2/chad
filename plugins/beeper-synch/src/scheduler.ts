@@ -5,6 +5,7 @@ export interface PeriodicRunnerSnapshot {
   running: boolean;
   lastRunAt: string | null;
   lastExitCode: number | null;
+  lastSuccessAt: string | null;
   nextRunAt: string | null;
   totalRuns: number;
   totalFailures: number;
@@ -25,6 +26,7 @@ export class PeriodicRunner extends EventEmitter {
   private runningChild: ChildProcess | null = null;
   private lastRunAt: string | null = null;
   private lastExitCode: number | null = null;
+  private lastSuccessAt: string | null = null;
   private nextRunAt: string | null = null;
   private totalRuns = 0;
   private totalFailures = 0;
@@ -78,6 +80,7 @@ export class PeriodicRunner extends EventEmitter {
         `[beeper-synch] ${this.name} run #${this.totalRuns} failed (exit ${exitCode}) — will retry on the next scheduled tick`
       );
     } else {
+      this.lastSuccessAt = new Date().toISOString();
       console.log(`[beeper-synch] ${this.name} run #${this.totalRuns} completed`);
     }
     this.emit("change");
@@ -107,6 +110,7 @@ export class PeriodicRunner extends EventEmitter {
       running: this.runningChild !== null,
       lastRunAt: this.lastRunAt,
       lastExitCode: this.lastExitCode,
+      lastSuccessAt: this.lastSuccessAt,
       nextRunAt: this.nextRunAt,
       totalRuns: this.totalRuns,
       totalFailures: this.totalFailures,
