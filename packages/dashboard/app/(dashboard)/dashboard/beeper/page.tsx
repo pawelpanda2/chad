@@ -2,11 +2,17 @@
 
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Loader2 } from "lucide-react";
+import { Loader2, Search } from "lucide-react";
 import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BeeperConversationsView } from "@/components/beeper/beeper-conversations-view";
+import { ErrorBox } from "@/components/shared/error-box";
+import {
+	isPluginSynchErrorStatus,
+	pluginSynchStatusMessage,
+} from "@/lib/beeper-plugin-synch";
 import { cn } from "@/lib/utils";
 
 type BeeperTab = "conv" | "settings";
@@ -18,7 +24,7 @@ function isBeeperTab(value: string | null): value is BeeperTab {
 }
 
 /**
- * Dedicated Beeper page (Story 105): Conv + Settings only.
+ * Beeper page under Msg Auto hub (Story 105): Conv + Settings.
  * Conversations UI is the shared `BeeperConversationsView` also used by
  * Msg Auto → MultiView → Conversations.
  */
@@ -28,6 +34,7 @@ function BeeperPageInner() {
 	const tabParam = searchParams.get("tab");
 	const contactParam = searchParams.get("contact") ?? undefined;
 	const groupParam = searchParams.get("group") ?? undefined;
+	const [searchQuery, setSearchQuery] = useState("");
 
 	// Legacy multi-tab URLs that used to live on /dashboard/beeper → MultiView.
 	useEffect(() => {
@@ -63,12 +70,32 @@ function BeeperPageInner() {
 		[updateUrl, tab, groupParam],
 	);
 
+	const hasOpenConversation = Boolean(contactParam);
+	const [pluginBanner, setPluginBanner] = useState("");
+
+	useEffect(() => {
+		if (tab !== "settings") setPluginBanner("");
+	}, [tab]);
+
 	return (
-		<DashboardPageShell title="Beeper" scroll={false}>
+		<DashboardPageShell
+			title="Beeper"
+			upLevel={{ href: "/dashboard/msg-automation" }}
+			scroll={false}
+		>
+			{pluginBanner && isPluginSynchErrorStatus(pluginBanner) ? (
+				<div className="mb-1.5 w-full shrink-0">
+					<ErrorBox
+						message={pluginSynchStatusMessage(pluginBanner)}
+						className="w-full"
+					/>
+				</div>
+			) : null}
 			<div className="mb-1.5 flex w-full shrink-0 flex-col gap-1.5">
 				<Tabs
 					value={tab}
 					onValueChange={(v) => {
+						setSearchQuery("");
 						updateUrl(v as BeeperTab, undefined, groupParam);
 					}}
 				>
@@ -77,6 +104,25 @@ function BeeperPageInner() {
 						<TabsTrigger value="settings">Settings</TabsTrigger>
 					</TabsList>
 				</Tabs>
+				{tab === "conv" && (
+					<div
+						className={cn(
+							"flex-wrap items-center gap-2",
+							hasOpenConversation ? "hidden md:flex" : "flex",
+						)}
+					>
+						<div className="relative">
+							<Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+							<Input
+								placeholder="Search"
+								className="h-10 w-[140px] rounded-[9px] pl-7 text-sm"
+								value={searchQuery}
+								onChange={(e) => setSearchQuery(e.target.value)}
+								aria-label="Search contacts"
+							/>
+						</div>
+					</div>
+				)}
 			</div>
 
 			{tab === "conv" ? (
@@ -85,11 +131,13 @@ function BeeperPageInner() {
 						initialContactId={contactParam}
 						onSelectContact={handleSelectContact}
 						groupFilter={groupParam}
+						query={searchQuery}
+						onQueryChange={setSearchQuery}
 					/>
 				</div>
 			) : (
 				<div className="min-h-0 flex-1 overflow-y-auto">
-					<BeeperPluginSynchSettings />
+					<BeeperPluginSynchSettings onStatusChange={setPluginBanner} />
 				</div>
 			)}
 		</DashboardPageShell>
@@ -98,29 +146,43 @@ function BeeperPageInner() {
 
 type PluginStatus =
 	| "running"
+	| "starting"
 	| "started"
 	| "already running"
+	| "unhealthy"
+	| "token expired"
+	| "unauthorized"
+	| "sync failed"
 	| "failed"
 	| "error no connection to plugin"
 	| "";
 
-function BeeperPluginSynchSettings() {
+function BeeperPluginSynchSettings({
+	onStatusChange,
+}: {
+	onStatusChange?: (status: string) => void;
+}) {
 	const [status, setStatus] = useState<PluginStatus>("");
 	const [busy, setBusy] = useState(false);
-	const [isError, setIsError] = useState(false);
+
+	const applyStatus = useCallback(
+		(s: string) => {
+			setStatus(s as PluginStatus);
+			onStatusChange?.(s);
+		},
+		[onStatusChange],
+	);
 
 	const refreshStatus = useCallback(async () => {
 		try {
 			const res = await fetch("/api/beeper/plugin-synch/status");
 			const json = await res.json();
 			const s = typeof json.status === "string" ? json.status : "error no connection to plugin";
-			setStatus(s as PluginStatus);
-			setIsError(s === "error no connection to plugin" || s === "failed");
+			applyStatus(s);
 		} catch {
-			setStatus("error no connection to plugin");
-			setIsError(true);
+			applyStatus("error no connection to plugin");
 		}
-	}, []);
+	}, [applyStatus]);
 
 	useEffect(() => {
 		void refreshStatus();
@@ -132,15 +194,15 @@ function BeeperPluginSynchSettings() {
 			const res = await fetch("/api/beeper/plugin-synch/start", { method: "POST" });
 			const json = await res.json();
 			const s = typeof json.status === "string" ? json.status : "error no connection to plugin";
-			setStatus(s as PluginStatus);
-			setIsError(s === "error no connection to plugin" || s === "failed");
+			applyStatus(s);
 		} catch {
-			setStatus("error no connection to plugin");
-			setIsError(true);
+			applyStatus("error no connection to plugin");
 		} finally {
 			setBusy(false);
 		}
 	}
+
+	const isError = status ? isPluginSynchErrorStatus(status) : false;
 
 	return (
 		<div className="flex max-w-md flex-col gap-3 p-1">
@@ -155,15 +217,8 @@ function BeeperPluginSynchSettings() {
 				{busy && <Loader2 className="h-3 w-3 animate-spin" />}
 				Plugin synch
 			</Button>
-			{status ? (
-				<p
-					className={cn(
-						"text-sm",
-						isError ? "text-red-600 dark:text-red-400" : "text-muted-foreground",
-					)}
-				>
-					{status}
-				</p>
+			{status && !isError ? (
+				<p className="text-sm text-muted-foreground">{status}</p>
 			) : null}
 		</div>
 	);
