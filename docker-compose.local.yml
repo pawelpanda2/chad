@@ -203,6 +203,11 @@ services:
       - DEV_DB_SOURCE_PREF_PATH=/app/runtime/dev-data-source.json
       # Forms → Add recording (Story 93). Container path; host bind below.
       - CHAD_AUDIO_RECORDINGS_DIR=/app/audio-recordings
+      # Google Contacts → per-contact CHAD-local photos. Container path;
+      # host bind below. Root is the `02_files_refrenced` PARENT dir (not a
+      # single subfolder like audio) so the app can create/read each CHAD
+      # user's own `<username>/01_files_photos/` subtree underneath it.
+      - CHAD_CONTACT_PHOTOS_DIR=/app/contact-photos
       # Story 105 — local Mac only. Dashboard (Docker) → host helper via
       # host.docker.internal (helper binds 0.0.0.0:12701 + Bearer token;
       # Docker Desktop cannot use host UDS / 127.0.0.1-only). Unset on
@@ -225,6 +230,11 @@ services:
       - type: bind
         source: ${CHAD_AUDIO_RECORDINGS_HOST_PATH:-/Volumes/cp_1/02_files_refrenced/10_files_audio}
         target: /app/audio-recordings
+        bind:
+          create_host_path: true
+      - type: bind
+        source: ${CHAD_CONTACT_PHOTOS_HOST_PATH:-/Volumes/cp_1/02_files_refrenced}
+        target: /app/contact-photos
         bind:
           create_host_path: true
     logging:

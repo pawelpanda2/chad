@@ -14,6 +14,7 @@ import {
   filterGoogleContacts,
   isGoogleContactsPillGroup,
 } from "google-contacts";
+import { PhotoCountBadge, PhotosSection } from "@/components/shared/photos-section";
 
 interface GoogleContactRow {
   resourceName: string;
@@ -71,6 +72,11 @@ function GoogleContactsPageContent() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [selectedResourceName, setSelectedResourceName] = useState<string | null>(null);
   const groupFiltersSeededRef = useRef(false);
+  const [photoCounts, setPhotoCounts] = useState<Record<string, number>>({});
+
+  const handlePhotoCountChange = useCallback((resourceName: string, count: number) => {
+    setPhotoCounts((prev) => (prev[resourceName] === count ? prev : { ...prev, [resourceName]: count }));
+  }, []);
 
   const load = useCallback(async () => {
     const oauthError = oauthErrorParam;
@@ -141,6 +147,13 @@ function GoogleContactsPageContent() {
         : [];
       const groups: GoogleGroupRow[] = Array.isArray(listJson.groups) ? listJson.groups : [];
       setState(contacts.length === 0 ? { kind: "empty" } : { kind: "list", contacts, groups });
+
+      fetch("/api/google-contacts/photos/counts")
+        .then((res) => (res.ok ? res.json() : null))
+        .then((countsJson: { success?: boolean; counts?: Record<string, number> } | null) => {
+          if (countsJson?.success && countsJson.counts) setPhotoCounts(countsJson.counts);
+        })
+        .catch(() => {});
     } catch (err) {
       setState({ kind: "error", message: err instanceof Error ? err.message : String(err) });
     }
@@ -471,8 +484,11 @@ function GoogleContactsPageContent() {
                           </div>
                         )}
                         <div className="min-w-0 flex-1">
-                          <div className="truncate text-sm font-medium">
-                            {c.displayName || <span className="text-muted-foreground">(no name)</span>}
+                          <div className="flex items-center gap-1.5">
+                            <div className="truncate text-sm font-medium">
+                              {c.displayName || <span className="text-muted-foreground">(no name)</span>}
+                            </div>
+                            <PhotoCountBadge count={photoCounts[c.resourceName] ?? 0} />
                           </div>
                           {c.phones.length > 0 && (
                             <div className="truncate text-xs text-muted-foreground">{c.phones.join(" · ")}</div>
@@ -586,6 +602,14 @@ function GoogleContactsPageContent() {
                     );
                   })()}
                 </DetailSection>
+
+                <PhotosSection
+                  basePath="/api/google-contacts/photos"
+                  subjectParam="resourceName"
+                  subjectValue={selectedContact.resourceName}
+                  onCountChange={handlePhotoCountChange}
+                  deleteHint="This only removes the CHAD-local copy — it never changes anything in Google Contacts."
+                />
               </div>
             </div>
           )}

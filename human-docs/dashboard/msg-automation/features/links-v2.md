@@ -186,3 +186,18 @@ exists for Google Contacts (the spec only stated it for Beeper
 conversations).
 
 **Tests:** `packages/dba/src/links-v2/manual-links.test.ts` (10 tests).
+
+### Beeper contact-group filter (Leads/Conv tabs)
+
+The Leads tab's right panel and the Conv tab's left panel both list the
+full set of Beeper conversations — the same reusable `BeeperGroupFilter`
+combobox from the Beeper page (`components/beeper/beeper-group-filter.tsx`,
+Story 101) is placed above the search field in both, filtering that list
+client-side by `groupId` (contacts already carry `groupId` in the payload
+from `GET /api/beeper-crm/contacts`, unchanged endpoint). Defaults to the
+user's default group (`GET /api/beeper-crm/groups/default`, same one-time-
+on-mount pattern as the Beeper page) instead of "All groups" — a single
+shared filter state (`beeperGroupFilter` in `page.tsx`) applies to both
+tabs since they show the same underlying Beeper contact list, just in
+different layouts.
+
