@@ -1,16 +1,9 @@
 #!/usr/bin/env node
 /**
- * Local-only helper for Dashboard → beeper-synch (Story 105).
- *
- * Listens on TCP for local Mac Docker (host.docker.internal). Docker Desktop
- * on Mac cannot use host Unix sockets across virtiofs (ENOTSUP), and
- * 127.0.0.1-only listeners are unreachable from the VM — so the bind defaults
- * to 0.0.0.0 on a high port. Mitigations: Bearer token, allowlist only,
- * Dashboard gate CHAD_ENVIRONMENT=local, never reverse-proxy, never QNAP.
- *
- * Override: BEEPER_SYNCH_HELPER_HOST=127.0.0.1 for host-only debug.
- *
- * Allowlist: GET /status, POST /start → official restart.sh only.
+ * Local-only helper for Dashboard → beeper-synch (Story 105/106).
+ * TCP 0.0.0.0:12701 + Bearer token. Allowlist: GET /status, POST /start.
+ * After start/status, returns health-aware UI statuses (never "already running"
+ * when Beeper auth/sync is unhealthy).
  */
 import http from "node:http";
 import { spawn } from "node:child_process";
@@ -23,10 +16,11 @@ const REPO_ROOT = path.resolve(__dirname, "../..");
 const RUNTIME_DIR = path.join(REPO_ROOT, ".runtime/beeper-synch");
 const STATUS_FILE = path.join(RUNTIME_DIR, "status.json");
 const RESTART_SCRIPT = path.join(__dirname, "restart.sh");
+const MAC_ENV = path.join(REPO_ROOT, ".env.mac-beeper");
 const PLIST_LABEL = "com.chad.beeper-synch";
 
 const TOKEN = (process.env.BEEPER_SYNCH_HELPER_TOKEN || "").trim();
-const OP_TIMEOUT_MS = Number(process.env.BEEPER_SYNCH_HELPER_TIMEOUT_MS || 20_000);
+const OP_TIMEOUT_MS = Number(process.env.BEEPER_SYNCH_HELPER_TIMEOUT_MS || 45_000);
 const HOST = (process.env.BEEPER_SYNCH_HELPER_HOST || "0.0.0.0").trim();
 const PORT = Number(process.env.BEEPER_SYNCH_HELPER_PORT || 12701);
 
@@ -45,13 +39,25 @@ function authorize(req) {
 	return Boolean(match && match[1] === TOKEN);
 }
 
-function readPluginReady() {
+function readEnvFile(filePath) {
+	const out = {};
+	if (!fs.existsSync(filePath)) return out;
+	for (const line of fs.readFileSync(filePath, "utf8").split("\n")) {
+		const t = line.trim();
+		if (!t || t.startsWith("#")) continue;
+		const i = t.indexOf("=");
+		if (i <= 0) continue;
+		out[t.slice(0, i)] = t.slice(i + 1).trim();
+	}
+	return out;
+}
+
+function readStatusJson() {
 	try {
-		if (!fs.existsSync(STATUS_FILE)) return { ready: false };
-		const raw = JSON.parse(fs.readFileSync(STATUS_FILE, "utf8"));
-		return { ready: Boolean(raw?.ready) };
+		if (!fs.existsSync(STATUS_FILE)) return null;
+		return JSON.parse(fs.readFileSync(STATUS_FILE, "utf8"));
 	} catch {
-		return { ready: false };
+		return null;
 	}
 }
 
@@ -67,16 +73,136 @@ function launchAgentLoaded() {
 	});
 }
 
-async function getStatusPayload() {
+async function probeBeeperAuth() {
+	const env = readEnvFile(MAC_ENV);
+	const restUrl = (env.BEEPER_REST_URL || "http://localhost:23373").replace(/\/$/, "");
+	const apiKey = env.BEEPER_API_KEY || "";
+	if (!apiKey) {
+		return {
+			beeperDesktopReachable: false,
+			authorizationStatus: "unknown",
+			lastErrorCode: "missing_api_key",
+			lastErrorMessageShort: "BEEPER_API_KEY not set",
+		};
+	}
+	const controller = new AbortController();
+	const timer = setTimeout(() => controller.abort(), 5_000);
+	try {
+		const res = await fetch(`${restUrl}/v1/app/setup`, {
+			headers: { Authorization: `Bearer ${apiKey}`, Accept: "application/json" },
+			signal: controller.signal,
+		});
+		if (res.status === 200) {
+			return {
+				beeperDesktopReachable: true,
+				authorizationStatus: "authorized",
+				lastErrorCode: null,
+				lastErrorMessageShort: null,
+			};
+		}
+		const body = await res.text().catch(() => "");
+		let message = "";
+		let code = "";
+		try {
+			const json = JSON.parse(body);
+			message = typeof json.message === "string" ? json.message : "";
+			code = typeof json.code === "string" ? json.code : "";
+		} catch {
+			/* ignore */
+		}
+		const expired =
+			res.status === 401 &&
+			(message.toLowerCase().includes("token expired") || body.toLowerCase().includes("token expired"));
+		if (expired) {
+			return {
+				beeperDesktopReachable: true,
+				authorizationStatus: "token_expired",
+				lastErrorCode: code || "unauthorized",
+				lastErrorMessageShort: "Token expired",
+			};
+		}
+		if (res.status === 401 || res.status === 403) {
+			return {
+				beeperDesktopReachable: true,
+				authorizationStatus: "unauthorized",
+				lastErrorCode: code || String(res.status),
+				lastErrorMessageShort: message || "unauthorized",
+			};
+		}
+		return {
+			beeperDesktopReachable: true,
+			authorizationStatus: "unknown",
+			lastErrorCode: String(res.status),
+			lastErrorMessageShort: message || `HTTP ${res.status}`,
+		};
+	} catch {
+		return {
+			beeperDesktopReachable: false,
+			authorizationStatus: "unreachable",
+			lastErrorCode: "unreachable",
+			lastErrorMessageShort: "Beeper Desktop not reachable",
+		};
+	} finally {
+		clearTimeout(timer);
+	}
+}
+
+/**
+ * Health-first UI status. Never returns "already running" as a success mask
+ * over token/sync failures.
+ */
+function mapToUiStatus({ loaded, statusJson, auth, phase }) {
+	if (!loaded) {
+		return phase === "after-start" ? { ok: false, status: "failed" } : { ok: false, status: "unhealthy" };
+	}
+	if (auth.authorizationStatus === "token_expired") {
+		return { ok: false, status: "token expired" };
+	}
+	if (auth.authorizationStatus === "unauthorized") {
+		return { ok: false, status: "unauthorized" };
+	}
+	if (auth.authorizationStatus === "unreachable") {
+		return { ok: false, status: "unhealthy" };
+	}
+
+	const wsRunning = Boolean(statusJson?.wsRunning ?? statusJson?.beeperWs?.running ?? statusJson?.ready);
+	const oplogRunning = Boolean(statusJson?.oplogRunning ?? statusJson?.beeperOplog?.running);
+	const lastSyncExit = statusJson?.beeperSync?.lastExitCode ?? null;
+	const syncFailed = lastSyncExit !== null && lastSyncExit !== 0;
+	const healthyFile = statusJson?.healthy === true;
+	const healthy =
+		healthyFile ||
+		(auth.authorizationStatus === "authorized" && wsRunning && oplogRunning && !syncFailed);
+
+	if (syncFailed && auth.authorizationStatus === "authorized") {
+		// Prefer auth errors first; sync failure when auth ok.
+		if (!wsRunning) return { ok: false, status: "unhealthy" };
+		return { ok: false, status: "sync failed" };
+	}
+
+	if (healthy && auth.authorizationStatus === "authorized" && wsRunning) {
+		return { ok: true, status: "running" };
+	}
+
+	if (phase === "after-start") {
+		return { ok: true, status: "starting" };
+	}
+	return { ok: false, status: "unhealthy" };
+}
+
+async function evaluateHealth(phase) {
 	const loaded = await launchAgentLoaded();
-	const { ready } = readPluginReady();
-	const running = loaded && ready;
+	const statusJson = readStatusJson();
+	const auth = await probeBeeperAuth();
+	const mapped = mapToUiStatus({ loaded, statusJson, auth, phase });
 	return {
-		ok: true,
-		status: running ? "running" : "stopped",
-		running,
-		loaded,
-		ready,
+		...mapped,
+		supervisorRunning: loaded,
+		wsRunning: Boolean(statusJson?.wsRunning ?? statusJson?.beeperWs?.running),
+		oplogRunning: Boolean(statusJson?.oplogRunning ?? statusJson?.beeperOplog?.running),
+		authorizationStatus: auth.authorizationStatus,
+		healthy: mapped.status === "running",
+		// Never include secrets.
 	};
 }
 
@@ -110,26 +236,48 @@ function runRestart() {
 	});
 }
 
+async function waitUntilLoaded(timeoutMs = 12_000) {
+	const deadline = Date.now() + timeoutMs;
+	while (Date.now() < deadline) {
+		if (await launchAgentLoaded()) return true;
+		await new Promise((r) => setTimeout(r, 400));
+	}
+	return launchAgentLoaded();
+}
+
+async function waitForHealth(timeoutMs = 20_000) {
+	const deadline = Date.now() + timeoutMs;
+	let last = await evaluateHealth("after-start");
+	while (Date.now() < deadline) {
+		last = await evaluateHealth("after-start");
+		if (
+			last.status === "running" ||
+			last.status === "token expired" ||
+			last.status === "unauthorized" ||
+			last.status === "sync failed"
+		) {
+			return last;
+		}
+		await new Promise((r) => setTimeout(r, 800));
+	}
+	return last;
+}
+
 async function handleStart() {
 	if (busy) {
 		return { ok: false, status: "failed", reason: "busy" };
 	}
 	busy = true;
 	try {
-		const before = await getStatusPayload();
 		const result = await runRestart();
 		if (!result.ok) {
 			return { ok: false, status: "failed" };
 		}
-		await new Promise((r) => setTimeout(r, 800));
-		const after = await getStatusPayload();
-		if (!after.running) {
+		const loaded = await waitUntilLoaded();
+		if (!loaded) {
 			return { ok: false, status: "failed" };
 		}
-		if (before.running) {
-			return { ok: true, status: "already running" };
-		}
-		return { ok: true, status: "started" };
+		return waitForHealth();
 	} finally {
 		busy = false;
 	}
@@ -152,12 +300,19 @@ async function onRequest(req, res) {
 	const url = new URL(req.url || "/", "http://helper.local");
 	try {
 		if (req.method === "GET" && url.pathname === "/status") {
-			sendJson(res, 200, await getStatusPayload());
+			const body = await evaluateHealth("status");
+			sendJson(res, 200, body);
 			return;
 		}
 		if (req.method === "POST" && url.pathname === "/start") {
 			const body = await handleStart();
-			sendJson(res, body.ok ? 200 : 500, body);
+			const http =
+				body.status === "running" || body.status === "starting" || body.status === "started"
+					? 200
+					: body.status === "token expired" || body.status === "unauthorized" || body.status === "sync failed"
+						? 200
+						: 500;
+			sendJson(res, http, body);
 			return;
 		}
 		sendJson(res, 404, { ok: false, status: "failed" });
