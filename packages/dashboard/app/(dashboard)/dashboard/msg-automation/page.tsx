@@ -21,10 +21,10 @@ export default function MsgAutomationPage() {
       <div className="grid grid-cols-4 gap-2">
         <button
           type="button"
-          onClick={() => router.push("/dashboard/beeper")}
+          onClick={() => router.push("/dashboard/msg-automation/multiview")}
           className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
         >
-          <span className="font-semibold text-sm">BEEPER</span>
+          <span className="font-semibold text-sm">MULTIVIEW</span>
         </button>
         <button
           type="button"

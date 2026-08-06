@@ -114,6 +114,9 @@ export default defineConfig({
       // Story 94 — Beeper Conversations split-view pure logic (filter,
       // handle icon/aria-label, empty-state gate).
       "packages/dashboard/components/beeper/beeper-conversations-logic.test.ts",
+      // Story 105 — Plugin synch closed client + MultiView/Beeper routing.
+      "packages/dashboard/lib/beeper-plugin-synch.test.ts",
+      "packages/dashboard/lib/beeper-routing.test.ts",
       // Story 99 follow-up — GUI number ↔ stable Mongo dbId mapping.
       "packages/dashboard/components/beeper/msg-workout-message-numbers.test.ts",
       // Folders — Config.sorting (asc/desc, numeric) for direct-children ordering.
