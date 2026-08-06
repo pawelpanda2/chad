@@ -19,6 +19,7 @@ import {
 } from "./beeper.js";
 import { getBeeperContact } from "./beeper-crm.js";
 import { findLiveBeeperMatchForLead, listLeadBeeperLinks } from "./lead-beeper-links.js";
+import { getLeadLinksV2ByLoca } from "./links-v2/page-data.js";
 import { addressToRepoAndLoca, repoAndLocaToAddress } from "./cp-model.js";
 import {
   createOrGetChild,
@@ -530,8 +531,23 @@ export async function saveMyProposals(leadLoca: string, text: string): Promise<{
  * tree. Falls back to the legacy path for leads that predate live Beeper
  * sync or have no phone number to match on — never a regression for
  * those, only an upgrade for leads that do have live data.
+ *
+ * Story 104 GUI redesign: Links V2 (`links-v2/manual-links.ts`, a separate
+ * cp_item-based storage from the old Links Mongo collection above) is
+ * checked first — it's the newest, most explicit source (a manual GUI
+ * drag & drop or an automatic phone match), so a lead just linked there
+ * must show up here immediately rather than waiting on the old Links
+ * page's own Save step or a live re-match. Links V2 allows a lead many
+ * Beeper links; Message Creator only ever shows one conversation, so the
+ * first entry is used — same one-conversation assumption the old
+ * saved-link tier already made.
  */
-export type LeadConversationMatchBasis = "saved-link" | "live-match" | "legacy-fallback" | "not-found";
+export type LeadConversationMatchBasis =
+  | "links-v2-link"
+  | "saved-link"
+  | "live-match"
+  | "legacy-fallback"
+  | "not-found";
 
 export async function getLeadConversationForCreator(
   leadName: string,
@@ -552,11 +568,16 @@ export async function getLeadConversationForCreator(
 }> {
   if (leadLoca) {
     try {
+      const linksV2 = await getLeadLinksV2ByLoca(leadLoca);
+      const linksV2Entry = linksV2.beeper[0] ?? null;
       const links = await listLeadBeeperLinks();
       const saved = links.find((l) => l.leadName === leadName);
-      const match = saved
-        ? { conversationId: saved.conversationId, conversationName: saved.conversationName, channel: saved.channel }
-        : await findLiveBeeperMatchForLead(leadName, leadLoca);
+      const match: { conversationId: string; conversationName: string | null; channel?: string | null } | null =
+        linksV2Entry
+          ? { conversationId: linksV2Entry.chatId, conversationName: null, channel: null }
+          : saved
+          ? { conversationId: saved.conversationId, conversationName: saved.conversationName, channel: saved.channel }
+          : await findLiveBeeperMatchForLead(leadName, leadLoca);
 
       if (match) {
         const contact = await getBeeperContact(match.conversationId);
@@ -571,7 +592,7 @@ export async function getLeadConversationForCreator(
             body,
             channel: match.channel ?? contact?.channels[0]?.title ?? null,
             hash: hashConversationContent(body),
-            basis: saved ? "saved-link" : "live-match",
+            basis: linksV2Entry ? "links-v2-link" : saved ? "saved-link" : "live-match",
             conversationId: match.conversationId,
             displayName,
           };

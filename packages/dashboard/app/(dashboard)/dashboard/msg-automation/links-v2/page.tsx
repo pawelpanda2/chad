@@ -717,7 +717,11 @@ export default function LinksV2Page() {
               </button>
             )}
           </div>
-          <div className="truncate px-2 py-1.5 text-xs font-semibold">{selectedLead?.leadName ?? ""}</div>
+          <div className="truncate px-2 py-1.5 text-xs font-semibold">
+            {leadsInnerTab === "conv" && leadsSelectedChatId
+              ? beeperContactsById.get(leadsSelectedChatId)?.displayName ?? leadsSelectedChatId
+              : selectedLead?.leadName ?? ""}
+          </div>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-2">
           {leadsInnerTab === "links" ? (
