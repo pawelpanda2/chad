@@ -37,6 +37,8 @@ export * from './ai-prompts.js';
 export * from './ai-prompts-openai.js';
 export * from './audio-recordings.js';
 export * from './audio-recording-drafts.js';
+export * from './google-contact-photos.js';
+export * from './lead-photos.js';
 export * from './message-creator.js';
 export * from './lead-beeper-links.js';
 export * from './lead-analysis-prompt.js';

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ErrorBox } from "@/components/shared/error-box";
 import { BeeperPlatformIcon } from "@/components/beeper/beeper-platform-icon";
+import { BeeperGroupFilter } from "@/components/beeper/beeper-group-filter";
 import {
   Dialog,
   DialogContent,
@@ -41,6 +42,7 @@ interface BeeperContactRow {
   displayName: string;
   platformNetwork: string | null;
   lastMessage: { text: string; timestamp: string | null; network: string } | null;
+  groupId: string | null;
 }
 interface GoogleContactRow {
   resourceName: string;
@@ -113,6 +115,12 @@ function readDragPayload(e: DragEvent): DragPayload | null {
 function matches(query: string, text: string): boolean {
   const q = query.trim().toLowerCase();
   return !q || text.toLowerCase().includes(q);
+}
+/** `undefined` filter = all groups; `"__none__"` = contacts with no group; otherwise exact group id (BeeperGroupFilter convention). */
+function matchesGroup(filter: string | undefined, groupId: string | null): boolean {
+  if (!filter) return true;
+  if (filter === "__none__") return groupId === null;
+  return groupId === filter;
 }
 async function fetchJson(url: string): Promise<{ ok: boolean; json: unknown }> {
   const res = await fetch(url);
@@ -372,6 +380,23 @@ export default function LinksV2Page() {
 
   const [confirmState, setConfirmState] = useState<ConfirmState | null>(null);
 
+  // Shared Beeper contact-group filter (Leads tab's right panel and Conv tab's
+  // left panel both list the same Beeper conversations) — defaults to the
+  // user's default group from Beeper → Groups (same convention as the Beeper
+  // page's own group filter: undefined = all groups, "__none__" = no group).
+  const [beeperGroupFilter, setBeeperGroupFilter] = useState<string | undefined>(undefined);
+  const appliedDefaultGroupRef = useRef(false);
+  useEffect(() => {
+    if (appliedDefaultGroupRef.current) return;
+    appliedDefaultGroupRef.current = true;
+    fetch("/api/beeper-crm/groups/default")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { _id?: string } | null) => {
+        if (data?._id) setBeeperGroupFilter(data._id);
+      })
+      .catch(() => {});
+  }, []);
+
   // Leads tab
   const [leadsSelectedLoca, setLeadsSelectedLoca] = useState<string | null>(null);
   const [leadsInnerTab, setLeadsInnerTab] = useState<LeadsInnerTab>("links");
@@ -470,12 +495,18 @@ export default function LinksV2Page() {
     [leads, leadsSearchLeft]
   );
   const filteredBeeperRight = useMemo(
-    () => (beeperContacts ?? []).filter((c) => matches(leadsSearchRight, c.displayName)),
-    [beeperContacts, leadsSearchRight]
+    () =>
+      (beeperContacts ?? []).filter(
+        (c) => matches(leadsSearchRight, c.displayName) && matchesGroup(beeperGroupFilter, c.groupId)
+      ),
+    [beeperContacts, leadsSearchRight, beeperGroupFilter]
   );
   const filteredBeeperConvLeft = useMemo(
-    () => (beeperContacts ?? []).filter((c) => matches(convSearchLeft, c.displayName)),
-    [beeperContacts, convSearchLeft]
+    () =>
+      (beeperContacts ?? []).filter(
+        (c) => matches(convSearchLeft, c.displayName) && matchesGroup(beeperGroupFilter, c.groupId)
+      ),
+    [beeperContacts, convSearchLeft, beeperGroupFilter]
   );
   const filteredLeadsConvRight = useMemo(
     () => (leads ?? []).filter((l) => matches(convSearchRight, l.leadName)),
@@ -755,7 +786,8 @@ export default function LinksV2Page() {
       </div>
       <Resizer containerRef={leadsGridRef} side="right" min={SIDE_MIN} centerMin={CENTER_MIN} />
       <div className="flex min-h-0 min-w-0 flex-col border-l bg-muted/5">
-        <div className="shrink-0 p-1.5">
+        <div className="shrink-0 space-y-1.5 p-1.5 [&>select]:w-full">
+          <BeeperGroupFilter value={beeperGroupFilter} onChange={setBeeperGroupFilter} />
           <SearchInput value={leadsSearchRight} onChange={setLeadsSearchRight} />
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-1 pb-1">
@@ -786,7 +818,8 @@ export default function LinksV2Page() {
       style={{ gridTemplateColumns: "minmax(200px,1fr) 14px minmax(200px,1fr)" }}
     >
       <div className="flex min-h-0 min-w-0 flex-col border-r bg-muted/5">
-        <div className="shrink-0 p-1.5">
+        <div className="shrink-0 space-y-1.5 p-1.5 [&>select]:w-full">
+          <BeeperGroupFilter value={beeperGroupFilter} onChange={setBeeperGroupFilter} />
           <SearchInput value={convSearchLeft} onChange={setConvSearchLeft} />
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-1 pb-1">

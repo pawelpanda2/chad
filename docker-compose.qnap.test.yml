@@ -118,11 +118,20 @@ services:
       - SECRETS_ENCRYPTION_KEY=${SECRETS_ENCRYPTION_KEY:-}
       # Forms → Add recording (Story 93).
       - CHAD_AUDIO_RECORDINGS_DIR=/app/audio-recordings
+      # Google Contacts → per-contact CHAD-local photos. Root is the
+      # `02_files_refrenced` PARENT dir so the app can create/read each CHAD
+      # user's own `<username>/01_files_photos/` subtree underneath it.
+      - CHAD_CONTACT_PHOTOS_DIR=/app/contact-photos
     volumes:
       - chad-dashboard-test-data:/app/data
       - type: bind
         source: ${CHAD_AUDIO_RECORDINGS_HOST_PATH:-/share/cp_1/02_files_refrenced/10_files_audio}
         target: /app/audio-recordings
+        bind:
+          create_host_path: true
+      - type: bind
+        source: ${CHAD_CONTACT_PHOTOS_HOST_PATH:-/share/cp_1/02_files_refrenced}
+        target: /app/contact-photos
         bind:
           create_host_path: true
     logging:
