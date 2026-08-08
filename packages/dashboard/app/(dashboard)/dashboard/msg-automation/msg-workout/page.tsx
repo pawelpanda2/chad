@@ -1,86 +1,56 @@
 "use client";
 
-import { Suspense, useCallback, useState } from "react";
+import { Suspense, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Search } from "lucide-react";
 import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
-import { Input } from "@/components/ui/input";
-import { cn } from "@/lib/utils";
-import { MsgWorkoutReviewView } from "@/components/beeper/msg-workout-review-view";
-import { BeeperGroupFilter } from "@/components/beeper/beeper-group-filter";
 
 /**
- * Msg Auto → Msg Workout — same shared component as Beeper → Msg workout
- * (`MsgWorkoutReviewView`, no duplicated implementation). Unlike Beeper,
- * there's no Conversations/Permissions/Groups tab bar here: this page IS
- * the Msg Workout view, opened directly from the Msg Automation hub.
+ * Msg Auto → Msg Workout hub — REVIEW (existing Beeper review) +
+ * MANUALLY ADDED MESSAGES (Story 108). Same button-grid pattern as
+ * Msg Automation / Forms.
  *
- * Same `scroll={false}` + own-panel-scroll shell pattern as Beeper's Msg
- * workout tab — see ai-docs/gui-standard/ai-start.md.
+ * Deep links with `?contact=` / `?group=` (pre-hub URLs) redirect to Review.
  */
-function MsgAutoMsgWorkoutPageInner() {
+function MsgWorkoutHubInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [searchQuery, setSearchQuery] = useState("");
 
-  const contactParam = searchParams.get("contact") ?? undefined;
-  const groupParam = searchParams.get("group") ?? undefined;
-  const hasOpenConversation = Boolean(contactParam);
-
-  const updateUrl = useCallback(
-    (nextContact?: string, nextGroup?: string) => {
-      const params = new URLSearchParams();
-      if (nextContact) params.set("contact", nextContact);
-      if (nextGroup) params.set("group", nextGroup);
-      const qs = params.toString();
-      router.replace(`/dashboard/msg-automation/msg-workout${qs ? `?${qs}` : ""}`, { scroll: false });
-    },
-    [router]
-  );
-
-  const handleSelectContact = useCallback(
-    (id: string | null) => updateUrl(id ?? undefined, groupParam),
-    [updateUrl, groupParam]
-  );
-
-  const handleGroupChange = useCallback(
-    (groupId: string | undefined) => updateUrl(undefined, groupId),
-    [updateUrl]
-  );
+  useEffect(() => {
+    if (searchParams.has("contact") || searchParams.has("group")) {
+      router.replace(
+        `/dashboard/msg-automation/msg-workout/review?${searchParams.toString()}`,
+      );
+    }
+  }, [router, searchParams]);
 
   return (
-    <DashboardPageShell title="Msg Workout" upLevel={{ href: "/dashboard/msg-automation" }} scroll={false}>
-      <div className={cn("mb-1.5 w-full shrink-0 flex-wrap items-center gap-2", hasOpenConversation ? "hidden md:flex" : "flex")}>
-        <BeeperGroupFilter value={groupParam} onChange={handleGroupChange} />
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Search"
-            className="h-10 w-[140px] rounded-[9px] pl-7 text-sm"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            aria-label="Search contacts"
-          />
-        </div>
-      </div>
-
-      <div className="min-h-0 flex-1 overflow-hidden">
-        <MsgWorkoutReviewView
-          initialContactId={contactParam}
-          onSelectContact={handleSelectContact}
-          groupFilter={groupParam}
-          query={searchQuery}
-          onQueryChange={setSearchQuery}
-        />
+    <DashboardPageShell title="Msg Workout" upLevel={{ href: "/dashboard/msg-automation" }}>
+      <div className="grid grid-cols-4 gap-2">
+        <button
+          type="button"
+          onClick={() => router.push("/dashboard/msg-automation/msg-workout/review")}
+          className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
+        >
+          <span className="font-semibold text-sm">REVIEW</span>
+        </button>
+        <button
+          type="button"
+          onClick={() =>
+            router.push("/dashboard/msg-automation/msg-workout/manually-added-messages")
+          }
+          className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
+        >
+          <span className="font-semibold text-sm">MANUALLY ADDED MESSAGES</span>
+        </button>
       </div>
     </DashboardPageShell>
   );
 }
 
-export default function MsgAutoMsgWorkoutPage() {
+export default function MsgWorkoutHubPage() {
   return (
     <Suspense fallback={null}>
-      <MsgAutoMsgWorkoutPageInner />
+      <MsgWorkoutHubInner />
     </Suspense>
   );
 }
