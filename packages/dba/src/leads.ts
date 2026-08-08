@@ -572,6 +572,8 @@ export interface LeadDashboardItem {
   leadKey: string;
   leadName: string;
   loca: string;
+  /** Stable CP item id (`config.id` / `cp_items.id`) — Story 110 archive relation key. */
+  leadUuid: string;
   hasContacts: boolean;
   /** Links V2 (Story 104) — true when this lead was auto-created from an unmatched Beeper contact (`links-v2/draft-leads.ts`), read straight off the Folder's own `config.draft` (no extra CP call). */
   draft: boolean;
@@ -604,6 +606,7 @@ export async function getAllLeadsWithContacts(): Promise<LeadDashboardItem[]> {
       leadKey,
       leadName: lead.config.name,
       loca: addressToRepoAndLoca(lead.config.address).loca,
+      leadUuid: lead.config.id,
       hasContacts,
       draft: lead.config.draft === true,
     };

@@ -1,9 +1,13 @@
 /**
- * GET /api/leads/archives/counts — `{ [loca]: count }` for every lead of
- * the current user that has at least one archive. One directory scan.
+ * GET /api/leads/archives/counts — `{ [leadUuid]: count }` for the current user.
  */
 import { NextResponse } from "next/server";
-import { LeadArchiveError, listLeadArchiveCounts, runWithRepoContext } from "dba";
+import {
+  getAllLeadsWithContacts,
+  LeadArchiveError,
+  listLeadArchiveCounts,
+  runWithRepoContext,
+} from "dba";
 import { getCurrentUserFromCookies } from "@/lib/session";
 
 export const runtime = "nodejs";
@@ -15,7 +19,14 @@ export async function GET() {
   }
 
   try {
-    const counts = await runWithRepoContext(user, () => listLeadArchiveCounts());
+    const counts = await runWithRepoContext(user, async () => {
+      const leads = await getAllLeadsWithContacts();
+      const locaToLeadUuid: Record<string, string> = {};
+      for (const lead of leads) {
+        locaToLeadUuid[lead.loca] = lead.leadUuid;
+      }
+      return listLeadArchiveCounts({ locaToLeadUuid });
+    });
     return NextResponse.json({ success: true, counts });
   } catch (error) {
     if (error instanceof LeadArchiveError && error.code === "NOT_CONFIGURED") {

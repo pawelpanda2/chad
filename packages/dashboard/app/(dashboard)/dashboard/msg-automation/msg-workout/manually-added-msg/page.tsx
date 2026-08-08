@@ -11,15 +11,18 @@ type LeadRow = {
   leadKey: string;
   leadName: string;
   loca: string;
+  leadUuid: string;
   hasContacts: boolean;
 };
 
 type ArchiveRow = {
   id: string;
+  fileName?: string;
   originalFileName: string;
   fileType: "zip" | "rar";
   sizeBytes: number;
   createdAt: string;
+  leadNameAtExport?: string;
 };
 
 function formatBytes(n: number): string {
@@ -37,17 +40,17 @@ function formatDate(iso: string): string {
 }
 
 /**
- * Msg Auto → Manually Added Messages (Story 108).
- * Left: leads list (same `/api/leads-dashboard` source as Message Creator) + archive counts.
+ * Msg Auto → manually added msg (Story 110).
+ * Left: leads + archive counts (keyed by leadUuid).
  * Right: upload .zip/.rar for selected lead + assigned archives list.
  */
-export default function ManuallyAddedMessagesPage() {
+export default function ManuallyAddedMsgPage() {
   const [leads, setLeads] = useState<LeadRow[]>([]);
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [loadingLeads, setLoadingLeads] = useState(true);
   const [leadsError, setLeadsError] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
-  const [selectedLoca, setSelectedLoca] = useState<string | null>(null);
+  const [selectedUuid, setSelectedUuid] = useState<string | null>(null);
   const [archives, setArchives] = useState<ArchiveRow[]>([]);
   const [loadingArchives, setLoadingArchives] = useState(false);
   const [archivesError, setArchivesError] = useState<string | null>(null);
@@ -56,8 +59,8 @@ export default function ManuallyAddedMessagesPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const selectedLead = useMemo(
-    () => leads.find((l) => l.loca === selectedLoca) ?? null,
-    [leads, selectedLoca],
+    () => leads.find((l) => l.leadUuid === selectedUuid) ?? null,
+    [leads, selectedUuid],
   );
 
   const refreshCounts = useCallback(async () => {
@@ -72,11 +75,11 @@ export default function ManuallyAddedMessagesPage() {
     }
   }, []);
 
-  const refreshArchives = useCallback(async (loca: string) => {
+  const refreshArchives = useCallback(async (leadUuid: string) => {
     setLoadingArchives(true);
     setArchivesError(null);
     try {
-      const res = await fetch(`/api/leads/archives?loca=${encodeURIComponent(loca)}`);
+      const res = await fetch(`/api/leads/archives?leadUuid=${encodeURIComponent(leadUuid)}`);
       const json = await res.json();
       if (!res.ok || !json?.success) {
         throw new Error(json?.error || `Failed to load archives (${res.status})`);
@@ -114,13 +117,13 @@ export default function ManuallyAddedMessagesPage() {
   }, [refreshCounts]);
 
   useEffect(() => {
-    if (!selectedLoca) {
+    if (!selectedUuid) {
       setArchives([]);
       setArchivesError(null);
       return;
     }
-    void refreshArchives(selectedLoca);
-  }, [selectedLoca, refreshArchives]);
+    void refreshArchives(selectedUuid);
+  }, [selectedUuid, refreshArchives]);
 
   const filtered = useMemo(() => {
     const q = filter.trim().toLowerCase();
@@ -129,12 +132,12 @@ export default function ManuallyAddedMessagesPage() {
   }, [leads, filter]);
 
   async function handleUpload(files: FileList | null) {
-    if (!selectedLoca || !files || files.length === 0) return;
+    if (!selectedUuid || !files || files.length === 0) return;
     setUploading(true);
     setUploadError(null);
     try {
       const form = new FormData();
-      form.set("loca", selectedLoca);
+      form.set("leadUuid", selectedUuid);
       for (const file of Array.from(files)) {
         form.append("archives", file);
       }
@@ -143,7 +146,7 @@ export default function ManuallyAddedMessagesPage() {
       if (!res.ok || !json?.success) {
         throw new Error(json?.error || `Upload failed (${res.status})`);
       }
-      await Promise.all([refreshArchives(selectedLoca), refreshCounts()]);
+      await Promise.all([refreshArchives(selectedUuid), refreshCounts()]);
       if (fileInputRef.current) fileInputRef.current.value = "";
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : String(err));
@@ -154,13 +157,12 @@ export default function ManuallyAddedMessagesPage() {
 
   return (
     <DashboardPageShell
-      title="Manually Added Messages"
+      title="manually added msg"
       upLevel={{ href: "/dashboard/msg-automation" }}
       scroll={false}
     >
       {leadsError ? <ErrorBox message={leadsError} className="mb-2 shrink-0" /> : null}
       <div className="flex min-h-0 flex-1 gap-3 overflow-hidden">
-        {/* Left — leads (same source as Message Creator) */}
         <div className="flex w-full max-w-sm min-h-0 flex-col gap-2">
           <input
             type="search"
@@ -180,17 +182,17 @@ export default function ManuallyAddedMessagesPage() {
           ) : (
             <ul className="min-h-0 flex-1 divide-y overflow-y-auto rounded-md border">
               {filtered.map((lead) => {
-                const count = counts[lead.loca] ?? 0;
-                const selected = lead.loca === selectedLoca;
+                const count = counts[lead.leadUuid] ?? 0;
+                const selected = lead.leadUuid === selectedUuid;
                 return (
-                  <li key={lead.leadKey || `${lead.leadName}:${lead.loca}`}>
+                  <li key={lead.leadUuid || lead.leadKey || `${lead.leadName}:${lead.loca}`}>
                     <button
                       type="button"
                       className={cn(
                         "flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left text-sm hover:bg-muted",
                         selected && "bg-accent",
                       )}
-                      onClick={() => setSelectedLoca(lead.loca)}
+                      onClick={() => setSelectedUuid(lead.leadUuid)}
                     >
                       <span className="min-w-0 truncate font-medium">{lead.leadName}</span>
                       <span className="shrink-0 tabular-nums text-xs text-muted-foreground">
@@ -204,7 +206,6 @@ export default function ManuallyAddedMessagesPage() {
           )}
         </div>
 
-        {/* Right — detail / upload */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-y-auto rounded-md border p-3">
           {!selectedLead ? (
             <p className="text-sm text-muted-foreground">Select a lead</p>
@@ -267,7 +268,9 @@ export default function ManuallyAddedMessagesPage() {
                         key={a.id}
                         className="flex flex-wrap items-baseline justify-between gap-2 px-3 py-2 text-sm"
                       >
-                        <span className="min-w-0 truncate font-medium">{a.originalFileName}</span>
+                        <span className="min-w-0 truncate font-medium">
+                          {a.fileName || a.originalFileName}
+                        </span>
                         <span className="shrink-0 text-xs text-muted-foreground">
                           .{a.fileType} · {formatBytes(a.sizeBytes)} · {formatDate(a.createdAt)}
                         </span>

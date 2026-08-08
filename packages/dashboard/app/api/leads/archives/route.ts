@@ -1,6 +1,6 @@
 /**
- * GET  /api/leads/archives?loca=… — list archives for one lead (metadata only).
- * POST /api/leads/archives — multipart: field `loca` + one or more `archives` files.
+ * GET  /api/leads/archives?leadUuid=… — list archives for one lead (metadata only).
+ * POST /api/leads/archives — multipart: field `leadUuid` + one or more `archives` files.
  * Session required; owner/username from session only. Lead ownership checked
  * against getAllLeadsWithContacts() before write.
  */
@@ -26,6 +26,7 @@ function statusForError(error: LeadArchiveError): number {
     case "NOT_FOUND":
       return 404;
     case "INVALID_TYPE":
+    case "INVALID_LEAD":
     case "INVALID_LEAD_LOCA":
     case "INVALID_ID":
     case "INVALID_USERNAME":
@@ -38,17 +39,21 @@ function statusForError(error: LeadArchiveError): number {
 
 function publicArchive(a: {
   id: string;
+  fileName: string;
   originalFileName: string;
   fileType: string;
   sizeBytes: number;
   createdAt: string;
+  leadNameAtExport?: string;
 }) {
   return {
     id: a.id,
+    fileName: a.fileName,
     originalFileName: a.originalFileName,
     fileType: a.fileType,
     sizeBytes: a.sizeBytes,
     createdAt: a.createdAt,
+    leadNameAtExport: a.leadNameAtExport,
   };
 }
 
@@ -58,13 +63,18 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ success: false, error: "NOT_AUTHENTICATED" }, { status: 401 });
   }
 
-  const loca = new URL(request.url).searchParams.get("loca") || "";
-  if (!loca) {
-    return NextResponse.json({ success: false, error: "loca is required" }, { status: 400 });
+  const leadUuid = new URL(request.url).searchParams.get("leadUuid") || "";
+  if (!leadUuid) {
+    return NextResponse.json({ success: false, error: "leadUuid is required" }, { status: 400 });
   }
 
   try {
-    const archives = await runWithRepoContext(user, () => listLeadArchives(loca));
+    const archives = await runWithRepoContext(user, async () => {
+      const leads = await getAllLeadsWithContacts();
+      const lead = leads.find((l) => l.leadUuid === leadUuid);
+      if (!lead) throw new LeadArchiveError("NOT_FOUND", "Lead not found");
+      return listLeadArchives(lead.leadUuid, { leadLoca: lead.loca });
+    });
     return NextResponse.json({ success: true, archives: archives.map(publicArchive) });
   } catch (error) {
     if (error instanceof LeadArchiveError) {
@@ -91,9 +101,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: false, error: "Invalid form data" }, { status: 400 });
   }
 
-  const loca = form.get("loca")?.toString() ?? "";
-  if (!loca) {
-    return NextResponse.json({ success: false, error: "loca is required" }, { status: 400 });
+  const leadUuid = form.get("leadUuid")?.toString() ?? "";
+  if (!leadUuid) {
+    return NextResponse.json({ success: false, error: "leadUuid is required" }, { status: 400 });
   }
 
   const files = form.getAll("archives").filter((f): f is File => typeof f !== "string");
@@ -113,7 +123,8 @@ export async function POST(request: NextRequest) {
   try {
     const results = await runWithRepoContext(user, async () => {
       const leads = await getAllLeadsWithContacts();
-      if (!leads.some((l) => l.loca === loca)) {
+      const lead = leads.find((l) => l.leadUuid === leadUuid);
+      if (!lead) {
         throw new LeadArchiveError("NOT_FOUND", "Lead not found");
       }
 
@@ -126,7 +137,8 @@ export async function POST(request: NextRequest) {
           await saveLeadArchive({
             bytes: buf,
             originalFileName: name,
-            leadLoca: loca,
+            leadUuid: lead.leadUuid,
+            leadNameAtExport: lead.leadName,
             declaredExt,
           }),
         );

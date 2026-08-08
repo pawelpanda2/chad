@@ -1,31 +1,35 @@
 /**
- * Msg Workout → Manually Added Messages — per-lead WhatsApp export archives
- * (.zip / .rar) on the shared `cp_1` volume.
+ * Msg Auto → manually added msg — per-lead WhatsApp export archives (.zip / .rar).
  *
- * Same storage root as photos (`CHAD_CONTACT_PHOTOS_DIR` → container
- * `/app/contact-photos` = host `…/02_files_refrenced`), but a sibling
- * directory: `<username>/02_files_zip/`. Sidecar JSON metadata; never unpack.
- *
- * Host Mac: `/Volumes/cp_1/02_files_refrenced/<user>/02_files_zip`
- * QNAP:     `/share/cp_1/02_files_refrenced/<user>/02_files_zip`
- * Business code uses only the container/runtime root — never host paths.
+ * Story 110: binary on cp_1 under
+ *   `<CHAD_CONTACT_PHOTOS_DIR>/<user>/02_files_zip/manually-added-msg/<readable>.zip`
+ * Metadata in PostgreSQL (`cp_lead_archives`). No new sidecar `.zip.json`.
+ * Old Story 108 sidecars under `02_files_zip/` remain readable (compat only).
  */
 
-import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { access, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { getCurrentRepoGuid, getCurrentUsername } from "./repo-context.js";
 import {
   assertSafeContactPhotoPath,
   assertSafeUsername,
-  buildContactPhotoFileName,
   ContactPhotoError,
   getContactPhotosRootDir,
 } from "./google-contact-photos.js";
-import { assertValidLeadLoca } from "./lead-photos.js";
+import {
+  createMemoryLeadArchiveStore,
+  postgresLeadArchiveStore,
+  type LeadArchiveMetadataStore,
+} from "./lead-archives-store.js";
+
+export { createMemoryLeadArchiveStore };
 
 /** Match audio-recordings order of magnitude — WhatsApp exports with media. */
 export const LEAD_ARCHIVE_MAX_BYTES = 50 * 1024 * 1024;
 export const LEAD_ARCHIVE_MAX_FILES_PER_REQUEST = 5;
+export const LEAD_ARCHIVE_VIEW = "manually-added-msg";
+export const FILES_REFERENCED_SEGMENT = "02_files_refrenced";
 
 export type LeadArchiveFileType = "zip" | "rar";
 
@@ -34,6 +38,7 @@ export class LeadArchiveError extends Error {
     public readonly code:
       | "NOT_CONFIGURED"
       | "INVALID_TYPE"
+      | "INVALID_LEAD"
       | "INVALID_LEAD_LOCA"
       | "INVALID_ID"
       | "INVALID_USERNAME"
@@ -64,6 +69,20 @@ export function assertValidLeadArchiveId(id: string): string {
   return trimmed;
 }
 
+export function assertValidLeadUuid(leadUuid: string): string {
+  const trimmed = leadUuid.trim();
+  if (
+    !trimmed ||
+    trimmed.length > 128 ||
+    trimmed.includes("..") ||
+    trimmed.includes("/") ||
+    trimmed.includes("\\")
+  ) {
+    throw new LeadArchiveError("INVALID_LEAD", "Invalid lead uuid");
+  }
+  return trimmed;
+}
+
 /** `<root>/<username>/02_files_zip` — sibling of `01_files_photos`. */
 export function getUserLeadArchivesDir(username: string, rootDirectory?: string): string {
   try {
@@ -82,30 +101,98 @@ export function getUserLeadArchivesDir(username: string, rootDirectory?: string)
   }
 }
 
-function resolveArchivesDir(username: string, rootDirectory?: string): { username: string; dir: string } {
-  try {
-    const safeUsername = assertSafeUsername(username);
-    return { username: safeUsername, dir: getUserLeadArchivesDir(safeUsername, rootDirectory) };
-  } catch (error) {
-    if (error instanceof LeadArchiveError) throw error;
-    if (error instanceof ContactPhotoError) {
-      if (error.code === "NOT_CONFIGURED") {
-        throw new LeadArchiveError("NOT_CONFIGURED", "Archives directory is not configured");
-      }
-      throw new LeadArchiveError("INVALID_USERNAME", "Invalid username");
-    }
-    throw error;
+/** `<root>/<username>/02_files_zip/manually-added-msg` */
+export function getUserLeadArchiveViewDir(username: string, rootDirectory?: string): string {
+  const zipDir = getUserLeadArchivesDir(username, rootDirectory);
+  return assertSafeContactPhotoPath(zipDir, LEAD_ARCHIVE_VIEW);
+}
+
+export function buildRelativeArchiveStoragePath(username: string, fileName: string): string {
+  const safeUsername = assertSafeUsername(username);
+  const safeName = path.basename(fileName);
+  if (safeName !== fileName || fileName.includes("..")) {
+    throw new LeadArchiveError("WRITE_FAILED", "Invalid archive file name");
   }
+  return `${FILES_REFERENCED_SEGMENT}/${safeUsername}/02_files_zip/${LEAD_ARCHIVE_VIEW}/${safeName}`;
+}
+
+/** Resolve DB relative storage_path against the photos root (which IS 02_files_refrenced). */
+export function resolveArchiveAbsolutePath(
+  storagePath: string,
+  rootDirectory?: string,
+): string {
+  const normalized = storagePath.replace(/\\/g, "/").replace(/^\/+/, "");
+  const prefix = `${FILES_REFERENCED_SEGMENT}/`;
+  if (!normalized.startsWith(prefix)) {
+    throw new LeadArchiveError("WRITE_FAILED", "Invalid storage path");
+  }
+  const relativeToRoot = normalized.slice(prefix.length);
+  const root = rootDirectory ? path.resolve(rootDirectory) : getContactPhotosRootDir();
+  const parts = relativeToRoot.split("/").filter(Boolean);
+  let current = root;
+  for (const part of parts) {
+    current = assertSafeContactPhotoPath(current, part);
+  }
+  return current;
+}
+
+function stripControlChars(value: string): string {
+  let result = "";
+  for (let i = 0; i < value.length; i += 1) {
+    const code = value.charCodeAt(i);
+    result += code >= 32 && code !== 127 ? value[i] : " ";
+  }
+  return result;
+}
+
+function sanitizeOriginalFileName(name: string): string {
+  const base = name.split(/[\\/]/).pop() || "archive";
+  const trimmed = stripControlChars(base).trim();
+  const safe = trimmed.length > 0 ? trimmed : "archive";
+  return safe.length > 180 ? safe.slice(0, 180) : safe;
+}
+
+/**
+ * Sanitize lead display name into a single path segment for the ZIP filename.
+ * Keeps letters (incl. Polish), digits, `.`, `_`, `-`; spaces → `_`.
+ */
+export function sanitizeLeadNameForArchiveFile(leadName: string): string {
+  const stripped = stripControlChars(leadName)
+    .replace(/[\\/]/g, "-")
+    .replace(/\.\./g, ".")
+    .trim();
+  const spaced = stripped.replace(/\s+/g, "_");
+  let out = "";
+  for (const ch of spaced) {
+    if (/[A-Za-z0-9._\-]/.test(ch) || ch.charCodeAt(0) > 127) {
+      out += ch;
+    } else {
+      out += "_";
+    }
+  }
+  out = out.replace(/_+/g, "_").replace(/^[._-]+|[._-]+$/g, "");
+  if (!out) out = "lead";
+  return out.length > 160 ? out.slice(0, 160) : out;
+}
+
+export function buildReadableArchiveFileName(
+  leadName: string,
+  ext: LeadArchiveFileType,
+  existingFileNames: ReadonlySet<string>,
+): string {
+  const base = sanitizeLeadNameForArchiveFile(leadName);
+  const primary = `${base}.${ext}`;
+  if (!existingFileNames.has(primary)) return primary;
+  let n = 2;
+  while (existingFileNames.has(`${base}_${n}.${ext}`)) n += 1;
+  return `${base}_${n}.${ext}`;
 }
 
 /**
  * Detect ZIP / RAR from magic bytes. Extension alone is never enough.
- * ZIP: local file header / empty archive / spanned.
- * RAR: "Rar!\x1a\x07" (v4 and v5).
  */
 export function detectArchiveTypeFromBytes(bytes: Uint8Array): LeadArchiveFileType | null {
   if (!bytes || bytes.byteLength < 4) return null;
-  // ZIP
   if (bytes[0] === 0x50 && bytes[1] === 0x4b) {
     if (
       (bytes[2] === 0x03 && bytes[3] === 0x04) ||
@@ -115,7 +202,6 @@ export function detectArchiveTypeFromBytes(bytes: Uint8Array): LeadArchiveFileTy
       return "zip";
     }
   }
-  // RAR
   if (
     bytes.byteLength >= 7 &&
     bytes[0] === 0x52 &&
@@ -138,8 +224,28 @@ export interface LeadArchiveMetadata {
   id: string;
   repoGuid: string;
   ownerUsername: string;
+  leadUuid: string;
+  leadNameAtExport: string;
+  fileName: string;
+  /** Relative key, e.g. `02_files_refrenced/<user>/02_files_zip/manually-added-msg/x.zip` */
+  storagePath: string;
+  view: string;
+  fileType: LeadArchiveFileType;
+  sizeBytes: number;
+  originalFileName: string;
+  createdAt: string;
+  /** Present only for legacy Story 108 sidecars (compat). */
+  leadLoca?: string;
+  /** @deprecated use fileName — kept for older API clients */
+  storageKey?: string;
+}
+
+/** Legacy sidecar shape (Story 108). */
+interface LegacySidecar {
+  id: string;
+  repoGuid: string;
+  ownerUsername: string;
   leadLoca: string;
-  /** File name on disk relative to the user's archives dir — never a host path. */
   storageKey: string;
   originalFileName: string;
   fileType: LeadArchiveFileType;
@@ -147,13 +253,9 @@ export interface LeadArchiveMetadata {
   createdAt: string;
 }
 
-function metadataPathForId(id: string, dir: string): string {
-  return assertSafeContactPhotoPath(dir, `${assertValidLeadArchiveId(id)}.json`);
-}
-
-function parseMetadata(raw: string): LeadArchiveMetadata | null {
+function parseLegacySidecar(raw: string): LegacySidecar | null {
   try {
-    const parsed = JSON.parse(raw) as Partial<LeadArchiveMetadata>;
+    const parsed = JSON.parse(raw) as Partial<LegacySidecar>;
     if (
       !parsed ||
       typeof parsed.id !== "string" ||
@@ -184,31 +286,80 @@ function parseMetadata(raw: string): LeadArchiveMetadata | null {
   }
 }
 
-function stripControlChars(value: string): string {
-  let result = "";
-  for (let i = 0; i < value.length; i += 1) {
-    const code = value.charCodeAt(i);
-    result += code >= 32 && code !== 127 ? value[i] : " ";
-  }
-  return result;
+function legacyToMetadata(legacy: LegacySidecar): LeadArchiveMetadata {
+  return {
+    id: legacy.id,
+    repoGuid: legacy.repoGuid,
+    ownerUsername: legacy.ownerUsername,
+    leadUuid: "", // unknown in legacy sidecar — relation via leadLoca only
+    leadNameAtExport: legacy.originalFileName.replace(/\.(zip|rar)$/i, "") || legacy.id,
+    fileName: legacy.storageKey,
+    storagePath: `${FILES_REFERENCED_SEGMENT}/${legacy.ownerUsername}/02_files_zip/${legacy.storageKey}`,
+    view: LEAD_ARCHIVE_VIEW,
+    fileType: legacy.fileType,
+    sizeBytes: legacy.sizeBytes,
+    originalFileName: legacy.originalFileName,
+    createdAt: legacy.createdAt,
+    leadLoca: legacy.leadLoca,
+    storageKey: legacy.storageKey,
+  };
 }
 
-function sanitizeOriginalFileName(name: string): string {
-  const base = name.split(/[\\/]/).pop() || "archive";
-  const trimmed = stripControlChars(base).trim();
-  const safe = trimmed.length > 0 ? trimmed : "archive";
-  return safe.length > 180 ? safe.slice(0, 180) : safe;
+async function listExistingViewFileNames(viewDir: string): Promise<Set<string>> {
+  try {
+    const entries = await readdir(viewDir, { withFileTypes: true });
+    return new Set(entries.filter((e) => e.isFile()).map((e) => e.name));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException)?.code === "ENOENT") return new Set();
+    throw new LeadArchiveError("WRITE_FAILED", "Could not list archive directory");
+  }
+}
+
+async function readLegacySidecars(
+  zipDir: string,
+  repoGuid: string,
+): Promise<LeadArchiveMetadata[]> {
+  let entries;
+  try {
+    entries = await readdir(zipDir, { withFileTypes: true });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException)?.code === "ENOENT") return [];
+    return [];
+  }
+  const out: LeadArchiveMetadata[] = [];
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
+    // Skip nested view dir names accidentally listed as files — only top-level json
+    try {
+      const raw = await readFile(assertSafeContactPhotoPath(zipDir, entry.name), "utf8");
+      const legacy = parseLegacySidecar(raw);
+      if (!legacy || legacy.repoGuid !== repoGuid) continue;
+      try {
+        const st = await stat(assertSafeContactPhotoPath(zipDir, legacy.storageKey));
+        if (!st.isFile()) continue;
+      } catch {
+        continue;
+      }
+      out.push(legacyToMetadata(legacy));
+    } catch {
+      /* skip corrupt */
+    }
+  }
+  return out;
 }
 
 export interface SaveLeadArchiveInput {
   bytes: Uint8Array;
   originalFileName: string;
-  leadLoca: string;
+  leadUuid: string;
+  leadNameAtExport: string;
   /** Declared extension hint (optional); magic bytes are authoritative. */
   declaredExt?: string;
   rootDirectory?: string;
   repoGuid?: string;
   username?: string;
+  /** Inject for tests; production uses Postgres. */
+  metadataStore?: LeadArchiveMetadataStore;
 }
 
 export async function saveLeadArchive(input: SaveLeadArchiveInput): Promise<LeadArchiveMetadata> {
@@ -229,141 +380,195 @@ export async function saveLeadArchive(input: SaveLeadArchiveInput): Promise<Lead
     throw new LeadArchiveError("INVALID_TYPE", "File content does not match declared archive type");
   }
 
-  let leadLoca: string;
+  const leadUuid = assertValidLeadUuid(input.leadUuid);
+  const leadNameAtExport = stripControlChars(input.leadNameAtExport).trim() || "lead";
+  const repoGuid = input.repoGuid ?? getCurrentRepoGuid();
+  let username: string;
   try {
-    leadLoca = assertValidLeadLoca(input.leadLoca);
+    username = assertSafeUsername(input.username ?? getCurrentUsername());
   } catch {
-    throw new LeadArchiveError("INVALID_LEAD_LOCA", "Invalid lead loca");
+    throw new LeadArchiveError("INVALID_USERNAME", "Invalid username");
   }
 
-  const repoGuid = input.repoGuid ?? getCurrentRepoGuid();
-  const { username, dir } = resolveArchivesDir(input.username ?? getCurrentUsername(), input.rootDirectory);
-
-  const ext = resolveArchiveExtension(detected);
-  const fileName = buildContactPhotoFileName(ext);
-  const fullPath = assertSafeContactPhotoPath(dir, fileName);
+  const store = input.metadataStore ?? postgresLeadArchiveStore;
+  const viewDir = getUserLeadArchiveViewDir(username, input.rootDirectory);
+  const ext = resolveArchiveExtension(detected) as LeadArchiveFileType;
+  const existing = await listExistingViewFileNames(viewDir);
+  const fileName = buildReadableArchiveFileName(leadNameAtExport, ext, existing);
+  const storagePath = buildRelativeArchiveStoragePath(username, fileName);
+  const fullPath = resolveArchiveAbsolutePath(storagePath, input.rootDirectory);
+  const tempPath = `${fullPath}.tmp-${randomUUID()}`;
+  const id = randomUUID();
   const createdAt = new Date().toISOString();
   const metadata: LeadArchiveMetadata = {
-    id: fileName,
+    id,
     repoGuid,
     ownerUsername: username,
-    leadLoca,
-    storageKey: fileName,
-    originalFileName: sanitizeOriginalFileName(input.originalFileName),
+    leadUuid,
+    leadNameAtExport,
+    fileName,
+    storagePath,
+    view: LEAD_ARCHIVE_VIEW,
     fileType: detected,
     sizeBytes: input.bytes.byteLength,
+    originalFileName: sanitizeOriginalFileName(input.originalFileName),
     createdAt,
+    storageKey: fileName,
   };
-  const metadataPath = metadataPathForId(metadata.id, dir);
 
   try {
-    await mkdir(dir, { recursive: true });
-    await writeFile(fullPath, input.bytes, { flag: "wx" });
-  } catch {
+    await mkdir(viewDir, { recursive: true });
+    await writeFile(tempPath, input.bytes, { flag: "wx" });
+    // Verify still looks like an archive after write
+    const verify = detectArchiveTypeFromBytes(new Uint8Array(await readFile(tempPath)));
+    if (verify !== detected) {
+      await rm(tempPath, { force: true }).catch(() => {});
+      throw new LeadArchiveError("INVALID_TYPE", "File is not a valid ZIP or RAR archive");
+    }
+    await rename(tempPath, fullPath);
+  } catch (error) {
+    await rm(tempPath, { force: true }).catch(() => {});
+    if (error instanceof LeadArchiveError) throw error;
+    if ((error as NodeJS.ErrnoException)?.code === "EEXIST") {
+      throw new LeadArchiveError("WRITE_FAILED", "Archive file already exists");
+    }
     throw new LeadArchiveError("WRITE_FAILED", "Could not save archive");
   }
+
   try {
-    await writeFile(metadataPath, JSON.stringify(metadata, null, 2), { flag: "wx" });
-  } catch {
+    await store.insert(metadata);
+  } catch (error) {
     await rm(fullPath, { force: true }).catch(() => {});
+    console.error(
+      "[lead-archives] metadata insert failed:",
+      error instanceof Error ? error.message : error,
+    );
     throw new LeadArchiveError("WRITE_FAILED", "Could not save archive metadata");
   }
 
   return metadata;
 }
 
-async function readAllOwnedMetadata(dir: string, repoGuid: string): Promise<LeadArchiveMetadata[]> {
-  let entries;
-  try {
-    entries = await readdir(dir, { withFileTypes: true });
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException)?.code === "ENOENT") return [];
-    console.error("[lead-archives] readAllOwnedMetadata failed:", error instanceof Error ? error.message : error);
-    throw new LeadArchiveError("WRITE_FAILED", "Could not list archives");
-  }
-  const parsed = await Promise.all(
-    entries
-      .filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
-      .map(async (entry) => {
-        try {
-          return parseMetadata(await readFile(assertSafeContactPhotoPath(dir, entry.name), "utf8"));
-        } catch {
-          return null;
-        }
-      }),
-  );
-  const owned = await Promise.all(
-    parsed.map(async (metadata) => {
-      if (!metadata || metadata.repoGuid !== repoGuid) return null;
-      try {
-        const st = await stat(assertSafeContactPhotoPath(dir, metadata.storageKey));
-        if (!st.isFile()) return null;
-      } catch {
-        return null;
-      }
-      return metadata;
-    }),
-  );
-  return owned.filter((m): m is LeadArchiveMetadata => m !== null);
-}
-
 export async function listLeadArchives(
-  leadLoca: string,
-  options?: { rootDirectory?: string; repoGuid?: string; username?: string },
+  leadUuid: string,
+  options?: {
+    rootDirectory?: string;
+    repoGuid?: string;
+    username?: string;
+    /** Optional loca — used only to merge legacy Story 108 sidecars. */
+    leadLoca?: string;
+    metadataStore?: LeadArchiveMetadataStore;
+  },
 ): Promise<LeadArchiveMetadata[]> {
-  let loca: string;
-  try {
-    loca = assertValidLeadLoca(leadLoca);
-  } catch {
-    throw new LeadArchiveError("INVALID_LEAD_LOCA", "Invalid lead loca");
-  }
+  const uuid = assertValidLeadUuid(leadUuid);
   const repoGuid = options?.repoGuid ?? getCurrentRepoGuid();
-  const { dir } = resolveArchivesDir(options?.username ?? getCurrentUsername(), options?.rootDirectory);
-  const all = await readAllOwnedMetadata(dir, repoGuid);
-  return all.filter((m) => m.leadLoca === loca).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const store = options?.metadataStore ?? postgresLeadArchiveStore;
+  const fromDb = await store.listByLeadUuid(repoGuid, uuid);
+
+  let legacy: LeadArchiveMetadata[] = [];
+  if (options?.leadLoca) {
+    try {
+      const username = assertSafeUsername(options.username ?? getCurrentUsername());
+      const zipDir = getUserLeadArchivesDir(username, options.rootDirectory);
+      legacy = (await readLegacySidecars(zipDir, repoGuid)).filter(
+        (m) => m.leadLoca === options.leadLoca,
+      );
+    } catch {
+      legacy = [];
+    }
+  }
+
+  const byId = new Map<string, LeadArchiveMetadata>();
+  for (const row of [...fromDb, ...legacy]) {
+    if (!byId.has(row.id)) byId.set(row.id, row);
+  }
+  return [...byId.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
-/** One directory scan → `{ [leadLoca]: count }` (only locas with count > 0). */
+/** Counts keyed by leadUuid (legacy sidecar counts keyed by loca are not included unless mapped by caller). */
 export async function listLeadArchiveCounts(options?: {
   rootDirectory?: string;
   repoGuid?: string;
   username?: string;
+  metadataStore?: LeadArchiveMetadataStore;
+  /** Map leadLoca → leadUuid to include legacy sidecars in counts. */
+  locaToLeadUuid?: Record<string, string>;
 }): Promise<Record<string, number>> {
   const repoGuid = options?.repoGuid ?? getCurrentRepoGuid();
-  const { dir } = resolveArchivesDir(options?.username ?? getCurrentUsername(), options?.rootDirectory);
-  const all = await readAllOwnedMetadata(dir, repoGuid);
+  const store = options?.metadataStore ?? postgresLeadArchiveStore;
+  const all = await store.listAllForRepo(repoGuid, LEAD_ARCHIVE_VIEW);
   const counts: Record<string, number> = {};
   for (const m of all) {
-    counts[m.leadLoca] = (counts[m.leadLoca] ?? 0) + 1;
+    counts[m.leadUuid] = (counts[m.leadUuid] ?? 0) + 1;
   }
+
+  if (options?.locaToLeadUuid) {
+    try {
+      const username = assertSafeUsername(options.username ?? getCurrentUsername());
+      const zipDir = getUserLeadArchivesDir(username, options.rootDirectory);
+      const legacy = await readLegacySidecars(zipDir, repoGuid);
+      for (const m of legacy) {
+        if (!m.leadLoca) continue;
+        const uuid = options.locaToLeadUuid[m.leadLoca];
+        if (!uuid) continue;
+        counts[uuid] = (counts[uuid] ?? 0) + 1;
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
   return counts;
 }
 
 export async function deleteLeadArchive(
   id: string,
-  options?: { rootDirectory?: string; repoGuid?: string; username?: string },
+  options?: {
+    rootDirectory?: string;
+    repoGuid?: string;
+    username?: string;
+    metadataStore?: LeadArchiveMetadataStore;
+  },
 ): Promise<void> {
   const safeId = assertValidLeadArchiveId(id);
   const repoGuid = options?.repoGuid ?? getCurrentRepoGuid();
-  const { dir } = resolveArchivesDir(options?.username ?? getCurrentUsername(), options?.rootDirectory);
-  const metadataPath = metadataPathForId(safeId, dir);
+  const store = options?.metadataStore ?? postgresLeadArchiveStore;
+  const metadata = await store.getById(repoGuid, safeId);
 
-  let metadata: LeadArchiveMetadata | null;
+  if (metadata) {
+    try {
+      const filePath = resolveArchiveAbsolutePath(metadata.storagePath, options?.rootDirectory);
+      await rm(filePath, { force: false });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException)?.code !== "ENOENT") {
+        throw new LeadArchiveError("WRITE_FAILED", "Could not delete archive file");
+      }
+    }
+    const deleted = await store.deleteById(repoGuid, safeId);
+    if (!deleted) {
+      throw new LeadArchiveError("WRITE_FAILED", "Archive file deleted but metadata cleanup failed");
+    }
+    return;
+  }
+
+  // Legacy sidecar delete (Story 108)
+  const username = assertSafeUsername(options?.username ?? getCurrentUsername());
+  const zipDir = getUserLeadArchivesDir(username, options?.rootDirectory);
+  const metadataPath = assertSafeContactPhotoPath(zipDir, `${safeId}.json`);
+  let legacy: LegacySidecar | null;
   try {
-    metadata = parseMetadata(await readFile(metadataPath, "utf8"));
+    legacy = parseLegacySidecar(await readFile(metadataPath, "utf8"));
   } catch (error) {
     if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
       throw new LeadArchiveError("NOT_FOUND", "Archive not found");
     }
     throw new LeadArchiveError("WRITE_FAILED", "Could not read archive metadata");
   }
-  if (!metadata || metadata.repoGuid !== repoGuid) {
+  if (!legacy || legacy.repoGuid !== repoGuid) {
     throw new LeadArchiveError("NOT_FOUND", "Archive not found");
   }
-
-  const filePath = assertSafeContactPhotoPath(dir, metadata.storageKey);
   try {
-    await rm(filePath, { force: false });
+    await rm(assertSafeContactPhotoPath(zipDir, legacy.storageKey), { force: false });
   } catch (error) {
     if ((error as NodeJS.ErrnoException)?.code !== "ENOENT") {
       throw new LeadArchiveError("WRITE_FAILED", "Could not delete archive file");
@@ -373,8 +578,21 @@ export async function deleteLeadArchive(
     await rm(metadataPath, { force: false });
   } catch (error) {
     if ((error as NodeJS.ErrnoException)?.code !== "ENOENT") {
-      console.error("[lead-archives] orphan metadata after file delete:", safeId);
+      console.error("[lead-archives] orphan legacy metadata after file delete:", safeId);
       throw new LeadArchiveError("WRITE_FAILED", "Archive file deleted but metadata cleanup failed");
     }
+  }
+}
+
+/** Exists check used by tests / smoke. */
+export async function archiveFileExists(
+  storagePath: string,
+  rootDirectory?: string,
+): Promise<boolean> {
+  try {
+    await access(resolveArchiveAbsolutePath(storagePath, rootDirectory));
+    return true;
+  } catch {
+    return false;
   }
 }
