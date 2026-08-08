@@ -21,3 +21,10 @@ Start SHA: `e63c232`
 
 - `backlog/stories/109/`, `msg-planner-date-sort.test.ts`, `vitest.config.mjs` date-sort entry
 - Story 109 date-sort hunks in `leads.ts` restored after this commit
+
+## Ops note (2026-08-08)
+
+LOCAL hits shared QNAP Postgres (`server`), not the local docker mirror.
+`06_deploy.sh` applied `0003` only to local `:5433`. Upload failed with
+`relation "cp_lead_archives" does not exist` until `0003` was applied to
+QNAP `:12042` via `apply-postgres-migrations.mjs`.

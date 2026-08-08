@@ -521,6 +521,74 @@ export async function listLeadArchiveCounts(options?: {
   return counts;
 }
 
+export interface LeadArchiveReadInfo extends LeadArchiveMetadata {
+  filePath: string;
+  mimeType: string;
+}
+
+function mimeForArchiveType(fileType: LeadArchiveFileType): string {
+  return fileType === "rar" ? "application/vnd.rar" : "application/zip";
+}
+
+/**
+ * Resolve an owned archive for streaming download. Lookup is by archive id +
+ * session repoGuid only — never by client-supplied path.
+ */
+export async function getLeadArchiveReadInfo(
+  id: string,
+  options?: {
+    rootDirectory?: string;
+    repoGuid?: string;
+    username?: string;
+    metadataStore?: LeadArchiveMetadataStore;
+  },
+): Promise<LeadArchiveReadInfo | null> {
+  const safeId = assertValidLeadArchiveId(id);
+  const repoGuid = options?.repoGuid ?? getCurrentRepoGuid();
+  const store = options?.metadataStore ?? postgresLeadArchiveStore;
+  const metadata = await store.getById(repoGuid, safeId);
+
+  if (metadata) {
+    try {
+      const filePath = resolveArchiveAbsolutePath(metadata.storagePath, options?.rootDirectory);
+      const st = await stat(filePath);
+      if (!st.isFile()) return null;
+      return {
+        ...metadata,
+        sizeBytes: st.size,
+        filePath,
+        mimeType: mimeForArchiveType(metadata.fileType),
+      };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException)?.code === "ENOENT") return null;
+      throw new LeadArchiveError("WRITE_FAILED", "Could not read archive");
+    }
+  }
+
+  // Legacy Story 108 sidecar
+  try {
+    const username = assertSafeUsername(options?.username ?? getCurrentUsername());
+    const zipDir = getUserLeadArchivesDir(username, options?.rootDirectory);
+    const legacy = parseLegacySidecar(
+      await readFile(assertSafeContactPhotoPath(zipDir, `${safeId}.json`), "utf8"),
+    );
+    if (!legacy || legacy.repoGuid !== repoGuid) return null;
+    const filePath = assertSafeContactPhotoPath(zipDir, legacy.storageKey);
+    const st = await stat(filePath);
+    if (!st.isFile()) return null;
+    return {
+      ...legacyToMetadata(legacy),
+      sizeBytes: st.size,
+      filePath,
+      mimeType: mimeForArchiveType(legacy.fileType),
+    };
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException)?.code === "ENOENT") return null;
+    if (error instanceof LeadArchiveError) throw error;
+    throw new LeadArchiveError("WRITE_FAILED", "Could not read archive");
+  }
+}
+
 export async function deleteLeadArchive(
   id: string,
   options?: {

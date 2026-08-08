@@ -1,11 +1,23 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertCircle, Loader2 } from "lucide-react";
+import { AlertCircle, Download, Loader2, Trash2 } from "lucide-react";
 import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
 import { ErrorBox } from "@/components/shared/error-box";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+
+/** Same retype-confirm pattern as Folders / AI Prompts / Beeper groups. */
+const DELETE_CONFIRM_WORDS = ["DELETE", "CONFIRM", "CLEAR", "WYCZYSC", "USUN", "PERMANENT"];
 
 type LeadRow = {
   leadKey: string;
@@ -39,6 +51,10 @@ function formatDate(iso: string): string {
   }
 }
 
+function pickDeleteConfirmWord(): string {
+  return DELETE_CONFIRM_WORDS[Math.floor(Math.random() * DELETE_CONFIRM_WORDS.length)];
+}
+
 /**
  * Msg Auto → manually added msg (Story 110).
  * Left: leads + archive counts (keyed by leadUuid).
@@ -57,6 +73,11 @@ export default function ManuallyAddedMsgPage() {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ArchiveRow | null>(null);
+  const [deleteConfirmWord, setDeleteConfirmWord] = useState("");
+  const [deleteConfirmInput, setDeleteConfirmInput] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const selectedLead = useMemo(
     () => leads.find((l) => l.leadUuid === selectedUuid) ?? null,
@@ -154,6 +175,46 @@ export default function ManuallyAddedMsgPage() {
       setUploading(false);
     }
   }
+
+  function openDeleteDialog(archive: ArchiveRow) {
+    setDeleteTarget(archive);
+    setDeleteConfirmWord(pickDeleteConfirmWord());
+    setDeleteConfirmInput("");
+    setDeleteError(null);
+  }
+
+  function closeDeleteDialog() {
+    if (deleting) return;
+    setDeleteTarget(null);
+    setDeleteConfirmInput("");
+    setDeleteError(null);
+  }
+
+  async function handleConfirmDelete() {
+    if (!deleteTarget || deleteConfirmInput.trim() !== deleteConfirmWord) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      const res = await fetch(`/api/leads/archives/${encodeURIComponent(deleteTarget.id)}`, {
+        method: "DELETE",
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.success) {
+        throw new Error(json?.error || `Delete failed (${res.status})`);
+      }
+      setDeleteTarget(null);
+      setDeleteConfirmInput("");
+      if (selectedUuid) {
+        await Promise.all([refreshArchives(selectedUuid), refreshCounts()]);
+      }
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  const deleteMatches = deleteConfirmInput.trim() === deleteConfirmWord;
 
   return (
     <DashboardPageShell
@@ -266,13 +327,33 @@ export default function ManuallyAddedMsgPage() {
                     {archives.map((a) => (
                       <li
                         key={a.id}
-                        className="flex flex-wrap items-baseline justify-between gap-2 px-3 py-2 text-sm"
+                        className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm"
                       >
                         <span className="min-w-0 truncate font-medium">
                           {a.fileName || a.originalFileName}
                         </span>
-                        <span className="shrink-0 text-xs text-muted-foreground">
-                          .{a.fileType} · {formatBytes(a.sizeBytes)} · {formatDate(a.createdAt)}
+                        <span className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
+                          <span>
+                            .{a.fileType} · {formatBytes(a.sizeBytes)} · {formatDate(a.createdAt)}
+                          </span>
+                          <a
+                            href={`/api/leads/archives/${encodeURIComponent(a.id)}`}
+                            className="inline-flex h-7 items-center gap-1 rounded-md border px-2 text-xs font-medium text-foreground hover:bg-muted"
+                            download={a.fileName || a.originalFileName}
+                            aria-label={`Download ${a.fileName || a.originalFileName}`}
+                          >
+                            <Download className="h-3.5 w-3.5" />
+                            Download
+                          </a>
+                          <button
+                            type="button"
+                            className="inline-flex h-7 items-center gap-1 rounded-md border border-destructive/40 px-2 text-xs font-medium text-destructive hover:bg-destructive/10"
+                            onClick={() => openDeleteDialog(a)}
+                            aria-label={`Delete ${a.fileName || a.originalFileName}`}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            Delete
+                          </button>
                         </span>
                       </li>
                     ))}
@@ -283,6 +364,41 @@ export default function ManuallyAddedMsgPage() {
           )}
         </div>
       </div>
+
+      <Dialog open={Boolean(deleteTarget)} onOpenChange={(open) => !open && closeDeleteDialog()}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete archive?</DialogTitle>
+            <DialogDescription>
+              Permanently removes{" "}
+              <strong>{deleteTarget?.fileName || deleteTarget?.originalFileName}</strong> (file +
+              metadata). This can&apos;t be undone. Type{" "}
+              <span className="font-mono font-bold">{deleteConfirmWord}</span> to confirm.
+            </DialogDescription>
+          </DialogHeader>
+          <Input
+            value={deleteConfirmInput}
+            onChange={(e) => setDeleteConfirmInput(e.target.value)}
+            placeholder={deleteConfirmWord}
+            autoFocus
+            autoComplete="off"
+            disabled={deleting}
+          />
+          {deleteError ? <p className="text-sm text-destructive">{deleteError}</p> : null}
+          <DialogFooter>
+            <Button variant="outline" onClick={closeDeleteDialog} disabled={deleting}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => void handleConfirmDelete()}
+              disabled={deleting || !deleteMatches}
+            >
+              {deleting ? "Deleting…" : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DashboardPageShell>
   );
 }

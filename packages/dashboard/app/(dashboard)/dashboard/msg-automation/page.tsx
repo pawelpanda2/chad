@@ -114,14 +114,10 @@ export default function MsgAutomationPage() {
             router.push("/dashboard/msg-automation/msg-workout/manually-added-msg")
           }
           className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
-          aria-label="manually added msg"
-          title="manually added msg"
+          aria-label="MANUALLY ADDED MSG"
+          title="MANUALLY ADDED MSG"
         >
-          <span className="font-semibold text-sm leading-tight">
-            <span className="block">manually</span>
-            <span className="block">added</span>
-            <span className="block">msg</span>
-          </span>
+          <span className="font-semibold text-sm leading-tight">MANUALLY ADDED MSG</span>
         </button>
       </div>
     </DashboardPageShell>
