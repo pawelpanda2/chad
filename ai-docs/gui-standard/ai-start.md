@@ -10,6 +10,33 @@ wynajdywać na nowo przy każdej kolejnej zakładce.
 przeczytałeś** — to jest częsty błąd (Story 99/101: layout Beepera był
 poprawiany kilka razy, bo AI nie sprawdziło, że coś już jest opisane).
 
+## Twarda zasada: NIGDY elementów wyrównanych do prawej strony
+
+**(dodana 2026-08-06, po realnym zgłoszeniu: Photos card w Lead Details/
+Google Contacts miał `justify-between` — nagłówek "Photos (N)" po lewej,
+przyciski Gallery/Add photo odepchnięte na prawy kraniec wiersza — właściciel
+tego pod żadnym pozorem nie chce.)**
+
+Pod żadnym pozorem nie używaj `justify-between`, `ml-auto`, `justify-end`
+ani żadnej innej techniki, która odpycha element(y) na prawą krawędź
+wiersza/ramki. Wszystkie kontrolki (nagłówek, liczniki, przyciski) mają być
+spakowane od lewej, w jednym `flex` rzędzie z `gap`, w kolejności czytania —
+nigdy rozepchnięte na przeciwne krańce.
+
+To nie jest nowa zasada wymyślona od zera — **ten sam wzorzec już był
+opisany** niżej w tym pliku dla licznika wierszy tabel bez edycji inline
+("ma być spakowany po lewej, zaraz za ostatnią kontrolką, nie odepchnięty na
+prawy kraniec") — różnica jest taka, że to zgłoszenie podnosi go do rangi
+**uniwersalnej, twardej zasady dla całego GUI**, nie tylko dla liczników w
+tabelach. Zanim dodasz jakikolwiek nowy pasek przycisków/nagłówek, sprawdź
+czy przypadkiem nie używasz `justify-between`/`ml-auto` żeby coś odepchnąć —
+jeśli tak, popraw na spakowane od lewej.
+
+**Przykład poprawki (Photos card, Story 106 follow-up):**
+`components/shared/photos-section.tsx` — nagłówek `Photos (N)` + przycisk
+`Gallery` w jednym `flex items-center gap-2` bez `justify-between`, oba po
+lewej stronie zaraz obok siebie.
+
 ## Czytać gdy
 
 Dowolna zmiana dotykająca: głównej ramki strony (`DashboardPageShell`),

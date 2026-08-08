@@ -24,6 +24,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { PhotosSection } from "@/components/shared/photos-section";
+import { ErrorBox } from "@/components/shared/error-box";
 
 /** Same retype-confirm pattern as Folders / AI Prompts. */
 const DELETE_CONFIRM_WORDS = ["DELETE", "CONFIRM", "USUN", "PERMANENT"];
@@ -190,6 +191,7 @@ function LeadDetailsPageContent() {
   const [deleteConfirmInput, setDeleteConfirmInput] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [photosError, setPhotosError] = useState<string | null>(null);
 
   /** Load lead details */
   const loadDetails = useCallback(async () => {
@@ -378,6 +380,7 @@ function LeadDetailsPageContent() {
     <DashboardPageShell upLevel={upLevel} contentClassName="gap-1">
       {/* 400px preferred width — grows only if a card's own content needs more. */}
       <div className="flex w-fit min-w-[400px] max-w-full flex-col gap-1">
+      <ErrorBox message={photosError} className="mb-0" />
       {/* Lead Header Card */}
       <Card className="gap-0 py-0">
         <CardContent className="px-[14px] py-[12px]">
@@ -520,8 +523,10 @@ function LeadDetailsPageContent() {
             basePath="/api/leads/photos"
             subjectParam="loca"
             subjectValue={details.loca}
+            onError={setPhotosError}
             deleteHint="This only removes the CHAD-local copy attached to this lead."
             headingClassName="text-sm font-semibold mb-2"
+            galleryHref={`/dashboard/leads/photos-gallery?loca=${encodeURIComponent(details.loca)}&leadName=${encodeURIComponent(details.leadName)}`}
           />
         </CardContent>
       </Card>

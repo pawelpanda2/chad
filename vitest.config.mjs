@@ -76,6 +76,9 @@ export default defineConfig({
       // point from Google Contacts photos, same underlying storage).
       "packages/dba/src/lead-photos.test.ts",
       "packages/dba/src/lead-photos-failure-paths.test.ts",
+      // Msg Workout → Manually Added Messages (.zip/.rar per lead)
+      "packages/dba/src/lead-archives.test.ts",
+      "packages/dba/src/lead-archives-failure-paths.test.ts",
       "packages/dashboard/components/forms/audio-recording-utils.test.ts",
       "packages/dashboard/components/forms/audio-recorder-session.test.ts",
       // Story 98 — shared editor Save-button regression (showPreview=false
