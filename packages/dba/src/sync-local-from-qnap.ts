@@ -20,6 +20,7 @@ export interface SyncLocalFromQnapResult {
   historyCopied: number;
   outboxDataCopied: number;
   outboxSheetsCopied: number;
+  leadArchivesCopied: number;
   sourceHostPort: string;
   destHostPort: string;
   syncedAt: string;
@@ -137,7 +138,7 @@ export async function syncLocalPostgresFromQnap(): Promise<SyncLocalFromQnapResu
     await dst.query("ALTER TABLE cp_history DISABLE TRIGGER ALL");
 
     await dst.query(
-      "TRUNCATE cp_outbox_google_sheets_sync, cp_outbox_data_sync, cp_history, cp_items RESTART IDENTITY CASCADE"
+      "TRUNCATE cp_lead_archives, cp_outbox_google_sheets_sync, cp_outbox_data_sync, cp_history, cp_items RESTART IDENTITY CASCADE"
     );
 
     const itemsCopied = await copyTable(
@@ -238,6 +239,27 @@ export async function syncLocalPostgresFromQnap(): Promise<SyncLocalFromQnapResu
       ],
       new Set(["payload"])
     );
+
+    const leadArchivesCopied = await copyTable(
+      src,
+      dst,
+      "cp_lead_archives",
+      [
+        "id",
+        "repo_guid",
+        "owner_username",
+        "lead_uuid",
+        "lead_name_at_export",
+        "file_name",
+        "storage_path",
+        "view_key",
+        "file_type",
+        "size_bytes",
+        "original_file_name",
+        "created_at",
+        "updated_at",
+      ],
+    );
     await dst.query(
       `SELECT setval(pg_get_serial_sequence('cp_history', 'id'), COALESCE((SELECT MAX(id) FROM cp_history), 1))`
     );
@@ -251,6 +273,7 @@ export async function syncLocalPostgresFromQnap(): Promise<SyncLocalFromQnapResu
       historyCopied,
       outboxDataCopied,
       outboxSheetsCopied,
+      leadArchivesCopied,
       sourceHostPort: hostPortOf(sourceUri),
       destHostPort: hostPortOf(destUri),
       syncedAt: new Date().toISOString(),

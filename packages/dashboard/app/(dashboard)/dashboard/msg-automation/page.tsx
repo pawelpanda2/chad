@@ -111,11 +111,17 @@ export default function MsgAutomationPage() {
         <button
           type="button"
           onClick={() =>
-            router.push("/dashboard/msg-automation/msg-workout/manually-added-messages")
+            router.push("/dashboard/msg-automation/msg-workout/manually-added-msg")
           }
           className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
+          aria-label="manually added msg"
+          title="manually added msg"
         >
-          <span className="font-semibold text-sm">MANUALLY ADDED MESSAGES</span>
+          <span className="font-semibold text-sm leading-tight">
+            <span className="block">manually</span>
+            <span className="block">added</span>
+            <span className="block">msg</span>
+          </span>
         </button>
       </div>
     </DashboardPageShell>
