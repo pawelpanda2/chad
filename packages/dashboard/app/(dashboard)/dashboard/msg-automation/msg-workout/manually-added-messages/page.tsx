@@ -37,7 +37,7 @@ function formatDate(iso: string): string {
 }
 
 /**
- * Msg Workout → Manually Added Messages (Story 108).
+ * Msg Auto → Manually Added Messages (Story 108).
  * Left: leads list (same `/api/leads-dashboard` source as Message Creator) + archive counts.
  * Right: upload .zip/.rar for selected lead + assigned archives list.
  */
@@ -155,7 +155,7 @@ export default function ManuallyAddedMessagesPage() {
   return (
     <DashboardPageShell
       title="Manually Added Messages"
-      upLevel={{ href: "/dashboard/msg-automation/msg-workout" }}
+      upLevel={{ href: "/dashboard/msg-automation" }}
       scroll={false}
     >
       {leadsError ? <ErrorBox message={leadsError} className="mb-2 shrink-0" /> : null}
