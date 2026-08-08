@@ -40,6 +40,30 @@ export * from './audio-recording-drafts.js';
 export * from './google-contact-photos.js';
 export * from './lead-photos.js';
 export * from './lead-archives.js';
+export {
+  FILE_STORAGE_FEATURES,
+  createFilesystemFileStorage,
+  createMemoryReferencedFileStore,
+  filesystemFileStorage,
+  postgresReferencedFileStore,
+  sanitizeStorageSegment,
+  buildReadableFileName,
+  buildRelativeStoragePath,
+  resolveEntityStorage,
+  resolveFeatureStorage,
+  resolveUserStorageRoot,
+  FileStorageError,
+  FileStoragePathError,
+} from './file-storage/index.js';
+export type {
+  FileStorageFeature,
+  FileStorageEntityType,
+  ReferencedFileMetadata,
+  FileStorageProvider,
+  PutFileInput,
+  ListFilesQuery,
+  FileReadInfo,
+} from './file-storage/index.js';
 export * from './message-creator.js';
 export * from './lead-beeper-links.js';
 export * from './lead-analysis-prompt.js';

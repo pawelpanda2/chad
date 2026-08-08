@@ -1,35 +1,30 @@
 /**
- * Lead Details → per-lead CHAD-local photos.
+ * Lead Details → per-lead CHAD-local photos (Story 111).
  *
- * Same physical storage as `google-contact-photos.ts` (this user's own
- * `<username>/01_files_photos/` tree on the `cp_1` volume, sidecar JSON
- * metadata, magic-byte-validated JPEG/PNG/WebP) — reuses that module's
- * generic byte/path/username primitives rather than duplicating them.
- * The only real difference is the stable id: a lead's `loca` (its numeric
- * Content Provider path, e.g. `03/06/81` — see `leads.ts`'s own doc
- * comments), never the lead's display name, which can be renamed.
- *
- * This is a genuinely separate attachment point from Google Contacts
- * photos, not a rename of it — a lead and a linked Google Contact are
- * different entities (Links V2 already models them as separate, a lead can
- * have zero or many linked Google Contacts). Both coexist in the same
- * directory; each module's own metadata shape (`leadLoca` vs
- * `contactResourceName`) is what a scan uses to tell them apart, so
- * neither module needs to know the other exists.
+ * Canonical path:
+ *   `<root>/<user>/01_files_photos/lead-info/<lead-name>/<lead-name>[__N].<ext>`
+ * Metadata: PostgreSQL `cp_referenced_files` via file-storage (no new sidecars).
+ * Legacy flat `01_files_photos/*.json` sidecars remain readable until migrated.
  */
 
-import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { readFile, readdir, rm, stat } from "node:fs/promises";
 import { getCurrentRepoGuid, getCurrentUsername } from "./repo-context.js";
 import {
   assertSafeContactPhotoPath,
   assertSafeUsername,
-  buildContactPhotoFileName,
   CONTACT_PHOTO_MAX_BYTES,
   ContactPhotoError,
   detectImageMimeFromBytes,
   getUserContactPhotosDir,
   resolveContactPhotoExtension,
 } from "./google-contact-photos.js";
+import { FILE_STORAGE_FEATURES } from "./file-storage/features.js";
+import {
+  createFilesystemFileStorage,
+  FileStorageError,
+} from "./file-storage/filesystem-provider.js";
+import type { ReferencedFileMetadataStore } from "./file-storage/metadata-store.js";
+import type { ReferencedFileMetadata } from "./file-storage/contracts.js";
 
 export const LEAD_PHOTO_MAX_BYTES = CONTACT_PHOTO_MAX_BYTES;
 export const LEAD_PHOTO_MAX_FILES_PER_REQUEST = 10;
@@ -40,6 +35,7 @@ export class LeadPhotoError extends Error {
       | "NOT_CONFIGURED"
       | "INVALID_MIME"
       | "INVALID_LEAD_LOCA"
+      | "INVALID_LEAD"
       | "INVALID_ID"
       | "INVALID_USERNAME"
       | "EMPTY"
@@ -53,7 +49,6 @@ export class LeadPhotoError extends Error {
   }
 }
 
-/** A lead's `loca` is a slash-separated numeric Content Provider path (e.g. `03/06/81`) — never a display name. */
 const LEAD_LOCA_PATTERN = /^[0-9]+(\/[0-9]+)*$/;
 
 export function assertValidLeadLoca(loca: string): string {
@@ -80,58 +75,8 @@ export function assertValidLeadPhotoId(id: string): string {
   return trimmed;
 }
 
-function metadataPathForId(id: string, dir: string): string {
-  return assertSafeContactPhotoPath(dir, `${assertValidLeadPhotoId(id)}.json`);
-}
-
 function mimeFamily(mime: string): string {
   return mime === "image/jpg" ? "image/jpeg" : mime;
-}
-
-export interface LeadPhotoMetadata {
-  id: string;
-  repoGuid: string;
-  ownerUsername: string;
-  leadLoca: string;
-  /** File name on disk, relative to the user's photos dir — never exposed as a client-facing path. */
-  storageKey: string;
-  originalFileName: string;
-  mimeType: string;
-  sizeBytes: number;
-  createdAt: string;
-}
-
-function parseMetadata(raw: string): LeadPhotoMetadata | null {
-  try {
-    const parsed = JSON.parse(raw) as Partial<LeadPhotoMetadata>;
-    if (
-      !parsed ||
-      typeof parsed.id !== "string" ||
-      typeof parsed.repoGuid !== "string" ||
-      typeof parsed.ownerUsername !== "string" ||
-      typeof parsed.leadLoca !== "string" ||
-      typeof parsed.storageKey !== "string" ||
-      typeof parsed.originalFileName !== "string" ||
-      typeof parsed.mimeType !== "string" ||
-      typeof parsed.sizeBytes !== "number" ||
-      typeof parsed.createdAt !== "string"
-    ) {
-      return null;
-    }
-    return {
-      id: parsed.id,
-      repoGuid: parsed.repoGuid,
-      ownerUsername: parsed.ownerUsername,
-      leadLoca: parsed.leadLoca,
-      storageKey: parsed.storageKey,
-      originalFileName: parsed.originalFileName,
-      mimeType: parsed.mimeType,
-      sizeBytes: parsed.sizeBytes,
-      createdAt: parsed.createdAt,
-    };
-  } catch {
-    return null;
-  }
 }
 
 function stripControlChars(value: string): string {
@@ -150,24 +95,76 @@ function sanitizeOriginalFileName(name: string): string {
   return safe.length > 180 ? safe.slice(0, 180) : safe;
 }
 
+/** Public DTO kept for API compatibility (id is stable file UUID for new rows). */
+export interface LeadPhotoMetadata {
+  id: string;
+  repoGuid: string;
+  ownerUsername: string;
+  leadLoca: string;
+  leadUuid?: string;
+  storageKey: string;
+  fileName?: string;
+  originalFileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  createdAt: string;
+}
+
+function fromReferenced(
+  row: ReferencedFileMetadata,
+  leadLoca: string,
+): LeadPhotoMetadata {
+  return {
+    id: row.id,
+    repoGuid: row.repoGuid,
+    ownerUsername: row.ownerUsername,
+    leadLoca,
+    leadUuid: row.entityId,
+    storageKey: row.fileName,
+    fileName: row.fileName,
+    originalFileName: row.originalFileName || row.fileName,
+    mimeType: row.mimeType || "application/octet-stream",
+    sizeBytes: row.sizeBytes,
+    createdAt: row.createdAt,
+  };
+}
+
+function mapFsError(error: unknown): never {
+  if (error instanceof FileStorageError) {
+    const code =
+      error.code === "NOT_CONFIGURED"
+        ? "NOT_CONFIGURED"
+        : error.code === "EMPTY"
+          ? "EMPTY"
+          : error.code === "TOO_LARGE"
+            ? "TOO_LARGE"
+            : error.code === "NOT_FOUND"
+              ? "NOT_FOUND"
+              : "WRITE_FAILED";
+    throw new LeadPhotoError(code, error.message);
+  }
+  throw error;
+}
+
 export interface SaveLeadPhotoInput {
   bytes: Uint8Array;
   mimeType: string;
   originalFileName: string;
+  /** Stable CP item id — preferred relation key (Story 111). */
+  leadUuid: string;
+  leadName: string;
+  /** Kept for legacy listing merge / migration mapping. */
   leadLoca: string;
-  /** Root override for tests/scripts — never from client request. */
   rootDirectory?: string;
-  /** Repo/username overrides for tests/scripts — never from client request. */
   repoGuid?: string;
   username?: string;
+  metadataStore?: ReferencedFileMetadataStore;
 }
 
 export async function saveLeadPhoto(input: SaveLeadPhotoInput): Promise<LeadPhotoMetadata> {
   const mimeType = input.mimeType.trim().toLowerCase();
   const ext = resolveContactPhotoExtension(mimeType);
-  if (!ext) {
-    throw new LeadPhotoError("INVALID_MIME", "Unsupported image type");
-  }
+  if (!ext) throw new LeadPhotoError("INVALID_MIME", "Unsupported image type");
   if (!input.bytes || input.bytes.byteLength === 0) {
     throw new LeadPhotoError("EMPTY", "Photo is empty");
   }
@@ -180,101 +177,176 @@ export async function saveLeadPhoto(input: SaveLeadPhotoInput): Promise<LeadPhot
   }
 
   const leadLoca = assertValidLeadLoca(input.leadLoca);
+  const leadUuid = input.leadUuid?.trim();
+  if (!leadUuid) throw new LeadPhotoError("INVALID_LEAD", "leadUuid is required");
+  const leadName = input.leadName?.trim() || "lead";
   const repoGuid = input.repoGuid ?? getCurrentRepoGuid();
-  const { username, dir } = resolvePhotosDir(input.username ?? getCurrentUsername(), input.rootDirectory);
-
-  const fileName = buildContactPhotoFileName(ext);
-  const fullPath = assertSafeContactPhotoPath(dir, fileName);
-  const createdAt = new Date().toISOString();
-  const metadata: LeadPhotoMetadata = {
-    id: fileName,
-    repoGuid,
-    ownerUsername: username,
-    leadLoca,
-    storageKey: fileName,
-    originalFileName: sanitizeOriginalFileName(input.originalFileName),
-    mimeType,
-    sizeBytes: input.bytes.byteLength,
-    createdAt,
-  };
-  const metadataPath = metadataPathForId(metadata.id, dir);
-
+  let username: string;
   try {
-    await mkdir(dir, { recursive: true });
-    await writeFile(fullPath, input.bytes, { flag: "wx" });
+    username = assertSafeUsername(input.username ?? getCurrentUsername());
   } catch {
-    throw new LeadPhotoError("WRITE_FAILED", "Could not save photo");
-  }
-  try {
-    await writeFile(metadataPath, JSON.stringify(metadata, null, 2), { flag: "wx" });
-  } catch {
-    await rm(fullPath, { force: true }).catch(() => {});
-    throw new LeadPhotoError("WRITE_FAILED", "Could not save photo metadata");
+    throw new LeadPhotoError("INVALID_USERNAME", "Invalid username");
   }
 
-  return metadata;
-}
+  const storage = createFilesystemFileStorage(
+    input.metadataStore ? { metadataStore: input.metadataStore } : undefined,
+  );
 
-/** Resolves + validates the per-user photos dir, translating the shared module's `ContactPhotoError` into this module's own error type. */
-function resolvePhotosDir(username: string, rootDirectory?: string): { username: string; dir: string } {
   try {
-    const safeUsername = assertSafeUsername(username);
-    return { username: safeUsername, dir: getUserContactPhotosDir(safeUsername, rootDirectory) };
+    const saved = await storage.putFile({
+      bytes: input.bytes,
+      repoGuid,
+      ownerUsername: username,
+      feature: FILE_STORAGE_FEATURES.PHOTOS_LEAD_INFO,
+      entityType: "lead",
+      entityId: leadUuid,
+      entityNameSnapshot: leadName,
+      preferredFileNameStem: leadName,
+      ext,
+      mimeType,
+      originalFileName: sanitizeOriginalFileName(input.originalFileName),
+      rootDirectory: input.rootDirectory,
+      extraMetadata: { leadLoca },
+    });
+    return fromReferenced(saved, leadLoca);
   } catch (error) {
-    if (error instanceof ContactPhotoError) {
-      if (error.code === "NOT_CONFIGURED") {
-        throw new LeadPhotoError("NOT_CONFIGURED", "Photos directory is not configured");
-      }
-      throw new LeadPhotoError("INVALID_USERNAME", "Invalid username");
-    }
-    throw error;
+    mapFsError(error);
   }
 }
 
-async function readAllOwnedMetadata(dir: string, repoGuid: string): Promise<LeadPhotoMetadata[]> {
+/** Legacy sidecar shape (Story 106). */
+interface LegacySidecar {
+  id: string;
+  repoGuid: string;
+  ownerUsername: string;
+  leadLoca: string;
+  storageKey: string;
+  originalFileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  createdAt: string;
+}
+
+function parseLegacy(raw: string): LegacySidecar | null {
+  try {
+    const p = JSON.parse(raw) as Partial<LegacySidecar>;
+    if (
+      !p ||
+      typeof p.id !== "string" ||
+      typeof p.repoGuid !== "string" ||
+      typeof p.ownerUsername !== "string" ||
+      typeof p.leadLoca !== "string" ||
+      typeof p.storageKey !== "string" ||
+      typeof p.originalFileName !== "string" ||
+      typeof p.mimeType !== "string" ||
+      typeof p.sizeBytes !== "number" ||
+      typeof p.createdAt !== "string"
+    ) {
+      return null;
+    }
+    return p as LegacySidecar;
+  } catch {
+    return null;
+  }
+}
+
+async function listLegacyByLoca(
+  leadLoca: string,
+  repoGuid: string,
+  username: string,
+  rootDirectory?: string,
+): Promise<LeadPhotoMetadata[]> {
+  let dir: string;
+  try {
+    dir = getUserContactPhotosDir(username, rootDirectory);
+  } catch (error) {
+    if (error instanceof ContactPhotoError && error.code === "NOT_CONFIGURED") {
+      throw new LeadPhotoError("NOT_CONFIGURED", "Photos directory is not configured");
+    }
+    return [];
+  }
   let entries;
   try {
     entries = await readdir(dir, { withFileTypes: true });
   } catch (error) {
     if ((error as NodeJS.ErrnoException)?.code === "ENOENT") return [];
-    console.error("[lead-photos] readAllOwnedMetadata failed:", error instanceof Error ? error.message : error);
-    throw new LeadPhotoError("WRITE_FAILED", "Could not list photos");
+    return [];
   }
-  const parsed = await Promise.all(
-    entries
-      .filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
-      .map(async (entry) => {
-        try {
-          return parseMetadata(await readFile(assertSafeContactPhotoPath(dir, entry.name), "utf8"));
-        } catch {
-          return null;
-        }
-      }),
-  );
-  const owned = await Promise.all(
-    parsed.map(async (metadata) => {
-      if (!metadata || metadata.repoGuid !== repoGuid) return null;
+  const out: LeadPhotoMetadata[] = [];
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
+    try {
+      const legacy = parseLegacy(await readFile(assertSafeContactPhotoPath(dir, entry.name), "utf8"));
+      if (!legacy || legacy.repoGuid !== repoGuid || legacy.leadLoca !== leadLoca) continue;
       try {
-        const st = await stat(assertSafeContactPhotoPath(dir, metadata.storageKey));
-        if (!st.isFile()) return null;
+        await stat(assertSafeContactPhotoPath(dir, legacy.storageKey));
       } catch {
-        return null;
+        continue;
       }
-      return metadata;
-    }),
-  );
-  return owned.filter((m): m is LeadPhotoMetadata => m !== null);
+      out.push({
+        id: legacy.id,
+        repoGuid: legacy.repoGuid,
+        ownerUsername: legacy.ownerUsername,
+        leadLoca: legacy.leadLoca,
+        storageKey: legacy.storageKey,
+        fileName: legacy.storageKey,
+        originalFileName: legacy.originalFileName,
+        mimeType: legacy.mimeType,
+        sizeBytes: legacy.sizeBytes,
+        createdAt: legacy.createdAt,
+      });
+    } catch {
+      /* skip */
+    }
+  }
+  return out;
 }
 
 export async function listLeadPhotos(
   leadLoca: string,
-  options?: { rootDirectory?: string; repoGuid?: string; username?: string },
+  options?: {
+    rootDirectory?: string;
+    repoGuid?: string;
+    username?: string;
+    leadUuid?: string;
+    metadataStore?: ReferencedFileMetadataStore;
+  },
 ): Promise<LeadPhotoMetadata[]> {
   const loca = assertValidLeadLoca(leadLoca);
   const repoGuid = options?.repoGuid ?? getCurrentRepoGuid();
-  const { dir } = resolvePhotosDir(options?.username ?? getCurrentUsername(), options?.rootDirectory);
-  const all = await readAllOwnedMetadata(dir, repoGuid);
-  return all.filter((m) => m.leadLoca === loca).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  let username: string;
+  try {
+    username = assertSafeUsername(options?.username ?? getCurrentUsername());
+  } catch {
+    throw new LeadPhotoError("INVALID_USERNAME", "Invalid username");
+  }
+
+  const byId = new Map<string, LeadPhotoMetadata>();
+
+  const storage = createFilesystemFileStorage(
+    options?.metadataStore ? { metadataStore: options.metadataStore } : undefined,
+  );
+  // Modern rows use leadUuid as entity_id; Story 111 migrator may temporarily
+  // store leadLoca as entity_id until a UUID backfill runs.
+  const entityKeys = [options?.leadUuid, loca].filter(
+    (v): v is string => typeof v === "string" && v.length > 0,
+  );
+  for (const entityId of entityKeys) {
+    const rows = await storage.listFiles({
+      repoGuid,
+      ownerUsername: username,
+      feature: FILE_STORAGE_FEATURES.PHOTOS_LEAD_INFO,
+      entityId,
+      rootDirectory: options?.rootDirectory,
+    });
+    for (const row of rows) byId.set(row.id, fromReferenced(row, loca));
+  }
+
+  for (const legacy of await listLegacyByLoca(loca, repoGuid, username, options?.rootDirectory)) {
+    if (!byId.has(legacy.id)) byId.set(legacy.id, legacy);
+  }
+
+  return [...byId.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
 export interface LeadPhotoReadInfo extends LeadPhotoMetadata {
@@ -283,62 +355,117 @@ export interface LeadPhotoReadInfo extends LeadPhotoMetadata {
 
 export async function getLeadPhotoReadInfo(
   id: string,
-  options?: { rootDirectory?: string; repoGuid?: string; username?: string },
+  options?: {
+    rootDirectory?: string;
+    repoGuid?: string;
+    username?: string;
+    metadataStore?: ReferencedFileMetadataStore;
+  },
 ): Promise<LeadPhotoReadInfo | null> {
   const safeId = assertValidLeadPhotoId(id);
   const repoGuid = options?.repoGuid ?? getCurrentRepoGuid();
-  const { dir } = resolvePhotosDir(options?.username ?? getCurrentUsername(), options?.rootDirectory);
-  const metadataPath = metadataPathForId(safeId, dir);
+  const storage = createFilesystemFileStorage(
+    options?.metadataStore ? { metadataStore: options.metadataStore } : undefined,
+  );
+
+  const modern = await storage.getFile(safeId, repoGuid, { rootDirectory: options?.rootDirectory });
+  if (modern) {
+    const leadLoca =
+      typeof modern.metadata?.leadLoca === "string" ? modern.metadata.leadLoca : "";
+    return { ...fromReferenced(modern, leadLoca), filePath: modern.filePath };
+  }
+
+  // Legacy sidecar
+  let username: string;
   try {
-    const metadata = parseMetadata(await readFile(metadataPath, "utf8"));
-    if (!metadata) return null;
-    if (metadata.repoGuid !== repoGuid) return null;
-    const filePath = assertSafeContactPhotoPath(dir, metadata.storageKey);
+    username = assertSafeUsername(options?.username ?? getCurrentUsername());
+  } catch {
+    return null;
+  }
+  try {
+    const dir = getUserContactPhotosDir(username, options?.rootDirectory);
+    const legacy = parseLegacy(
+      await readFile(assertSafeContactPhotoPath(dir, `${safeId}.json`), "utf8"),
+    );
+    if (!legacy || legacy.repoGuid !== repoGuid) return null;
+    const filePath = assertSafeContactPhotoPath(dir, legacy.storageKey);
     const st = await stat(filePath);
     if (!st.isFile()) return null;
-    return { ...metadata, filePath };
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException)?.code === "ENOENT") return null;
-    if (error instanceof LeadPhotoError && error.code === "INVALID_ID") throw error;
-    throw new LeadPhotoError("WRITE_FAILED", "Could not read photo");
+    return {
+      id: legacy.id,
+      repoGuid: legacy.repoGuid,
+      ownerUsername: legacy.ownerUsername,
+      leadLoca: legacy.leadLoca,
+      storageKey: legacy.storageKey,
+      fileName: legacy.storageKey,
+      originalFileName: legacy.originalFileName,
+      mimeType: legacy.mimeType,
+      sizeBytes: st.size,
+      createdAt: legacy.createdAt,
+      filePath,
+    };
+  } catch {
+    return null;
   }
 }
 
 export async function deleteLeadPhoto(
   id: string,
-  options?: { rootDirectory?: string; repoGuid?: string; username?: string },
+  options?: {
+    rootDirectory?: string;
+    repoGuid?: string;
+    username?: string;
+    metadataStore?: ReferencedFileMetadataStore;
+  },
 ): Promise<void> {
   const safeId = assertValidLeadPhotoId(id);
   const repoGuid = options?.repoGuid ?? getCurrentRepoGuid();
-  const { dir } = resolvePhotosDir(options?.username ?? getCurrentUsername(), options?.rootDirectory);
-  const metadataPath = metadataPathForId(safeId, dir);
+  const storage = createFilesystemFileStorage(
+    options?.metadataStore ? { metadataStore: options.metadataStore } : undefined,
+  );
 
-  let metadata: LeadPhotoMetadata | null;
   try {
-    metadata = parseMetadata(await readFile(metadataPath, "utf8"));
+    await storage.deleteFile(safeId, repoGuid, { rootDirectory: options?.rootDirectory });
+    return;
+  } catch (error) {
+    if (!(error instanceof FileStorageError) || error.code !== "NOT_FOUND") {
+      mapFsError(error);
+    }
+  }
+
+  // Legacy delete
+  let username: string;
+  try {
+    username = assertSafeUsername(options?.username ?? getCurrentUsername());
+  } catch {
+    throw new LeadPhotoError("INVALID_USERNAME", "Invalid username");
+  }
+  const dir = getUserContactPhotosDir(username, options?.rootDirectory);
+  let legacy: LegacySidecar | null;
+  try {
+    legacy = parseLegacy(
+      await readFile(assertSafeContactPhotoPath(dir, `${safeId}.json`), "utf8"),
+    );
   } catch (error) {
     if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
       throw new LeadPhotoError("NOT_FOUND", "Photo not found");
     }
     throw new LeadPhotoError("WRITE_FAILED", "Could not read photo metadata");
   }
-  if (!metadata || metadata.repoGuid !== repoGuid) {
+  if (!legacy || legacy.repoGuid !== repoGuid) {
     throw new LeadPhotoError("NOT_FOUND", "Photo not found");
   }
-
-  const filePath = assertSafeContactPhotoPath(dir, metadata.storageKey);
   try {
-    await rm(filePath, { force: false });
+    await rm(assertSafeContactPhotoPath(dir, legacy.storageKey), { force: false });
   } catch (error) {
     if ((error as NodeJS.ErrnoException)?.code !== "ENOENT") {
       throw new LeadPhotoError("WRITE_FAILED", "Could not delete photo file");
     }
   }
   try {
-    await rm(metadataPath, { force: false });
+    await rm(assertSafeContactPhotoPath(dir, `${safeId}.json`), { force: false });
   } catch (error) {
     if ((error as NodeJS.ErrnoException)?.code !== "ENOENT") {
-      console.error("[lead-photos] orphan metadata after file delete:", safeId);
       throw new LeadPhotoError("WRITE_FAILED", "Photo file deleted but metadata cleanup failed");
     }
   }
