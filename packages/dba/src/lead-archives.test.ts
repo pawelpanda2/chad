@@ -7,6 +7,7 @@ import {
   buildReadableArchiveFileName,
   deleteLeadArchive,
   detectArchiveTypeFromBytes,
+  getLeadArchiveReadInfo,
   getUserLeadArchiveViewDir,
   getUserLeadArchivesDir,
   LeadArchiveError,
@@ -240,6 +241,31 @@ describe("saveLeadArchive / list / counts / isolation", () => {
         deleteLeadArchive(saved.id, { rootDirectory: rootDir, metadataStore: store }),
       ),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+
+  it("getLeadArchiveReadInfo returns path for owner; null for other user", async () => {
+    const saved = await runWithRepoContext(PAWEL, () =>
+      saveLeadArchive({
+        bytes: ZIP_BYTES,
+        originalFileName: "mine.zip",
+        leadUuid: LEAD_UUID_A,
+        leadNameAtExport: LEAD_NAME_A,
+        rootDirectory: rootDir,
+        metadataStore: store,
+      }),
+    );
+    const info = await runWithRepoContext(PAWEL, () =>
+      getLeadArchiveReadInfo(saved.id, { rootDirectory: rootDir, metadataStore: store }),
+    );
+    expect(info?.fileName).toBe("26-05-11_pn_Daria.zip");
+    expect(info?.mimeType).toBe("application/zip");
+    const onDisk = await readFile(info!.filePath);
+    expect(Buffer.compare(onDisk, Buffer.from(ZIP_BYTES))).toBe(0);
+
+    const other = await runWithRepoContext(KAMIL, () =>
+      getLeadArchiveReadInfo(saved.id, { rootDirectory: rootDir, metadataStore: store }),
+    );
+    expect(other).toBeNull();
   });
 
   it("reads legacy sidecars by leadLoca without deleting them", async () => {
