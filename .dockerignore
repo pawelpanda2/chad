@@ -7,9 +7,11 @@
 .git
 .gitignore
 
-# Paused TS rewrite of content-provider — irrelevant to the dashboard's
-# Node.js build.
-packages/content-provider
+# packages/content-provider — Story 109: `dba` now depends on `cp-entry`
+# (ZIP Folder import feature, see ai-docs/content-provider/ai-start.md), so
+# it's no longer excludable here — it must be in the build context for
+# `pnpm --filter cp-entry build` (packages/dashboard/Dockerfile) to work.
+# cp-gui/cp-plugin/console remain genuinely unrelated to the dashboard image.
 packages/cp-gui
 packages/cp-plugin
 packages/console

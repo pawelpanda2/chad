@@ -21,14 +21,31 @@ zapisu) i punkt 4 (najpierw sprawdź, czy podobny wzorzec już istnieje).
 
 ## 2. Gdzie żyje logika Content Providera
 
-- Logika dostępu do Content Providera ma znajdować się **wyłącznie** w
-  `packages/dba`.
-- W `packages/dba` można używać metod Content Providera (`GetItem`,
-  `GetByNames`, `Put`, `PostParentItem`, ...) bezpośrednio, ale szczegóły
-  Content Providera (kształt wywołań, `loca`, `Settings.address`, itd.)
-  **muszą pozostać ukryte** wewnątrz tej warstwy.
-- Dashboard (i console) **nie może** znać ani wywoływać bezpośrednio
-  interfejsów/metod Content Providera — zawsze przez `dba`.
+**(zaktualizowane 2026-08-08, Story 109 — poprzednie sformułowanie "wyłącznie
+w packages/dba" było niejednoznaczne i zostało odczytane jako "dba i
+packages/content-provider to alternatywy". Zobacz
+[`01_ai_start.md`](01_ai_start.md)'s "DBA vs Content Provider" i
+[`ai-docs/content-provider/ai-start.md`](../content-provider/ai-start.md) po
+pełny, warstwowy obraz — to poniżej jest skrót dla kontekstu endpointów.)**
+
+- **Dashboard (i console) nie może** znać ani wywoływać bezpośrednio
+  interfejsów/metod Content Providera ani żadnego `cp-*` pakietu — zawsze
+  przez `packages/dba`. To pozostaje bez zmian.
+- **`packages/dba` jest publiczną warstwą aplikacyjną** wywoływaną przez
+  Dashboard/console: odpowiada za sesję/repo context, uprawnienia,
+  orchestrację, mapowanie błędów. Dla operacji na CP Items dba **deleguje
+  do `packages/content-provider`** (przez `cp-entry`) tam, gdzie istnieje
+  już odpowiedni backend-independent kontrakt domenowy — to jest właściwe
+  miejsce na nowe reguły CP (walidacja drzewa, format configu, itd.), nie
+  `packages/dba` samo w sobie.
+- Duża część istniejącego kodu w `packages/dba` (np. `folders.ts`,
+  `item-ops.ts`) woła dziś providera bezpośrednio
+  (`data-providers/postgres-cp-provider.ts`), pomijając `packages/content-provider`
+  — to jest znany, przejściowy dług migracyjny, nie wzorzec do
+  naśladowania w nowym kodzie. Szczegóły Content Providera (kształt
+  wywołań, `loca`, `Settings.address`, itd.), niezależnie od tego, czy
+  wywoływane wprost czy przez `cp-entry`, **muszą pozostać ukryte** przed
+  Dashboard/console.
 - Next.js API route ma pozostać **cienkim adapterem**: parsuje request,
   woła jedną (albo kilka) funkcji z `packages/dba`, zwraca odpowiedź. Bez
   logiki biznesowej w route'cie.

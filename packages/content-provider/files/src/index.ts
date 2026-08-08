@@ -10,3 +10,4 @@ export * from "./body.js";
 export * from "./children.js";
 export * from "./repos.js";
 export * from "./diagnostics.js";
+export * from "./zip-import.js";

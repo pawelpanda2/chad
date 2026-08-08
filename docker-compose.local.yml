@@ -150,6 +150,15 @@ services:
       - DBA_CONTENT_PROVIDER_ENABLED=${DBA_CONTENT_PROVIDER_ENABLED:-false}
       - DBA_POSTGRES_ENABLED=${DBA_POSTGRES_ENABLED:-true}
       - DBA_PRIMARY_BACKEND=${DBA_PRIMARY_BACKEND:-postgres}
+      # Story 109 — packages/content-provider's own router (cp-entry) has a
+      # SEPARATE backend-selection env var from DBA_PRIMARY_BACKEND above
+      # (different package, different config surface — see
+      # ai-docs/content-provider/ai-start.md). Without this, cp-entry
+      # defaults to "net-adapter" (the legacy .NET Content Provider, removed
+      # from this repo 2026-07-27) — a hard failure, not a silent fallback to
+      # something that still works. Only the new ZIP-import feature uses
+      # cp-entry today; reuses the same POSTGRES_URI already set below.
+      - CP_DEFAULT_BACKEND=${CP_DEFAULT_BACKEND:-postgre}
       - DBA_FOLLOWER_WRITES_ENABLED=${DBA_FOLLOWER_WRITES_ENABLED:-false}
       - DBA_SHADOW_READS_ENABLED=${DBA_SHADOW_READS_ENABLED:-false}
       # Always "local" here, never "prod" — regardless of DBA_MONGO_MODE

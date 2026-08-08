@@ -43,7 +43,18 @@ ENV NEXT_TELEMETRY_DISABLED=1
 
 # Workspace libs must build first — dashboard/dba import their dist/ (workspace:*).
 # google-contacts before dba: dba may depend on google-contacts types/dist.
-RUN pnpm --filter google-contacts build \
+# Story 109 — dba now also depends on cp-entry (packages/content-provider/entry)
+# for the ZIP Folder import feature; cp-entry itself depends on cp-core/cp-files/
+# cp-mongo/cp-postgre/cp-net-adapter, so those build first. See
+# ai-docs/content-provider/ai-start.md for why dba depends on cp-entry, not the
+# other way around.
+RUN pnpm --filter cp-core build \
+ && pnpm --filter cp-files build \
+ && pnpm --filter cp-postgre build \
+ && pnpm --filter cp-mongo build \
+ && pnpm --filter cp-net-adapter build \
+ && pnpm --filter cp-entry build \
+ && pnpm --filter google-contacts build \
  && pnpm --filter dba build
 
 RUN pnpm --filter dashboard exec prisma generate

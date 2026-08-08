@@ -114,6 +114,52 @@ rozłożony na 4 filary, zobacz `tests/README.md`.)**
   create→update→delete, ochrona system folders, kształt statusu w
   History, walidacja `GOOGLE_SHEETS_SPREADSHEET_MAP`).
 
+## DBA vs Content Provider — nie są alternatywami, są warstwami
+
+**(dodane 2026-08-08, Story 109, po tym jak AI zadało pytanie "DBA czy
+Content Provider?" tak, jakby to były dwie konkurencyjne architektury do
+wyboru — to fałszywa alternatywa.)**
+
+Docelowa architektura CHAD jest warstwowa, nie "albo/albo":
+
+```
+Dashboard / API route / Console
+        ↓
+    packages/dba          — sesja/repo context, uprawnienia, orchestracja aplikacyjna CHAD
+        ↓
+packages/content-provider — domenowe reguły CP (kontrakty, walidacja, import), backend-independent
+        ↓
+      cp-entry             — wybiera backend (postgre dziś jedyny realny — patrz ai-docs/databases/red-rules.md)
+        ↓
+    provider (postgre/files/mongo/net-adapter) — fizyczny zapis
+```
+
+- **DBA** = publiczna warstwa aplikacyjna/orchestracyjna dla CHAD:
+  `runWithRepoContext`, uprawnienia (system-folder read-only, admin
+  unlock, `assertChadWriteAllowed`), mapowanie błędów domenowych na
+  kontrakt CHAD. DBA **wywołuje** Content Provider dla operacji domenowych
+  na CP Items — nie jest z nim równorzędną alternatywą.
+- **Content Provider** (`packages/content-provider/`) = domenowe reguły CP
+  same w sobie: kontrakty (`cp-core`), walidacja drzewa/configu, reguły
+  importu, zachowanie backend-independent. Wystawiane wyłącznie przez
+  `cp-entry` — caller nigdy nie wybiera providera bezpośrednio.
+- **Provider** = fizyczny backend (dziś: PostgreSQL, `chad-postgres` — jedyny
+  aktywny backend danych CHAD, patrz `ai-docs/databases/red-rules.md`).
+
+**Stan przejściowy:** większość istniejącego kodu w `packages/dba` (np.
+`folders.ts`, `item-ops.ts`) woła `data-providers/postgres-cp-provider.ts`
+bezpośrednio — pomija tę warstwę. To jest **znany, akceptowany dług
+migracyjny**, nie wzorzec do kopiowania. Zasada: stary kod może zostać
+przejściowy i być poprawiany stopniowo przy okazji pracy w danym obszarze;
+**nowy kod nie ma pogłębiać tego długu** — jeśli `packages/content-provider`
+ma już (albo można tanio dodać) odpowiedni kontrakt dla operacji, nowy kod
+ma iść przez `cp-entry`, nie bezpośrednio do providera. Nie rób przy tym
+szerokiej migracji całego istniejącego kodu — tylko nowa praca stosuje się
+do docelowego podziału.
+
+Pełny opis (peryferyjne szczegóły, historia decyzji, kontrakt importu ZIP):
+[`ai-docs/content-provider/ai-start.md`](../content-provider/ai-start.md).
+
 ## Kolejność
 
 1. **Ten dokument** — jesteś tu.
