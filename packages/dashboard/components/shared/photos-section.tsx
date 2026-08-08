@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -10,8 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { cn } from "@/lib/utils";
-import { ImagePlus, Loader2, Trash2 } from "lucide-react";
+import { ImagePlus, Images, Loader2, Trash2 } from "lucide-react";
 
 interface PhotoRow {
   id: string;
@@ -25,32 +25,55 @@ type LoadState = { kind: "loading" } | { kind: "error"; message: string } | { ki
 
 const ACCEPTED_MIME = "image/jpeg,image/png,image/webp";
 
+export interface PhotosSectionHandle {
+  /** Opens the file picker — used by a host page's own "+ Add" button (e.g. the gallery pages, styled like Daily Tracker's) instead of an internal button. */
+  openFilePicker: () => void;
+}
+
 /**
- * Generic "Photos" frame: thumbnails + Add photo + larger preview + delete
- * confirm, backed by any `GET/POST {basePath}?{subjectParam}=...` +
- * `GET/DELETE {basePath}/{id}` endpoint pair (id-based reads, session-scoped
+ * Generic "Photos" frame: thumbnails + larger preview + delete confirm,
+ * backed by any `GET/POST {basePath}?{subjectParam}=...` + `GET/DELETE
+ * {basePath}/{id}` endpoint pair (id-based reads, session-scoped
  * ownership, magic-byte-validated JPEG/PNG/WebP — all enforced server-side,
  * see `packages/dba/src/google-contact-photos.ts` / `lead-photos.ts`). Two
  * independent attachment points (Google Contacts, Lead Details) reuse this
  * one component instead of duplicating the upload/preview/delete flow.
+ *
+ * Errors (list/upload/delete) are reported to the host page via `onError`
+ * rather than rendered inline, so every page can show them the same way
+ * the rest of the app does — one red `ErrorBox` at the top of the page.
+ * If no `onError` is passed, errors fall back to rendering inline here.
+ *
+ * No internal element is ever right-aligned (`justify-between`/`ml-auto`)
+ * — see the hard rule in `ai-docs/gui-standard/ai-start.md`. The upload
+ * trigger itself is not rendered inside the compact (inline detail-panel)
+ * usage at all — only the `Gallery` link is. The gallery pages render
+ * their own top-of-page "+ Add" button (Daily Tracker style) and drive
+ * this component's file picker via `ref.openFilePicker()`.
  */
-export function PhotosSection({
-  basePath,
-  subjectParam,
-  subjectValue,
-  onCountChange,
-  deleteHint,
-  headingClassName,
-}: {
-  basePath: string;
-  subjectParam: string;
-  subjectValue: string;
-  onCountChange?: (subjectValue: string, count: number) => void;
-  /** Extra sentence in the delete-confirm dialog, e.g. "This never changes anything in Google Contacts." */
-  deleteHint?: string;
-  /** Override the "Photos" title's className to match the surrounding page (default: small uppercase label, as used inline in a detail panel). */
-  headingClassName?: string;
-}) {
+export const PhotosSection = forwardRef<
+  PhotosSectionHandle,
+  {
+    basePath: string;
+    subjectParam: string;
+    subjectValue: string;
+    onCountChange?: (subjectValue: string, count: number) => void;
+    /** Reports the current error (or null when cleared) to the host page instead of rendering it inline. */
+    onError?: (message: string | null) => void;
+    /** Extra sentence in the delete-confirm dialog, e.g. "This never changes anything in Google Contacts." */
+    deleteHint?: string;
+    /** Override the "Photos" title's className to match the surrounding page (default: small uppercase label, as used inline in a detail panel). */
+    headingClassName?: string;
+    /** When set, shows a "Gallery" button that navigates here (a full-page, larger-thumbnail view of the same photos). */
+    galleryHref?: string;
+    /** `"compact"` (default) — small flex-wrap thumbnails, used inline in a detail panel. `"gallery"` — large 3-column grid with empty placeholder cells, used on the dedicated gallery pages. */
+    variant?: "compact" | "gallery";
+  }
+>(function PhotosSection(
+  { basePath, subjectParam, subjectValue, onCountChange, onError, deleteHint, headingClassName, galleryHref, variant = "compact" },
+  ref,
+) {
+  const router = useRouter();
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -59,6 +82,17 @@ export function PhotosSection({
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useImperativeHandle(ref, () => ({
+    openFilePicker: () => fileInputRef.current?.click(),
+  }));
+
+  const activeError = uploadError ?? deleteError ?? (state.kind === "error" ? state.message : null);
+
+  useEffect(() => {
+    onError?.(activeError);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeError]);
 
   const load = useCallback(async () => {
     setState({ kind: "loading" });
@@ -126,6 +160,7 @@ export function PhotosSection({
         return;
       }
       setConfirmDelete(null);
+      setUploadError(null);
       if (previewPhoto?.id === confirmDelete.id) setPreviewPhoto(null);
       await load();
     } catch (err) {
@@ -136,24 +171,32 @@ export function PhotosSection({
   }
 
   const photoUrl = (id: string) => `${basePath}/${encodeURIComponent(id)}`;
+  const photos = state.kind === "ready" ? state.photos : [];
+  const isGallery = variant === "gallery";
+
+  // Gallery grid: 3 columns, pad with empty placeholder cells so the grid
+  // always shows at least one full empty row "waiting for a photo" (per
+  // the knowledge/verbal-game frame reference, but 3 columns instead of 2).
+  const emptyCellCount = isGallery ? (3 - (photos.length % 3)) % 3 || 3 : 0;
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <div className={headingClassName ?? "text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"}>
           Photos{state.kind === "ready" && state.photos.length > 0 ? ` (${state.photos.length})` : ""}
         </div>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="h-6 gap-1 px-2 text-[11px]"
-          disabled={uploading}
-          onClick={() => fileInputRef.current?.click()}
-        >
-          {uploading ? <Loader2 className="h-3 w-3 animate-spin" /> : <ImagePlus className="h-3 w-3" />}
-          Add photo
-        </Button>
+        {galleryHref && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-6 gap-1 px-2 text-[11px]"
+            onClick={() => router.push(galleryHref)}
+          >
+            <Images className="h-3 w-3" />
+            Gallery
+          </Button>
+        )}
         <input
           ref={fileInputRef}
           type="file"
@@ -162,9 +205,15 @@ export function PhotosSection({
           className="hidden"
           onChange={(e) => void handleFilesSelected(e.target.files)}
         />
+        {uploading && (
+          <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            Uploading…
+          </span>
+        )}
       </div>
 
-      {uploadError && <div className="text-xs text-red-500">{uploadError}</div>}
+      {!onError && activeError && <div className="text-xs text-red-500">{activeError}</div>}
 
       {state.kind === "loading" && (
         <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
@@ -173,13 +222,11 @@ export function PhotosSection({
         </div>
       )}
 
-      {state.kind === "error" && <div className="text-xs text-red-500">{state.message}</div>}
-
-      {state.kind === "ready" && state.photos.length === 0 && (
+      {!isGallery && state.kind === "ready" && state.photos.length === 0 && (
         <div className="text-xs text-muted-foreground">No photos yet.</div>
       )}
 
-      {state.kind === "ready" && state.photos.length > 0 && (
+      {!isGallery && state.kind === "ready" && state.photos.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {state.photos.map((p) => (
             <button
@@ -192,6 +239,31 @@ export function PhotosSection({
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={photoUrl(p.id)} alt={p.originalFileName} className="h-full w-full object-cover" />
             </button>
+          ))}
+        </div>
+      )}
+
+      {isGallery && state.kind !== "loading" && (
+        <div className="grid grid-cols-3 gap-3">
+          {photos.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => setPreviewPhoto(p)}
+              className="group relative aspect-square overflow-hidden rounded-lg border bg-muted"
+              title={p.originalFileName}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={photoUrl(p.id)} alt={p.originalFileName} className="h-full w-full object-cover" />
+            </button>
+          ))}
+          {Array.from({ length: emptyCellCount }).map((_, i) => (
+            <div
+              key={`empty-${i}`}
+              className="flex aspect-square items-center justify-center rounded-lg border border-dashed text-muted-foreground/40"
+            >
+              <ImagePlus className="h-6 w-6" />
+            </div>
           ))}
         </div>
       )}
@@ -212,7 +284,7 @@ export function PhotosSection({
                 alt={previewPhoto.originalFileName}
                 className="max-h-[60vh] w-full rounded-md object-contain bg-muted"
               />
-              <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
                 <span className="text-xs text-muted-foreground">
                   {(previewPhoto.sizeBytes / 1024).toFixed(0)} KB
                 </span>
@@ -241,7 +313,6 @@ export function PhotosSection({
               {confirmDelete?.originalFileName} will be permanently removed.{deleteHint ? ` ${deleteHint}` : ""}
             </DialogDescription>
           </DialogHeader>
-          {deleteError && <div className="text-xs text-red-500">{deleteError}</div>}
           <DialogFooter>
             <Button variant="outline" size="sm" disabled={deleting} onClick={() => setConfirmDelete(null)}>
               No
@@ -254,16 +325,12 @@ export function PhotosSection({
       </Dialog>
     </div>
   );
-}
+});
 
 export function PhotoCountBadge({ count }: { count: number }) {
   if (!count) return null;
   return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1 rounded-full border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground",
-      )}
-    >
+    <span className="inline-flex items-center gap-1 rounded-full border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">
       <ImagePlus className="h-2.5 w-2.5" />
       {count}
     </span>

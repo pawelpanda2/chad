@@ -21,5 +21,5 @@
 - [x] Typecheck PASS
 - [x] Local Docker rebuild (`06_deploy.sh`)
 - [x] Browser smoke (MultiView, Conv/Settings, Plugin synch)
-- [ ] Commit + push
+- [x] Commit + push (`0892af3`)
 - [x] PROD NOT RUN

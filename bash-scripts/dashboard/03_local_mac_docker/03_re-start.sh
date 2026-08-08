@@ -48,6 +48,14 @@ for port in "${REQUIRED_PORTS[@]}"; do
   ensure_port_available "$port" || exit 1
 done
 
+# Story 106 follow-up — real incident: the dashboard container's audio-
+# recordings / contact-photos bind mounts point at /Volumes/cp_1 subtrees;
+# if that SMB share isn't mounted, Compose's create_host_path silently
+# creates an empty local decoy directory instead of failing, and uploads
+# "succeed" into it without ever reaching the real network share. Fails
+# loudly here instead, before the stack starts.
+bash "$SCRIPT_DIR/91_ensure-cp1-mounted.sh" || exit 1
+
 docker compose -p "$COMPOSE_PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d
 
 # Keep the local Postgres volume as a mirror of QNAP (Story 89) so login

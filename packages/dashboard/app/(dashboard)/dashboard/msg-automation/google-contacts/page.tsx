@@ -73,6 +73,7 @@ function GoogleContactsPageContent() {
   const [selectedResourceName, setSelectedResourceName] = useState<string | null>(null);
   const groupFiltersSeededRef = useRef(false);
   const [photoCounts, setPhotoCounts] = useState<Record<string, number>>({});
+  const [photosError, setPhotosError] = useState<string | null>(null);
 
   const handlePhotoCountChange = useCallback((resourceName: string, count: number) => {
     setPhotoCounts((prev) => (prev[resourceName] === count ? prev : { ...prev, [resourceName]: count }));
@@ -358,6 +359,8 @@ function GoogleContactsPageContent() {
         <ErrorBox message={state.message} />
       )}
 
+      <ErrorBox message={photosError} />
+
       {(state.kind === "not_connected" || state.kind === "auth_error") && redirectUri && (
         <div className="rounded-lg border px-3 py-2 text-xs text-muted-foreground">
           <div className="font-medium text-foreground">OAuth redirect URI (must match Google Cloud Console exactly)</div>
@@ -608,7 +611,9 @@ function GoogleContactsPageContent() {
                   subjectParam="resourceName"
                   subjectValue={selectedContact.resourceName}
                   onCountChange={handlePhotoCountChange}
+                  onError={setPhotosError}
                   deleteHint="This only removes the CHAD-local copy — it never changes anything in Google Contacts."
+                  galleryHref={`/dashboard/msg-automation/google-contacts/photos-gallery?resourceName=${encodeURIComponent(selectedContact.resourceName)}&displayName=${encodeURIComponent(selectedContact.displayName || "")}`}
                 />
               </div>
             </div>

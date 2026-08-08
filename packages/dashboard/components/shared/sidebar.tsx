@@ -45,24 +45,16 @@ const sidebarGroups: Array<{ title: string; items: SidebarItem[] }> = [
 				icon: MessageSquare,
 				badge: null,
 				// Child pages keep their own routes; highlight this hub while on any of them.
-				// MultiView lives under /dashboard/msg-automation/multiview (prefix covered).
+				// MultiView + Beeper (Conv/Settings) are Msg Auto hub buttons, not main nav.
 				activePrefixes: [
 					"/dashboard/msg-automation",
 					"/dashboard/statuses",
 					"/dashboard/todo-msg",
 					"/dashboard/msg-planner",
+					"/dashboard/beeper",
 					"/dashboard/messages",
 					"/dashboard/leads/message-creator",
 				],
-			},
-			{
-				title: "Beeper",
-				href: "/dashboard/beeper",
-				icon: MessageSquare,
-				badge: null,
-				// Dedicated Beeper (Conv + Settings). Older /dashboard/beeper/[id] profile
-				// routes stay highlighted here too.
-				activePrefixes: ["/dashboard/beeper"],
 			},
 			{
 				title: "Knowledge",
