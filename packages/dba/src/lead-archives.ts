@@ -22,14 +22,15 @@ import {
   postgresLeadArchiveStore,
   type LeadArchiveMetadataStore,
 } from "./lead-archives-store.js";
+import { FILES_REFERENCED_SEGMENT } from "./file-storage/features.js";
 
 export { createMemoryLeadArchiveStore };
+export { FILES_REFERENCED_SEGMENT };
 
 /** Match audio-recordings order of magnitude — WhatsApp exports with media. */
 export const LEAD_ARCHIVE_MAX_BYTES = 50 * 1024 * 1024;
 export const LEAD_ARCHIVE_MAX_FILES_PER_REQUEST = 5;
 export const LEAD_ARCHIVE_VIEW = "manually-added-msg";
-export const FILES_REFERENCED_SEGMENT = "02_files_refrenced";
 
 export type LeadArchiveFileType = "zip" | "rar";
 

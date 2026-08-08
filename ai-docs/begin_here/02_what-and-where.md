@@ -188,6 +188,23 @@ zakładka, edytor, auth dashboardu.
 
 ---
 
+## File storage (`02_files_refrenced` / cp_1)
+
+**Opis:** Jedna warstwa DBA dla plików referencyjnych na zamontowanym `cp_1`
+(Photos, Audio, ZIP, …): kontrakt `file-storage`, filesystem provider,
+metadane w PostgreSQL (`cp_referenced_files`), bez sidecar `.json` jako
+docelowego modelu. Canonical path:
+`02_files_refrenced/<username>/<feature>/<entity>/…`.
+
+**Lokalizacja:** `ai-docs/file-storage/`
+
+**Zacznij od:** [`ai-docs/file-storage/ai-start.md`](../file-storage/ai-start.md)
+
+**Czytać gdy:** upload/download/migracja zdjęć, nagrań, archiwów ZIP albo
+jakikolwiek nowy zapis pod `02_files_refrenced`.
+
+---
+
 ## dba (`packages/dba`)
 
 **Opis:** Warstwa domenowa między dashboardem/console a Content Providerem.

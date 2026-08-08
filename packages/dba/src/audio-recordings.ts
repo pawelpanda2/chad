@@ -14,7 +14,9 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { getCurrentRepoGuid } from "./repo-context.js";
+import { getCurrentRepoGuid, getCurrentUsername } from "./repo-context.js";
+import { FILE_STORAGE_FEATURES } from "./file-storage/features.js";
+import { resolveFeatureStorage } from "./file-storage/path-policy.js";
 
 export const AUDIO_RECORDING_MAX_BYTES = 50 * 1024 * 1024; // 50 MiB
 
@@ -48,6 +50,7 @@ export class AudioRecordingError extends Error {
   }
 }
 
+/** Legacy flat root (global `10_files_audio` mount) — still used for read/list compat. */
 export function getAudioRecordingsDir(): string {
   const dir = process.env.CHAD_AUDIO_RECORDINGS_DIR?.trim();
   if (!dir) {
@@ -57,6 +60,25 @@ export function getAudioRecordingsDir(): string {
     );
   }
   return path.resolve(dir);
+}
+
+/**
+ * Story 111 — new writes go under
+ * `<CHAD_CONTACT_PHOTOS_DIR>/<user>/10_files_audio/recordings/`.
+ * Falls back to legacy flat `CHAD_AUDIO_RECORDINGS_DIR` only when photos root
+ * is unavailable (tests that pass `rootDirectory` bypass this).
+ */
+export function getUserAudioRecordingsWriteDir(
+  username?: string,
+  rootDirectory?: string,
+): string {
+  if (rootDirectory) return path.resolve(rootDirectory);
+  try {
+    const user = username ?? getCurrentUsername();
+    return resolveFeatureStorage(user, FILE_STORAGE_FEATURES.AUDIO_RECORDINGS);
+  } catch {
+    return getAudioRecordingsDir();
+  }
 }
 
 /** Normalize MIME (strip parameters for lookup when needed). */
@@ -284,7 +306,8 @@ export async function saveAudioRecording(
   }
 
   const repoGuid = input.repoGuid ?? getCurrentRepoGuid();
-  const rootDir = input.rootDirectory ? path.resolve(input.rootDirectory) : getAudioRecordingsDir();
+  // Story 111: prefer per-user recordings dir; tests may still inject rootDirectory.
+  const rootDir = getUserAudioRecordingsWriteDir(undefined, input.rootDirectory);
   const requestedDisplayName = normalizeAudioRecordingDisplayName(input.displayName);
   const displayName =
     requestedDisplayName === input.recordedDate
@@ -342,12 +365,10 @@ export async function saveAudioRecording(
   };
 }
 
-export async function listAudioRecordings(options?: {
-  rootDirectory?: string;
-  repoGuid?: string;
-}): Promise<AudioRecordingListItem[]> {
-  const repoGuid = options?.repoGuid ?? getCurrentRepoGuid();
-  const rootDir = options?.rootDirectory ? path.resolve(options.rootDirectory) : getAudioRecordingsDir();
+async function listAudioRecordingsFromDir(
+  rootDir: string,
+  repoGuid: string,
+): Promise<AudioRecordingListItem[]> {
   try {
     const entries = await readdir(rootDir, { withFileTypes: true });
     // Every per-file read below is individually guarded: the backing volume
@@ -426,17 +447,44 @@ export async function listAudioRecordings(options?: {
   }
 }
 
+export async function listAudioRecordings(options?: {
+  rootDirectory?: string;
+  repoGuid?: string;
+}): Promise<AudioRecordingListItem[]> {
+  const repoGuid = options?.repoGuid ?? getCurrentRepoGuid();
+  if (options?.rootDirectory) {
+    return listAudioRecordingsFromDir(path.resolve(options.rootDirectory), repoGuid);
+  }
+  const dirs = new Set<string>();
+  try {
+    dirs.add(getAudioRecordingsDir());
+  } catch {
+    /* legacy mount optional */
+  }
+  try {
+    dirs.add(getUserAudioRecordingsWriteDir());
+  } catch {
+    /* photos root optional */
+  }
+  const merged = new Map<string, AudioRecordingListItem>();
+  for (const dir of dirs) {
+    const items = await listAudioRecordingsFromDir(dir, repoGuid);
+    for (const item of items) {
+      if (!merged.has(item.id)) merged.set(item.id, item);
+    }
+  }
+  return [...merged.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
 export interface AudioRecordingReadInfo extends AudioRecordingMetadata {
   filePath: string;
 }
 
-export async function getAudioRecordingReadInfo(
-  id: string,
-  options?: { rootDirectory?: string; repoGuid?: string },
+async function getAudioRecordingReadInfoFromDir(
+  rootDir: string,
+  safeId: string,
+  repoGuid: string,
 ): Promise<AudioRecordingReadInfo | null> {
-  const repoGuid = options?.repoGuid ?? getCurrentRepoGuid();
-  const rootDir = options?.rootDirectory ? path.resolve(options.rootDirectory) : getAudioRecordingsDir();
-  const safeId = assertValidAudioRecordingId(id);
   const metadataPath = metadataPathForId(safeId, rootDir);
   try {
     const metadata = parseMetadata(await readFile(metadataPath, "utf8"));
@@ -468,9 +516,34 @@ export async function getAudioRecordingReadInfo(
         return null;
       }
     }
-    if (error instanceof AudioRecordingError && error.code === "INVALID_ID") {
-      throw error;
-    }
+    if (error instanceof AudioRecordingError && error.code === "INVALID_ID") throw error;
     throw new AudioRecordingError("WRITE_FAILED", "Could not read recording");
   }
+}
+
+export async function getAudioRecordingReadInfo(
+  id: string,
+  options?: { rootDirectory?: string; repoGuid?: string },
+): Promise<AudioRecordingReadInfo | null> {
+  const repoGuid = options?.repoGuid ?? getCurrentRepoGuid();
+  const safeId = assertValidAudioRecordingId(id);
+  if (options?.rootDirectory) {
+    return getAudioRecordingReadInfoFromDir(path.resolve(options.rootDirectory), safeId, repoGuid);
+  }
+  const dirs: string[] = [];
+  try {
+    dirs.push(getUserAudioRecordingsWriteDir());
+  } catch {
+    /* optional */
+  }
+  try {
+    dirs.push(getAudioRecordingsDir());
+  } catch {
+    /* optional */
+  }
+  for (const dir of dirs) {
+    const info = await getAudioRecordingReadInfoFromDir(dir, safeId, repoGuid);
+    if (info) return info;
+  }
+  return null;
 }

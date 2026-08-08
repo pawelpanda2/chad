@@ -86,6 +86,9 @@ export default defineConfig({
       // point from Google Contacts photos, same underlying storage).
       "packages/dba/src/lead-photos.test.ts",
       "packages/dba/src/lead-photos-failure-paths.test.ts",
+      // Story 111 — unified file-storage path policy + filesystem provider
+      "packages/dba/src/file-storage/path-policy.test.ts",
+      "packages/dba/src/file-storage/filesystem-provider.test.ts",
       // Msg Workout → Manually Added Messages (.zip/.rar per lead)
       "packages/dba/src/lead-archives.test.ts",
       "packages/dba/src/lead-archives-failure-paths.test.ts",
