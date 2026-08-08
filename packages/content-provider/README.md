@@ -17,6 +17,19 @@ packages/content-provider/
 
 Mongo is **not** removed — it remains an optional backend. PostgreSQL is selected via config only; business code always talks to `cp-entry`.
 
+## Layering (Story 109)
+
+`packages/content-provider` sits **under** `packages/dba`, not beside it —
+`Dashboard/API/Console → packages/dba → packages/content-provider (cp-entry → provider)`.
+`packages/dba` owns session/repo context, permissions, and CHAD-specific
+orchestration; it calls into `cp-entry` for CP domain operations rather
+than picking a backend package itself. See
+[`ai-docs/content-provider/ai-start.md`](../../ai-docs/content-provider/ai-start.md)
+for the full rule, the current migration state (most existing `dba` code
+still calls a provider directly — accepted transitional debt, not a
+pattern for new code), and the runtime wiring this depends on
+(`CP_DEFAULT_BACKEND`, Docker build order).
+
 | Package | Folder | Role |
 |---|---|---|
 | `cp-core` | `common/` | Models + `ContentProviderStorage` contract. Never selects a backend. |

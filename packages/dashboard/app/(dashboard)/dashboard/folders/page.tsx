@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
 import { ErrorBox } from "@/components/shared/error-box";
 import { TextEditorWithToolbar } from "@/components/shared/text-editor-with-toolbar";
@@ -23,7 +23,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { ArrowLeft, ArrowRight, RefreshCw, Lock, Unlock, Trash2, Copy } from "lucide-react";
+import { ArrowLeft, ArrowRight, RefreshCw, Lock, Unlock, Trash2, Copy, Upload } from "lucide-react";
 
 // One of these is picked at random each time the delete confirmation dialog
 // opens, so the user must actually read and retype it rather than
@@ -109,6 +109,22 @@ interface UpdateBodyApiResponse {
   details?: string;
 }
 
+interface ImportValidationErrorDetail {
+  code: string;
+  path: string;
+  message: string;
+}
+
+interface ImportApiResponse {
+  success?: boolean;
+  createdRootAddress?: string;
+  createdItemCount?: number;
+  parent?: CpItem;
+  error?: string;
+  details?: string;
+  validationErrors?: ImportValidationErrorDetail[];
+}
+
 interface UpdateConfigApiResponse {
   item?: CpItem;
   error?: string;
@@ -182,6 +198,9 @@ export default function FoldersPage() {
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [createNotice, setCreateNotice] = useState<string | null>(null);
+  const [importPhase, setImportPhase] = useState<"idle" | "uploading" | "processing">("idle");
+  const [importError, setImportError] = useState<string | null>(null);
+  const importFileInputRef = useRef<HTMLInputElement>(null);
   const [editorBody, setEditorBody] = useState("");
   const [savingBody, setSavingBody] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -414,6 +433,65 @@ export default function FoldersPage() {
     } finally {
       setCreating(false);
     }
+  }
+
+  /**
+   * Imports a Folder CP item (+ subtree) from a .zip as a new child of the
+   * currently-open Folder (Story 109). All CP import rules — structure,
+   * security, atomicity, conflicts — live server-side in
+   * packages/content-provider; this only uploads and reports the result.
+   * Uses XMLHttpRequest (not fetch) specifically for `upload.onprogress` —
+   * the only way to honestly distinguish "still uploading" from "server is
+   * now validating/importing" with a single request/response round trip.
+   */
+  function handleImportFileSelected(file: File | undefined) {
+    if (!file) return;
+    if (importFileInputRef.current) importFileInputRef.current.value = "";
+    if (!currentItem || importPhase !== "idle" || (protectingFolder && !isProtectedWriteUnlocked)) return;
+    if (!file.name.toLowerCase().endsWith(".zip")) {
+      setImportError("Only .zip files are accepted");
+      return;
+    }
+
+    setImportPhase("uploading");
+    setImportError(null);
+
+    const parentLoca = relativeLoca(currentItem.Address, selectedRepoGuid);
+    const form = new FormData();
+    form.append("file", file);
+    form.append("parentLoca", parentLoca);
+    if (selectedRepoGuid) form.append("repoGuid", selectedRepoGuid);
+
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/api/folders/import");
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable && e.loaded >= e.total) setImportPhase("processing");
+    };
+    xhr.upload.onload = () => setImportPhase("processing");
+    xhr.onerror = () => {
+      setImportPhase("idle");
+      setImportError("Network error while uploading");
+    };
+    xhr.onload = () => {
+      setImportPhase("idle");
+      let data: ImportApiResponse;
+      try {
+        data = JSON.parse(xhr.responseText);
+      } catch {
+        setImportError(`Invalid server response (${xhr.status})`);
+        return;
+      }
+      if (xhr.status < 200 || xhr.status >= 300 || !data.success) {
+        const detail = data.validationErrors?.length
+          ? `${data.details ?? data.error}: ${data.validationErrors.map((e) => `${e.path || "(archive)"} — ${e.message}`).join("; ")}`
+          : (data.details ?? data.error ?? `Import failed (${xhr.status})`);
+        setImportError(detail);
+        return;
+      }
+      if (data.parent) replaceCurrentItem(data.parent);
+      toast.success(`Imported ${data.createdItemCount ?? 0} item(s)`);
+    };
+    xhr.send(form);
   }
 
   /** Saves the Text editor's body. Mirrors `CodeEditorTabs.razor`'s Save: only meaningful while editing, never clobbers unsaved text on failure. */
@@ -825,8 +903,31 @@ export default function FoldersPage() {
                   <Copy className="mr-1 h-3.5 w-3.5" />
                   {copying ? "Copying..." : "Copy"}
                 </Button>
+                <input
+                  ref={importFileInputRef}
+                  type="file"
+                  accept=".zip"
+                  className="hidden"
+                  onChange={(e) => handleImportFileSelected(e.target.files?.[0])}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => importFileInputRef.current?.click()}
+                  disabled={importPhase !== "idle" || Boolean(protectingFolder && !isProtectedWriteUnlocked)}
+                  title={
+                    protectingFolder && !isProtectedWriteUnlocked
+                      ? `Managed by ${protectingFolder.managedBy} — read-only here`
+                      : "Import a Folder item (+ subtree) from a .zip"
+                  }
+                >
+                  <Upload className="mr-1 h-3.5 w-3.5" />
+                  {importPhase === "uploading" ? "Uploading..." : importPhase === "processing" ? "Validating & importing..." : "Import"}
+                </Button>
               </div>
               <ErrorBox message={copyError} className="mb-0" />
+              <ErrorBox message={importError} className="mb-0" />
               {editorMode === "body" && (
                 <>
                   <div className="flex flex-wrap items-center gap-2">

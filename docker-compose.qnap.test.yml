@@ -77,6 +77,14 @@ services:
       - DBA_MONGO_ENABLED=false
       - DBA_POSTGRES_ENABLED=true
       - DBA_PRIMARY_BACKEND=postgres
+      # Story 109 — packages/content-provider's own router (cp-entry) reads a
+      # SEPARATE env var from DBA_PRIMARY_BACKEND above (different package,
+      # see ai-docs/content-provider/ai-start.md). Hardcoded literal for the
+      # same reason as DBA_PRIMARY_BACKEND above (never a shared-env default
+      # PROD could accidentally inherit). Without it, cp-entry defaults to
+      # "net-adapter" (the removed legacy .NET Content Provider) — a hard
+      # failure. Only the new ZIP-import feature uses cp-entry today.
+      - CP_DEFAULT_BACKEND=postgre
       - DBA_CONTENT_PROVIDER_ENABLED=${DBA_CONTENT_PROVIDER_ENABLED:-false}
       # Story 81 — data-sync outbox worker, wired into this process
       # (data-outbox-bootstrap.ts) for the first time. Stays inert here

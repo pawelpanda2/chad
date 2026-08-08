@@ -6,3 +6,4 @@
 export { postgreStorage } from "./provider/storage.js";
 export * from "./models/row.js";
 export * from "./client.js";
+export * from "./import/commit-import.js";

@@ -12,10 +12,14 @@
   },
   "dependencies": {
     "cp-core": "workspace:*",
-    "yaml": "^2.4.0"
+    "yaml": "^2.4.0",
+    "yauzl": "^3.0.0"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
-    "typescript": "^5.3.3"
+    "@types/yauzl": "^2.10.0",
+    "@types/yazl": "^2.4.0",
+    "typescript": "^5.3.3",
+    "yazl": "^3.3.1"
   }
 }

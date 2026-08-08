@@ -32,6 +32,8 @@
   "keywords": ["content-provider", "database", "api-client"],
   "license": "MIT",
   "dependencies": {
+    "cp-core": "workspace:*",
+    "cp-entry": "workspace:*",
     "diff": "^7.0.0",
     "dotenv": "^16.4.5",
     "google-contacts": "workspace:*",
@@ -45,6 +47,8 @@
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^20.11.0",
     "@types/pg": "^8.11.10",
-    "typescript": "^5.3.3"
+    "@types/yazl": "^2.4.0",
+    "typescript": "^5.3.3",
+    "yazl": "^3.3.1"
   }
 }

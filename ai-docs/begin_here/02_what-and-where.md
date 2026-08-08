@@ -237,29 +237,46 @@ czytająca/zapisująca do Content Providera z dashboardu lub console.
 
 ---
 
-## Content Provider (domenowo, .NET) — USUNIĘTE (2026-07-27)
+## Content Provider (`packages/content-provider`, TypeScript) — domenowe reguły CP, warstwa pod DBA
 
-**Status:** Legacy .NET Content Provider (`packages/net-content-provider`,
-Git submodule) został usunięty z tego monorepo — funkcjonalność
-zmigrowana, submoduł nie jest już utrzymywany. Jego stare .NET źródło
-dostępne jest w historii gita tego repo (przed usunięciem) oraz w
-oryginalnym, wciąż istniejącym standalone repo
-(`git@github.com:pawelpanda2/contentprovider.git`).
+**Opis:** TypeScript Content Provider — `common`/`cp-core` (kontrakty,
+backend-independent), `entry`/`cp-entry` (publiczny router — jedyny pakiet
+`packages/dba` ma importować, nigdy `cp-files`/`cp-postgre`/`cp-mongo`/
+`cp-net-adapter` bezpośrednio), `files`/`cp-files`, `postgre`/`cp-postgre`,
+`mongo`/`cp-mongo`, `net-adapter`/`cp-net-adapter` (fizyczne backendy),
+`api`/`cp-api` (HTTP façade, GET-only na dziś). Warstwa **pod** `packages/dba`,
+nie alternatywa dla niej — zobacz `01_ai_start.md`'s "DBA vs Content
+Provider" (obowiązkowe do przeczytania **przed** tą sekcją, wyżej w tym
+samym pliku indeksu co ten). Legacy .NET Content Provider
+(`packages/net-content-provider`, Git submodule) został usunięty z tego
+monorepo 2026-07-27 — funkcjonalność zmigrowana, stare źródło w historii
+gita i w oryginalnym standalone repo
+(`git@github.com:pawelpanda2/contentprovider.git`); jego stara
+dokumentacja (`documentation/content-provider/CONTENT_PROVIDER_GUIDE.md`,
+`content-provider.md`, `project-items.md`, `frequent-bugs.md`) jest
+historyczna, nie opisuje aktywnego kodu.
 
-Aktywny następca to `packages/content-provider` (TypeScript, patrz sekcja
-"Content Provider — adapter/model" wyżej) i `packages/cp-gui`/`packages/cp-plugin`.
+**Aktywny backend:** wyłącznie PostgreSQL (`cp-postgre`) — `chad-postgres`
+jest jedynym aktywnym backendem danych CHAD, patrz
+`ai-docs/databases/red-rules.md`. `cp-mongo`/`cp-net-adapter` istnieją w
+kodzie (kontrakt/routing), ale nie mają realnego celu w bieżącym runtime.
 
-**Lokalizacja starej dokumentacji (historyczna, nie opisuje aktywnego
-kodu):** `documentation/content-provider/`
-- `CONTENT_PROVIDER_GUIDE.md`, `content-provider.md` — ogólny przewodnik.
-- `project-items.md` — model Itemów (Folder/Text, numeryczne dzieci, config).
-- `frequent-bugs.md` — powtarzające się błędy przy pracy z CP.
-- `next-tasks/qnap-test-deployment.md` — dotyczy STAREGO,
-  samodzielnego systemu deployu `packages/net-content-provider/03_scripts/qnap/*.sh`
-  (plain `docker run`, bez Compose), który już nie istnieje w tym repo.
+**Lokalizacja:** `ai-docs/content-provider/` (nowy folder specjalizacji,
+Story 109, 2026-08-08 — analogiczny do `ai-docs/beeper/`).
 
-**Czytać gdy:** zadanie dotyczy samego Content Providera jako aplikacji
-(nie jego deploymentu jako kontenera).
+**Zacznij od:** [`ai-docs/content-provider/ai-start.md`](../content-provider/ai-start.md)
+— pełny obraz warstw, stan migracji (który kod w `dba` jeszcze omija tę
+warstwę i dlaczego to zaakceptowany, przejściowy dług), i
+[`zip-import.md`](../content-provider/zip-import.md) — kontrakt importu
+Folder CP Item z ZIP (Folders GUI): struktura archiwum, dokładnie jeden
+root, `^\d{2,3}$`, `config.yaml`/`body.txt`, bezpieczeństwo, atomowość,
+konflikty, cleanup.
+
+**Czytać gdy:** zadanie dotyczy `packages/content-provider/**`, dodania
+nowej domenowej operacji CP wywoływanej przez `dba`, albo importu/eksportu
+całych drzew CP Items. Nie mylić z "Content Provider jako usługa
+wdrożeniowa" (sekcja "Deploy" wyżej) — to dotyczy Dockera/portów/mountów,
+nie reguł domenowych.
 
 ---
 

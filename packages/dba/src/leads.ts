@@ -2550,15 +2550,62 @@ export interface MsgPlannerDateFolder {
 // Matches YY-MM-DD format with optional suffix (letter, underscore+letter, or timestamp)
 // Examples: "26-07-08", "26-07-08b", "26-07-08_b", "26-07-08c", "26-07-081234567890"
 const DATE_PATTERN = /^\d{2}-\d{2}-\d{2}(_[a-z]|[a-z]|\d+)?$/;
+// Same shape as DATE_PATTERN, but with capture groups for the comparator below.
+const DATE_PATTERN_PARTS = /^(\d{2})-(\d{2})-(\d{2})(_[a-z]|[a-z]|\d+)?$/;
 
 /**
  * Checks if a string matches the YY-MM-DD date format.
- * 
+ *
  * @param name - The string to check
  * @returns true if the string matches YY-MM-DD format
  */
 export function isValidDateFolderName(name: string): boolean {
   return DATE_PATTERN.test(name);
+}
+
+interface ParsedDateFolderName {
+  year: number;
+  month: number;
+  day: number;
+  suffix: string;
+}
+
+function parseDateFolderName(name: string): ParsedDateFolderName | null {
+  const match = DATE_PATTERN_PARTS.exec(name);
+  if (!match) return null;
+  const [, yy, mm, dd, suffix] = match;
+  return { year: parseInt(yy, 10), month: parseInt(mm, 10), day: parseInt(dd, 10), suffix: suffix ?? "" };
+}
+
+/**
+ * Compares two date-folder logical names for descending (newest-first) display order.
+ *
+ * Ordering rules:
+ * - Primary key is the YY-MM-DD date, descending (newer date first).
+ * - For the same date, any suffixed variant (e.g. "26-08-04b") sorts above the
+ *   bare/base variant ("26-08-04") — a suffix means "added later that day".
+ * - Among suffixed variants for the same date, suffixes sort descending
+ *   (e.g. "26-08-04c" above "26-08-04b" above "26-08-04").
+ * - Names that don't match the YY-MM-DD(+suffix) pattern never throw; they sort
+ *   after every valid name, using a plain string comparison between themselves.
+ *
+ * @param a - First date-folder logical name
+ * @param b - Second date-folder logical name
+ * @returns Negative if `a` should sort before `b`, positive if after, 0 if equal
+ */
+export function compareDateFolderNamesDesc(a: string, b: string): number {
+  const pa = parseDateFolderName(a);
+  const pb = parseDateFolderName(b);
+  if (!pa && !pb) return a.localeCompare(b);
+  if (!pa) return 1;
+  if (!pb) return -1;
+  if (pa.year !== pb.year) return pb.year - pa.year;
+  if (pa.month !== pb.month) return pb.month - pa.month;
+  if (pa.day !== pb.day) return pb.day - pa.day;
+  if (pa.suffix === pb.suffix) return 0;
+  if (pa.suffix === "") return 1;
+  if (pb.suffix === "") return -1;
+  return pb.suffix.localeCompare(pa.suffix);
 }
 
 /**
@@ -2601,15 +2648,9 @@ export async function getMsgPlannerDateFolders(): Promise<MsgPlannerDateFolder[]
     .filter((c) => isValidDateFolderName(c.config.name))
     .map((c) => ({ date: c.config.name, loca: addressToRepoAndLoca(c.config.address).loca }));
 
-  // Sort by date descending (newest first)
-  dateFolders.sort((a, b) => {
-    const parseDate = (d: string) => {
-      const parts = d.split("-");
-      // Assume 20YY for years
-      return new Date(parseInt(`20${parts[0]}`), parseInt(parts[1]) - 1, parseInt(parts[2]));
-    };
-    return parseDate(b.date).getTime() - parseDate(a.date).getTime();
-  });
+  // Sort by date descending (newest first); same-date suffix variants (e.g. "26-08-04b")
+  // sort above the base variant, suffixes themselves descending — see compareDateFolderNamesDesc.
+  dateFolders.sort((a, b) => compareDateFolderNamesDesc(a.date, b.date));
 
   return dateFolders;
 }

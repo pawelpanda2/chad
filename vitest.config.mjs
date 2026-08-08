@@ -40,6 +40,16 @@ export default defineConfig({
       "packages/dba/src/data-providers/repo-allowlist-guard.test.ts",
       // Story 81 — leads.ts business functions against a Postgres primary.
       "packages/dba/src/leads-postgres.test.ts",
+      // Story 108 — Msg Planner date-folder combobox comparator (date desc,
+      // same-date suffix ordering, crash-safety on unmatched names): pure.
+      "packages/dba/src/msg-planner-date-sort.test.ts",
+      // Story 109 — ZIP Folder import: cp-files validator/parser (pure,
+      // in-memory yazl fixtures) and the dba end-to-end orchestration test
+      // (real local Postgres, same convention as leads-postgres.test.ts).
+      "packages/content-provider/files/src/zip-import.test.ts",
+      "packages/content-provider/postgre/src/import/commit-import.test.ts",
+      "packages/dba/src/cp-import.test.ts",
+      "packages/dba/src/cp-import-layering.test.ts",
       // Story 82 — Folders write path (create child / update Text body):
       // pure, fake-ops-based, no real DB needed.
       "packages/dba/src/folders.test.ts",

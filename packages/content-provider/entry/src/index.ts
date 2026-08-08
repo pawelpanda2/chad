@@ -61,3 +61,6 @@ export const entry: ContentProviderStorage = {
 
 export { getBackendKindForRepo, getDefaultBackendKind } from "./repo-storage-config.js";
 export type { CpBackendKind } from "./repo-storage-config.js";
+export { importFolderFromZip } from "./import-folder.js";
+export type { ImportFolderFromZipInput, ImportFolderFromZipResult } from "./import-folder.js";
+export { ensurePostgreConnectionUri } from "./postgre-connection.js";
