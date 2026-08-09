@@ -116,3 +116,48 @@ odświeżenie strony pokazuje aktualny stan, bez trwałego cache.
   Folders.
 - Kolumna "kind" (dokument/ćwiczenie/tematy) ze statycznej wersji nie ma
   odpowiednika w modelu CP — wiersze pokazują stałą etykietę "dokument".
+
+## Update — arbitrary-depth catch-all routing + Story 114 intelligent grid
+
+Sekcja "Frontend (routing dynamiczny)" powyżej opisuje stan Story 96
+(fixed `[category]` + `[category]/[document]`, 2 poziomy). Od tego czasu
+routing i layout zmieniły się dalej:
+
+- **Routing:** realne drzewa knowledge nie zawsze mają dokładnie 2 poziomy
+  (kategoria → sekcja → dokument) — niektóre schodzą 5+ poziomów głębiej.
+  `knowledge/[category]/page.tsx` +
+  `knowledge/[category]/[document]/page.tsx` zostały zastąpione jednym
+  catch-all `knowledge/[category]/[[...path]]/page.tsx` (analogicznie
+  `/api/knowledge/[category]/[[...path]]`) — `path` to dowolnie głęboki
+  łańcuch slugów, backend rozstrzyga czy dany węzeł to Folder czy Text.
+  Karta-gridu potrafi się więc powtarzać rekurencyjnie na każdym poziomie
+  zagnieżdżenia, nie tylko raz pod kategorią.
+- **Layout (Story 114, Task 2):** karta-gridu w widoku Folder miała
+  wcześniej sztywny `grid-cols-1 md:grid-cols-2` i `truncate` na wierszach
+  (bez zawijania, bez capu wysokości). Zastąpione "inteligentnym" układem:
+  - do 3 kolumn, wybierane w locie wg realnie dostępnej szerokości (bez
+    sztywnych breakpointów) — `packages/dashboard/lib/knowledge-layout.ts`
+    (`chooseColumnsAndWidths`, testy w `knowledge-layout.test.ts`);
+  - każda kolumna liczy własną szerokość ze średniej długości tekstów,
+    które do niej trafiają (+30% zapasu, min/max klamra, max ~400px);
+  - normalne długie nazwy zawijają się (`whitespace-normal break-words`)
+    zamiast `truncate`; pojedynczy nie-łamliwy token (>42 znaków bez
+    spacji) dostaje lokalne przyciski `‹ ›` przesuwające tylko tekst tego
+    wiersza (`components/shared/knowledge-grid-row.tsx`);
+  - wysokość karty: wyłącznie per-karta, niezależnie od sąsiadów —
+    wszystkie wpisy widoczne do `maxVisibleRowsBeforeScroll` (10); dopiero
+    powyżej 10 karta dostaje cap do 10 wierszy + własny
+    `overflow-y-auto`/`maxHeight` (`computeRowCaps`, bez żadnego
+    uśredniania z sąsiednimi kartami czy pojęcia "wizualnego wiersza");
+  - `items-start` na gridzie — karty NIE są rozciągane do wysokości
+    najwyższej karty w tym samym rzędzie CSS Grid, więc tytuły w różnych
+    kolumnach nie muszą być na tym samym poziomie;
+  - pomiar realnej szerokości tekstu (DOM probe-span) + `ResizeObserver`
+    kontenera: `components/shared/use-knowledge-grid-layout.ts`.
+  - Card visuals (`LIST_ROW_WRAPPER_CLASS`/`LIST_ROW_CLASS`, ikony
+    Folder/Text, `DashboardPageShell`, Back/Forw/up-level) — bez zmian;
+    zmienił się wyłącznie algorytm rozmieszczenia.
+  - Referencyjna makieta: `examples/knowledge_v2_clean_no_debug_mockup.html`.
+    Zamrożony "przed" snapshot starego wyglądu (statyczne mocki, bez
+    fetchowania `/api/knowledge`): `/dashboard/examples` →
+    `Knowledge v1` (`app/(dashboard)/dashboard/examples/knowledge-v1/page.tsx`).

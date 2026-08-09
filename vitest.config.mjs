@@ -151,6 +151,9 @@ export default defineConfig({
       "packages/dashboard/components/beeper/msg-workout-message-numbers.test.ts",
       // Folders — Config.sorting (asc/desc, numeric) for direct-children ordering.
       "packages/dashboard/components/folders/folder-sorting.test.ts",
+      // Story 114 — Knowledge v2 intelligent grid layout: pure column/width/
+      // row-cap/unbreakable-token math (no DOM).
+      "packages/dashboard/lib/knowledge-layout.test.ts",
       // tests/ reorg (2026-07-28) — only the Vitest-based files from each
       // pillar's unit/integration dirs; the node:test-based files in the
       // same directories (no-chad-mongo-runtime, config-validator,
