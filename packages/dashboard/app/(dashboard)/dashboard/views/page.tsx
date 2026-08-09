@@ -8,7 +8,6 @@ import { Input } from "@/components/ui/input";
 import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
 import { buildLeadDetailsHref, getLeadDetailsHref } from "@/lib/lead-links";
 import { ErrorBox } from "@/components/shared/error-box";
-import { TextEditorWithToolbar } from "@/components/shared/text-editor-with-toolbar";
 import { TABLE_ACTION_COLUMN_WIDTH_CLASS, FRAME_SECTION_GAP_CLASS, LIST_ROW_CLASS, LIST_ROW_WRAPPER_CLASS } from "@/components/shared/layout-tokens";
 import { cn } from "@/lib/utils";
 import {
@@ -18,7 +17,6 @@ import {
   ArrowDown,
   User,
   CheckCircle2,
-  FileText,
   Plus,
   Save,
   Loader2,
@@ -28,13 +26,8 @@ import { toast } from "sonner";
 import { DATE_ENTRY_DOMAIN_COLUMNS, DAILY_ENTRY_DOMAIN_COLUMNS, ITEM_NUMBER_COLUMN, type SheetColumnGroup } from "dba/table-columns";
 import { formatDurationClock } from "@/components/forms/audio-recording-utils";
 import { SequentialAudioPlayer } from "@/components/forms/sequential-audio-player";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { ReportsView } from "@/system-pages/views/reports/reports-view";
+import { DatesReportsView } from "@/system-pages/views/dates-reports/dates-reports-view";
 
 // Fields computed server-side on every read (computeDailyAutoFieldsByDate in
 // dba) — never editable, never sent back on save. Kept as a Set so the edit
@@ -73,20 +66,6 @@ interface LeadDashboardItem {
   draft: boolean;
 }
 
-interface ReportEntry {
-  itemName: string;
-  loca: string;
-  body?: string;
-  address?: string;
-}
-
-interface ReportCategoryOption {
-  id: string;
-  logicalName: string;
-  displayName: string;
-  loca: string;
-}
-
 interface AudioRecordingListItem {
   id: string;
   displayName: string;
@@ -110,7 +89,7 @@ interface AudioDraftListItem {
   totalSizeBytes: number;
 }
 
-type ViewType = null | "tracker" | "dates" | "leads" | "reports" | "recordings";
+type ViewType = null | "tracker" | "dates" | "leads" | "reports" | "dates-reports" | "recordings";
 type SortDir = "asc" | "desc";
 
 // ============================================================================
@@ -169,7 +148,12 @@ function ViewsPageContent() {
   // uses router.push (a new history entry), never replace.
   const viewParam = searchParams.get("view");
   const selectedView: ViewType =
-    viewParam === "tracker" || viewParam === "dates" || viewParam === "leads" || viewParam === "reports" || viewParam === "recordings"
+    viewParam === "tracker" ||
+    viewParam === "dates" ||
+    viewParam === "leads" ||
+    viewParam === "reports" ||
+    viewParam === "dates-reports" ||
+    viewParam === "recordings"
       ? viewParam
       : null;
   const selectedReportLoca = searchParams.get("report");
@@ -179,27 +163,14 @@ function ViewsPageContent() {
   const [dateEntries, setDateEntries] = useState<DateEntryRecord[]>([]);
   const [dailyEntries, setDailyEntries] = useState<DailyEntryRecord[]>([]);
   const [leads, setLeads] = useState<LeadDashboardItem[]>([]);
-  const [reports, setReports] = useState<ReportEntry[]>([]);
-  const [reportCategories, setReportCategories] = useState<ReportCategoryOption[]>([]);
-  const [selectedReportCategoryId, setSelectedReportCategoryId] = useState<string>("");
-  const [reportsLoading, setReportsLoading] = useState(false);
   const [recordings, setRecordings] = useState<AudioRecordingListItem[]>([]);
   const [recordingDrafts, setRecordingDrafts] = useState<AudioDraftListItem[]>([]);
-  const [reportsError, setReportsError] = useState<string | null>(null);
   const [recordingsError, setRecordingsError] = useState<string | null>(null);
-  // Local editable copy of the selected report's body, plus its own
-  // save state — Views/Reports is editable (Story 56), reusing the same
-  // /api/forms/reports update endpoint Forms uses (no new route, no
-  // duplicated save logic).
-  const [editedReportContent, setEditedReportContent] = useState("");
-  const [reportSaving, setReportSaving] = useState(false);
-  const [reportSaved, setReportSaved] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Dates and Daily Tracker fetch errors are kept separate (mirroring
-  // reportsError above) — a Content Provider failure fetching one no longer
-  // silently discards the other's already-fetched data, and each view shows
-  // its own specific error instead of a shared, generic one.
+  // Dates and Daily Tracker fetch errors are kept separate — a Content
+  // Provider failure fetching one no longer silently discards the other's
+  // already-fetched data, and each view shows its own specific error.
   const [dateEntriesError, setDateEntriesError] = useState<string | null>(null);
   const [dailyEntriesError, setDailyEntriesError] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
@@ -231,7 +202,6 @@ function ViewsPageContent() {
     setError(null);
     setDateEntriesError(null);
     setDailyEntriesError(null);
-    setReportsError(null);
     setRecordingsError(null);
     try {
       const [viewsRes, leadsRes, recordingsRes] = await Promise.all([
@@ -482,168 +452,10 @@ function ViewsPageContent() {
     );
   }, [leads, filter]);
 
-  const filteredReports = useMemo(() => {
-    if (!filter.trim()) return reports;
-    const f = filter.toLowerCase().trim();
-    return reports.filter((r) => r.itemName.toLowerCase().includes(f));
-  }, [reports, filter]);
-
-  const selectedReport = useMemo(
-    () => reports.find((r) => r.loca === selectedReportLoca) || null,
-    [reports, selectedReportLoca]
-  );
   const selectedRecording = useMemo(
     () => recordings.find((r) => r.id === selectedRecordingId) || null,
     [recordings, selectedRecordingId],
   );
-
-  // Root `reports` categories (Story 102) — load when entering Reports view.
-  useEffect(() => {
-    if (selectedView !== "reports") return;
-    let cancelled = false;
-    const requestId = Date.now();
-    (async () => {
-      setReportsLoading(true);
-      setReportsError(null);
-      try {
-        const res = await fetch("/api/reports/categories");
-        const json = await res.json();
-        if (cancelled) return;
-        if (!res.ok || !json.success) {
-          throw new Error(json.error || "Failed to load report categories");
-        }
-        const cats: ReportCategoryOption[] = Array.isArray(json.categories) ? json.categories : [];
-        setReportCategories(cats);
-        setSelectedReportCategoryId((prev) => {
-          if (prev && cats.some((c) => c.id === prev)) return prev;
-          return cats[0]?.id ?? "";
-        });
-      } catch (err) {
-        if (!cancelled) {
-          setReportsError(err instanceof Error ? err.message : String(err));
-          setReportCategories([]);
-          setSelectedReportCategoryId("");
-          setReports([]);
-        }
-      } finally {
-        if (!cancelled) setReportsLoading(false);
-      }
-      void requestId;
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedView]);
-
-  // Text items for the selected category — client-side search only after this load.
-  useEffect(() => {
-    if (selectedView !== "reports" || !selectedReportCategoryId) {
-      if (selectedView === "reports" && !selectedReportCategoryId) setReports([]);
-      return;
-    }
-    let cancelled = false;
-    (async () => {
-      setReportsLoading(true);
-      setReportsError(null);
-      try {
-        const params = new URLSearchParams({ category: selectedReportCategoryId });
-        const res = await fetch(`/api/reports?${params.toString()}`);
-        const json = await res.json();
-        if (cancelled) return;
-        if (!res.ok || !json.success) {
-          throw new Error(json.error || "Failed to load reports");
-        }
-        const items: ReportEntry[] = Array.isArray(json.reports)
-          ? json.reports.map((r: { name: string; loca: string; address: string; preview?: string | null }) => ({
-              itemName: r.name,
-              loca: r.loca,
-              address: r.address,
-              body: undefined,
-            }))
-          : [];
-        setReports(items);
-      } catch (err) {
-        if (!cancelled) {
-          setReportsError(err instanceof Error ? err.message : String(err));
-          setReports([]);
-        }
-      } finally {
-        if (!cancelled) setReportsLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedView, selectedReportCategoryId]);
-
-  // Load full body when opening a report (list endpoint omits bodies).
-  useEffect(() => {
-    if (!selectedReportLoca) {
-      setEditedReportContent("");
-      setReportSaved(false);
-      return;
-    }
-    const fromList = reports.find((r) => r.loca === selectedReportLoca);
-    if (!fromList?.address) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const params = new URLSearchParams({ address: fromList.address! });
-        const res = await fetch(`/api/reports/item?${params.toString()}`);
-        const json = await res.json();
-        if (cancelled) return;
-        if (!res.ok || !json.success) throw new Error(json.error || "Failed to load report");
-        setEditedReportContent(typeof json.data?.body === "string" ? json.data.body : "");
-        setReportSaved(false);
-      } catch {
-        if (!cancelled) {
-          setEditedReportContent("");
-          setReportSaved(false);
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-    // Re-run when the matching list row gains an address after category load.
-  }, [selectedReportLoca, selectedReport?.address]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const handleReportEditorChange = (value: string) => {
-    setEditedReportContent(value);
-    if (reportSaved) setReportSaved(false);
-  };
-
-  /** Saves the selected report's edited body via the same update endpoint
-   * the Forms Reports editor uses (loca-based POST) — no duplicated save
-   * logic, no new route. */
-  const handleReportEditorSave = async (): Promise<boolean> => {
-    if (!selectedReportLoca) return false;
-    setReportSaving(true);
-    try {
-      const response = await fetch("/api/forms/reports", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: editedReportContent, loca: selectedReportLoca }),
-      });
-      const result = await response.json();
-      if (!result.success) {
-        throw new Error(result.error || "Unknown error");
-      }
-      setReports((prev) =>
-        prev.map((r) => (r.loca === selectedReportLoca ? { ...r, body: editedReportContent } : r))
-      );
-      setReportSaved(true);
-      toast.success("Report updated");
-      setTimeout(() => setReportSaved(false), 3000);
-      return true;
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : "Unknown error";
-      toast.error(`Error: ${errorMsg}`);
-      return false;
-    } finally {
-      setReportSaving(false);
-    }
-  };
 
   // ============================================================================
   // Render: View Selection Menu
@@ -685,6 +497,13 @@ function ViewsPageContent() {
             className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
           >
             <span className="font-semibold text-sm">REPORTS</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => handleViewSelect("dates-reports")}
+            className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
+          >
+            <span className="font-semibold text-sm">DATES REPORTS</span>
           </button>
           <button
             type="button"
@@ -806,117 +625,26 @@ function ViewsPageContent() {
   }
 
   // ============================================================================
-  // Render: Reports
+  // Render: Reports / Dates Reports (system-pages — Story 113)
   // ============================================================================
 
   if (selectedView === "reports") {
     return (
-      <DashboardPageShell
-        scroll={!selectedReport}
-        padded={!selectedReport}
-        contentClassName={!selectedReport ? FRAME_SECTION_GAP_CLASS : undefined}
-        upLevel={{
-          onClick: selectedReport ? () => pushViewState({ report: null }) : handleBack,
-          label: selectedReport ? "Back to reports list" : "Back to Views menu",
-        }}
-        title="Reports"
-      >
-        {selectedReport ? (
-          <TextEditorWithToolbar
-            value={editedReportContent}
-            onChange={handleReportEditorChange}
-            onSave={handleReportEditorSave}
-            saving={reportSaving}
-            saved={reportSaved}
-            placeholder="This report is empty. Start writing..."
-            className="h-full"
-          />
-        ) : (
-          <>
-            <div className="flex shrink-0 flex-wrap items-center gap-3">
-              <Select
-                value={selectedReportCategoryId || undefined}
-                onValueChange={(v) => {
-                  setSelectedReportCategoryId(v);
-                  setFilter("");
-                }}
-                disabled={reportCategories.length === 0 || reportsLoading}
-              >
-                <SelectTrigger size="sm" className="h-7 w-[260px] text-xs">
-                  <SelectValue placeholder="Report type" />
-                </SelectTrigger>
-                <SelectContent>
-                  {reportCategories.map((c) => (
-                    <SelectItem key={c.id} value={c.id} className="text-xs">
-                      {c.displayName}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <div className="relative">
-                <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                <Input
-                  value={filter}
-                  onChange={(e) => setFilter(e.target.value)}
-                  placeholder="Search reports"
-                  className="pl-7 h-7 text-xs w-[180px]"
-                />
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  // Re-trigger category load by clearing then setting id.
-                  const id = selectedReportCategoryId;
-                  setSelectedReportCategoryId("");
-                  queueMicrotask(() => setSelectedReportCategoryId(id));
-                }}
-                disabled={reportsLoading}
-                className="gap-2 h-7 text-xs"
-              >
-                <RefreshCw className={`h-3 w-3 ${reportsLoading ? "animate-spin" : ""}`} />
-                Refresh
-              </Button>
-              <span className="text-xs text-muted-foreground">
-                {filteredReports.length} of {reports.length} reports
-              </span>
-            </div>
+      <ReportsView
+        selectedReportLoca={selectedReportLoca}
+        onSelectReport={(loca) => pushViewState({ report: loca })}
+        onBackToMenu={handleBack}
+      />
+    );
+  }
 
-            <ErrorBox message={reportsError} className="mb-2" />
-            <div className={cn(LIST_ROW_WRAPPER_CLASS, "flex min-h-0 w-[400px] max-w-[400px] flex-1 flex-col overflow-y-auto")}>
-            {reportsLoading ? (
-              <div className="flex items-center gap-2 py-4 text-muted-foreground">
-                <RefreshCw className="h-4 w-4 animate-spin" />
-                <span>Loading reports...</span>
-              </div>
-            ) : reportsError ? null : reportCategories.length === 0 ? (
-              <div className="flex items-center gap-3 py-4 text-muted-foreground">
-                <FileText className="h-8 w-8 opacity-20" />
-                <span className="text-sm">No report categories found.</span>
-              </div>
-            ) : filteredReports.length === 0 ? (
-              <div className="flex items-center gap-3 py-4 text-muted-foreground">
-                <FileText className="h-8 w-8 opacity-20" />
-                <span className="text-sm">No reports in this category.</span>
-              </div>
-            ) : (
-              <div className="divide-y">
-                {filteredReports.map((report) => (
-                  <button
-                    key={report.loca}
-                    type="button"
-                    onClick={() => pushViewState({ report: report.loca })}
-                    className={`flex w-full items-center text-left ${LIST_ROW_CLASS}`}
-                  >
-                    <span className="font-medium text-sm truncate">{report.itemName}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-            </div>
-          </>
-        )}
-      </DashboardPageShell>
+  if (selectedView === "dates-reports") {
+    return (
+      <DatesReportsView
+        selectedReportLoca={selectedReportLoca}
+        onSelectReport={(loca) => pushViewState({ report: loca })}
+        onBackToMenu={handleBack}
+      />
     );
   }
 

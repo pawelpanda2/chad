@@ -14,14 +14,15 @@ The Views page works similarly to the Forms page - it first shows a selection me
 
 ### View Selection Menu (`/dashboard/views`)
 
-When entering the Views page, users see a compact grid of available views:
+When entering the Views page, users see a compact grid of available views
+(among others: DAILY TRACKER, DATES, LEADS, REPORTS, **DATES REPORTS**,
+RECORDINGS).
 
-```
-Views
-
-DATES        TRACKER      Coming soon
-Date entries Daily tracker More views
-```
+- **REPORTS** — daygame/nightgame categories under root `reports`
+  (implementation: `system-pages/views/reports/`).
+- **DATES REPORTS** — free-text date reports under root `randki`
+  (not the DATES tracker table). See [dates-reports.md](./dates-reports.md)
+  and [system-pages.md](./system-pages.md).
 
 ### DATES View (`/dashboard/views?view=dates`)
 
