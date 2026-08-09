@@ -18,6 +18,7 @@ import {
 	Table,
 	History,
 	BookOpen,
+	FlaskConical,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -73,6 +74,15 @@ const sidebarGroups: Array<{ title: string; items: SidebarItem[] }> = [
 		items: [
 			{ title: "History", href: "/dashboard/history", icon: History, badge: null },
 			{ title: "Folders", href: "/dashboard/folders", icon: FolderKanban, badge: null },
+			{
+				title: "Examples",
+				href: "/dashboard/examples",
+				icon: FlaskConical,
+				badge: null,
+				// GUI-only demo hub (frozen reference snapshots); same hub+subpage
+				// shape as "Msg Auto" / "Knowledge" above.
+				activePrefixes: ["/dashboard/examples"],
+			},
 			{ title: "Settings", href: "/dashboard/settings", icon: Settings, badge: null },
 		],
 	},
