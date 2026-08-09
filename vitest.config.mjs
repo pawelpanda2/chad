@@ -67,6 +67,11 @@ export default defineConfig({
       "packages/dba/src/ai-prompts-openai.test.ts",
       // Story 102 — root `reports` category browse + effectiveReportAddress.
       "packages/dba/src/report-browse.test.ts",
+      // Story 113 — Dates Reports (`randki`) browse + isolation; Views system-pages UI.
+      "packages/dba/src/date-reports.test.ts",
+      "packages/dashboard/system-pages/views/shared/text-reports-browser.test.tsx",
+      "packages/dashboard/system-pages/views/reports/reports-view.test.tsx",
+      "packages/dashboard/system-pages/views/dates-reports/dates-reports-view.test.tsx",
       // Story 103 — Google Contacts DTO map + People pagination + OAuth state.
       "packages/dashboard/lib/google-contacts-map.test.ts",
       "packages/dashboard/lib/google-contacts-people.test.ts",

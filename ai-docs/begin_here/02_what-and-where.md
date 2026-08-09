@@ -158,6 +158,9 @@ przez Message Creator), `leads/`, `forms/`, `views/`, `settings/`, `users/`,
   zapisanych raportów pod `views/reports` (przemianowane z
   `actions/reports` w Story 53). Zawiera też opis wywołań Content
   Providera i wynik testu ręcznego względem realnego CP.
+- `views/features/dates-reports.md` + `views/features/system-pages.md`
+  (Story 113) — Views → Dates Reports (dane z root `randki`) oraz migracja
+  implementacji Reports/Dates Reports do `packages/dashboard/system-pages/`.
 - `forms/features/daily-tracker-dates.md` (zweryfikowane end-to-end,
   2026-07-12; dodane do tego indeksu w Story 62, 2026-07-16 — **przeczytaj
   przed dotknięciem Daily Entry/Tracker/Date Entry/Dates kodu**) — Forms →
