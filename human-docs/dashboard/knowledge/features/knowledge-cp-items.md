@@ -144,10 +144,14 @@ routing i layout zmieniły się dalej:
     zamiast `truncate`; pojedynczy nie-łamliwy token (>42 znaków bez
     spacji) dostaje lokalne przyciski `‹ ›` przesuwające tylko tekst tego
     wiersza (`components/shared/knowledge-grid-row.tsx`);
-  - wysokość karty = cel ~5 widocznych wpisów (lub ~8, gdy WSZYSTKIE karty
-    w danym wizualnym wierszu mają >5 wpisów), licząc ceil-średnią wpisów
-    w wierszu (`targetForRow`/`computeRowCaps`) — krótkie karty zostają
-    naturalne, długie dostają `overflow-y-auto` + `maxHeight`;
+  - wysokość karty: wyłącznie per-karta, niezależnie od sąsiadów —
+    wszystkie wpisy widoczne do `maxVisibleRowsBeforeScroll` (10); dopiero
+    powyżej 10 karta dostaje cap do 10 wierszy + własny
+    `overflow-y-auto`/`maxHeight` (`computeRowCaps`, bez żadnego
+    uśredniania z sąsiednimi kartami czy pojęcia "wizualnego wiersza");
+  - `items-start` na gridzie — karty NIE są rozciągane do wysokości
+    najwyższej karty w tym samym rzędzie CSS Grid, więc tytuły w różnych
+    kolumnach nie muszą być na tym samym poziomie;
   - pomiar realnej szerokości tekstu (DOM probe-span) + `ResizeObserver`
     kontenera: `components/shared/use-knowledge-grid-layout.ts`.
   - Card visuals (`LIST_ROW_WRAPPER_CLASS`/`LIST_ROW_CLASS`, ikony

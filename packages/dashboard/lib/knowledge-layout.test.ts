@@ -5,7 +5,6 @@ import {
   chooseColumnsAndWidths,
   computeRowCaps,
   hasUnbreakableToken,
-  targetForRow,
   textsForColumn,
   widthForChars,
 } from "./knowledge-layout.js";
@@ -105,41 +104,19 @@ describe("chooseColumnsAndWidths (Story 114)", () => {
   });
 });
 
-describe("targetForRow (Story 114)", () => {
-  it("matches the spec's 2-column example: 1 + 5 -> average 3", () => {
-    expect(targetForRow([1, 5])).toBe(3);
-  });
-
-  it("matches the spec's 3-column example: 1 + 1 + 5 -> ceil(2.33) = 3", () => {
-    expect(targetForRow([1, 1, 5])).toBe(3);
-  });
-
-  it("raises the cap to ~8 only when every card in the row is large (>5 items)", () => {
-    expect(targetForRow([20, 30])).toBe(8);
-  });
-
-  it("uses the normal ~5 cap when not every card in the row is large", () => {
-    expect(targetForRow([2, 30])).toBe(5);
-  });
-
-  it("never returns less than 1", () => {
-    expect(targetForRow([0])).toBe(1);
-  });
-});
-
 describe("computeRowCaps (Story 114)", () => {
-  it("only caps cards that exceed their row's target; short cards stay uncapped", () => {
-    // row: [1, 5] -> target 3; card0 (1) stays natural, card1 (5) capped at 3
-    expect(computeRowCaps([1, 5], 2)).toEqual([null, 3]);
+  it("shows every item, uncapped, up to and including the threshold (10)", () => {
+    expect(computeRowCaps([1, 10])).toEqual([null, null]);
   });
 
-  it("caps every card in an all-large row at the 8 cap when all exceed it", () => {
-    expect(computeRowCaps([20, 30], 2)).toEqual([8, 8]);
+  it("caps only a card that goes strictly above the threshold, to that threshold", () => {
+    expect(computeRowCaps([11])).toEqual([10]);
+    expect(computeRowCaps([25])).toEqual([10]);
   });
 
-  it("groups cards into visual rows of `cols` cards each", () => {
-    // rows: [1,1,5] -> target 3 (only card2 capped); [25] alone -> "all large" row, cap 8
-    expect(computeRowCaps([1, 1, 5, 25], 3)).toEqual([null, null, 3, 8]);
+  it("judges each card purely on its own count — a short card next to a huge one stays uncapped", () => {
+    expect(computeRowCaps([1, 1, 5, 25])).toEqual([null, null, null, 10]);
+    expect(computeRowCaps([2, 30])).toEqual([null, 10]);
   });
 });
 

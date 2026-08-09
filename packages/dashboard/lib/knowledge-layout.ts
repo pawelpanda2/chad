@@ -9,9 +9,12 @@
  * - each column gets its own width from the average length of the texts
  *   routed into it (+`widthReserveRatio` slack), clamped to
  *   [`minColumnWidthPx`, `maxColumnWidthPx`];
- * - each visual row's height cap is the ceil-average item count across the
- *   cards in that row, itself capped at `normalRowCap` (or `allLargeRowCap`
- *   when every card in the row exceeds `largeRowThreshold` items).
+ * - height is per-card and independent of any other card: every item shows
+ *   up to `maxVisibleRowsBeforeScroll`; only once a single card exceeds
+ *   that does IT get capped (to that many visible rows) with its own
+ *   scrollbar for the rest. Cards are not stretched to match neighbors'
+ *   height (see `items-start` on the grid container in the page), so
+ *   titles across columns are not forced onto the same horizontal line.
  *
  * DOM concerns (measuring actual pixel widths, ResizeObserver, per-row
  * unbreakable-token overflow) live in `use-knowledge-grid-layout.ts` and the
@@ -32,12 +35,13 @@ export interface KnowledgeLayoutParams {
   minTargetChars: number;
   /** Upper bound on the "target chars per line" used to size a column. */
   maxTargetChars: number;
-  /** Visible-row cap for a card whose row-mates are not all "large". */
-  normalRowCap: number;
-  /** Visible-row cap for a card whose row-mates are ALL "large" (see `largeRowThreshold`). */
-  allLargeRowCap: number;
-  /** An item count above this makes a card "large" for the all-large-row-cap check. */
-  largeRowThreshold: number;
+  /**
+   * A card shows every item, uncapped, up to this many. Only once its own
+   * item count goes ABOVE this does it get capped to this many visible
+   * rows (plus its own vertical scrollbar for the rest) — independent of
+   * any other card, no averaging with neighbors.
+   */
+  maxVisibleRowsBeforeScroll: number;
   /**
    * Grid gap between columns, in px — subtracted from available width when
    * fitting columns. Must match the actual rendered CSS gap (this project's
@@ -56,9 +60,7 @@ export const DEFAULT_KNOWLEDGE_LAYOUT_PARAMS: KnowledgeLayoutParams = {
   widthReserveRatio: 1.3,
   minTargetChars: 12,
   maxTargetChars: 46,
-  normalRowCap: 5,
-  allLargeRowCap: 8,
-  largeRowThreshold: 5,
+  maxVisibleRowsBeforeScroll: 10,
   gapPx: 10,
   unbreakableWordCharThreshold: 42,
 };
@@ -145,40 +147,20 @@ export function chooseColumnsAndWidths(
   };
 }
 
-/** Ceil-average item count across cards sharing one visual row, capped at `normalRowCap`/`allLargeRowCap`. */
-export function targetForRow(
-  counts: number[],
-  params: KnowledgeLayoutParams = DEFAULT_KNOWLEDGE_LAYOUT_PARAMS
-): number {
-  if (counts.length === 0) return params.normalRowCap;
-  const avg = counts.reduce((a, b) => a + b, 0) / counts.length;
-  const ceilAvg = Math.ceil(avg);
-  const allLarge = counts.every((n) => n > params.largeRowThreshold);
-  const cap = allLarge ? params.allLargeRowCap : params.normalRowCap;
-  return Math.max(1, Math.min(cap, ceilAvg));
-}
-
 /**
  * Per-card visible-row cap (`null` = no cap, card stays its natural
- * height). Cards are grouped into visual rows of `cols` in source order
- * (matching CSS grid auto-flow); within each row, only cards whose own
- * count exceeds that row's `targetForRow` get capped — short cards in the
- * same row are left alone.
+ * height — every item visible, no inner scrollbar).
+ *
+ * Purely per-card, independent of any other card or its position in the
+ * grid: a count at or below `maxVisibleRowsBeforeScroll` always shows in
+ * full; only once a card's own count goes above that does it get capped to
+ * that many visible rows plus a vertical scrollbar for the rest.
  */
 export function computeRowCaps(
   cardCounts: number[],
-  cols: number,
   params: KnowledgeLayoutParams = DEFAULT_KNOWLEDGE_LAYOUT_PARAMS
 ): Array<number | null> {
-  const caps: Array<number | null> = new Array(cardCounts.length).fill(null);
-  for (let i = 0; i < cardCounts.length; i += cols) {
-    const rowCounts = cardCounts.slice(i, i + cols);
-    const target = targetForRow(rowCounts, params);
-    rowCounts.forEach((count, offset) => {
-      if (count > target) caps[i + offset] = target;
-    });
-  }
-  return caps;
+  return cardCounts.map((count) => (count > params.maxVisibleRowsBeforeScroll ? params.maxVisibleRowsBeforeScroll : null));
 }
 
 /** True when `text` contains a single word longer than the unbreakable-token threshold — the only case that gets local ‹ › shift controls instead of normal wrapping. */

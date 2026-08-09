@@ -11,7 +11,7 @@ import {
 export interface KnowledgeGridCardInput {
   /** Card title + every item label routed into it — feeds the per-column width heuristic. */
   texts: string[];
-  /** Item count — feeds the per-row height cap. */
+  /** Item count — feeds this card's own height cap (independent of other cards). */
   itemCount: number;
 }
 
@@ -19,7 +19,7 @@ export interface KnowledgeGridLayout {
   containerRef: RefObject<HTMLDivElement | null>;
   cols: number;
   widths: number[];
-  /** One entry per card, same order as `cards`; `null` = no height cap for that card. */
+  /** One entry per card, same order as `cards`; `null` = no height cap (shows every item) for that card. */
   rowCaps: Array<number | null>;
 }
 
@@ -87,7 +87,6 @@ export function useKnowledgeGridLayout(
 
   const rowCaps = computeRowCaps(
     cards.map((c) => c.itemCount),
-    layout.cols,
     params
   );
 

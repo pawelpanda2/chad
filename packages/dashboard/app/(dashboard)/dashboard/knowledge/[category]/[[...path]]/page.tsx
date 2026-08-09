@@ -1,7 +1,7 @@
 "use client";
 
 import { use, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { RefreshCw } from "lucide-react";
 import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
 import { EditorPageShell } from "@/components/shared/editor-page-shell";
@@ -104,7 +104,6 @@ export default function KnowledgeNodePage({
   params: Promise<{ category: string; path?: string[] }>;
 }) {
   const { category: categorySlug, path: pathSlugs = [] } = use(params);
-  const router = useRouter();
   const [node, setNode] = useState<KnowledgeNodeView | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -269,13 +268,10 @@ export default function KnowledgeNodePage({
           </p>
         ) : (
           <KnowledgeFolderGrid
+            categorySlug={categorySlug}
+            pathSlugs={pathSlugs}
             looseDocuments={looseDocuments}
             cards={cards}
-            onLooseRowClick={(slug) => router.push(knowledgePageHref(categorySlug, [...pathSlugs, slug]))}
-            onCardTitleClick={(card) => router.push(knowledgePageHref(categorySlug, [...pathSlugs, card.slug]))}
-            onCardRowClick={(card, slug) =>
-              router.push(knowledgePageHref(categorySlug, [...pathSlugs, card.slug, slug]))
-            }
           />
         );
       })() : null}
@@ -283,7 +279,7 @@ export default function KnowledgeNodePage({
   );
 }
 
-/** Approximate rendered height (px) of one `LIST_ROW_CLASS` row — used only to convert a "~N visible rows" height cap into a `maxHeight`, not a pixel-exact measurement (the heuristic in `lib/knowledge-layout.ts` is itself approximate, "about 5/8 rows"). */
+/** Approximate rendered height (px) of one `LIST_ROW_CLASS` row — used only to convert a "~N visible rows" height cap into a `maxHeight`, not a pixel-exact measurement. */
 const APPROX_ROW_HEIGHT_PX = 42;
 
 type GridCardEntry =
@@ -295,22 +291,27 @@ type GridCardEntry =
  * before (`LIST_ROW_WRAPPER_CLASS`/`LIST_ROW_CLASS`, Folder/Text icons via
  * `KnowledgeGridRow`) — only the arrangement algorithm changed. Up to 3
  * columns, each with its own width from `useKnowledgeGridLayout` (per-column
- * text-length heuristic), rows wrap instead of truncating, and any card
- * whose item count exceeds its visual row's height cap gets a scrollable
- * `maxHeight` instead of growing unbounded.
+ * text-length heuristic), rows wrap instead of truncating. Height is
+ * per-card only: every item shows in full up to
+ * `maxVisibleRowsBeforeScroll` (10) items; a card with more gets capped to
+ * that many visible rows plus its own scrollbar — independent of any other
+ * card. `items-start` on the grid keeps cards from stretching to match
+ * their row-mates, so a short card next to a tall one just ends where its
+ * own content ends (titles across columns are not forced onto one line).
+ * Every title/row is a real `<Link>` (via `KnowledgeGridRow`/the title link
+ * below), so ctrl/cmd-click, middle-click, and "open in new tab" work for
+ * both Folder and Text entries, same as any other link in the app.
  */
 function KnowledgeFolderGrid({
+  categorySlug,
+  pathSlugs,
   looseDocuments,
   cards,
-  onLooseRowClick,
-  onCardTitleClick,
-  onCardRowClick,
 }: {
+  categorySlug: string;
+  pathSlugs: string[];
   looseDocuments: KnowledgeChildSummary[];
   cards: KnowledgeCard[];
-  onLooseRowClick: (slug: string) => void;
-  onCardTitleClick: (card: KnowledgeCard) => void;
-  onCardRowClick: (card: KnowledgeCard, slug: string) => void;
 }) {
   const gridCards: GridCardEntry[] = [
     ...(looseDocuments.length > 0
@@ -330,22 +331,22 @@ function KnowledgeFolderGrid({
   return (
     <div
       ref={containerRef}
-      className={`grid content-start justify-start ${FRAME_SECTION_GAP_CLASS}`}
+      className={`grid content-start items-start justify-start ${FRAME_SECTION_GAP_CLASS}`}
       style={{ gridTemplateColumns: widths.map((w) => `${w}px`).join(" ") }}
     >
       {gridCards.map((entry, index) => {
         const rows = entry.kind === "loose" ? entry.rows : entry.card.children;
         const cap = rowCaps[index];
+        const basePathSlugs = entry.kind === "loose" ? pathSlugs : [...pathSlugs, entry.card.slug];
         return (
           <div key={entry.key} className={`${LIST_ROW_WRAPPER_CLASS} min-w-0`}>
             {entry.kind === "folder" && (
-              <button
-                type="button"
-                onClick={() => onCardTitleClick(entry.card)}
-                className="w-full break-words px-[10px] pt-1 pb-2 text-left text-sm font-bold hover:underline"
+              <Link
+                href={knowledgePageHref(categorySlug, [...pathSlugs, entry.card.slug])}
+                className="block w-full break-words px-[10px] pt-1 pb-2 text-left text-sm font-bold hover:underline"
               >
                 {entry.card.name}
-              </button>
+              </Link>
             )}
             <div
               className="divide-y overflow-y-auto overflow-x-hidden"
@@ -356,9 +357,7 @@ function KnowledgeFolderGrid({
                   key={row.slug}
                   type={row.type}
                   name={row.name}
-                  onClick={() =>
-                    entry.kind === "loose" ? onLooseRowClick(row.slug) : onCardRowClick(entry.card, row.slug)
-                  }
+                  href={knowledgePageHref(categorySlug, [...basePathSlugs, row.slug])}
                 />
               ))}
               {rows.length === 0 && (

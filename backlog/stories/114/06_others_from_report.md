@@ -10,9 +10,11 @@ has anywhere near 25. Per the request's own constraints (`nie dotykaj
 chad_shared ani realnych danych`, `nie migruj danych`), I did not fabricate
 a 25-item section in `chad_shared` to force this. The height-cap/scroll
 behavior for a 25-item card is instead verified by:
-- `computeRowCaps` unit tests (`knowledge-layout.test.ts`) with count=25
-  inputs, confirming the correct cap (8, "all-large" row) and that shorter
-  row-mates stay uncapped;
+- `computeRowCaps` unit tests (`knowledge-layout.test.ts`) with count=25 and
+  count=11 inputs, confirming the cap lands at the flat
+  `maxVisibleRowsBeforeScroll` threshold (10, per-card, Task 3's
+  simplification of the original row-averaging rule — see
+  `05_tasks_and_checklist.md` Task 3) independent of any neighboring card;
 - direct code inspection: `KnowledgeFolderGrid` always renders the rows
   container with `overflow-y-auto overflow-x-hidden` and applies
   `maxHeight` whenever `computeRowCaps` returns non-null for that card — the
@@ -46,3 +48,15 @@ verification for those pages was done via `browser_evaluate` (grid
 `document.documentElement.scrollWidth` vs `clientWidth`) instead of pixel
 screenshots, which is actually a more precise check for this specific
 layout algorithm anyway.
+
+## Docker build cache went stale mid-Story (see Task 3/4 note in `05_tasks_and_checklist.md`)
+
+A normal cached `02_build.sh` run silently produced an image still running
+Task 2's pre-follow-up code after Task 3/4's source changes — confirmed by
+grepping the compiled bundle inside the running container. `docker compose
+build --no-cache` (same config/tagging as the official script) fixed it
+both times it recurred. Not root-caused, not fixed in the build script
+itself (deployment tooling, out of scope here) — flagged as a real
+follow-up worth investigating separately, since it means a green "Image
+built" log is not on its own sufficient evidence that a local Docker smoke
+test is against current code.
