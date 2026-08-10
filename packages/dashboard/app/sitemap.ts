@@ -47,7 +47,13 @@ export default function sitemap(): MetadataRoute.Sitemap {
 			priority: 0.7,
 		},
 		{
-			url: `${baseUrl}/dashboard/users`,
+			url: `${baseUrl}/dashboard/admin/users`,
+			lastModified: new Date(),
+			changeFrequency: "monthly",
+			priority: 0.6,
+		},
+		{
+			url: `${baseUrl}/dashboard/admin/payments`,
 			lastModified: new Date(),
 			changeFrequency: "monthly",
 			priority: 0.6,

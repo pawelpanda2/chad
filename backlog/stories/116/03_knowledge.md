@@ -52,3 +52,28 @@
   reaches the container without any image rebuild, and confirms
   `docker-compose.local.yml`'s `${STRIPE_SECRET_KEY:-}` substitution is
   resolved from this exact file.
+- **Stripe CLI (Input 5)** — `stripe listen --forward-to <host>/api/webhooks/stripe
+  --api-key sk_test_...` is the standard way to get real webhook delivery
+  into a local dev server with no public URL; `stripe listen --print-secret
+  --api-key ...` returns a one-shot signing secret without starting a
+  listener, but a *running* `stripe listen` session mints its own **separate**
+  signing secret each time (printed once at startup) — the two are not
+  interchangeable, `.env.local`'s `STRIPE_WEBHOOK_SECRET` must match
+  whichever mechanism is actually running. No Homebrew tap access in this
+  environment (outdated Xcode CLT blocked `brew install`); used the
+  arm64 GitHub release tarball directly instead
+  (`stripe-cli/releases/download/v1.45.2/stripe_1.45.2_mac-os_arm64.tar.gz`),
+  extracted to the scratchpad, no system-wide install.
+- `packages/dashboard/app/(dashboard)/dashboard/msg-automation/page.tsx` —
+  the repo's established "hub" pattern (single sidebar entry → a
+  `DashboardPageShell` with a button grid, each button `router.push`ing to
+  its own route). Copied exactly for `/dashboard/admin` after the user's
+  Input 6 correction replaced the initial flat two-item "Admin" sidebar
+  group with this pattern — Users/Payments keep their own routes/pages,
+  the hub page is just the entry point.
+- `packages/dba/src/testing/test3-guard.ts`'s `TEST3_REPO_GUID` and the
+  real `pawel_f`/`kamil_s`/`test3` GUIDs are all visible in plain
+  `[AdminUsers] Debug info:` container log output (`console.log` in
+  `packages/dashboard/lib/user-service.ts`) — repoGuids are not secret
+  (unlike passwords/API keys), safe to have seen in Docker logs during
+  live verification.

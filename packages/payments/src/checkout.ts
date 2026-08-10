@@ -23,6 +23,8 @@ export interface CreateCheckoutSessionInput {
 export interface CreatedCheckoutSession {
   id: string;
   url: string;
+  /** Stripe's own flag — Sandbox/Test vs a real charge. Never inferred from key naming. */
+  livemode: boolean;
 }
 
 export async function createCheckoutSession(
@@ -71,5 +73,5 @@ export async function createCheckoutSession(
     throw new Error("Stripe did not return a Checkout Session URL.");
   }
 
-  return { id: session.id, url: session.url };
+  return { id: session.id, url: session.url, livemode: session.livemode };
 }

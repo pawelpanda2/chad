@@ -84,12 +84,15 @@ const sidebarGroups: Array<{ title: string; items: SidebarItem[] }> = [
 				activePrefixes: ["/dashboard/examples"],
 			},
 			{ title: "Settings", href: "/dashboard/settings", icon: Settings, badge: null },
-		],
-	},
-	{
-		title: "Admin",
-		items: [
-			{ title: "Users", href: "/dashboard/users", icon: Users, badge: null },
+			{
+				title: "Admin",
+				href: "/dashboard/admin",
+				icon: Users,
+				badge: null,
+				// Hub page (button grid, same pattern as Msg Auto) linking to
+				// Users/Payments — single sidebar entry, same shape as Msg Auto/Knowledge.
+				activePrefixes: ["/dashboard/admin"],
+			},
 		],
 	},
 ];

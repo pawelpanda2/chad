@@ -28,7 +28,7 @@ export interface DevPanelError {
   rawError?: string;
 }
 
-export type DevPanelTab = 'requests' | 'errors' | 'settings';
+export type DevPanelTab = 'requests' | 'errors' | 'settings' | 'payments';
 
 interface DevPanelStoreContextType {
   // Requests

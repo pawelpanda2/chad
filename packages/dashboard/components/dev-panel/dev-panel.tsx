@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { useDevPanelStore } from '@/lib/dev-panel/dev-panel-store';
 import { DevPanelDataSourceTab } from './dev-panel-data-source';
+import { DevPanelPaymentsTab } from './dev-panel-payments';
 
 export function DevPanel() {
   const {
@@ -131,6 +132,12 @@ export function DevPanel() {
             onClick={() => setTab('requests')}
           >
             🌐 Requests {requestCount > 0 ? `(${requestCount})` : ''}
+          </button>
+          <button
+            className={`dev-tab ${activeTab === 'payments' ? 'active' : ''}`}
+            onClick={() => setTab('payments')}
+          >
+            💳 Payments
           </button>
         </div>
 
@@ -283,6 +290,8 @@ export function DevPanel() {
           )}
 
           {activeTab === 'settings' && <DevPanelDataSourceTab />}
+
+          {activeTab === 'payments' && <DevPanelPaymentsTab />}
         </div>
       </div>
     </div>
