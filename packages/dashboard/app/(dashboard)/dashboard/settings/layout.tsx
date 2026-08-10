@@ -5,7 +5,6 @@ import { usePathname } from "next/navigation";
 
 import { cn } from "@/lib/utils";
 import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
-import { ThemeModeSelector } from "@/components/shared/theme-mode-selector";
 import { FRAME_SECTION_GAP_CLASS } from "@/components/shared/layout-tokens";
 
 const settingsTabs: Array<{ href: string; title: string }> = [
@@ -13,9 +12,8 @@ const settingsTabs: Array<{ href: string; title: string }> = [
 	{ title: "Account", href: "/dashboard/settings/account" },
 	{ title: "Password", href: "/dashboard/settings/password" },
 	{ title: "Appearance", href: "/dashboard/settings/appearance" },
-	{ title: "Notifications", href: "/dashboard/settings/notifications" },
 	{ title: "Display", href: "/dashboard/settings/display" },
-	{ title: "API", href: "/dashboard/settings/api-keys" },
+	{ title: "Payments", href: "/dashboard/settings/payments" },
 	{ title: "Folders", href: "/dashboard/settings/read-only-folders" },
 ];
 
@@ -35,13 +33,6 @@ export default function SettingsLayout({ children }: SettingsLayoutProps) {
 
 	return (
 		<DashboardPageShell title="Settings" contentClassName={FRAME_SECTION_GAP_CLASS}>
-			<div className="rounded-lg border bg-muted/10 p-4">
-				<div className="space-y-2">
-					<h4 className="text-sm font-medium">Theme</h4>
-					<ThemeModeSelector />
-				</div>
-			</div>
-
 			<div className="rounded-lg border bg-muted/10 p-4">
 				<nav
 					className="mb-4 flex flex-wrap gap-1 rounded-lg bg-muted p-[3px]"

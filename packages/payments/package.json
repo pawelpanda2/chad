@@ -1,0 +1,27 @@
+{
+  "name": "payments",
+  "version": "1.0.0",
+  "description": "Stripe Checkout (one-off card payments, dynamic amount) integration for CHAD. No UI/HTTP server, no persistence — consumed only by packages/dba (never by packages/dashboard directly).",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "stripe": "^22.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "typescript": "^5.3.3"
+  }
+}
