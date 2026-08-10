@@ -12,6 +12,8 @@
 | 8 | DONE | | Webhook-confirmed payment status is idempotent and isolated per user |
 | 9 | PARTIAL | | Payments success/cancel pages show a clear state and never create a second Checkout Session on refresh |
 | 10 | DONE | | No Stripe secret ever reaches the browser; unrelated Settings tabs (Profile/Account/Password/Appearance/Folders) still work as before |
+| 11 | DONE | | With a real Stripe Sandbox `STRIPE_SECRET_KEY` configured in local Docker, Pay with card creates a real Stripe Checkout Session end-to-end |
+| 12 | DONE | | PROD env/docker config is prepared so the webhook works at `https://chad.biz.pl/api/webhooks/stripe` once deployed and a `STRIPE_WEBHOOK_SECRET` is added — without deploying PROD or going LIVE now |
 
 # Task 1 — Settings navigation cleanup
 
@@ -132,3 +134,33 @@
 **Tested:** `pnpm build` (dashboard) succeeded with no new client-bundle warnings referencing Stripe secrets. Real browser smoke test confirmed the Payments page's own error message names the missing env var, not its value (there is none to leak locally). Password/Account/Appearance/Folders pages were not modified by this Story; `settings/layout.test.tsx` explicitly asserts all of Profile/Account/Password/Appearance/Display/Folders links still render.
 
 **Status: DONE**
+
+# Task 11 — Real Stripe Sandbox key, end-to-end Checkout Session creation
+
+**Requested (Input 3):** place the user-supplied real Stripe test secret key in the real local env used by local Mac Docker (never in `.example`/docs/Story/logs/Git); confirm docker-compose actually passes `STRIPE_SECRET_KEY` to the right container; restart/rebuild via the official CHAD scripts and verify Checkout.
+
+**Done:** appended `STRIPE_SECRET_KEY=sk_test_...` to `.env.local` (append-only, value never echoed back in any later command). Confirmed `docker-compose.local.yml`'s `dashboard:` service already passes it through (`STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}`, wired in the original Story 116 work). Restarted via the official `03_re-start.sh` (`--env-file .env.local`, per `01_config.sh` — no rebuild needed for an env-only change). Verified inside the running container (`docker exec ... printenv`-equivalent length check only, never the value) that the key actually reached the process.
+
+Logged in as `test2` (real credentials from `.env.local`'s `E2E_LOGIN_PASSWORD`, never printed) and called `POST /api/settings/payments/checkout` for real: a 12.34 PLN amount produced a genuine `https://checkout.stripe.com/c/pay/cs_test_...` URL, and the corresponding `cp_stripe_payments` row (`status: pending`, `amount_minor: 1234`, `currency: PLN`, correct `repo_guid`) appeared on the real shared QNAP Postgres — the entire path (validation → dba → packages/payments → real Stripe API → DB write → status endpoint) is now proven live, not just unit-tested.
+
+**Bug found and fixed via this live test:** an amount below Stripe's own per-currency minimum charge (e.g. 1 PLN — Stripe requires ≥ ~2.00 PLN) was previously an unhandled `500 "Failed to start checkout"`. `packages/payments/src/checkout.ts` now catches `Stripe.errors.StripeInvalidRequestError` for this specific case (`code === "amount_too_small"` or the `unit_amount` param) and raises the existing `InvalidAmountError`, so it surfaces as a controlled `400 invalid_amount` with a clear message instead — re-verified live after the fix (amount=1 → 400; amount=12.34 → real session again).
+
+**Files changed:** `.env.local` (real secret, gitignored, never committed); `packages/payments/src/checkout.ts` (bug fix).
+
+**Tested:** live against the real running local Docker container + real Stripe Sandbox API, as described above. Full existing automated suite (31 tests) re-run and still green after the fix.
+
+**Status: DONE**
+
+# Task 12 — Prepare (not deploy) the public webhook for `https://chad.biz.pl/api/webhooks/stripe`
+
+**Requested (Input 3):** the webhook must, once deployed: work without a CHAD session, accept POST from Stripe, verify `Stripe-Signature`, use `STRIPE_WEBHOOK_SECRET` server-side only, use the raw body, stay idempotent, handle `checkout.session.completed`, and never treat the success URL alone as proof of payment. Explicitly: do not deploy PROD and do not configure LIVE Stripe now — only prepare code/env/docker so a future deploy only needs the Stripe Dashboard endpoint + `whsec_...`.
+
+**Done:** the webhook route itself already satisfied every one of these bullets from the original Story 116 work (see Task 7/8/9 above) — `pathname`-based route matching in `middleware.ts` means the same public exemption applies on any domain (`chad.biz.pl`, `test.chad.biz.pl`, `localhost`), so no domain-specific code was needed. Checked `human-docs/dashboard/common/features/nginx-proxy-manager-domains.md`/`chad-domain-ssl.md` — `chad.biz.pl` is a plain full-passthrough reverse proxy to the PROD container (no path-based allow/block rules), so nothing there needs changing either.
+
+What was actually missing was PROD **configuration surface**, not app code: `docker-compose.qnap.prod.yml`'s `dashboard` service had no `STRIPE_SECRET_KEY`/`STRIPE_WEBHOOK_SECRET` passthrough at all (Story 116 originally wired only `docker-compose.local.yml`, matching the `google-contacts` precedent of local-only). Added the same `${VAR:-}` passthrough to the PROD compose file, and empty `STRIPE_SECRET_KEY=`/`STRIPE_WEBHOOK_SECRET=` placeholders to the real `.env.qnap` (empty — no value placed, unlike `.env.local`) and to `.env.qnap.example` (documentation only). Nothing was deployed; `docker compose -f docker-compose.qnap.prod.yml config` was used only to validate YAML syntax, never `up`/`restart`.
+
+**Files changed:** `docker-compose.qnap.prod.yml`, `.env.qnap` (empty placeholders only), `.env.qnap.example`.
+
+**Tested:** `docker compose -f docker-compose.qnap.prod.yml config --quiet` (with a dummy `IMAGE_TAG`) validates cleanly — no YAML/interpolation errors. No live PROD test performed (correctly, per the explicit instruction not to deploy PROD now). Once a real deploy happens and `.env.qnap` gets real values, the exact same code path already verified live in Task 11 (local) applies unchanged.
+
+**Status: DONE** (code/config ready; real PROD webhook delivery necessarily unverified until an actual future deploy — out of this task's explicit scope).

@@ -8,6 +8,7 @@
  */
 import Stripe from "stripe";
 import { requireStripeSecretKey } from "./config.js";
+import { InvalidAmountError } from "./errors.js";
 import type { ParsedAmount } from "./amount.js";
 
 export interface CreateCheckoutSessionInput {
@@ -29,26 +30,42 @@ export async function createCheckoutSession(
 ): Promise<CreatedCheckoutSession> {
   const stripe = new Stripe(requireStripeSecretKey());
 
-  const session = await stripe.checkout.sessions.create({
-    mode: "payment",
-    client_reference_id: input.clientReferenceId,
-    metadata: input.metadata,
-    success_url: input.successUrl,
-    cancel_url: input.cancelUrl,
-    line_items: [
-      {
-        quantity: 1,
-        price_data: {
-          // Stripe currency codes are lowercase ISO-4217.
-          currency: input.amount.currency.toLowerCase(),
-          unit_amount: input.amount.minorUnits,
-          product_data: {
-            name: "CHAD payment",
+  let session: Stripe.Checkout.Session;
+  try {
+    session = await stripe.checkout.sessions.create({
+      mode: "payment",
+      client_reference_id: input.clientReferenceId,
+      metadata: input.metadata,
+      success_url: input.successUrl,
+      cancel_url: input.cancelUrl,
+      line_items: [
+        {
+          quantity: 1,
+          price_data: {
+            // Stripe currency codes are lowercase ISO-4217.
+            currency: input.amount.currency.toLowerCase(),
+            unit_amount: input.amount.minorUnits,
+            product_data: {
+              name: "CHAD payment",
+            },
           },
         },
-      },
-    ],
-  });
+      ],
+    });
+  } catch (error) {
+    // Stripe enforces its own per-currency minimum charge (e.g. ~2.00 PLN)
+    // independently of our own §1.5 validation — surfaced as a controlled
+    // 400 (the amount, not the server, is the problem), not a raw 500.
+    if (
+      error instanceof Stripe.errors.StripeInvalidRequestError &&
+      (error.code === "amount_too_small" || error.param === "line_items[0][price_data][unit_amount]")
+    ) {
+      throw new InvalidAmountError(
+        "Amount is too small for Stripe to process — try a larger amount.",
+      );
+    }
+    throw error;
+  }
 
   if (!session.url) {
     throw new Error("Stripe did not return a Checkout Session URL.");
