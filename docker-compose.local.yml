@@ -192,6 +192,9 @@ services:
       - GOOGLE_CONTACTS_CLIENT_ID=${GOOGLE_CONTACTS_CLIENT_ID:-}
       - GOOGLE_CONTACTS_CLIENT_SECRET=${GOOGLE_CONTACTS_CLIENT_SECRET:-}
       - GOOGLE_CONTACTS_REDIRECT_URI=${GOOGLE_CONTACTS_REDIRECT_URI:-}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-}
+      - PAYMENTS_MAX_AMOUNT_MAJOR_PLN=${PAYMENTS_MAX_AMOUNT_MAJOR_PLN:-}
       # Encrypt per-user OAuth refresh tokens + other cp_item secrets.
       - SECRETS_ENCRYPTION_KEY=${SECRETS_ENCRYPTION_KEY:-}
       # Session HMAC; OAuth state falls back to SECRETS_ENCRYPTION_KEY if unset.
@@ -212,10 +215,9 @@ services:
       - DEV_DB_SOURCE_PREF_PATH=/app/runtime/dev-data-source.json
       # Forms → Add recording (Story 93). Container path; host bind below.
       - CHAD_AUDIO_RECORDINGS_DIR=/app/audio-recordings
-      # Google Contacts → per-contact CHAD-local photos. Container path;
-      # host bind below. Root is the `02_files_refrenced` PARENT dir (not a
-      # single subfolder like audio) so the app can create/read each CHAD
-      # user's own `<username>/01_files_photos/` subtree underneath it.
+      # Referenced files root (Story 112): host
+      # `/Volumes/cp_1/chad-data/02_files_refrenced` → `/app/contact-photos`.
+      # Per-user trees: photos, zip, audio recordings/drafts.
       - CHAD_CONTACT_PHOTOS_DIR=/app/contact-photos
       # Story 105 — local Mac only. Dashboard (Docker) → host helper via
       # host.docker.internal (helper binds 0.0.0.0:12701 + Bearer token;
@@ -237,12 +239,15 @@ services:
         bind:
           create_host_path: true
       - type: bind
-        source: ${CHAD_AUDIO_RECORDINGS_HOST_PATH:-/Volumes/cp_1/02_files_refrenced/10_files_audio}
+        # Legacy optional mount (Story 112): prefer per-user paths under
+        # contact-photos. Default points at pawel_f audio base after chad-data move.
+        source: ${CHAD_AUDIO_RECORDINGS_HOST_PATH:-/Volumes/cp_1/chad-data/02_files_refrenced/pawel_f/10_files_audio}
         target: /app/audio-recordings
         bind:
           create_host_path: true
       - type: bind
-        source: ${CHAD_CONTACT_PHOTOS_HOST_PATH:-/Volumes/cp_1/02_files_refrenced}
+        # Story 112: referenced files live under chad-data on cp_1.
+        source: ${CHAD_CONTACT_PHOTOS_HOST_PATH:-/Volumes/cp_1/chad-data/02_files_refrenced}
         target: /app/contact-photos
         bind:
           create_host_path: true

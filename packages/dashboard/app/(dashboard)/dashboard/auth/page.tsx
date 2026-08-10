@@ -1,7 +1,7 @@
 "use client";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { LogIn, UserPlus, Lock, Mail, Shield, Key } from "lucide-react";
+import { LogIn, UserPlus, Lock, Mail, Shield } from "lucide-react";
 import Link from "next/link";
 
 const authPages = [
@@ -39,13 +39,6 @@ const authPages = [
 		description: "A page for users to set up two-factor authentication.",
 		icon: Shield,
 		href: "/setup-2fa",
-		status: "Ready",
-	},
-	{
-		title: "API Keys",
-		description: "A page to manage API keys for applications and services.",
-		icon: Key,
-		href: "/dashboard/settings/api-keys",
 		status: "Ready",
 	},
 ];

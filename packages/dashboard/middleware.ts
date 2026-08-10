@@ -23,7 +23,16 @@ export const config = {
 };
 
 // Routes that don't require authentication
-const publicRoutes = ["/login", "/api/auth/login", "/api/auth/logout", "/api/auth/session"];
+const publicRoutes = [
+	"/login",
+	"/api/auth/login",
+	"/api/auth/logout",
+	"/api/auth/session",
+	// Story 116 — Stripe calls this directly (no CHAD session cookie);
+	// authenticity is verified inside the route itself via Stripe-Signature
+	// (packages/payments's constructWebhookEvent), not the session cookie.
+	"/api/webhooks/stripe",
+];
 
 // Routes that are API routes and should be protected
 const protectedApiRoutes = ["/api"];

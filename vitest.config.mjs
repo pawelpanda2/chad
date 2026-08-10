@@ -194,6 +194,25 @@ export default defineConfig({
       "packages/mcp/src/protocol-smoke.test.ts",
       "packages/mcp/src/stdio-smoke.test.ts",
       "packages/mcp/src/integration.test.ts",
+      // Story 116 — Settings -> Display (real Theme, no dummy switches) +
+      // Payments (dynamic-amount Stripe Checkout): amount validation
+      // (float-safe PLN->grosze, every rejection rule), webhook signature
+      // verification (real local HMAC via Stripe's own test-header helper,
+      // no network/Sandbox key needed), origin resolution for success/
+      // cancel URLs, and the dba-level webhook idempotency/cross-user
+      // isolation test against real local Postgres. The amount/webhook
+      // unit tests exercise packages/payments's exports but live under
+      // packages/dba/src (their only real consumer) — a pre-existing
+      // vite-oxc transform bug fails ANY test file placed directly inside
+      // most leaf packages/* packages (reproduced independently in
+      // packages/mcp and packages/google-contacts, unrelated to this
+      // Story) — see 06_others_from_report.md.
+      "packages/dba/src/payments-amount.test.ts",
+      "packages/dba/src/payments-webhook.test.ts",
+      "packages/dba/src/payments.test.ts",
+      "packages/dashboard/lib/payments-public-origin.test.ts",
+      "packages/dashboard/app/(dashboard)/dashboard/settings/display/page.test.tsx",
+      "packages/dashboard/app/(dashboard)/dashboard/settings/layout.test.tsx",
     ],
     exclude: ["**/node_modules/**", "**/dist/**"],
     testTimeout: 30_000,
