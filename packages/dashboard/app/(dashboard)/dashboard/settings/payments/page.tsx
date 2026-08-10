@@ -11,7 +11,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
 import { ErrorBox } from "@/components/shared/error-box";
 import { CreditCard } from "lucide-react";
 
@@ -103,11 +102,6 @@ export default function PaymentsSettingsPage() {
 
 	return (
 		<div className="space-y-6">
-			<div>
-				<h3 className="text-lg font-medium">Payments</h3>
-			</div>
-			<Separator />
-
 			<Card>
 				<CardHeader>
 					<CardTitle>Pay with card</CardTitle>

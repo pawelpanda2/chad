@@ -1,67 +1,78 @@
 "use client";
-import { useEffect, useState } from "react";
+
+import { useCallback, useEffect, useState } from "react";
 import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
 import { FRAME_SECTION_GAP_CLASS } from "@/components/shared/layout-tokens";
+import { ErrorBox } from "@/components/shared/error-box";
+import { UsersList, type UsersListRow } from "@/components/shared/users-list";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@/components/ui/table";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
-import { MoreHorizontal, Mail, Phone } from "lucide-react";
-import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-
-interface User {
-	id: string;
-	username: string;
-	displayName: string | null;
-	isActive: boolean;
-	createdAt: string;
-	updatedAt: string;
-}
 
 export default function AdminUsersPage() {
-	const [users, setUsers] = useState<User[]>([]);
+	const [users, setUsers] = useState<UsersListRow[]>([]);
+	const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 	const [loading, setLoading] = useState(true);
+	const [error, setError] = useState<string | null>(null);
+	const [busyUserId, setBusyUserId] = useState<string | null>(null);
 
-	useEffect(() => {
-		fetchUsers();
-	}, []);
-
-	const fetchUsers = async () => {
+	const load = useCallback(async () => {
+		setLoading(true);
+		setError(null);
 		try {
-			const response = await fetch("/api/admin/users");
-			if (response.ok) {
-				const data = await response.json();
-				setUsers(data);
+			const [sessionRes, usersRes] = await Promise.all([
+				fetch("/api/auth/session"),
+				fetch("/api/admin/users"),
+			]);
+			const session = await sessionRes.json();
+			if (session?.user?.repoGuid) setCurrentUserId(session.user.repoGuid);
+
+			if (!usersRes.ok) {
+				const data = await usersRes.json().catch(() => ({}));
+				setError(data.error ?? `Failed to load users (${usersRes.status})`);
+				return;
 			}
-		} catch (error) {
-			console.error("Error fetching users:", error);
+			const data = await usersRes.json();
+			const list = Array.isArray(data) ? data : data.users ?? [];
+			setUsers(
+				list.map((u: UsersListRow & { role?: string }) => ({
+					id: u.id,
+					username: u.username,
+					displayName: u.displayName,
+					isActive: u.isActive,
+					role: u.role === "admin" ? "admin" : "user",
+				})),
+			);
+		} catch (err) {
+			setError(err instanceof Error ? err.message : "Failed to load users");
 		} finally {
 			setLoading(false);
 		}
-	};
+	}, []);
 
-	const getInitials = (name: string | null) => {
-		if (!name) return "U";
-		return name
-			.split(" ")
-			.map((n) => n[0])
-			.join("")
-			.toUpperCase()
-			.slice(0, 2);
-	};
+	useEffect(() => {
+		void load();
+	}, [load]);
+
+	async function handleToggleRole(user: UsersListRow, nextRole: "admin" | "user") {
+		setBusyUserId(user.id);
+		setError(null);
+		try {
+			const res = await fetch("/api/admin/users", {
+				method: "PATCH",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ repoGuid: user.id, role: nextRole }),
+			});
+			const data = await res.json();
+			if (!res.ok || !data.success) {
+				setError(data.details ?? data.error ?? "Failed to update role");
+				return;
+			}
+			await load();
+		} catch (err) {
+			setError(err instanceof Error ? err.message : "Failed to update role");
+		} finally {
+			setBusyUserId(null);
+		}
+	}
 
 	if (loading) {
 		return (
@@ -72,90 +83,20 @@ export default function AdminUsersPage() {
 	}
 
 	return (
-		<DashboardPageShell contentClassName={cn(FRAME_SECTION_GAP_CLASS, "overscroll-contain overflow-x-auto")} title="Admin — Users">
+		<DashboardPageShell
+			contentClassName={cn(FRAME_SECTION_GAP_CLASS, "overscroll-contain overflow-x-auto")}
+			title="Admin — Users"
+		>
 			<span className="shrink-0 text-xs text-muted-foreground">{users.length} users</span>
+			<ErrorBox message={error} />
 			<div className="border bg-muted/10">
-				{users.length === 0 ? (
-					<p className="py-8 text-center text-sm text-muted-foreground">
-						No users found.
-					</p>
-				) : (
-					<Table>
-						<TableHeader>
-							<TableRow>
-								<TableHead>User</TableHead>
-								<TableHead>Role</TableHead>
-								<TableHead>Status</TableHead>
-								<TableHead>Last Seen</TableHead>
-								<TableHead className="text-right">Actions</TableHead>
-							</TableRow>
-						</TableHeader>
-						<TableBody>
-							{users.map((user, index) => (
-								<TableRow key={`${user.id}-${index}`}>
-									<TableCell>
-										<div className="flex items-center gap-3">
-											<Avatar className="h-8 w-8">
-												<AvatarImage src="/avatar.png" alt={user.username} />
-												<AvatarFallback>
-													{getInitials(user.displayName)}
-												</AvatarFallback>
-											</Avatar>
-											<div>
-												<div className="font-medium">
-													{user.displayName || user.username}
-												</div>
-												<div className="text-sm text-muted-foreground">
-													{user.username}
-												</div>
-											</div>
-										</div>
-									</TableCell>
-									<TableCell>
-										<Badge variant="secondary">User</Badge>
-									</TableCell>
-									<TableCell>
-										<Badge variant={user.isActive ? "default" : "secondary"}>
-											{user.isActive ? "Active" : "Inactive"}
-										</Badge>
-									</TableCell>
-									<TableCell className="text-muted-foreground">
-										{new Date(user.updatedAt).toLocaleDateString("en-US", {
-											year: "numeric",
-											month: "short",
-											day: "numeric",
-											hour: "2-digit",
-											minute: "2-digit",
-										})}
-									</TableCell>
-									<TableCell className="text-right">
-										<DropdownMenu>
-											<DropdownMenuTrigger asChild>
-												<Button variant="ghost" size="icon">
-													<MoreHorizontal className="h-4 w-4" />
-												</Button>
-											</DropdownMenuTrigger>
-											<DropdownMenuContent align="end">
-												<DropdownMenuItem className="flex items-center gap-2">
-													<Mail className="h-4 w-4" />
-													Send Email
-												</DropdownMenuItem>
-												<DropdownMenuItem className="flex items-center gap-2">
-													<Phone className="h-4 w-4" />
-													Call
-												</DropdownMenuItem>
-												<DropdownMenuItem>Edit User</DropdownMenuItem>
-												<DropdownMenuItem className="text-red-600">
-													Delete User
-												</DropdownMenuItem>
-											</DropdownMenuContent>
-										</DropdownMenu>
-									</TableCell>
-								</TableRow>
-							))}
-						</TableBody>
-					</Table>
-				)}
+				<UsersList
+					users={users}
+					currentUserId={currentUserId}
+					mode="admin-roles"
+					busyUserId={busyUserId}
+					onToggleRole={handleToggleRole}
+				/>
 			</div>
 		</DashboardPageShell>
 	);
