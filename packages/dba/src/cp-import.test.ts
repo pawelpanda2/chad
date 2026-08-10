@@ -109,7 +109,9 @@ describe("importCpFolderFromZip — end to end against real Postgres", () => {
       { path: "01/02/body.txt", content: "hello from the import" },
     ]);
 
-    const output = await runWithRepoContext({ repoGuid, username }, () => importCpFolderFromZip({ parentAddress: targetAddress, zipBytes: zip }));
+    const output = await runWithRepoContext({ repoGuid, username }, () =>
+      importCpFolderFromZip({ parentAddress: targetAddress, targetRepoGuid: repoGuid, zipBytes: zip })
+    );
 
     expect(output.createdItemCount).toBe(2);
     expect(output.createdRootAddress).toBe(`${targetAddress}/01`);
@@ -141,7 +143,9 @@ describe("importCpFolderFromZip — end to end against real Postgres", () => {
     ]);
 
     await expect(
-      runWithRepoContext({ repoGuid, username }, () => importCpFolderFromZip({ parentAddress: targetAddress, zipBytes: zip }))
+      runWithRepoContext({ repoGuid, username }, () =>
+        importCpFolderFromZip({ parentAddress: targetAddress, targetRepoGuid: repoGuid, zipBytes: zip })
+      )
     ).rejects.toThrow(CpImportError);
 
     const after = await countChildren(targetAddress);
@@ -170,7 +174,9 @@ describe("importCpFolderFromZip — end to end against real Postgres", () => {
 
     let caught: unknown;
     try {
-      await runWithRepoContext({ repoGuid, username }, () => importCpFolderFromZip({ parentAddress: targetAddress, zipBytes: zip }));
+      await runWithRepoContext({ repoGuid, username }, () =>
+        importCpFolderFromZip({ parentAddress: targetAddress, targetRepoGuid: repoGuid, zipBytes: zip })
+      );
     } catch (err) {
       caught = err;
     }
@@ -187,10 +193,14 @@ describe("importCpFolderFromZip — end to end against real Postgres", () => {
     const { targetAddress } = await seedRepoWithTargetFolder(repoGuid);
 
     const goodZip = await buildZip([{ path: "01/config.yaml", content: "id: a\ntype: Folder\nname: Good\naddress: x" }]);
-    await runWithRepoContext({ repoGuid, username }, () => importCpFolderFromZip({ parentAddress: targetAddress, zipBytes: goodZip }));
+    await runWithRepoContext({ repoGuid, username }, () =>
+      importCpFolderFromZip({ parentAddress: targetAddress, targetRepoGuid: repoGuid, zipBytes: goodZip })
+    );
 
     const badZip = await buildZip([]);
-    await runWithRepoContext({ repoGuid, username }, () => importCpFolderFromZip({ parentAddress: targetAddress, zipBytes: badZip })).catch(() => {});
+    await runWithRepoContext({ repoGuid, username }, () =>
+      importCpFolderFromZip({ parentAddress: targetAddress, targetRepoGuid: repoGuid, zipBytes: badZip })
+    ).catch(() => {});
 
     const tempDir = path.join(contactPhotosRoot, username, "02_files_zip", "temp");
     let leftover: string[] = [];
@@ -202,7 +212,13 @@ describe("importCpFolderFromZip — end to end against real Postgres", () => {
     expect(leftover).toEqual([]);
   });
 
-  it("cross-user isolation: cannot target a parent address belonging to a different repo", async () => {
+  it("defense-in-depth: rejects a parentAddress that doesn't actually belong to the declared targetRepoGuid", async () => {
+    // targetRepoGuid is the caller's own authorized claim (mirrors what the
+    // route computes from resolveFoldersRepoAccess) — this proves the
+    // import still refuses to write when parentAddress and targetRepoGuid
+    // disagree, regardless of what the session's own repo is. This guards
+    // against a caller-side bug upstream (e.g. the route) ever letting the
+    // two drift apart, independent of resolveFoldersRepoAccess itself.
     const repoGuidA = randomUUID();
     const repoGuidB = randomUUID();
     const { targetAddress: targetInB } = await seedRepoWithTargetFolder(repoGuidB);
@@ -212,7 +228,7 @@ describe("importCpFolderFromZip — end to end against real Postgres", () => {
     let caught: unknown;
     try {
       await runWithRepoContext({ repoGuid: repoGuidA, username: "attacker" }, () =>
-        importCpFolderFromZip({ parentAddress: targetInB, zipBytes: zip })
+        importCpFolderFromZip({ parentAddress: targetInB, targetRepoGuid: repoGuidA, zipBytes: zip })
       );
     } catch (err) {
       caught = err;
@@ -222,5 +238,27 @@ describe("importCpFolderFromZip — end to end against real Postgres", () => {
 
     const after = await countChildren(targetInB);
     expect(after).toBe(0);
+  });
+
+  it("authorized cross-repo import succeeds even when the target repo differs from the session's OWN repo (e.g. chad_shared)", async () => {
+    // Regression test for the real bug this fixed: importCpFolderFromZip
+    // used to re-derive the target repo from the session's own repoGuid
+    // (getCurrentRepoGuid()) instead of trusting the caller-declared,
+    // already-authorized targetRepoGuid — so ANY import into a repo other
+    // than the actor's own (chad_shared, now open to every user) failed
+    // with PARENT_NOT_FOUND even though it was fully authorized upstream.
+    const ownRepoGuid = randomUUID();
+    const sharedRepoGuid = randomUUID();
+    const { targetAddress: targetInShared } = await seedRepoWithTargetFolder(sharedRepoGuid);
+
+    const zip = await buildZip([{ path: "01/config.yaml", content: "id: a\ntype: Folder\nname: Shared\naddress: x" }]);
+
+    const output = await runWithRepoContext({ repoGuid: ownRepoGuid, username: "any-user" }, () =>
+      importCpFolderFromZip({ parentAddress: targetInShared, targetRepoGuid: sharedRepoGuid, zipBytes: zip })
+    );
+
+    expect(output.createdItemCount).toBe(1);
+    const after = await countChildren(targetInShared);
+    expect(after).toBe(1);
   });
 });

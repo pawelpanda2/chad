@@ -15,9 +15,9 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { ContentProviderError } from "cp-core";
+import { ContentProviderError, type CpImportSkipPolicy } from "cp-core";
 import { entry, ensurePostgreConnectionUri, importFolderFromZip } from "cp-entry";
-import { getCurrentRepoGuid, getCurrentUsername, tryGetCurrentActor } from "./repo-context.js";
+import { getCurrentUsername, tryGetCurrentActor } from "./repo-context.js";
 import { assertChadWriteAllowed } from "./chad-data-mode.js";
 import { getEffectivePostgresUri } from "./dev-db-override.js";
 import { assertRepoAllowlisted } from "./data-providers/repo-allowlist-guard.js";
@@ -47,6 +47,23 @@ export interface CpImportValidationErrorDetail {
   message: string;
 }
 
+export interface CpImportSkippedEntryDetail {
+  code: string;
+  path: string;
+  message: string;
+}
+
+/**
+ * Fixed, hardcoded relaxation for the two specific real-world cases found
+ * against a real user export (Story 109 follow-up) — never applied unless
+ * the caller explicitly opts in (`ImportCpFolderFromZipInput.skipUnsupported`),
+ * which the Dashboard route only sets after the user has been shown exactly
+ * what would be skipped and confirmed. Not user-configurable beyond this
+ * on/off switch — extending which extensions/types are skippable is a
+ * deliberate, separate decision, not something a client can widen itself.
+ */
+const SKIP_POLICY: CpImportSkipPolicy = { skipRefItems: true, skipUnexpectedFileExtensions: ["wav", "bak"] };
+
 export class CpImportError extends Error {
   constructor(
     public readonly code: CpImportErrorCode,
@@ -61,12 +78,31 @@ export class CpImportError extends Error {
 export interface ImportCpFolderFromZipInput {
   /** Full CP address of the currently-open Folder in the Dashboard's Folders tab. */
   parentAddress: string;
+  /**
+   * The repo `parentAddress` must belong to — already authorized by the
+   * caller (the route's `resolveFoldersRepoAccess` result), NOT re-derived
+   * from the session's own repo. Folders lets a session target a repo
+   * other than its own (`chad_shared`), so the session's repo and the
+   * repo actually being written to are two different things; conflating
+   * them here was a real bug (every cross-repo import — e.g. into
+   * `chad_shared` — failed with `PARENT_NOT_FOUND`, "address does not
+   * belong to the current repo", even for an otherwise-authorized write).
+   */
+  targetRepoGuid: string;
   zipBytes: Buffer;
+  /**
+   * Opt-in only — set only after the Dashboard has shown the user exactly
+   * what would be skipped (Ref items, .wav/.bak files) and they confirmed
+   * proceeding without them. When false/omitted, behavior is unchanged:
+   * those cases remain hard validation failures for the whole archive.
+   */
+  skipUnsupported?: boolean;
 }
 
 export interface ImportCpFolderFromZipOutput {
   createdRootAddress: string;
   createdItemCount: number;
+  skipped: CpImportSkippedEntryDetail[];
 }
 
 function parentAddressToLoca(repoGuid: string, address: string): string {
@@ -100,12 +136,15 @@ function resolveImportStagingDir(username: string, importGuid: string): string {
  * Dashboard. All-or-nothing: either the whole tree is added, or nothing
  * is (see zip-import.md's atomicity section).
  *
- * `username`/`repoGuid` always come from the current session
- * (repo-context.js), never from `input` — callers must have already
- * wrapped this call in `runWithRepoContext`.
+ * The repo actually being written to is `input.targetRepoGuid` (the
+ * caller's already-authorized target — may differ from the session's own
+ * repo, e.g. `chad_shared`), never `getCurrentRepoGuid()`. `username`
+ * (for staging paths) and the acting-user identity stamped onto history
+ * still come from the current session (repo-context.js) — callers must
+ * have already wrapped this call in `runWithRepoContext`.
  */
 export async function importCpFolderFromZip(input: ImportCpFolderFromZipInput): Promise<ImportCpFolderFromZipOutput> {
-  const repoGuid = getCurrentRepoGuid();
+  const repoGuid = input.targetRepoGuid;
   const username = getCurrentUsername();
   const actor = tryGetCurrentActor();
 
@@ -157,6 +196,7 @@ export async function importCpFolderFromZip(input: ImportCpFolderFromZipInput): 
     stagingDir,
     zipBytes: input.zipBytes,
     actor: actor ? { username: actor.username, repoGuid: actor.repoGuid } : null,
+    skipPolicy: input.skipUnsupported ? SKIP_POLICY : undefined,
   });
 
   if (result.phase === "validation-failed") {
@@ -173,5 +213,5 @@ export async function importCpFolderFromZip(input: ImportCpFolderFromZipInput): 
     throw new CpImportError(code, result.error.message);
   }
 
-  return result.result;
+  return { ...result.result, skipped: result.skipped };
 }

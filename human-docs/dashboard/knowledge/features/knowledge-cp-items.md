@@ -80,16 +80,33 @@ odświeżenie strony pokazuje aktualny stan, bez trwałego cache.
 
 - `GET /api/folders/repos` zwraca listę wyprowadzoną z sesji
   (`listSelectableFoldersRepos` w dba): własne repo każdego użytkownika +
-  `chad_shared` wyłącznie dla sesji admina (`role: admin` w users-list —
-  ten sam istniejący guard co przy `allowSystemFolderWrite`).
+  `chad_shared`. Do Story 96-follow-up było to wyłącznie dla sesji admina
+  (`role: admin`); od follow-upu każdy zalogowany użytkownik widzi i może
+  edytować `chad_shared` — celowa zmiana, bo `chad_shared` to genuinie
+  współdzielona zawartość, nie dane admina.
 - Każdy verb `/api/folders` (GET/POST/PUT/DELETE) i `/api/folders/config`
   przyjmuje opcjonalny `repoGuid` i waliduje go NIEZALEŻNIE przez
   `resolveFoldersRepoAccess` (dba): własne repo zawsze; `chad_shared`
-  tylko admin; wszystko inne (cudze repo, zmyślony GUID) → 403.
-  Dropdown w UI nie jest punktem egzekwowania uprawnień.
-- Zapis admina w `chad_shared` przechodzi przez istniejące operacje
-  Folders (`createFolderChildItem` itd.) — zapisane Itemy pojawiają się w
-  Knowledge po odświeżeniu.
+  dla każdego; wszystko inne (cudze PRYWATNE repo, zmyślony GUID) → 403,
+  bez wyjątku dla admina. Dropdown w UI nie jest punktem egzekwowania
+  uprawnień.
+- Zapis w `chad_shared` (dowolny użytkownik) przechodzi przez istniejące
+  operacje Folders (`createFolderChildItem` itd.) — zapisane Itemy
+  pojawiają się w Knowledge po odświeżeniu.
+- **ZIP Folder import do chad_shared (Story 109 + późniejszy bugfix):**
+  `packages/dba/src/cp-import.ts`'s `importCpFolderFromZip` błędnie liczył
+  docelowe repo z `getCurrentRepoGuid()` (repo WŁASNE sesji), nie z
+  faktycznie autoryzowanego adresu docelowego — każdy import do repo
+  innego niż własne (czyli każdy import do `chad_shared`) kończył się
+  błędem `PARENT_NOT_FOUND` / "Address ... does not belong to the current
+  repo", mimo że `resolveFoldersRepoAccess` już to dopuszczał. Naprawione:
+  `ImportCpFolderFromZipInput.targetRepoGuid` (jawnie przekazywane przez
+  `/api/folders/import` jako `access.repoGuid`) jest teraz źródłem prawdy
+  dla repo docelowego; `getCurrentRepoGuid()`/sesja zostają tylko dla
+  ścieżki stagingu i podpisu autora w historii. Testy:
+  `packages/dba/src/cp-import.test.ts` (real Postgres — wymaga lokalnej
+  bazy z action `test:integration:local-postgres`-owym wzorcem, patrz
+  komentarz w pliku), `packages/dba/src/shared-repo-access.test.ts`.
 
 ## Edge cases
 

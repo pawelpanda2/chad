@@ -63,10 +63,10 @@ const DELETE_CONFIRM_WORDS = ["DELETE", "CONFIRM", "USUN", "PERMANENT"];
  *   misleading disabled stub.
  * - Folder's "Add" type select offers Text/Folder only — Ref is
  *   intentionally excluded (Story 82: no confirmed contract for it here).
- * - Repo picker (Story 96): the dropdown holds exactly the repos the
- *   backend session grants (see /api/folders/repos → dba's
- *   listSelectableFoldersRepos) — every user's own repo, plus the shared
- *   `chad_shared` repo for admin sessions only. Every /api/folders verb
+ * - Repo picker (Story 96, opened to every user in a later follow-up): the
+ *   dropdown holds exactly the repos the backend session grants (see
+ *   /api/folders/repos → dba's listSelectableFoldersRepos) — every user's
+ *   own repo, plus the shared `chad_shared` repo. Every /api/folders verb
  *   re-validates the selected repo server-side (resolveFoldersRepoAccess),
  *   so this control is UX, never the enforcement point.
  */
@@ -363,7 +363,7 @@ export default function FoldersPage() {
     }
   }
 
-  /** Switches to another repo from the session-granted list (own repo, or chad_shared for admins) and loads its root fresh. */
+  /** Switches to another repo from the session-granted list (own repo, or chad_shared) and loads its root fresh. */
   async function handleRepoChange(repoGuid: string) {
     if (repoGuid === selectedRepoGuid) return;
     setSelectedRepoGuid(repoGuid);
@@ -719,7 +719,7 @@ export default function FoldersPage() {
               Security (backlog/stories/60, extended in 96): this dropdown
               only ever holds the repos the backend session granted
               (/api/folders/repos) — the user's own repo, plus chad_shared
-              for admin sessions. It stays disabled while there is nothing
+              for every user. It stays disabled while there is nothing
               to switch to, and it is NOT the enforcement point: every
               /api/folders request re-validates the selected repo
               server-side (dba's resolveFoldersRepoAccess), so a forged
