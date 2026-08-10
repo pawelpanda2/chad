@@ -9,9 +9,13 @@
  * `dba`'s `importCpFolderFromZip` — never here.
  *
  * SECURITY: same repo-isolation rule as the other `/api/folders/*` routes —
- * `parentLoca` is only ever resolved relative to `access.repoGuid` from the
- * session; the client never supplies (and this route never trusts) a repo
- * id, an address, or a username directly.
+ * `parentLoca` is only ever resolved relative to `access.repoGuid` (from
+ * `resolveFoldersRepoAccess`, never trusted directly from the client's raw
+ * `repoGuid` field). `access.repoGuid` is also passed to `dba` explicitly
+ * as `targetRepoGuid` — a real bug once had `importCpFolderFromZip`
+ * re-derive the target repo from the session instead, which made every
+ * cross-repo import (e.g. into `chad_shared`) fail even when
+ * `resolveFoldersRepoAccess` had already authorized it.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUserFromCookies } from "@/lib/session";
@@ -75,6 +79,10 @@ export async function POST(request: NextRequest) {
   }
 
   const parentLoca = form.get("parentLoca")?.toString() ?? "";
+  // Opt-in only, per zip-import.md — the Dashboard only sends this after the
+  // user has been shown exactly what would be skipped (from a prior FAILED
+  // attempt's validationErrors) and explicitly confirmed proceeding without it.
+  const skipUnsupported = form.get("skipUnsupported")?.toString() === "true";
   const access = resolveFoldersRepoAccess(user, form.get("repoGuid")?.toString() ?? null);
   if (!access.allowed) {
     return NextResponse.json({ error: "FORBIDDEN_REPO" }, { status: 403 });
@@ -83,13 +91,16 @@ export async function POST(request: NextRequest) {
 
   try {
     const zipBytes = Buffer.from(await file.arrayBuffer());
-    const result = await runWithRepoContext(user, () => importCpFolderFromZip({ parentAddress, zipBytes }));
+    const result = await runWithRepoContext(user, () =>
+      importCpFolderFromZip({ parentAddress, targetRepoGuid: access.repoGuid, zipBytes, skipUnsupported })
+    );
     const parent = await getItemByAddress(parentAddress);
 
     return NextResponse.json({
       success: true,
       createdRootAddress: result.createdRootAddress,
       createdItemCount: result.createdItemCount,
+      skipped: result.skipped,
       parent: parent ? await toApiItem(parent) : null,
     });
   } catch (err) {

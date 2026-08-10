@@ -1,15 +1,15 @@
 /**
- * Story 96 — Folders repo-selection guard tests: the shared `chad_shared`
- * repo is an admin-only, explicitly-listed exception; everything else
- * (other users' repos, forged GUIDs) stays denied exactly as before.
+ * Story 96 — Folders repo-selection guard tests. `chad_shared` was
+ * originally admin-only; a later follow-up opened it to every
+ * authenticated user (still never another user's PRIVATE repo).
  */
 
 import { describe, it, expect } from "vitest";
 import { resolveFoldersRepoAccess, listSelectableFoldersRepos } from "./shared-repo-access.js";
 import { CHAD_SHARED_REPO_GUID } from "./knowledge.js";
 
-const admin = { repoGuid: "admin-own-repo-guid", username: "pawel_f", isAdmin: true };
-const regular = { repoGuid: "regular-own-repo-guid", username: "kamil_s", isAdmin: false };
+const admin = { repoGuid: "admin-own-repo-guid", username: "pawel_f" };
+const regular = { repoGuid: "regular-own-repo-guid", username: "kamil_s" };
 
 describe("resolveFoldersRepoAccess", () => {
   it("grants the session's own repo when no repo is requested (pre-Story-96 request shape)", () => {
@@ -29,22 +29,20 @@ describe("resolveFoldersRepoAccess", () => {
     expect(resolveFoldersRepoAccess(regular, regular.repoGuid)).toMatchObject({ allowed: true });
   });
 
-  it("grants chad_shared to an admin session", () => {
+  it("grants chad_shared to any authenticated session, not just admin", () => {
     expect(resolveFoldersRepoAccess(admin, CHAD_SHARED_REPO_GUID)).toEqual({
+      allowed: true,
+      repoGuid: CHAD_SHARED_REPO_GUID,
+      isSharedRepo: true,
+    });
+    expect(resolveFoldersRepoAccess(regular, CHAD_SHARED_REPO_GUID)).toEqual({
       allowed: true,
       repoGuid: CHAD_SHARED_REPO_GUID,
       isSharedRepo: true,
     });
   });
 
-  it("denies chad_shared to a non-admin session", () => {
-    expect(resolveFoldersRepoAccess(regular, CHAD_SHARED_REPO_GUID)).toEqual({
-      allowed: false,
-      reason: "FORBIDDEN_REPO",
-    });
-  });
-
-  it("denies another user's repo guid — even for an admin", () => {
+  it("denies another user's PRIVATE repo guid — for anyone, admin included", () => {
     expect(resolveFoldersRepoAccess(admin, regular.repoGuid)).toEqual({
       allowed: false,
       reason: "FORBIDDEN_REPO",
@@ -64,13 +62,11 @@ describe("resolveFoldersRepoAccess", () => {
 });
 
 describe("listSelectableFoldersRepos", () => {
-  it("regular user: own repo only — chad_shared and other repos never listed", () => {
+  it("every user gets their own repo plus chad_shared", () => {
     expect(listSelectableFoldersRepos(regular)).toEqual([
       { id: regular.repoGuid, name: "chad_kamil_s" },
+      { id: CHAD_SHARED_REPO_GUID, name: "chad_shared" },
     ]);
-  });
-
-  it("admin: own repo plus chad_shared", () => {
     expect(listSelectableFoldersRepos(admin)).toEqual([
       { id: admin.repoGuid, name: "chad_pawel_f" },
       { id: CHAD_SHARED_REPO_GUID, name: "chad_shared" },
