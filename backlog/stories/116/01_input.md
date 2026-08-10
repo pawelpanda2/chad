@@ -374,3 +374,32 @@ Dashboard
 Dashboard ma być wyłącznie cienką warstwą UI/API. DBA udostępnia kontrakt/metody płatności, a `packages/payments` implementuje logikę Stripe: walidację kwoty, Checkout Session, webhooki i komunikację ze Stripe.
 
 Nie omijaj DBA przez bezpośrednie importowanie `packages/payments` w Dashboardzie.
+
+## Input 3
+
+Daję Ci w tej wiadomości testowy Stripe Secret Key:
+
+sk_test_[REDACTED — real value never recorded in this Story per this same input's own instruction not to put the secret in any documentation/Story; the real value was placed only in the local `.env.local` used by local Mac Docker]
+
+1. Umieść go w odpowiednim PRAWDZIWYM lokalnym env CHAD używanym przez local Mac Docker. Nie dodawaj sekretu do żadnego `.example`, dokumentacji, Story, logów ani Git.
+2. Sprawdź, czy docker-compose faktycznie przekazuje `STRIPE_SECRET_KEY` do właściwego kontenera.
+3. Wykonaj wymagany restart/rebuild oficjalnymi skryptami CHAD i sprawdź Checkout.
+
+Dodatkowo przygotuj webhook tak, aby docelowo działał publicznie pod:
+
+https://chad.biz.pl/api/webhooks/stripe
+
+Webhook ma:
+- działać bez sesji/logowania użytkownika;
+- przyjmować POST od Stripe;
+- weryfikować `Stripe-Signature`;
+- używać `STRIPE_WEBHOOK_SECRET` wyłącznie server-side;
+- korzystać z raw request body zgodnie z wymaganiami Stripe;
+- zachować idempotencję;
+- obsługiwać `checkout.session.completed`;
+- nie ufać success URL jako potwierdzeniu płatności.
+
+WAŻNE:
+Nie deployuj teraz PROD i nie konfiguruj LIVE Stripe. Przygotuj kod, env/docker i endpoint tak, żeby po późniejszym deployu na chad.biz.pl wystarczyło skonfigurować endpoint w Stripe Dashboard i dodać otrzymany `whsec_...` jako `STRIPE_WEBHOOK_SECRET`.
+
+Nie wypisuj mojego STRIPE_SECRET_KEY w odpowiedzi ani w komendach diagnostycznych.

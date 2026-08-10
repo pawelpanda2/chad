@@ -39,3 +39,16 @@
   — untouched), `read-only-folders/` (real, fetches live data — untouched).
 - No Stripe code existed anywhere in the repo before this Story (confirmed
   via repo-wide grep) — this is a fresh implementation, not a continuation.
+- `human-docs/dashboard/common/features/nginx-proxy-manager-domains.md` /
+  `chad-domain-ssl.md` (Input 3) — `chad.biz.pl` → `chad-dashboard-prod`
+  (`127.0.0.1:12030`) is a plain full-passthrough Nginx Proxy Manager
+  reverse proxy, no path-based allow/block rules, so `/api/webhooks/stripe`
+  needs no domain-specific routing config — only the app's own
+  `middleware.ts` public-route exemption (already fixed) and PROD env/
+  compose wiring (`docker-compose.qnap.prod.yml`, `.env.qnap`) mattered.
+- `bash-scripts/dashboard/03_local_mac_docker/01_config.sh`/`03_re-start.sh`
+  (Input 3) — `ENV_FILE="$REPO_ROOT/.env.local"`, passed to `docker compose`
+  as `--env-file`; this is how a plain env-var addition to `.env.local`
+  reaches the container without any image rebuild, and confirms
+  `docker-compose.local.yml`'s `${STRIPE_SECRET_KEY:-}` substitution is
+  resolved from this exact file.

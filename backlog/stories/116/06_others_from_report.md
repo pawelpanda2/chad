@@ -28,14 +28,26 @@
   per the safety rules — this Story's own changes are staged/committed
   file-by-file, never via a blanket `git add`. Starting commit SHA:
   `bf37a5f`.
-- **Accidental partial secret exposure.** While checking `.env.local` for
-  the local-mac-docker Postgres connection convention, one `grep`/`sed`
+- **Two accidental partial secret exposures, both flagged to the user
+  immediately in-session.** (1) While checking `.env.local` for the
+  local-mac-docker Postgres connection convention, one `grep`/`sed`
   redaction pattern missed a line and the real local-mac-docker Postgres
-  password (not the shared QNAP one) appeared once in a tool output. Flagged
-  to the user immediately in-session; no further commands echoed it. All
-  subsequent credential use (QNAP Postgres for the migration + integration
-  test, the local login password) was done by sourcing `.env.local`/
-  `.env.qnap` into shell/process env directly, never printing the values.
+  password (not the shared QNAP one) appeared once in a tool output. (2) A
+  later broader `grep -n "^GOOGLE_CONTACTS"` (intended to just locate a
+  section header) matched full lines and printed the real
+  `GOOGLE_CONTACTS_CLIENT_SECRET` value too. Neither was repeated, and the
+  user was told to consider rotating both. From that point on, every
+  `.env.local`/`.env.qnap` interaction in this session was either pure
+  append (no read at all) or a `grep`/output pattern that redacts the value
+  before it can ever reach a visible tool result (e.g. `sed -E
+  's/(KEY)=.*/\1=[SET]/'`, or checking only `${#VAR}` length inside the
+  container). The one unavoidable exception: Input 3's own real Stripe key
+  had to appear once, literally, in the single command that wrote it to
+  `.env.local` — there is no way to place a value into a file via a tool
+  call without that value appearing in the call itself, and the user had
+  already put the same value in their own message. It was never repeated,
+  echoed, or included in any diagnostic command afterward — only
+  `${#STRIPE_SECRET_KEY}` (a length, 107) was ever checked post-write.
 - **`dev-db-override.ts` has no "arbitrary local Postgres" mode by design**
   (red-rules Rule 1) — a literal `localhost:5433` `POSTGRES_URI` is silently
   ignored unless real QNAP credentials are also present, at which point it
@@ -85,26 +97,42 @@
 
 ## Known limitations / not executed this session
 
-- **Real Stripe Sandbox E2E (actual redirect to Stripe-hosted Checkout,
-  paying with a Stripe test card, a real webhook delivery from Stripe
-  itself): NOT executed.** No `STRIPE_SECRET_KEY`/`STRIPE_WEBHOOK_SECRET`
-  Sandbox keys were provided or configured in this environment. Every piece
-  of logic that doesn't require an actual outbound call to Stripe's API
-  (amount validation, webhook signature verification/idempotency using
-  Stripe's own local test-signing helper, auth/session gating, the
-  previously-broken-now-fixed webhook reachability) was exercised for real,
-  either via automated tests or live against the running local Docker
-  container. Per §1.10/§1.13, this is reported honestly as blocked, not
-  claimed as PASS.
+**Update (Input 3):** a real Stripe Sandbox `STRIPE_SECRET_KEY` was supplied
+and configured in local Docker — Checkout Session creation (client →
+validation → dba → packages/payments → real Stripe API → real
+`checkout.stripe.com` URL → `cp_stripe_payments` row on the real shared
+Postgres → status endpoint) is now verified live end-to-end, not just unit
+tested. What remains genuinely not executed:
+
+- **Actually completing a payment on Stripe's hosted Checkout page (a real
+  test card, e.g. `4242 4242 4242 4242`) and a real webhook delivery from
+  Stripe itself: NOT executed.** No `STRIPE_WEBHOOK_SECRET` exists yet (it
+  only comes from registering a real, publicly-reachable endpoint in the
+  Stripe Dashboard — not possible without a public URL, and PROD wasn't
+  deployed per the explicit instruction not to). Webhook signature
+  verification/idempotency logic itself is fully proven real (Stripe's own
+  local test-signing helper, real Postgres) — only the "Stripe's servers
+  actually calling our endpoint over the internet" leg is untested.
 - Settings → Payments success page's actual UI after a real completed
   payment was not visually verified (depends on the above).
+- The 12.34 PLN test Checkout Session created live in this session
+  (`cs_test_a1OXPW...`) was intentionally left as a real, abandoned
+  `pending` row in `cp_stripe_payments` — it will simply never be completed
+  (same as any real user closing the tab), not cleaned up, since it's a
+  genuine product interaction rather than synthetic test data.
 
 ## Follow-up proposals (not required by this Story)
 
-- Once real Stripe Sandbox keys are available, run a full manual E2E:
-  Settings → Payments → enter an amount → Stripe test card → success page
-  shows "Payment successful" after the real webhook lands → `cp_stripe_payments`
-  row is `completed`.
+- Once PROD is actually deployed to `chad.biz.pl` and a webhook endpoint is
+  registered in the Stripe Dashboard (`whsec_...` added to `.env.qnap`), run
+  a full manual E2E: Settings → Payments → enter an amount → Stripe test
+  card (e.g. `4242 4242 4242 4242`) → success page shows "Payment
+  successful" after the real webhook lands → `cp_stripe_payments` row is
+  `completed`.
 - Consider fixing the pre-existing vite-oxc transform issue for leaf
   `packages/*` test files (affects `packages/mcp` too, not just this
   Story) so future packages don't need the same workaround.
+- Consider rotating the local-mac-docker Postgres password and the
+  `GOOGLE_CONTACTS_CLIENT_SECRET`, both partially exposed in this session's
+  tool output (see above) — low real-world risk (local dev only), but
+  cheap to rotate.
