@@ -31,6 +31,7 @@ export async function GET() {
 		}
 		return NextResponse.json({
 			user: {
+				repoGuid: user.repoGuid,
 				username: user.username,
 				displayName: user.username,
 				role: user.role,

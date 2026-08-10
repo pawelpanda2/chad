@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
 import { FRAME_SECTION_GAP_CLASS } from "@/components/shared/layout-tokens";
 import { cn } from "@/lib/utils";
@@ -14,6 +14,13 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { ErrorBox } from "@/components/shared/error-box";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
 
 interface AdminPaymentRow {
 	id: string;
@@ -29,100 +36,139 @@ interface AdminPaymentRow {
 	updatedAt: string;
 }
 
+interface UserOption {
+	id: string;
+	username: string;
+}
+
 function formatAmount(amountMinor: number, currency: string): string {
 	return `${(amountMinor / 100).toFixed(2)} ${currency}`;
 }
 
 export default function AdminPaymentsPage() {
 	const [payments, setPayments] = useState<AdminPaymentRow[]>([]);
+	const [users, setUsers] = useState<UserOption[]>([]);
+	const [filterUser, setFilterUser] = useState<string>("all");
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState("");
 
 	useEffect(() => {
-		fetch("/api/admin/payments")
+		fetch("/api/admin/users")
 			.then((res) => res.json())
 			.then((data) => {
-				if (!data.success) {
-					setError(data.error || "Failed to load payments");
-					return;
-				}
-				setPayments(data.payments);
+				const list = Array.isArray(data) ? data : [];
+				setUsers(
+					list.map((u: { id: string; username: string }) => ({
+						id: u.id,
+						username: u.username,
+					})),
+				);
 			})
-			.catch((err) => setError(err instanceof Error ? err.message : "Failed to load payments"))
-			.finally(() => setLoading(false));
+			.catch(() => {
+				/* filter options are best-effort; payments still load */
+			});
 	}, []);
 
-	if (loading) {
-		return (
-			<DashboardPageShell title="Admin — Payments">
-				<div className="py-4 text-sm text-muted-foreground">Loading payments...</div>
-			</DashboardPageShell>
-		);
-	}
+	const loadPayments = useCallback(async (repoGuid: string) => {
+		setLoading(true);
+		setError("");
+		try {
+			const query = repoGuid === "all" ? "" : `?repoGuid=${encodeURIComponent(repoGuid)}`;
+			const res = await fetch(`/api/admin/payments${query}`);
+			const data = await res.json();
+			if (!data.success) {
+				setError(data.error || "Failed to load payments");
+				setPayments([]);
+				return;
+			}
+			setPayments(data.payments);
+		} catch (err) {
+			setError(err instanceof Error ? err.message : "Failed to load payments");
+		} finally {
+			setLoading(false);
+		}
+	}, []);
+
+	useEffect(() => {
+		void loadPayments(filterUser);
+	}, [filterUser, loadPayments]);
 
 	return (
-		<DashboardPageShell contentClassName={cn(FRAME_SECTION_GAP_CLASS, "overscroll-contain overflow-x-auto")} title="Admin — Payments">
-			<p className="text-sm text-muted-foreground">
-				Read-only transaction list — Stripe Checkout payments across all users. No card
-				data is ever stored. Technical lifecycle logs live in the Dev Panel, not here.
-			</p>
-			<ErrorBox message={error || null} />
-			<div className="border bg-muted/10">
-				{payments.length === 0 ? (
-					<p className="py-8 text-center text-sm text-muted-foreground">No payments yet.</p>
-				) : (
-					<Table>
-						<TableHeader>
-							<TableRow>
-								<TableHead>Date</TableHead>
-								<TableHead>User</TableHead>
-								<TableHead>Amount</TableHead>
-								<TableHead>Mode</TableHead>
-								<TableHead>Environment</TableHead>
-								<TableHead>Checkout Session</TableHead>
-								<TableHead>PaymentIntent</TableHead>
-								<TableHead>Status</TableHead>
-							</TableRow>
-						</TableHeader>
-						<TableBody>
-							{payments.map((p) => (
-								<TableRow key={p.id}>
-									<TableCell className="whitespace-nowrap text-muted-foreground">
-										{new Date(p.createdAt).toLocaleString("en-US", {
-											year: "numeric",
-											month: "short",
-											day: "numeric",
-											hour: "2-digit",
-											minute: "2-digit",
-										})}
-									</TableCell>
-									<TableCell>{p.username}</TableCell>
-									<TableCell>{formatAmount(p.amountMinor, p.currency)}</TableCell>
-									<TableCell>
-										{p.stripeMode ? (
-											<Badge variant={p.stripeMode === "live" ? "default" : "secondary"}>
-												{p.stripeMode}
-											</Badge>
-										) : (
-											<span className="text-muted-foreground">—</span>
-										)}
-									</TableCell>
-									<TableCell className="text-muted-foreground">{p.chadEnvironment || "—"}</TableCell>
-									<TableCell className="max-w-[220px] truncate font-mono text-xs" title={p.id}>
-										{p.id}
-									</TableCell>
-									<TableCell className="max-w-[180px] truncate font-mono text-xs" title={p.paymentIntentId || undefined}>
-										{p.paymentIntentId || "—"}
-									</TableCell>
-									<TableCell>
-										<Badge variant={p.status === "completed" ? "default" : "secondary"}>{p.status}</Badge>
-									</TableCell>
-								</TableRow>
-							))}
-						</TableBody>
-					</Table>
-				)}
+		<DashboardPageShell
+			contentClassName={cn(FRAME_SECTION_GAP_CLASS, "overscroll-contain overflow-x-auto")}
+			title="Admin — Payments"
+		>
+			<div className="flex flex-wrap items-center gap-2">
+				<span className="text-sm text-muted-foreground">User:</span>
+				<Select value={filterUser} onValueChange={setFilterUser}>
+					<SelectTrigger className="w-[220px]">
+						<SelectValue placeholder="All users" />
+					</SelectTrigger>
+					<SelectContent>
+						<SelectItem value="all">All users</SelectItem>
+						{users.map((u) => (
+							<SelectItem key={u.id} value={u.id}>
+								{u.username}
+							</SelectItem>
+						))}
+					</SelectContent>
+				</Select>
 			</div>
+			<ErrorBox message={error || null} />
+			{loading ? (
+				<p className="py-4 text-sm text-muted-foreground">Loading payments...</p>
+			) : (
+				<div className="border bg-muted/10">
+					{payments.length === 0 ? (
+						<p className="py-8 text-center text-sm text-muted-foreground">No payments yet.</p>
+					) : (
+						<Table>
+							<TableHeader>
+								<TableRow>
+									<TableHead>Date</TableHead>
+									<TableHead>User</TableHead>
+									<TableHead>Amount</TableHead>
+									<TableHead>Mode</TableHead>
+									<TableHead>Environment</TableHead>
+									<TableHead>Checkout Session</TableHead>
+									<TableHead>PaymentIntent</TableHead>
+									<TableHead>Status</TableHead>
+								</TableRow>
+							</TableHeader>
+							<TableBody>
+								{payments.map((p) => (
+									<TableRow key={p.id}>
+										<TableCell className="whitespace-nowrap text-muted-foreground">
+											{new Date(p.createdAt).toLocaleString("en-US", {
+												year: "numeric",
+												month: "short",
+												day: "numeric",
+												hour: "2-digit",
+												minute: "2-digit",
+											})}
+										</TableCell>
+										<TableCell>{p.username}</TableCell>
+										<TableCell>{formatAmount(p.amountMinor, p.currency)}</TableCell>
+										<TableCell>
+											<Badge variant="secondary">{p.stripeMode ?? "—"}</Badge>
+										</TableCell>
+										<TableCell>{p.chadEnvironment ?? "—"}</TableCell>
+										<TableCell className="font-mono text-xs">{p.id}</TableCell>
+										<TableCell className="font-mono text-xs">
+											{p.paymentIntentId ?? "—"}
+										</TableCell>
+										<TableCell>
+											<Badge variant={p.status === "completed" ? "default" : "secondary"}>
+												{p.status}
+											</Badge>
+										</TableCell>
+									</TableRow>
+								))}
+							</TableBody>
+						</Table>
+					)}
+				</div>
+			)}
 		</DashboardPageShell>
 	);
 }

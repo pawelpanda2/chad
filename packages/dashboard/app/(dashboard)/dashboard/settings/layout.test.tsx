@@ -1,8 +1,7 @@
 // @vitest-environment jsdom
 /**
- * Story 116 — Settings nav cleanup: Notifications and API must be gone,
- * Payments must exist, and the old global Theme card (rendered above every
- * Settings subpage) must be gone (Theme now lives only inside Display).
+ * Story 116 continuation — Settings nav: Account (was Profile), Payments
+ * second, Users present, old Account duplicate gone, tabs above the frame.
  */
 import { describe, expect, it, vi, afterEach } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
@@ -26,21 +25,41 @@ function renderLayout() {
 }
 
 describe("Settings layout — navigation", () => {
-  it("does not render Notifications or API tabs", () => {
+  it("does not render Notifications, API, Profile, or the old Account path", () => {
     renderLayout();
     expect(screen.queryByRole("link", { name: "Notifications" })).toBeNull();
     expect(screen.queryByRole("link", { name: "API" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Profile" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Account" })?.getAttribute("href")).toBe(
+      "/dashboard/settings",
+    );
+    expect(screen.queryByRole("link", { name: "Account" })?.getAttribute("href")).not.toBe(
+      "/dashboard/settings/account",
+    );
   });
 
-  it("renders a Payments tab", () => {
+  it("orders Account then Payments as the first two tabs", () => {
     renderLayout();
-    const link = screen.getByRole("link", { name: "Payments" });
-    expect(link.getAttribute("href")).toBe("/dashboard/settings/payments");
+    const links = screen.getAllByRole("link").map((a) => a.textContent);
+    const accountIdx = links.indexOf("Account");
+    const paymentsIdx = links.indexOf("Payments");
+    expect(accountIdx).toBeGreaterThanOrEqual(0);
+    expect(paymentsIdx).toBe(accountIdx + 1);
   });
 
-  it("keeps the untouched, working tabs (Profile, Account, Password, Appearance, Display, Folders)", () => {
+  it("renders Users and Payments tabs", () => {
     renderLayout();
-    for (const name of ["Profile", "Account", "Password", "Appearance", "Display", "Folders"]) {
+    expect(screen.getByRole("link", { name: "Payments" }).getAttribute("href")).toBe(
+      "/dashboard/settings/payments",
+    );
+    expect(screen.getByRole("link", { name: "Users" }).getAttribute("href")).toBe(
+      "/dashboard/settings/users",
+    );
+  });
+
+  it("keeps Password, Appearance, Display, Folders", () => {
+    renderLayout();
+    for (const name of ["Password", "Appearance", "Display", "Folders"]) {
       expect(screen.getByRole("link", { name })).toBeTruthy();
     }
   });

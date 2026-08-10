@@ -465,7 +465,11 @@ export interface AdminPaymentRow {
  * (captured from Stripe's own session/event, never inferred from key
  * naming).
  */
-export async function getPaymentsForAdmin(limit = 200): Promise<AdminPaymentRow[]> {
+export async function getPaymentsForAdmin(
+  limit = 200,
+  options: { repoGuid?: string | null } = {}
+): Promise<AdminPaymentRow[]> {
+  const repoGuid = options.repoGuid?.trim() || null;
   return withPostgresClient(async (client) => {
     const { rows } = await client.query<{
       id: string;
@@ -480,12 +484,19 @@ export async function getPaymentsForAdmin(limit = 200): Promise<AdminPaymentRow[
       created_at: string;
       updated_at: string;
     }>(
-      `SELECT id, repo_guid, username, amount_minor, currency, status, livemode,
-              chad_environment, stripe_payment_intent_id, created_at, updated_at
-       FROM cp_stripe_payments
-       ORDER BY created_at DESC
-       LIMIT $1`,
-      [limit],
+      repoGuid
+        ? `SELECT id, repo_guid, username, amount_minor, currency, status, livemode,
+                  chad_environment, stripe_payment_intent_id, created_at, updated_at
+           FROM cp_stripe_payments
+           WHERE repo_guid = $1
+           ORDER BY created_at DESC
+           LIMIT $2`
+        : `SELECT id, repo_guid, username, amount_minor, currency, status, livemode,
+                  chad_environment, stripe_payment_intent_id, created_at, updated_at
+           FROM cp_stripe_payments
+           ORDER BY created_at DESC
+           LIMIT $1`,
+      repoGuid ? [repoGuid, limit] : [limit],
     );
     return rows.map((r) => ({
       id: r.id,

@@ -1,62 +1,82 @@
 import { NextResponse } from "next/server";
 import { getUsersFromSharp, type AppUser, type UserServiceDebugInfo } from "@/lib/user-service";
 import { getCurrentUserFromCookies } from "@/lib/session";
+import { setUserRoleInUsersList, AdminUsersError } from "dba";
 
 export async function GET() {
-	// 2026-07-29 P0 fix (READY FOR BOSS audit, section 3): this route had NO
-	// authorization check at all — any authenticated user (any role) could
-	// list every real user's id/username/email. Middleware only confirms a
-	// valid session exists, never a role, so every route that's meant to be
-	// admin-only must check it itself, same pattern as
-	// app/api/outings/route.ts's requireAdminForDataLib().
 	const currentUser = await getCurrentUserFromCookies();
 	if (!currentUser || !currentUser.isAdmin) {
 		return NextResponse.json({ error: "NOT_AUTHORIZED" }, { status: 403 });
 	}
 
 	try {
-		console.log("[AdminUsers] Fetching users via UserService (Sharp runner)");
-
-		// Fetch users from Content Provider using Sharp runner via UserService
-		const result = await getUsersFromSharp({ includeDebug: true }) as { users: AppUser[]; debug: UserServiceDebugInfo };
+		const result = (await getUsersFromSharp({ includeDebug: true })) as {
+			users: AppUser[];
+			debug: UserServiceDebugInfo;
+		};
 		const users = result.users;
-		const debug = result.debug;
 
-		// Log diagnostic information
-		console.log("[AdminUsers] Debug info:", {
-			runnerCalled: debug.runnerCalled,
-			arguments: debug.arguments.join(' '),
-			usersCount: debug.usersCount,
-			parseError: debug.parseError,
-			usersSample: debug.usersSample,
-		});
-
-		if (debug.parseError || debug.error) {
-			console.warn("[AdminUsers] Issues fetching users:", {
-				parseError: debug.parseError,
-				error: debug.error,
-				rawResultPreview: debug.rawResult ? debug.rawResult.substring(0, 200) : null,
-			});
-		}
-
-		// Map to the format expected by the UI (already done in service, but ensure consistency)
 		const formattedUsers = users.map((user: AppUser) => ({
 			id: user.id,
 			username: user.username,
 			displayName: user.displayName,
 			email: user.email,
 			isActive: user.isActive,
+			role: user.role,
 			createdAt: user.createdAt,
 			updatedAt: user.updatedAt,
 		}));
 
-		console.log("[AdminUsers] Returning", formattedUsers.length, "users");
 		return NextResponse.json(formattedUsers);
 	} catch (error) {
 		console.error("[AdminUsers] Error fetching users:", error);
+		return NextResponse.json({ error: "Failed to fetch users" }, { status: 500 });
+	}
+}
+
+/**
+ * PATCH /api/admin/users — set a user's role (`admin` | `user`).
+ * Admin-only; persists via dba `setUserRoleInUsersList` into users-list YAML.
+ */
+export async function PATCH(request: Request) {
+	const currentUser = await getCurrentUserFromCookies();
+	if (!currentUser || !currentUser.isAdmin) {
+		return NextResponse.json({ error: "NOT_AUTHORIZED" }, { status: 403 });
+	}
+
+	const body = await request.json().catch(() => null);
+	const repoGuid = typeof body?.repoGuid === "string" ? body.repoGuid.trim() : "";
+	const role = body?.role;
+	if (!repoGuid || (role !== "admin" && role !== "user")) {
 		return NextResponse.json(
-			{ error: "Failed to fetch users" },
-			{ status: 500 }
+			{ success: false, error: "VALIDATION", details: 'Body must include repoGuid and role ("admin"|"user")' },
+			{ status: 400 },
 		);
+	}
+	if (repoGuid === currentUser.repoGuid) {
+		return NextResponse.json(
+			{ success: false, error: "VALIDATION", details: "Cannot change your own role" },
+			{ status: 400 },
+		);
+	}
+
+	try {
+		const updated = await setUserRoleInUsersList(repoGuid, role);
+		console.info(
+			`[AdminUsers] role change by ${currentUser.username}: ${updated.username} → ${updated.role}`,
+		);
+		return NextResponse.json({ success: true, user: updated });
+	} catch (err) {
+		if (err instanceof AdminUsersError) {
+			const status =
+				err.code === "USER_NOT_FOUND" || err.code === "USERS_LIST_NOT_FOUND"
+					? 404
+					: err.code === "LAST_ADMIN"
+						? 409
+						: 400;
+			return NextResponse.json({ success: false, error: err.code, details: err.message }, { status });
+		}
+		console.error("[AdminUsers] PATCH failed:", err);
+		return NextResponse.json({ success: false, error: "UNKNOWN_ERROR" }, { status: 500 });
 	}
 }
