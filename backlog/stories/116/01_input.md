@@ -403,3 +403,74 @@ WAŻNE:
 Nie deployuj teraz PROD i nie konfiguruj LIVE Stripe. Przygotuj kod, env/docker i endpoint tak, żeby po późniejszym deployu na chad.biz.pl wystarczyło skonfigurować endpoint w Stripe Dashboard i dodać otrzymany `whsec_...` jako `STRIPE_WEBHOOK_SECRET`.
 
 Nie wypisuj mojego STRIPE_SECRET_KEY w odpowiedzi ani w komendach diagnostycznych.
+
+## Input 5
+
+CHAD — Claude Code: Payments — naprawa Checkout + Dev Panel logs + Admin Payments
+
+1. Zadanie
+
+To jest kontynuacja aktualnego Story Payments/Stripe. Nie zaczynaj od nowa.
+
+Użytkownik wykonał realny test Stripe Sandbox:
+
+Settings → Payments,
+
+podał kwotę,
+
+wszedł do Stripe Checkout,
+
+wpisał kartę testową,
+
+po zatwierdzeniu płatności spinner kręcił się bez końca,
+
+brak potwierdzenia,
+
+w Stripe Sandbox → Payments nie widać transakcji.
+
+Najpierw ustal dokładny etap awarii. Nie zakładaj automatycznie, że winny jest webhook.
+
+Oczekiwany flow: CHAD tworzy Checkout Session → Stripe zwraca URL → browser przechodzi do Stripe Checkout → klient zatwierdza płatność → Stripe kończy Session / PaymentIntent → checkout.session.completed → webhook CHAD zapisuje wynik → klient wraca success_url.
+
+Sprawdź CHAD server logs, Stripe Workbench/API request logs i Events. Potwierdź: czy powstała Checkout Session, jej session.id i session.url, amount/currency/mode, czy powstał PaymentIntent, czy używany jest właściwy testowy Stripe account/key, czy Checkout kończy się błędem po stronie Stripe, czy success/cancel URL są poprawne.
+
+Nie loguj żadnych sekretów ani danych kart.
+
+1.1. Napraw spinner — UI nie może wisieć bez końca: przy tworzeniu Checkout pokaż stan loading; po otrzymaniu session.url natychmiast redirect; przy błędzie zatrzymaj spinner i pokaż komunikat; dodaj sensowny timeout/error handling; cancel przywraca normalny stan; success pokazuje status płatności; refresh nie tworzy kolejnej sesji; sam success query param nie jest dowodem zapłaty.
+
+1.2. Dev Panel → Payments — osobna zakładka/sekcja jako narzędzie diagnostyczne: timestamp, environment CHAD, Stripe mode test/live, etap (checkout_create_requested/checkout_created/checkout_create_failed/webhook_received/webhook_verified/webhook_rejected/payment_completed/payment_failed/inne rzeczywiste statusy), Checkout Session ID, PaymentIntent ID, repo/user context, amount + currency, status, krótki sanitized error/message. Nie zapisuj numerów kart, CVC, secret key, webhook secret, Stripe-Signature ani pełnych payloadów. Log ma przetrwać refresh. Przed zmianą schematu sprawdź aktualną migrację 0005_stripe_payments.sql i istniejący model. Nie twórz konkurencyjnego źródła prawdy bez potrzeby.
+
+1.3. Admin — nowa struktura menu: Aktualną bezpośrednią pozycję Users zastąp strukturą: Admin → Users, Admin → Payments. Nie usuwaj Users; przenieś je logicznie pod Admin. Jeżeli repo ma już sekcję/route Admin, użyj jej zamiast tworzenia drugiej.
+
+1.4. Admin → Payments — read-only lista transakcji/płatności. Kolumny minimum: data/czas, user/repo, amount, currency, Stripe mode test/live, environment CHAD jeśli jest dostępne, Checkout Session ID, PaymentIntent ID, status płatności. Rozróżniaj test/live na podstawie rzeczywistych danych Stripe (np. livemode), a nie po nazwie. Admin Payments nie służy do logów technicznych — te są w Dev Panelu. Nie dodawaj refund/delete/manual status change.
+
+1.5. Architektura — zachowaj: Dashboard → packages/dba → packages/payments → Stripe. Dla trwałych danych: Dashboard → packages/dba → PostgreSQL. Dashboard ma być cienkim adapterem. Nie importuj Stripe bezpośrednio do komponentów Dashboardu.
+
+1.6. Webhook — POST /api/webhooks/stripe, gotowy do późniejszego działania pod https://chad.biz.pl/api/webhooks/stripe: bez sesji użytkownika, Stripe signature verification, raw body, STRIPE_WEBHOOK_SECRET server-side, idempotencja, szybka odpowiedź, checkout.session.completed zapisuje końcowy stan, błędny podpis niczego nie mutuje. Nie deployuj PROD bez zgody.
+
+1.7. Test2 / test3 — dla integracyjnych testów PostgreSQL nie wymyślaj fake repoGuid, jeśli test przechodzi przez realny repo context. Używaj test2 (resetowalny/śmieciowy sandbox) i test3 (kontrolowane testy środowiska), pobierz ich rzeczywisty repoGuid istniejącym mechanizmem CHAD. Fake repoGuid tylko w czystych unit testach bez realnej bazy. Nigdy nie mutuj pawel_f, kamil_s ani innych realnych użytkowników.
+
+1.8. Testy — Checkout (poprawne utworzenie Sandbox Session, Session ma URL, prawidłowa kwota i PLN, błędy zatrzymują spinner, brak nieskończonego loading, realny test kartą testową jeśli network/credentials dostępne); Stripe (znajdź Session w Workbench/API logs, po sukcesie płatność jest widoczna w Sandbox, jeśli nie jest — podaj konkretny Stripe error); Webhook (brak podpisu → kontrolowany 4xx, zły podpis → kontrolowany 4xx, brak secret → kontrolowany config error, poprawny event → zapis, duplicate → bez podwójnego skutku, test/live zapisane poprawnie); Dev Panel (lifecycle widoczny, brak sekretów, błędy widoczne po refreshu); Admin (Admin → Users działa, Admin → Payments działa, lista pokazuje status i test/live, auth/admin permissions zgodne z projektem); Regresje (login/auth, Settings → Payments, Dev Panel, Admin Users, DBA, typecheck/build, oficjalny local Docker rebuild/restart/status/healthcheck, realny smoke test).
+
+1.9. Najważniejsze kryterium — Nie kończ na buildzie/mockach. Masz ustalić DLACZEGO testowa płatność wisiała i DLACZEGO nie pojawiła się w Stripe Sandbox. Jeżeli realny Sandbox E2E nadal jest zablokowany, podaj: etap, Session ID/status, PaymentIntent ID/status jeśli istnieje, konkretny błąd, czego brakuje.
+
+2. Zabezpieczenia przekazywane do AI Codera (pełna treść sekcji 2.1–2.15 — minimalizacja tokenów, dokumentacja i standardy według specjalizacji, obowiązkowy punkt powrotu przed rozpoczęciem pracy, zakaz zgadywania struktury systemu, celowana analiza repo, testy regresyjne przed commitem, bezpieczeństwo danych i migracji, architektura DBA, izolacja użytkowników, git i równoległa praca, deployment, autonomia, uczciwość testów i raportu, wznowienie pracy, obowiązkowe przebudowanie lokalnego środowiska po zmianach — identyczna treść jak w Input 1, pominięta tu dosłownie ze względu na długość; zastosowana zasada z 03_knowledge.md).
+
+3. Kolejność pracy — wznów Story od pierwszego niewykonanego kroku; zapisz aktualny punkt Git; odtwórz problem; sprawdź CHAD logs + Stripe Workbench/API logs; ustal root cause; napraw Checkout/spinner; dodaj trwałą sanitizowaną diagnostykę przez DBA; dodaj Dev Panel → Payments; przebuduj Admin → Users/Payments; dodaj testy; uruchom regresje; commituj własny zakres; oficjalny local Docker rebuild/restart/status/healthcheck; powtórz realny Sandbox Checkout kartą testową; uzupełnij Story.
+
+4. Raport końcowy — krótko: root cause spinnera, czy Session powstała, czy PaymentIntent/płatność pojawiła się w Stripe Sandbox, wynik realnego testu kartą, Dev Panel → Payments, Admin → Payments, testy, Docker/smoke, commit SHA, prawdziwe blokady. Nie drukuj sekretów ani pełnych danych Stripe.
+
+## Input 6
+
+chcialem zebys zlaczyl user i peyments w taki sposob ze pod others na dole daj admin
+i po jego kliknieciu nowe menu tkaie jak w Msg Auto
+i tam przyciski takie jak w Msg Auto przyciski Users i Payments, gdzie admin moze podgladac platnosci roznych uzytkownikow
+2)a w settings payments zmien gui payments tak zeby uzytkownik pod przyciskiem platnosci widial swoje poprzednie udane tranzakcje platnosci
+3) i usun ten przycisk back to payments to to jest ta sama zakladka i to jest bez sensu niech po prostu bedzie komunikat ze sie udala
+
+## Input 7
+
+wypierdol ten napis:
+Payments
+Make a one-off card payment via Stripe Checkout. This is not a subscription — every payment is its own transaction, and you choose the amount each time.
+nie lubie takich dodatkowych opisow

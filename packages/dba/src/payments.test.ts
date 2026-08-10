@@ -36,6 +36,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
+import type { PoolClient } from "pg";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 dotenv.config({ path: path.join(REPO_ROOT, ".env.local") });
@@ -53,9 +54,11 @@ import {
   createPaymentCheckoutSession,
   getPaymentStatus,
   handleStripeWebhookEvent,
+  getRecentPaymentEvents,
+  getPaymentsForAdmin,
   PaymentsNotConfiguredError,
 } from "./payments.js";
-import { InvalidWebhookSignatureError } from "payments";
+import { InvalidWebhookSignatureError, InvalidAmountError } from "payments";
 
 // Same precedence as dev-db-override.ts's requirePostgresCredentials(true).
 const pgUser = process.env.POSTGRES_USER || "chad";
@@ -102,6 +105,7 @@ function signedCheckoutCompletedEvent(session: {
     id: `evt_${session.id}`,
     object: "event",
     type: "checkout.session.completed",
+    livemode: false,
     data: { object: { object: "checkout.session", ...session } },
   });
   const stripe = new Stripe("sk_test_dummy_key_for_local_signing_only");
@@ -117,21 +121,29 @@ const TEST_SESSION_IDS = [
   "story116_test_bad_sig",
 ];
 
+async function applyMigrationIfMissing(client: PoolClient, regclass: string, file: string): Promise<void> {
+  const { rows } = await client.query("SELECT to_regclass($1) AS reg", [regclass]);
+  if (rows[0].reg) return;
+  const sqlPath = path.join(REPO_ROOT, "packages", "dba", "sql", "migrations", file);
+  const sql = await readFile(sqlPath, "utf8");
+  await client.query(sql);
+}
+
 async function ensureSchema(): Promise<void> {
   await withPostgresClient(async (client) => {
-    const { rows } = await client.query("SELECT to_regclass('cp_stripe_payments') AS reg");
-    if (rows[0].reg) return;
-    const sqlPath = path.join(REPO_ROOT, "packages", "dba", "sql", "migrations", "0005_stripe_payments.sql");
-    const sql = await readFile(sqlPath, "utf8");
-    await client.query(sql);
+    await applyMigrationIfMissing(client, "cp_stripe_payments", "0005_stripe_payments.sql");
+    await applyMigrationIfMissing(client, "cp_stripe_payment_events", "0006_stripe_payment_diagnostics.sql");
   });
 }
 
 let test2RepoGuid: string;
+// Narrow, safe cleanup window for the diagnostic events table (see afterAll).
+let testRunStartedAt: string;
 
 beforeAll(async () => {
   await ensureSchema();
   test2RepoGuid = await resolveRepoGuidByUsername(TEST2_USERNAME);
+  testRunStartedAt = new Date().toISOString();
 });
 
 afterAll(async () => {
@@ -141,6 +153,19 @@ afterAll(async () => {
   // Payments rows.
   await withPostgresClient((client) =>
     client.query(`DELETE FROM cp_stripe_payments WHERE id = ANY($1::text[])`, [TEST_SESSION_IDS]),
+  );
+  // Diagnostic events: delete rows tied to our known synthetic session ids,
+  // plus the few session-id-less ones (webhook_received/rejected happen
+  // before a session id is known) — narrowed to this test run's own time
+  // window so a concurrent real user's own session-id-less event (rare,
+  // e.g. their own webhook_received) is never at risk of being swept up.
+  await withPostgresClient((client) =>
+    client.query(
+      `DELETE FROM cp_stripe_payment_events
+       WHERE checkout_session_id = ANY($1::text[])
+          OR (checkout_session_id IS NULL AND occurred_at >= $2::timestamptz)`,
+      [TEST_SESSION_IDS, testRunStartedAt],
+    ),
   );
   await closePostgresConnection();
 });
@@ -275,5 +300,81 @@ describe("payments.ts — webhook + status (real Postgres, real test2/test3)", (
         createPaymentCheckoutSession("500", "http://localhost:12020"),
       ),
     ).rejects.toThrow(PaymentsNotConfiguredError);
+  });
+
+  it("createPaymentCheckoutSession logs a sanitized checkout_create_failed event for an invalid amount", async () => {
+    await expect(
+      runWithRepoContext({ repoGuid: test2RepoGuid, username: TEST2_USERNAME }, () =>
+        createPaymentCheckoutSession("-10", "http://localhost:12020"),
+      ),
+    ).rejects.toThrow(InvalidAmountError);
+
+    const events = await getRecentPaymentEvents(20);
+    const failedEvent = events.find(
+      (e) => e.stage === "checkout_create_failed" && e.repoGuid === test2RepoGuid && e.checkoutSessionId === null,
+    );
+    expect(failedEvent).toBeTruthy();
+    // Sanitized: a short human message, never a stack trace/secret/card data.
+    expect(failedEvent?.message).toContain("Amount must be");
+  });
+
+  it("logs webhook_received/webhook_verified/payment_completed with test-mode livemode, and getRecentPaymentEvents surfaces them", async () => {
+    await withPostgresClient((client) =>
+      client.query(
+        `INSERT INTO cp_stripe_payments (id, repo_guid, username, amount_minor, currency, status)
+         VALUES ('story116_test_existing', $1, $2, 5000, 'PLN', 'pending')
+         ON CONFLICT (id) DO NOTHING`,
+        [test2RepoGuid, TEST2_USERNAME],
+      ),
+    );
+    const { rawBody, signature } = signedCheckoutCompletedEvent({
+      id: "story116_test_existing",
+      payment_intent: "pi_test_1",
+      metadata: { repoGuid: test2RepoGuid, username: TEST2_USERNAME },
+      client_reference_id: test2RepoGuid,
+      amount_total: 5000,
+      currency: "pln",
+    });
+    await handleStripeWebhookEvent(rawBody, signature);
+
+    const events = await getRecentPaymentEvents(50);
+    const forThisSession = events.filter((e) => e.checkoutSessionId === "story116_test_existing");
+    const stages = forThisSession.map((e) => e.stage);
+    expect(stages).toContain("webhook_verified");
+    expect(stages).toContain("payment_completed");
+    const verified = forThisSession.find((e) => e.stage === "webhook_verified");
+    expect(verified?.stripeMode).toBe("test"); // from event.livemode = false — never inferred from key naming.
+    // No card data / secrets in any sanitized message field.
+    for (const e of forThisSession) {
+      expect(e.message ?? "").not.toMatch(/sk_test_|sk_live_|whsec_|Stripe-Signature|\b\d{12,19}\b/i);
+    }
+  });
+
+  it("logs a webhook_rejected event (no session id) for an invalid signature, without mutating any payment row", async () => {
+    const { rawBody } = signedCheckoutCompletedEvent({ id: "story116_test_bad_sig" });
+    await expect(handleStripeWebhookEvent(rawBody, "t=1,v1=garbage")).rejects.toThrow(
+      InvalidWebhookSignatureError,
+    );
+
+    const events = await getRecentPaymentEvents(20);
+    const rejected = events.find((e) => e.stage === "webhook_rejected" && e.checkoutSessionId === null);
+    expect(rejected).toBeTruthy();
+  });
+
+  it("getPaymentsForAdmin derives test/live from the stored livemode, not from key naming", async () => {
+    await withPostgresClient((client) =>
+      client.query(
+        `INSERT INTO cp_stripe_payments (id, repo_guid, username, amount_minor, currency, status, livemode, chad_environment)
+         VALUES ('story116_test_isolation', $1, $2, 1000, 'PLN', 'completed', false, 'local')
+         ON CONFLICT (id) DO UPDATE SET livemode = EXCLUDED.livemode, chad_environment = EXCLUDED.chad_environment`,
+        [test2RepoGuid, TEST2_USERNAME],
+      ),
+    );
+
+    const payments = await getPaymentsForAdmin(200);
+    const row = payments.find((p) => p.id === "story116_test_isolation");
+    expect(row).toBeTruthy();
+    expect(row?.stripeMode).toBe("test");
+    expect(row?.chadEnvironment).toBe("local");
   });
 });

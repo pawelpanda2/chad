@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
 	Card,
 	CardContent,
@@ -20,9 +20,24 @@ import { CreditCard } from "lucide-react";
 // this only avoids a round-trip for obviously-invalid input.
 const AMOUNT_PATTERN = /^\d+(\.\d{1,2})?$/;
 
+// The spinner must never hang forever if the network stalls (Story 116
+// continuation — a related report on the success page's own polling loop).
+const CHECKOUT_REQUEST_TIMEOUT_MS = 15_000;
+
 function isPlausibleAmount(value: string): boolean {
 	const trimmed = value.trim();
 	return AMOUNT_PATTERN.test(trimmed) && Number(trimmed) > 0;
+}
+
+interface UserPaymentRow {
+	id: string;
+	amountMinor: number;
+	currency: string;
+	createdAt: string;
+}
+
+function formatAmount(row: UserPaymentRow): string {
+	return `${(row.amountMinor / 100).toFixed(2)} ${row.currency}`;
 }
 
 export default function PaymentsSettingsPage() {
@@ -30,6 +45,20 @@ export default function PaymentsSettingsPage() {
 	const [submitting, setSubmitting] = useState(false);
 	const [error, setError] = useState("");
 	const [details, setDetails] = useState("");
+	const [history, setHistory] = useState<UserPaymentRow[]>([]);
+	const [historyLoading, setHistoryLoading] = useState(true);
+
+	useEffect(() => {
+		fetch("/api/settings/payments/history")
+			.then((res) => res.json())
+			.then((data) => {
+				if (data.success) setHistory(data.payments);
+			})
+			.catch(() => {
+				/* history is a convenience list — a failed fetch here doesn't block paying */
+			})
+			.finally(() => setHistoryLoading(false));
+	}, []);
 
 	const handlePay = async () => {
 		setError("");
@@ -41,11 +70,14 @@ export default function PaymentsSettingsPage() {
 		}
 
 		setSubmitting(true);
+		const controller = new AbortController();
+		const timeout = setTimeout(() => controller.abort(), CHECKOUT_REQUEST_TIMEOUT_MS);
 		try {
 			const res = await fetch("/api/settings/payments/checkout", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify({ amount: amount.trim() }),
+				signal: controller.signal,
 			});
 			const data = await res.json();
 			if (!res.ok || !data.success) {
@@ -54,11 +86,18 @@ export default function PaymentsSettingsPage() {
 				setSubmitting(false);
 				return;
 			}
+			// Redirect immediately — never leave the spinner up once we have a URL.
 			window.location.href = data.url;
 		} catch (err) {
-			setError("Network error while starting checkout.");
-			setDetails(err instanceof Error ? err.message : String(err));
+			if (err instanceof DOMException && err.name === "AbortError") {
+				setError("Starting checkout timed out — please try again.");
+			} else {
+				setError("Network error while starting checkout.");
+				setDetails(err instanceof Error ? err.message : String(err));
+			}
 			setSubmitting(false);
+		} finally {
+			clearTimeout(timeout);
 		}
 	};
 
@@ -66,11 +105,6 @@ export default function PaymentsSettingsPage() {
 		<div className="space-y-6">
 			<div>
 				<h3 className="text-lg font-medium">Payments</h3>
-				<p className="text-sm text-muted-foreground">
-					Make a one-off card payment via Stripe Checkout. This is not a
-					subscription — every payment is its own transaction, and you choose
-					the amount each time.
-				</p>
 			</div>
 			<Separator />
 
@@ -105,6 +139,36 @@ export default function PaymentsSettingsPage() {
 						<CreditCard className="mr-2 h-4 w-4" />
 						{submitting ? "Starting checkout..." : "Pay with card"}
 					</Button>
+				</CardContent>
+			</Card>
+
+			<Card>
+				<CardHeader>
+					<CardTitle>Previous payments</CardTitle>
+				</CardHeader>
+				<CardContent>
+					{historyLoading ? (
+						<p className="text-sm text-muted-foreground">Loading...</p>
+					) : history.length === 0 ? (
+						<p className="text-sm text-muted-foreground">No successful payments yet.</p>
+					) : (
+						<ul className="divide-y">
+							{history.map((row) => (
+								<li key={row.id} className="flex items-center justify-between py-2 text-sm">
+									<span className="text-muted-foreground">
+										{new Date(row.createdAt).toLocaleString("en-US", {
+											year: "numeric",
+											month: "short",
+											day: "numeric",
+											hour: "2-digit",
+											minute: "2-digit",
+										})}
+									</span>
+									<span className="font-medium">{formatAmount(row)}</span>
+								</li>
+							))}
+						</ul>
+					)}
 				</CardContent>
 			</Card>
 		</div>

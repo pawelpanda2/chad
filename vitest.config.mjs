@@ -213,6 +213,9 @@ export default defineConfig({
       "packages/dashboard/lib/payments-public-origin.test.ts",
       "packages/dashboard/app/(dashboard)/dashboard/settings/display/page.test.tsx",
       "packages/dashboard/app/(dashboard)/dashboard/settings/layout.test.tsx",
+      // Story 116 continuation — success-page polling must reach a terminal
+      // state instead of spinning forever (the actual reported bug).
+      "packages/dashboard/app/(dashboard)/dashboard/settings/payments/success/page.test.tsx",
     ],
     exclude: ["**/node_modules/**", "**/dist/**"],
     testTimeout: 30_000,

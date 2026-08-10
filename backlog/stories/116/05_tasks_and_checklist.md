@@ -10,10 +10,17 @@
 | 6 | DONE | | Stripe Checkout Session creation is server-side, requires a logged-in CHAD session, and uses a dynamic price (no fixed `STRIPE_PRICE_ID`) |
 | 7 | DONE | | The Stripe webhook endpoint verifies `Stripe-Signature` and is actually reachable by Stripe (no CHAD session required) |
 | 8 | DONE | | Webhook-confirmed payment status is idempotent and isolated per user |
-| 9 | PARTIAL | | Payments success/cancel pages show a clear state and never create a second Checkout Session on refresh |
+| 9 | DONE | | Payments success/cancel pages show a clear state and never create a second Checkout Session on refresh |
 | 10 | DONE | | No Stripe secret ever reaches the browser; unrelated Settings tabs (Profile/Account/Password/Appearance/Folders) still work as before |
 | 11 | DONE | | With a real Stripe Sandbox `STRIPE_SECRET_KEY` configured in local Docker, Pay with card creates a real Stripe Checkout Session end-to-end |
 | 12 | DONE | | PROD env/docker config is prepared so the webhook works at `https://chad.biz.pl/api/webhooks/stripe` once deployed and a `STRIPE_WEBHOOK_SECRET` is added — without deploying PROD or going LIVE now |
+| 13 | DONE | | Root cause of the "spinner never resolves" report is identified with concrete evidence (real Stripe Session/PaymentIntent status), not assumed |
+| 14 | DONE | | The success page never spins forever: it reaches an explicit terminal state, and once a payment is confirmed it auto-returns to Settings → Payments instead of showing a redundant "Back to Payments" button |
+| 15 | DONE | | Dev Panel → Payments shows the sanitized Checkout/webhook lifecycle log (no card data/secrets), and it survives a page refresh |
+| 16 | DONE | | The old direct "Users" sidebar item is replaced by a single "Admin" entry under "Others" that opens a Msg-Auto-style hub with Users/Payments buttons |
+| 17 | DONE | | Admin → Payments shows a real, admin-gated, read-only transaction list across all users, with test/live and environment shown per real Stripe/CHAD data |
+| 18 | DONE | | Settings → Payments shows the current user's own previous successful payments, with no extra marketing-style description text |
+| 19 | DONE | | A real Stripe Sandbox payment, paid with the `4242...` test card through local webhook forwarding, actually completes end-to-end and shows as confirmed in CHAD |
 
 # Task 1 — Settings navigation cleanup
 
@@ -57,7 +64,7 @@
 
 **Files changed:** `packages/dashboard/app/(dashboard)/dashboard/settings/payments/page.tsx`, `packages/dashboard/app/api/settings/payments/checkout/route.ts`.
 
-**Tested:** real browser smoke test as `test2` on local Docker — typed `500.50`, clicked Pay with card, observed the real server round-trip (see Task 5/6 for the exact response). Redirect-to-Stripe itself could not be exercised (no real Sandbox `STRIPE_SECRET_KEY` available in this environment — see `06_others_from_report.md`), but the entire path up to that point (client → route → dba → packages/payments) is real, not mocked.
+**Tested:** real browser smoke test as `test2` on local Docker — typed `500.50`, clicked Pay with card, observed the real server round-trip (see Task 5/6 for the exact response). At the time this task was first written, redirect-to-Stripe itself hadn't been exercised (no Sandbox key yet). **Update (Input 3/6):** with a real key, this redirect now happens for real — see Task 11/19.
 
 **Status: DONE**
 
@@ -81,7 +88,7 @@
 
 **Files changed:** `packages/payments/src/checkout.ts`, `config.ts`; `packages/dba/src/payments.ts`; `packages/dashboard/app/api/settings/payments/checkout/route.ts`; `packages/dashboard/lib/payments-public-origin.ts`.
 
-**Tested:** unauthenticated `POST /api/settings/payments/checkout` on the real running local Docker container → `401` (confirmed via curl, both before and after the middleware fix in Task 7). Authenticated (`test2`) request with a valid amount and no Stripe keys configured → real `503 PaymentsNotConfiguredError` with the exact message, confirmed live in a real browser (not simulated). `packages/dashboard/lib/payments-public-origin.test.ts` (3 tests) covers the origin-resolution logic. The actual Stripe network call (`stripe.checkout.sessions.create`) itself could not be exercised — no real Sandbox key available (see `06_others_from_report.md`); its request-shape is `packages/payments/src/checkout.ts`'s own code, reviewed but not integration-tested against real Stripe.
+**Tested:** unauthenticated `POST /api/settings/payments/checkout` on the real running local Docker container → `401` (confirmed via curl, both before and after the middleware fix in Task 7). Authenticated (`test2`) request with a valid amount and no Stripe keys configured → real `503 PaymentsNotConfiguredError` with the exact message, confirmed live in a real browser (not simulated). `packages/dashboard/lib/payments-public-origin.test.ts` (3 tests) covers the origin-resolution logic. **Update (Input 3/6):** the actual Stripe network call now IS integration-tested for real — see Task 11 (session creation) and Task 19 (full paid-and-confirmed E2E).
 
 **Status: DONE**
 
@@ -115,13 +122,13 @@
 
 **Requested:** Success shows a clear success state; cancel shows cancellation + a way back; a query param alone is never proof of payment; refresh never creates a second Checkout Session.
 
-**Done:** `settings/payments/success/page.tsx` reads `session_id` from the query, polls `GET /api/settings/payments/status` (webhook-confirmed status only) up to 15 times/2s apart, and shows "Confirming your payment..." while pending or "Payment successful" once the webhook has actually marked it `completed` — the `session_id` param itself never drives the success state. `settings/payments/cancel/page.tsx` shows a plain cancelled state with a link back to Payments. Neither page ever calls the checkout-creation route, so refreshing either can't create a new Checkout Session — this is structural (no `POST /checkout` call exists on these pages), not a flag check.
+**Done:** `settings/payments/success/page.tsx` reads `session_id` from the query, polls `GET /api/settings/payments/status` (webhook-confirmed status only) up to 15 times/2s apart, and shows "Confirming your payment..." while pending or "Payment successful" once the webhook has actually marked it `completed` — the `session_id` param itself never drives the success state. `settings/payments/cancel/page.tsx` shows a plain cancelled state. Neither page ever calls the checkout-creation route, so refreshing either can't create a new Checkout Session — this is structural (no `POST /checkout` call exists on these pages), not a flag check. **Superseded by Task 14** (Input 6/7 continuation): the polling terminal-state fix and the "Back to Payments" button removal/auto-redirect are covered there, along with real end-to-end proof (Task 19).
 
 **Files changed:** `packages/dashboard/app/(dashboard)/dashboard/settings/payments/success/page.tsx`, `.../cancel/page.tsx`.
 
-**Tested:** code review + the `getPaymentStatus` real-Postgres tests from Task 8 (same endpoint these pages poll). A full success-page walkthrough with a real completed Stripe payment could not be exercised — needs a real Sandbox Checkout Session, blocked for the same reason as Task 6 (see `06_others_from_report.md`).
+**Tested:** see Task 14/19 — a full success-page walkthrough with a real completed Stripe payment (Sandbox test card, local webhook forwarding) was exercised live in this same Story's continuation.
 
-**Status: PARTIAL** — implemented and the API it depends on is proven correct; the page itself wasn't exercised against a real completed payment in a browser.
+**Status: DONE** (was PARTIAL when first written — see Task 14/19 for the completed verification).
 
 # Task 10 — No secret leakage; no regression on other Settings tabs
 
@@ -164,3 +171,89 @@ What was actually missing was PROD **configuration surface**, not app code: `doc
 **Tested:** `docker compose -f docker-compose.qnap.prod.yml config --quiet` (with a dummy `IMAGE_TAG`) validates cleanly — no YAML/interpolation errors. No live PROD test performed (correctly, per the explicit instruction not to deploy PROD now). Once a real deploy happens and `.env.qnap` gets real values, the exact same code path already verified live in Task 11 (local) applies unchanged.
 
 **Status: DONE** (code/config ready; real PROD webhook delivery necessarily unverified until an actual future deploy — out of this task's explicit scope).
+
+# Task 13 — Root-cause the "spinner never resolves" report (Input 5)
+
+**Requested:** don't assume the webhook is at fault — check CHAD server logs, Stripe Workbench/API request logs and Events; confirm whether the Checkout Session/PaymentIntent were created, their status, amount/currency/mode, whether Checkout errored, whether success/cancel URLs were correct.
+
+**Done:** found the user's real session in `cp_stripe_payments` (`pawel_f`, 2.00 PLN, created 19:13 UTC) — still `status: pending`, `stripe_event_id: null`. Queried the real Stripe API directly for that exact session id (`stripe.checkout.sessions.retrieve(..., { expand: ["payment_intent"] })`): `status: "complete"`, `payment_status: "paid"`, `livemode: false` (correct test-mode key/account), `amount_total: 200`, `currency: "pln"`, `success_url`/`cancel_url` both correct, PaymentIntent `succeeded`, no `last_payment_error`. **Conclusion: the payment genuinely succeeded on Stripe.** It never showed as confirmed in CHAD because no webhook endpoint was registered anywhere reachable by Stripe at all (no public URL, no local tunnel) — `checkout.session.completed` was never delivered, so the DB row could never move past `pending`. Separately, and compounding the visible symptom: `settings/payments/success/page.tsx`'s polling loop had no terminal UI state once its poll budget (15×2s) ran out — it silently stopped scheduling further polls while `status` (and the spinner) stayed at "pending" forever, so even a delayed webhook arrival wouldn't have changed what the user saw without a refresh. Both root causes are real and independent; both needed fixing (Task 14, and Task 19's Stripe CLI forwarding to make local delivery possible at all).
+
+**Files changed:** none (diagnosis only) — see Task 14/19 for the fixes.
+
+**Tested:** the diagnosis itself is the "test" — a real `stripe.checkout.sessions.retrieve` call against the real Sandbox account, not a guess.
+
+**Status: DONE**
+
+# Task 14 — Fix the spinner (terminal state) + remove the redundant "Back to Payments" button (Input 5, 6)
+
+**Requested:** UI must never hang forever; show loading on Checkout creation, redirect immediately once a URL is returned, stop the spinner and show a message on error, add a sensible timeout, cancel restores normal state, success shows payment status, refresh never creates a second session, the success query param alone is never proof of payment. Later (Input 6): remove the "Back to Payments" button since success/cancel are "the same tab" as Payments — just show the success message.
+
+**Done:** `settings/payments/success/page.tsx` now has an explicit `"timed_out"` terminal status: once `MAX_POLLS` (15×2s) is exhausted while the server still reports `pending`, the page shows "Still confirming" (not an endless "Confirming your payment..." spinner) with a manual "Check again" button that restarts polling from scratch. On `"completed"`, the page now auto-`router.push`es back to `/dashboard/settings/payments` after 1.5s (Input 6) instead of showing a "Back to Payments" link — the new payment is already visible there via Task 18's history list. `settings/payments/page.tsx`'s own checkout-creation fetch got an `AbortController`-based 15s timeout (`CHECKOUT_REQUEST_TIMEOUT_MS`), surfaced as a clear "Starting checkout timed out" error with the spinner stopped, not a raw hang.
+
+**Files changed:** `packages/dashboard/app/(dashboard)/dashboard/settings/payments/success/page.tsx`, `.../page.tsx` (main Payments page, timeout).
+
+**Tested:** `success/page.test.tsx` (4 tests, fake timers + `act()`): reaches `"timed_out"` (not an endless spinner) when the poll budget is exhausted; resolves to `"completed"` immediately without waiting for the full budget and confirms no "Back to Payments" button exists, then confirms the auto-redirect actually fires (`router.push` called with the right path) after the delay; "Check again" restarts polling and reaches `"completed"` for real. **Live, with a real completed Stripe payment (Task 19): confirmed the success page actually reaches "Payment successful" and auto-returns to Payments — not simulated.**
+
+**Status: DONE**
+
+# Task 15 — Dev Panel → Payments (sanitized lifecycle log, survives refresh)
+
+**Requested:** a new Dev Panel tab showing recent sanitized events (timestamp, CHAD environment, Stripe test/live, lifecycle stage, Checkout Session ID, PaymentIntent ID, repo/user, amount+currency, status, short sanitized message) — never card numbers/CVC/secret key/webhook secret/`Stripe-Signature`/full payloads; must survive a refresh (unlike the existing Requests/Errors tabs, which are in-memory only).
+
+**Done:** new migration `0006_stripe_payment_diagnostics.sql` adds an append-only `cp_stripe_payment_events` table (deliberately NOT a second source of truth — `cp_stripe_payments.status` remains authoritative; this table is diagnostics only) plus `livemode`/`chad_environment` columns on `cp_stripe_payments` itself (needed for Task 17 too). `packages/dba/src/payments.ts`'s `recordPaymentEvent()` writes a best-effort row (caught/logged on failure, **never** rethrown — a diagnostics failure must never break a real payment) at every stage: `checkout_create_requested`/`checkout_created`/`checkout_create_failed`, `webhook_received`/`webhook_verified`/`webhook_rejected`, `payment_completed`/`payment_failed`. `GET /api/dev-panel/payments-events` (same `assertDevOnly()` gate as the existing dev-settings routes — `CHAD_ENVIRONMENT` local/unset only) feeds a new `DevPanelPaymentsTab` component, wired in as a 4th tab (💳 Payments) alongside Settings/Errors/Requests, backed by the database (not the client-side in-memory store), so it survives a refresh by construction.
+
+**Files changed:** `packages/dba/sql/migrations/0006_stripe_payment_diagnostics.sql`, `packages/dba/src/payments.ts`, `packages/dashboard/app/api/dev-panel/payments-events/route.ts`, `packages/dashboard/components/dev-panel/dev-panel-payments.tsx`, `dev-panel.tsx`, `packages/dashboard/lib/dev-panel/dev-panel-store.tsx` (new `'payments'` tab type).
+
+**Tested:** `packages/dba/src/payments.test.ts` (3 new real-Postgres tests): a `checkout_create_failed` event is recorded with a sanitized message for an invalid amount; `webhook_received`/`webhook_verified`/`payment_completed` are all recorded with correct `stripe_mode` for a real signed event, and no message anywhere matches a card-number/secret-key/webhook-secret pattern; a `webhook_rejected` event is recorded (no session id) for an invalid signature, with no payment row mutated. **Live (Task 19): after a real completed Sandbox payment, opened Dev Panel → Payments and saw the full real lifecycle — `checkout_create_requested` → `checkout_created` → several `webhook_received`/`webhook_verified` rows (Stripe sends `payment_intent.created`, `charge.succeeded`, `payment_intent.succeeded`, `checkout.session.completed`, `charge.updated` — all logged, only the last one advances the payment) → `payment_completed`, all correctly tagged `test`/`local`.**
+
+**Status: DONE**
+
+# Task 16 — Admin restructure: hub page under "Others" (Input 3, then revised by Input 6)
+
+**Requested (Input 3):** replace the direct "Users" sidebar position with "Admin → Users, Admin → Payments"; reuse an existing Admin route/section if present, don't create a second one. **Revised (Input 6):** put a single "Admin" entry at the bottom of "Others", and clicking it opens a new menu "like Msg Auto" with Users/Payments buttons — not two flat sidebar sub-items.
+
+**Done:** first pass (Input 3) added "Users"/"Payments" as two flat items under a dedicated "Admin" sidebar group — functionally correct but not what the user actually wanted. Revised per Input 6: `packages/dashboard/app/(dashboard)/dashboard/admin/page.tsx` is now a hub page copying `msg-automation/page.tsx`'s exact pattern (`DashboardPageShell` + a button grid, each button `router.push`ing to its own route) with "USERS"/"PAYMENTS" buttons. The sidebar's `Users`/`CreditCard`-icon two-item "Admin" group was removed; a single `Admin` item now sits at the bottom of the existing "Others" group (`activePrefixes: ["/dashboard/admin"]`), same shape as "Msg Auto"/"Knowledge"/"Examples". `/dashboard/admin/users` (moved from the original standalone `/dashboard/users`, an orphaned duplicate `/admin/users` route from the original template was found and confirmed unreferenced — left untouched, out of scope) and `/dashboard/admin/payments` keep their own routes/pages/`DashboardPageShell`s, exactly as sub-pages under "Msg Auto" (e.g. Statuses) do.
+
+**Files changed:** `packages/dashboard/components/shared/sidebar.tsx`, `packages/dashboard/app/(dashboard)/dashboard/admin/page.tsx` (new hub), `admin/users/page.tsx` (moved+relabeled from `/dashboard/users`), `admin/payments/page.tsx`, `packages/dashboard/app/sitemap.ts`.
+
+**Tested:** `pnpm build` shows `/dashboard/admin`, `/dashboard/admin/users`, `/dashboard/admin/payments` and no `/dashboard/users`. Live browser (`test2`): sidebar shows a single "Admin" item as the last entry under "Others"; clicking it shows the "Admin" hub with "USERS"/"PAYMENTS" buttons, matching the Msg Auto hub's exact look or interaction pattern.
+
+**Status: DONE**
+
+# Task 17 — Admin → Payments (read-only, all users, real test/live)
+
+**Requested:** read-only transaction list, columns: date/time, user/repo, amount, currency, Stripe mode test/live, CHAD environment, Checkout Session ID, PaymentIntent ID, status; distinguish test/live from real Stripe data (`livemode`), never from key naming; no refund/delete/manual-status-change; admin-only, same permission model as the rest of the project.
+
+**Done:** `getPaymentsForAdmin()` (dba) reads `cp_stripe_payments` ordered by `created_at DESC`, deriving `stripeMode` from the stored `livemode` boolean (`true`→`"live"`, `false`→`"test"`, captured at write time from Stripe's own `session.livemode`/`event.livemode` — never inferred from the `sk_test_`/`sk_live_` key prefix). `GET /api/admin/payments` uses the exact same `currentUser.isAdmin` gate as the existing, already-audited `/api/admin/users` route (403 `NOT_AUTHORIZED` otherwise). `admin/payments/page.tsx` renders the table — no refund/delete/status-change controls exist anywhere in this page or its API.
+
+**Files changed:** `packages/dba/src/payments.ts` (`getPaymentsForAdmin`), `packages/dashboard/app/api/admin/payments/route.ts`, `packages/dashboard/app/(dashboard)/dashboard/admin/payments/page.tsx`.
+
+**Tested:** `packages/dba/src/payments.test.ts` — real-Postgres test confirms `stripeMode`/`chadEnvironment` are correctly derived for a row with `livemode=false`. Live browser: as `test2` (not an admin) → real `403 NOT_AUTHORIZED` shown in the page (confirms the gate is live-wired, not just present in code) — proven via `GET /api/auth/session` in the same session returning `isAdmin: false`. Viewing the page as a real admin account wasn't done in this session — deliberately not assuming a real admin user's identity without explicit permission (`pawel_f` is the only admin account and mutating/impersonating it wasn't authorized); the query logic itself is proven correct against real data, and the auth gate reuses an already-proven pattern verbatim.
+
+**Status: DONE** (admin-list rendering itself verified via code/query-level tests + a live negative-auth check, not a live positive-admin view — see `06_others_from_report.md`).
+
+# Task 18 — Settings → Payments: show the user's own payment history, drop the description text (Input 6, 7)
+
+**Requested (Input 6):** under the Pay-with-card button, show the user's own previous successful transactions. (Input 7): remove the "Payments / Make a one-off card payment..." description text entirely — no extra descriptive copy.
+
+**Done:** `getPaymentsForUser()` (dba) — completed payments only, scoped to the caller's own `repo_guid` (same isolation as `getPaymentStatus`), most recent first. `GET /api/settings/payments/history` (session-gated, thin adapter). `settings/payments/page.tsx` dropped the intro paragraph under the "Payments" heading and added a "Previous payments" card listing date + amount for each of the user's own completed payments (empty state: "No successful payments yet.").
+
+**Files changed:** `packages/dba/src/payments.ts` (`getPaymentsForUser`), `packages/dashboard/app/api/settings/payments/history/route.ts`, `packages/dashboard/app/(dashboard)/dashboard/settings/payments/page.tsx`.
+
+**Tested:** live browser as `test2`: page shows only the heading "Payments" (no subtitle), and "Previous payments" correctly lists the one real completed transaction from Task 19 (3.00 PLN) — the earlier 12.34 PLN attempt from Task 11 (created before Stripe CLI forwarding was set up, still `pending`) is correctly excluded, since only `completed` rows are shown.
+
+**Status: DONE**
+
+# Task 19 — Real Stripe Sandbox E2E: pay with the test card, confirm it actually completes
+
+**Requested:** the most important criterion of this continuation — don't stop at build/mocks; prove (or clearly report as blocked with concrete IDs/errors) that a real Sandbox payment via the `4242...` test card actually completes and shows as confirmed in CHAD.
+
+**Done:** installed the Stripe CLI (Homebrew failed on outdated Xcode CLT — used the arm64 release tarball directly, extracted to the scratchpad, no system install) and ran `stripe listen --forward-to localhost:12020/api/webhooks/stripe --api-key sk_test_...` to actually deliver real webhook events to the local dev server (this is what was structurally missing for local dev in Task 13's root cause — no public URL, no tunnel). Updated `.env.local`'s `STRIPE_WEBHOOK_SECRET` to the value that specific `stripe listen` session printed (each session mints its own, different from a one-shot `--print-secret` value) and restarted the container. Logged in as `test2` via a real browser, went to Settings → Payments, entered 3.00 PLN, was redirected to real Stripe-hosted Checkout, checked Stripe's own "I am an AI agent" disclosure checkboxes (honest disclosure — this is a self-testing Sandbox flow with Stripe's own public `4242 4242 4242 4242` test fixture, not a real human buyer's card), filled the test card (expiry `12/34`, CVC `123`, name "Test User"), and clicked Pay.
+
+**Result: the success page reached "Payment successful" for real** (not stuck) and auto-returned to Payments. Verified directly in Postgres: `cp_stripe_payments` row for that session — `status: "completed"`, `livemode: false`, `chad_environment: "local"`, real `stripe_payment_intent_id` (`pi_3U2zHI...`) and `stripe_event_id` (`evt_1U2zHJ...`) both populated. `cp_stripe_payment_events` shows the full real lifecycle (`checkout_created` → `webhook_verified` → `payment_completed`). Confirmed in the UI too: Dev Panel → Payments (Task 15) and Settings → Payments' own history list (Task 18) both show this real transaction.
+
+**Files changed:** none beyond what's listed in Tasks 13–18 — this task is the end-to-end proof that they work together.
+
+**Tested:** this task IS the test — a real Sandbox Checkout Session, a real test-card payment, a real webhook delivery, a real DB write, a real UI confirmation. PASS, locally, with Stripe Sandbox/Test Mode (never LIVE).
+
+**Status: DONE**
