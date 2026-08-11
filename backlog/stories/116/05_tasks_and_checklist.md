@@ -21,7 +21,7 @@
 | 17 | DONE | | Admin → Payments shows a real, admin-gated, read-only transaction list across all users, with test/live and environment shown per real Stripe/CHAD data |
 | 18 | DONE | | Settings → Payments shows the current user's own previous successful payments, with no extra marketing-style description text |
 | 19 | DONE | | A real Stripe Sandbox payment, paid with the `4242...` test card through local webhook forwarding, actually completes end-to-end and shows as confirmed in CHAD |
-| 20 | DONE | | Settings tabs: Account first, Payments second, Users added; old Account duplicate removed; tabs above frame; no Payments H3 duplicate |
+| 20 | DONE | | Settings tabs: Account first, Payments second, Users added; old Account duplicate removed; tabs inside outer frame above inner frame (Daily Tracker pattern); no Payments H3 duplicate |
 | 21 | DONE | | Settings → Users session switch (admin-only, server-side cookie reissue); Admin → Users real role grant/revoke via DBA |
 | 22 | DONE | | Admin → Payments user filter (DBA `repoGuid`); helper blurb removed |
 | 23 | DONE | | TEST webhook `https://test.chad.biz.pl/api/webhooks/stripe` delivers; TEST deploy + PROD promote of `11c7f00` |

@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 /**
  * Story 116 continuation — Settings nav: Account (was Profile), Payments
- * second, Users present, old Account duplicate gone, tabs above the frame.
+ * second, Users present, old Account duplicate gone; tabs inside the outer
+ * shell frame above the inner content frame (Daily Tracker pattern).
  */
 import { describe, expect, it, vi, afterEach } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
