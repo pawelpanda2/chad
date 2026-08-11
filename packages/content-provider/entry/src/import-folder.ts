@@ -6,7 +6,14 @@
  * cp-postgre directly — always this function.
  */
 
-import type { CpImportCommitError, CpImportCommitResult, CpImportValidationError, ImportFolderLimits } from "cp-core";
+import type {
+  CpImportCommitError,
+  CpImportCommitResult,
+  CpImportSkipPolicy,
+  CpImportSkippedEntry,
+  CpImportValidationError,
+  ImportFolderLimits,
+} from "cp-core";
 import { stageAndValidateZipImport } from "cp-files";
 import { commitFolderImportPostgre } from "cp-postgre";
 import { getBackendKindForRepo } from "./repo-storage-config.js";
@@ -20,18 +27,21 @@ export interface ImportFolderFromZipInput {
   zipBytes: Buffer;
   actor: { username: string; repoGuid: string } | null;
   limits?: Partial<ImportFolderLimits>;
+  /** Opt-in only — set only after the caller's own user has confirmed proceeding without the listed items. See CpImportSkipPolicy (cp-core). */
+  skipPolicy?: CpImportSkipPolicy;
 }
 
 export type ImportFolderFromZipResult =
   | { phase: "validation-failed"; errors: CpImportValidationError[] }
   | { phase: "commit-failed"; error: CpImportCommitError }
-  | { phase: "committed"; result: CpImportCommitResult };
+  | { phase: "committed"; result: CpImportCommitResult; skipped: CpImportSkippedEntry[] };
 
 export async function importFolderFromZip(input: ImportFolderFromZipInput): Promise<ImportFolderFromZipResult> {
   const validation = await stageAndValidateZipImport({
     stagingDir: input.stagingDir,
     zipBytes: input.zipBytes,
     limits: input.limits,
+    skipPolicy: input.skipPolicy,
   });
   if (!validation.ok) {
     return { phase: "validation-failed", errors: validation.errors };
@@ -57,5 +67,5 @@ export async function importFolderFromZip(input: ImportFolderFromZipInput): Prom
   if (!commit.ok) {
     return { phase: "commit-failed", error: commit.error };
   }
-  return { phase: "committed", result: commit.result };
+  return { phase: "committed", result: commit.result, skipped: validation.skipped };
 }

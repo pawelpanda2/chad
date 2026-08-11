@@ -229,6 +229,44 @@ describe("stageAndValidateZipImport — valid fixtures", () => {
     });
   });
 
+  it("accepts a config.yaml with no address field (real .NET exports commonly omit it — self-healed on read, never trusted anyway)", async () => {
+    const zip = await buildZip([{ path: "01/config.yaml", content: "id: a\ntype: Folder\nname: Root" }]);
+    await withStagingDir(async (dir) => {
+      const result = await stageAndValidateZipImport({ stagingDir: dir, zipBytes: zip });
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.plan.root.name).toBe("Root");
+    });
+  });
+
+  it("ignores a __MACOSX sibling directory (macOS Finder Compress byproduct) instead of treating it as a second root", async () => {
+    const zip = await buildZip([
+      { path: "14/config.yaml", content: "id: a\ntype: Folder\nname: Root\naddress: x" },
+      { path: "14/02/config.yaml", content: "id: b\ntype: Text\nname: Child\naddress: y" },
+      { path: "14/02/body.txt", content: "hi" },
+      { path: "__MACOSX/14/._config.yaml", content: "AppleDouble junk" },
+      { path: "__MACOSX/14/02/._config.yaml", content: "AppleDouble junk" },
+    ]);
+    await withStagingDir(async (dir) => {
+      const result = await stageAndValidateZipImport({ stagingDir: dir, zipBytes: zip });
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.plan.root.name).toBe("Root");
+        expect(result.plan.totalItemCount).toBe(2);
+      }
+    });
+  });
+
+  it("ignores .DS_Store files inside item directories instead of rejecting them as unexpected", async () => {
+    const zip = await buildZip([
+      { path: "01/config.yaml", content: "id: a\ntype: Folder\nname: Root\naddress: x" },
+      { path: "01/.DS_Store", content: "finder metadata junk" },
+    ]);
+    await withStagingDir(async (dir) => {
+      const result = await stageAndValidateZipImport({ stagingDir: dir, zipBytes: zip });
+      expect(result.ok).toBe(true);
+    });
+  });
+
   it("strips a single non-numeric technical wrapper directory", async () => {
     const zip = await buildZip([
       { path: "MyExport/01/config.yaml", content: "id: a\ntype: Folder\nname: Root\naddress: x" },
@@ -435,17 +473,139 @@ describe("stageAndValidateZipImport — cleanup + name validation", () => {
     });
   });
 
-  it("rejects an item name containing a path separator", async () => {
-    const zip = await buildZip([{ path: "01/config.yaml", content: "id: a\ntype: Folder\nname: a/b\naddress: x" }]);
+  it("accepts an item name containing '/' or '\\' — a real user export legitimately has these (e.g. \"pomysły / todo\"), name is a display label never used to build a path", async () => {
+    const zip = await buildZip([{ path: "01/config.yaml", content: 'id: a\ntype: Folder\nname: "pomysły / todo"\naddress: x' }]);
+    await withStagingDir(async (dir) => {
+      const result = await stageAndValidateZipImport({ stagingDir: dir, zipBytes: zip });
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.plan.root.name).toBe("pomysły / todo");
+    });
+  });
+
+  it("accepts an item name containing '..' — display label only; real titles end with ellipsis-like '..'", async () => {
+    const zip = await buildZip([
+      {
+        path: "01/config.yaml",
+        content:
+          'id: a\ntype: Folder\nname: "#420 Jak Nauczyć Się Rzeczy, Których Nie Chcesz Robić.."\naddress: x',
+      },
+    ]);
+    await withStagingDir(async (dir) => {
+      const result = await stageAndValidateZipImport({ stagingDir: dir, zipBytes: zip });
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.plan.root.name).toBe("#420 Jak Nauczyć Się Rzeczy, Których Nie Chcesz Robić..");
+      }
+    });
+  });
+
+  it("still rejects an empty / whitespace-only item name", async () => {
+    const zip = await buildZip([{ path: "01/config.yaml", content: 'id: a\ntype: Folder\nname: "   "\naddress: x' }]);
     await withStagingDir(async (dir) => {
       const result = await stageAndValidateZipImport({ stagingDir: dir, zipBytes: zip });
       expect(result.ok).toBe(false);
-      if (!result.ok) expect(result.errors[0].code).toBe("INVALID_NAME");
+      // Empty-after-trim fails the required-fields check (INVALID_CONFIG), not a separate name rule.
+      if (!result.ok) expect(result.errors[0].code).toBe("INVALID_CONFIG");
     });
   });
 
   it("default limits are sane (documented values in force)", () => {
     expect(DEFAULT_IMPORT_LIMITS.maxZipBytes).toBeGreaterThan(0);
     expect(DEFAULT_IMPORT_LIMITS.maxItemCount).toBeGreaterThan(0);
+  });
+});
+
+describe("stageAndValidateZipImport — skipPolicy (opt-in only, found via a real user archive)", () => {
+  it("without skipPolicy, a Ref item still hard-fails the whole import (default behavior unchanged)", async () => {
+    const zip = await buildZip([
+      { path: "01/config.yaml", content: "id: a\ntype: Folder\nname: Root\naddress: x" },
+      { path: "01/02/config.yaml", content: "id: b\ntype: Ref\nname: Alias\naddress: y\nrefAddress: z" },
+    ]);
+    await withStagingDir(async (dir) => {
+      const result = await stageAndValidateZipImport({ stagingDir: dir, zipBytes: zip });
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.errors.some((e) => e.code === "UNSUPPORTED_TYPE")).toBe(true);
+    });
+  });
+
+  it("with skipRefItems, a Ref item is skipped (not imported) instead of failing the import", async () => {
+    const zip = await buildZip([
+      { path: "01/config.yaml", content: "id: a\ntype: Folder\nname: Root\naddress: x" },
+      { path: "01/02/config.yaml", content: "id: b\ntype: Ref\nname: Alias\naddress: y\nrefAddress: z" },
+      { path: "01/03/config.yaml", content: "id: c\ntype: Text\nname: Kept\naddress: w" },
+      { path: "01/03/body.txt", content: "still here" },
+    ]);
+    await withStagingDir(async (dir) => {
+      const result = await stageAndValidateZipImport({ stagingDir: dir, zipBytes: zip, skipPolicy: { skipRefItems: true } });
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.plan.root.children).toHaveLength(1);
+        expect(result.plan.root.children[0].name).toBe("Kept");
+        expect(result.skipped).toEqual([{ code: "REF_ITEM_SKIPPED", path: "01/02", message: expect.stringContaining("Alias") }]);
+      }
+    });
+  });
+
+  it("without skipPolicy, an unexpected .wav file still hard-fails the whole import (default behavior unchanged)", async () => {
+    const zip = await buildZip([
+      { path: "01/config.yaml", content: "id: a\ntype: Folder\nname: Root\naddress: x" },
+      { path: "01/lista.wav", content: "binary-ish" },
+    ]);
+    await withStagingDir(async (dir) => {
+      const result = await stageAndValidateZipImport({ stagingDir: dir, zipBytes: zip });
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.errors.some((e) => e.code === "UNEXPECTED_FILE")).toBe(true);
+    });
+  });
+
+  it("with skipUnexpectedFileExtensions, a matching extra file is skipped but the item itself is still imported", async () => {
+    const zip = await buildZip([
+      { path: "01/config.yaml", content: "id: a\ntype: Folder\nname: Root\naddress: x" },
+      { path: "01/lista.wav", content: "binary-ish" },
+      { path: "01/notes.txt.bak", content: "old backup" },
+    ]);
+    await withStagingDir(async (dir) => {
+      const result = await stageAndValidateZipImport({
+        stagingDir: dir,
+        zipBytes: zip,
+        skipPolicy: { skipUnexpectedFileExtensions: ["wav", "bak"] },
+      });
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.plan.root.name).toBe("Root");
+        expect(result.skipped).toHaveLength(2);
+        expect(result.skipped.map((s) => s.code)).toEqual(["UNEXPECTED_FILE_SKIPPED", "UNEXPECTED_FILE_SKIPPED"]);
+      }
+    });
+  });
+
+  it("a skip policy does not rescue a mix that also contains a non-skippable error", async () => {
+    const zip = await buildZip([
+      { path: "01/config.yaml", content: "id: a\ntype: Folder\nname: Root\naddress: x" },
+      { path: "01/02/config.yaml", content: "id: b\ntype: Ref\nname: Alias\naddress: y" },
+      { path: "01/03/config.yaml", content: "id: c\ntype: Widget\nname: BadType\naddress: w" },
+    ]);
+    await withStagingDir(async (dir) => {
+      const result = await stageAndValidateZipImport({
+        stagingDir: dir,
+        zipBytes: zip,
+        skipPolicy: { skipRefItems: true, skipUnexpectedFileExtensions: ["wav", "bak"] },
+      });
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.errors.some((e) => e.code === "UNSUPPORTED_TYPE" && e.message.includes("Widget"))).toBe(true);
+        // Ref was skipped via policy — no hard error whose path is the Ref item.
+        expect(result.errors.some((e) => e.path === "01/02")).toBe(false);
+      }
+    });
+  });
+
+  it("skipping the ROOT item itself (a Ref at the top level) fails clearly instead of returning an empty plan", async () => {
+    const zip = await buildZip([{ path: "01/config.yaml", content: "id: a\ntype: Ref\nname: Root\naddress: x" }]);
+    await withStagingDir(async (dir) => {
+      const result = await stageAndValidateZipImport({ stagingDir: dir, zipBytes: zip, skipPolicy: { skipRefItems: true } });
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.errors[0].code).toBe("ROOT_ITEM_SKIPPED");
+    });
   });
 });
