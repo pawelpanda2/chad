@@ -42,8 +42,36 @@ export interface CpImportValidationError {
   message: string;
 }
 
+/**
+ * An entry deliberately left out of the plan (never a silent default —
+ * only produced when the caller opted in via `CpImportSkipPolicy`, and
+ * always reported back so the caller can show the user exactly what was
+ * omitted). Distinct from `CpImportValidationError`: a skip doesn't fail
+ * the import, an error does.
+ */
+export interface CpImportSkippedEntry {
+  code: "REF_ITEM_SKIPPED" | "UNEXPECTED_FILE_SKIPPED";
+  path: string;
+  message: string;
+}
+
+/**
+ * Opt-in relaxation for two specific, common real-world cases (found
+ * against a real user-exported archive, Story 109 follow-up) — never the
+ * default. Without this, `type: "Ref"` and any unexpected file are hard
+ * validation failures for the WHOLE archive, same as before. A caller only
+ * sets this after a user has been shown exactly what would be skipped and
+ * explicitly confirmed proceeding without it — see zip-import.md.
+ */
+export interface CpImportSkipPolicy {
+  /** Skip `type: "Ref"` items (and their whole subtree) instead of failing validation. */
+  skipRefItems?: boolean;
+  /** Skip unexpected files whose extension (case-insensitive, no dot) is in this list — e.g. `["wav","bak"]` — instead of failing validation. The item itself (config.yaml/body.txt) is still validated/imported normally. */
+  skipUnexpectedFileExtensions?: string[];
+}
+
 export type CpImportValidationResult =
-  | { ok: true; plan: CpImportPlan }
+  | { ok: true; plan: CpImportPlan; skipped: CpImportSkippedEntry[] }
   | { ok: false; errors: CpImportValidationError[] };
 
 /** All limits are hard failures — never silent truncation. See cp-files' zip-import.ts for the defaults in force. */

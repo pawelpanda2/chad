@@ -45,27 +45,58 @@ currently-open Folder. Entry point: `POST /api/folders/import`
 
 ## `config.yaml` validation
 
-Not just "is the file named right" — every `config.yaml` is parsed
-(`yaml` package) and checked against `cp-core`'s `CpConfigRequired`
-(`id`, `type`, `name`, `address` — all required, non-empty strings):
+Every `config.yaml` is parsed (`yaml` package) and checked against `id`/
+`type`/`name` (all required, non-empty strings):
 
-- `type` must be `"Folder"` or `"Text"`. `"Ref"` is explicitly rejected —
-  there is no confirmed contract for importing a `Ref` item, and
-  Input 1 §1.5 forbids adding one without one.
-- `name` is validated with the same rule `folders.ts`'s
-  `validateChildName` already uses (non-empty after trim, never contains
-  `/`, `\`, or `..`).
-- `id` and `address` are present-and-non-empty (schema conformance) but
-  their **values are never trusted or reused** — every imported item gets
-  a freshly generated `id` at commit time, and its `address` is always
-  computed from where it actually lands in the target repo, never read
-  from the ZIP. This is what makes "the ZIP can't point at another user's
-  repo" true by construction: nothing from the ZIP ever reaches an address
-  calculation.
+- `type` must be `"Folder"` or `"Text"` — **or `"Ref"`, if the caller has
+  explicitly opted into skipping it** (see "Skippable issues" below).
+  Without that opt-in, `Ref` is a hard failure — there is no confirmed
+  contract for actually importing a `Ref` item as one.
+- `name` only needs to be non-empty (after trim). It deliberately does
+  **NOT** forbid `/`, `\`, or `".."` (unlike `folders.ts`'s
+  `validateChildName`, used by the separate manual "Add" flow) — real
+  exports use names like `"pomysły / todo"` and titles ending with `".."`;
+  the live system never enforced those restrictions on `name`. `name` is a
+  display label only, never used to build a path — CP addresses are always
+  purely numeric segments. Zip Slip still rejects `".."` in ZIP *entry
+  paths*, which is a separate check.
+- **`id`/`address` are NOT required.** Their values are never trusted or
+  reused regardless (every imported item gets a freshly generated `id` at
+  commit time, and its `address` is always computed from where it
+  actually lands in the target repo, never read from the ZIP — this is
+  what makes "the ZIP can't point at another user's repo" true by
+  construction). Requiring their mere presence was also found to be too
+  strict: real on-disk `config.yaml` commonly omits `address` — the real
+  system self-heals it on read (`MigrationWorker.TryMigrateConfig`), which
+  a raw filesystem export never goes through (same reasoning `cp-files`'
+  own normal-read `config.ts` already applied, independently, before this
+  feature existed).
 - Any other key in `config.yaml` (CP's own config is an open dict, see
   `cp-core`'s `types.ts`) passes through as an opaque extra field, **except**
-  `id`, `address`, `type`, `name` (handled specially above, see previous
-  bullet) and `refAddress`/`refGuid` (rejected outright — no `Ref` support).
+  `id`, `address`, `type`, `name` (handled specially above) and
+  `refAddress`/`refGuid` (rejected outright — no `Ref` support).
+
+## Skippable issues (opt-in only, never the default)
+
+Two specific, common real-world cases can be skipped instead of failing
+the whole import — but only after the Dashboard has shown the user
+exactly what would be skipped and they've explicitly confirmed:
+
+- `type: "Ref"` items — the whole subtree under that item is omitted.
+- Unexpected files whose extension is `.wav` or `.bak` — the file is
+  omitted, the item itself (its `config.yaml`/`body.txt`) is still
+  imported normally.
+
+Any *other* validation problem (bad folder name, invalid `config.yaml`,
+missing body, a Text item with children, etc.) is never skippable — it
+always blocks the import, with or without the opt-in. A caller can mix
+skippable and non-skippable problems in the same archive; skipping only
+narrows down what's left to fix, it never overrides a real problem. See
+`cp-core`'s `CpImportSkipPolicy`/`CpImportSkippedEntry`,
+`packages/content-provider/files/src/zip-import.ts`'s `skipPolicy`
+parameter, and the Dashboard's confirm dialog
+(`packages/dashboard/app/(dashboard)/dashboard/folders/page.tsx`,
+`isSkippableImportError`/`importSkipConfirm`).
 
 ## Security
 

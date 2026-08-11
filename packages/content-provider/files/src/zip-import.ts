@@ -25,6 +25,8 @@ import { parse as parseYaml } from "yaml";
 import type {
   CpImportNode,
   CpImportPlan,
+  CpImportSkipPolicy,
+  CpImportSkippedEntry,
   CpImportValidationError,
   CpImportValidationResult,
   ImportFolderLimits,
@@ -44,7 +46,15 @@ export const DEFAULT_IMPORT_LIMITS: ImportFolderLimits = {
 
 const CONFIG_FILE_NAME = "config.yaml";
 const BODY_FILE_NAME = "body.txt";
-const NAME_PATTERN_FORBIDDEN = /[/\\]|\.\./;
+/**
+ * `name` is a display label, never used to build a path — CP addresses are
+ * purely numeric segments (see cp-model.ts / this file's own commit path).
+ * Only empty (after trim) names are rejected. Characters like "/", "\\",
+ * and ".." are allowed in `name` — real exports contain them (e.g.
+ * "pomysły / todo", titles ending with ".."). Path traversal is enforced
+ * separately on ZIP entry *paths* (Zip Slip), not on the display label.
+ * (Manual Folders "Add" still has its own `validateChildName` in folders.ts.)
+ */
 
 /** Fail-fast abort — security/resource violations, never a partial result. */
 class ZipImportAbortError extends Error {
@@ -167,6 +177,23 @@ function isEncrypted(entry: yauzl.Entry): boolean {
   return (entry.generalPurposeBitFlag & 0x1) !== 0;
 }
 
+/**
+ * macOS Finder's "Compress" always adds a `__MACOSX/` sibling directory
+ * (AppleDouble resource-fork sidecars, `._<name>`) and scatters `.DS_Store`
+ * folder-metadata files throughout real content directories — neither is
+ * user data, both are unconditional Finder/Archive-Utility byproducts. Real
+ * exported CP trees zipped on a Mac (the expected common case for this
+ * feature) always carry these; without skipping them, `__MACOSX` reads as a
+ * second sibling root (MULTIPLE_ROOT_ITEMS) and every `.DS_Store` reads as
+ * an UNEXPECTED_FILE, rejecting nearly every Mac-zipped archive outright —
+ * found via a real user-provided fixture, not a hypothetical.
+ */
+function isMacOsJunkEntry(segments: string[]): boolean {
+  if (segments[0] === "__MACOSX") return true;
+  if (segments[segments.length - 1] === ".DS_Store") return true;
+  return false;
+}
+
 function ensureDir(tree: Map<string, TreeDirEntry>, dirPath: string): TreeDirEntry {
   let dir = tree.get(dirPath);
   if (!dir) {
@@ -215,7 +242,6 @@ async function scanZipIntoTree(
     if (segments.length > limits.maxTreeDepth) {
       throw new ZipImportAbortError("TREE_TOO_DEEP", entry.fileName, `Entry exceeds the ${limits.maxTreeDepth}-level depth limit`);
     }
-    topLevelSegments.add(segments[0]);
 
     if (isEncrypted(entry)) {
       throw new ZipImportAbortError("ENCRYPTED_ENTRY", entry.fileName, "Encrypted archive entries are not supported");
@@ -224,31 +250,41 @@ async function scanZipIntoTree(
       throw new ZipImportAbortError("SYMLINK_OR_SPECIAL_ENTRY", entry.fileName, "Symlinks and special files are not allowed");
     }
 
+    // Resource-limit checks still apply to macOS junk entries (defense in depth —
+    // never let a "__MACOSX/" name exempt an entry from size/ratio limits), but
+    // they're excluded below from topLevelSegments/tree/content — see isMacOsJunkEntry.
+    if (!isDirEntry) {
+      totalUncompressedBytes += entry.uncompressedSize;
+      if (totalUncompressedBytes > limits.maxTotalUncompressedBytes) {
+        throw new ZipImportAbortError(
+          "TOTAL_SIZE_EXCEEDED",
+          entry.fileName,
+          `Archive's total uncompressed size exceeds the ${limits.maxTotalUncompressedBytes}-byte limit`
+        );
+      }
+      if (entry.uncompressedSize > limits.maxEntryUncompressedBytes) {
+        throw new ZipImportAbortError(
+          "ENTRY_TOO_LARGE",
+          entry.fileName,
+          `Entry declared size exceeds the ${limits.maxEntryUncompressedBytes}-byte per-entry limit`
+        );
+      }
+      if (
+        entry.uncompressedSize > limits.maxCompressionRatioCheckThresholdBytes &&
+        entry.uncompressedSize / Math.max(entry.compressedSize, 1) > limits.maxCompressionRatio
+      ) {
+        throw new ZipImportAbortError("ZIP_BOMB_SUSPECTED", entry.fileName, "Entry's compression ratio looks like a zip bomb");
+      }
+    }
+
+    if (isMacOsJunkEntry(segments)) {
+      return;
+    }
+    topLevelSegments.add(segments[0]);
+
     if (isDirEntry) {
       registerDir(tree, segments.join("/"));
       return;
-    }
-
-    totalUncompressedBytes += entry.uncompressedSize;
-    if (totalUncompressedBytes > limits.maxTotalUncompressedBytes) {
-      throw new ZipImportAbortError(
-        "TOTAL_SIZE_EXCEEDED",
-        entry.fileName,
-        `Archive's total uncompressed size exceeds the ${limits.maxTotalUncompressedBytes}-byte limit`
-      );
-    }
-    if (entry.uncompressedSize > limits.maxEntryUncompressedBytes) {
-      throw new ZipImportAbortError(
-        "ENTRY_TOO_LARGE",
-        entry.fileName,
-        `Entry declared size exceeds the ${limits.maxEntryUncompressedBytes}-byte per-entry limit`
-      );
-    }
-    if (
-      entry.uncompressedSize > limits.maxCompressionRatioCheckThresholdBytes &&
-      entry.uncompressedSize / Math.max(entry.compressedSize, 1) > limits.maxCompressionRatio
-    ) {
-      throw new ZipImportAbortError("ZIP_BOMB_SUSPECTED", entry.fileName, "Entry's compression ratio looks like a zip bomb");
     }
 
     const dirSegs = segments.slice(0, -1);
@@ -345,47 +381,64 @@ interface RequiredConfigFields {
   id: string;
   type: string;
   name: string;
-  address: string;
 }
+
+type ParseConfigResult =
+  | { kind: "ok"; fields: RequiredConfigFields; extraConfig: Record<string, unknown> }
+  | { kind: "error" }
+  | { kind: "skip"; entry: CpImportSkippedEntry };
 
 function parseAndValidateConfig(
   raw: Buffer | undefined,
   dirPath: string,
-  errors: CpImportValidationError[]
-): { fields: RequiredConfigFields; extraConfig: Record<string, unknown> } | null {
+  errors: CpImportValidationError[],
+  skipPolicy: CpImportSkipPolicy | undefined
+): ParseConfigResult {
   if (!raw) {
     errors.push({ code: "MISSING_CONFIG", path: dirPath, message: `Missing ${CONFIG_FILE_NAME}` });
-    return null;
+    return { kind: "error" };
   }
   let parsed: unknown;
   try {
     parsed = parseYaml(raw.toString("utf8"));
   } catch (err) {
     errors.push({ code: "INVALID_CONFIG", path: dirPath, message: `Could not parse ${CONFIG_FILE_NAME}: ${err instanceof Error ? err.message : String(err)}` });
-    return null;
+    return { kind: "error" };
   }
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
     errors.push({ code: "INVALID_CONFIG", path: dirPath, message: `${CONFIG_FILE_NAME} must be a YAML object` });
-    return null;
+    return { kind: "error" };
   }
   const obj = parsed as Record<string, unknown>;
   const missing: string[] = [];
-  for (const field of ["id", "type", "name", "address"] as const) {
+  // "address" is deliberately NOT required here, unlike cp-core's CpConfigRequired: its
+  // value is never trusted or reused regardless (always recomputed at commit time — see
+  // the module doc comment), and real on-disk config.yaml commonly omits it — the real
+  // .NET model self-heals a missing address on READ (MigrationWorker.TryMigrateConfig,
+  // see cp-core's types.ts), which a raw filesystem export/backup never goes through.
+  // Confirmed against a real user-provided export archive, not a guess.
+  for (const field of ["id", "type", "name"] as const) {
     if (typeof obj[field] !== "string" || (obj[field] as string).trim() === "") missing.push(field);
   }
   if (missing.length > 0) {
     errors.push({ code: "INVALID_CONFIG", path: dirPath, message: `${CONFIG_FILE_NAME} is missing required field(s): ${missing.join(", ")}` });
-    return null;
+    return { kind: "error" };
   }
   const type = obj.type as string;
   if (type !== "Folder" && type !== "Text") {
+    if (type === "Ref" && skipPolicy?.skipRefItems) {
+      return {
+        kind: "skip",
+        entry: { code: "REF_ITEM_SKIPPED", path: dirPath, message: `Ref item "${String(obj.name ?? dirPath)}" skipped (not imported) — no confirmed import contract for Ref` },
+      };
+    }
     errors.push({ code: "UNSUPPORTED_TYPE", path: dirPath, message: `Unsupported type "${type}" (only "Folder" and "Text" are accepted; "Ref" is never accepted)` });
-    return null;
+    return { kind: "error" };
   }
   const name = (obj.name as string).trim();
-  if (name === "" || NAME_PATTERN_FORBIDDEN.test(name)) {
-    errors.push({ code: "INVALID_NAME", path: dirPath, message: `Invalid name "${obj.name as string}" (must not be empty or contain "/", "\\", or "..")` });
-    return null;
+  if (name === "") {
+    errors.push({ code: "INVALID_NAME", path: dirPath, message: `Invalid name "${obj.name as string}" (must not be empty)` });
+    return { kind: "error" };
   }
 
   const extraConfig: Record<string, unknown> = {};
@@ -398,7 +451,7 @@ function parseAndValidateConfig(
     extraConfig[key] = value;
   }
 
-  return { fields: { id: obj.id as string, type, name, address: obj.address as string }, extraConfig };
+  return { kind: "ok", fields: { id: obj.id as string, type, name }, extraConfig };
 }
 
 function buildNode(
@@ -407,16 +460,30 @@ function buildNode(
   depth: number,
   limits: ImportFolderLimits,
   errors: CpImportValidationError[],
-  nodeCounter: { count: number }
+  nodeCounter: { count: number },
+  skipPolicy: CpImportSkipPolicy | undefined,
+  skipped: CpImportSkippedEntry[]
 ): CpImportNode | null {
   const dir = tree.get(dirPath) ?? { files: new Map(), subdirs: new Set() };
-  const parsed = parseAndValidateConfig(dir.files.get(CONFIG_FILE_NAME), dirPath, errors);
+  const parsed = parseAndValidateConfig(dir.files.get(CONFIG_FILE_NAME), dirPath, errors, skipPolicy);
 
+  if (parsed.kind === "skip") {
+    // Whole subtree intentionally omitted — never validated further (a skipped Ref's
+    // "children" in a real export are typically stale wrapper artifacts, not real content).
+    skipped.push(parsed.entry);
+    return null;
+  }
+
+  const skippableExtensions = new Set((skipPolicy?.skipUnexpectedFileExtensions ?? []).map((e: string) => e.toLowerCase()));
   const knownFiles = new Set([CONFIG_FILE_NAME, BODY_FILE_NAME]);
   for (const fileName of dir.files.keys()) {
-    if (!knownFiles.has(fileName)) {
-      errors.push({ code: "UNEXPECTED_FILE", path: `${dirPath}/${fileName}`, message: `Unexpected file "${fileName}" — only ${CONFIG_FILE_NAME}/${BODY_FILE_NAME} are allowed` });
+    if (knownFiles.has(fileName)) continue;
+    const ext = fileName.includes(".") ? fileName.slice(fileName.lastIndexOf(".") + 1).toLowerCase() : "";
+    if (ext && skippableExtensions.has(ext)) {
+      skipped.push({ code: "UNEXPECTED_FILE_SKIPPED", path: `${dirPath}/${fileName}`, message: `Unexpected file "${fileName}" skipped (not imported)` });
+      continue;
     }
+    errors.push({ code: "UNEXPECTED_FILE", path: `${dirPath}/${fileName}`, message: `Unexpected file "${fileName}" — only ${CONFIG_FILE_NAME}/${BODY_FILE_NAME} are allowed` });
   }
 
   const childNames = [...dir.subdirs];
@@ -426,11 +493,11 @@ function buildNode(
       errors.push({ code: "INVALID_CHILD_FOLDER_NAME", path: `${dirPath}/${childName}`, message: `Child folder name "${childName}" is not a valid CP index (must match ^\\d{2,3}$)` });
       continue;
     }
-    const childNode = buildNode(tree, `${dirPath}/${childName}`, depth + 1, limits, errors, nodeCounter);
+    const childNode = buildNode(tree, `${dirPath}/${childName}`, depth + 1, limits, errors, nodeCounter, skipPolicy, skipped);
     if (childNode) children.push(childNode);
   }
 
-  if (!parsed) return null;
+  if (parsed.kind === "error") return null;
   const { fields, extraConfig } = parsed;
 
   if (fields.type === "Folder") {
@@ -459,6 +526,8 @@ export interface StageAndValidateZipImportInput {
   stagingDir: string;
   zipBytes: Buffer;
   limits?: Partial<ImportFolderLimits>;
+  /** Opt-in only — never set by default. See CpImportSkipPolicy's doc comment (cp-core). */
+  skipPolicy?: CpImportSkipPolicy;
 }
 
 /**
@@ -519,13 +588,23 @@ export async function stageAndValidateZipImport(input: StageAndValidateZipImport
 
     const errors: CpImportValidationError[] = [];
     const nodeCounter = { count: 0 };
-    const root = buildNode(rootResolution.tree, rootResolution.rootPath, 1, limits, errors, nodeCounter);
-    if (errors.length > 0 || !root) {
+    const skipped: CpImportSkippedEntry[] = [];
+    const root = buildNode(rootResolution.tree, rootResolution.rootPath, 1, limits, errors, nodeCounter, input.skipPolicy, skipped);
+    if (!root) {
+      if (errors.length === 0) {
+        // Only reachable if the ROOT item itself was skipped (e.g. root type is "Ref") —
+        // there is always something wrong to report; skipping is only ever valid for a
+        // descendant, never the one item that would anchor the whole import.
+        errors.push({ code: "ROOT_ITEM_SKIPPED", path: rootResolution.rootPath, message: "The root item itself cannot be skipped — nothing left to import" });
+      }
+      return { ok: false, errors };
+    }
+    if (errors.length > 0) {
       return { ok: false, errors };
     }
 
     const plan: CpImportPlan = { root, totalItemCount: nodeCounter.count };
-    return { ok: true, plan };
+    return { ok: true, plan, skipped };
   } finally {
     await rm(input.stagingDir, { recursive: true, force: true }).catch(() => {
       /* best-effort cleanup — nothing more useful to do if this fails */
