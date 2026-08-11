@@ -1,11 +1,11 @@
 /**
- * Knowledge tab data layer (Story 96) — reads the shared `chad_shared`
- * repo's `knowledge` tree and maps it onto the Dashboard's existing
- * Knowledge UI shapes:
+ * Knowledge tab data layer (Story 96, extended Story 109 follow-up) — reads
+ * TWO trees and merges them into one menu:
  *
- *   chad_shared/knowledge/<category Folder>            → menu tile
- *   chad_shared/knowledge/<category>/<section Folder>  → framed section header
- *   chad_shared/knowledge/<category>/<section>/<Text>  → document row (+ body)
+ *   chad_shared/knowledge/<category Folder>            → menu tile ("shared")
+ *   <current user's own repo>/knowledge/<category>     → menu tile ("personal")
+ *   .../<category>/<section Folder>                    → framed section header
+ *   .../<category>/<section>/<Text>                    → document row (+ body)
  *
  * `chad_shared` is an ordinary CP repo (a `cp_items` row whose address is
  * the bare repoGuid), exactly like `chad_admin` (`admin-users.ts`) — its
@@ -13,11 +13,22 @@
  * during the Story 96 audit: no repo of this name existed before, so the
  * GUID below was generated once for this Story and is now THE stable id.
  *
+ * The personal source is the CURRENT SESSION's own repo (never a
+ * client-supplied repo id) — resolved via `tryGetCurrentActor()` (repo
+ * context), which returns `null` outside a request-scoped context (e.g. a
+ * unit test with fake ops, or a script) rather than throwing; the personal
+ * source is then simply empty, same as "no knowledge folder yet" — never a
+ * hard error. A caller whose own repo happens to BE `chad_shared` (can't
+ * normally happen — chad_shared has no login session) would otherwise
+ * double-list the same tree; guarded explicitly below anyway.
+ *
  * Slugs: URL identifiers are derived from each item's `config.name`
  * (never from client-supplied CP paths); incoming slugs are validated
  * against a strict charset before any lookup, so path traversal or
- * arbitrary-address probing is structurally impossible — resolution only
- * ever walks children of `chad_shared/knowledge`.
+ * arbitrary-address probing is structurally impossible — category
+ * resolution only ever walks children of the two `knowledge` roots above,
+ * document resolution only ever walks the already-resolved category's own
+ * subtree (whichever repo it came from).
  *
  * Reads are bulk: one `findRecursively(categoryAddress, "")` call returns
  * the whole category subtree (both providers treat an empty phrase as
@@ -27,12 +38,11 @@
 import {
   getItemByAddress as realGetItemByAddress,
   getChildrenOf as realGetChildrenOf,
-  findRecursively as realFindRecursively,
   createOrGetChild as realCreateOrGetChild,
   putItem as realPutItem,
 } from "./item-ops.js";
 import type { CpItem } from "./cp-model.js";
-import { splitAddress } from "./cp-model.js";
+import { tryGetCurrentActor } from "./repo-context.js";
 
 export const CHAD_SHARED_REPO_GUID = "31275a71-3dd0-41a2-8874-2d12dac01590";
 export const CHAD_SHARED_REPO_NAME = "chad_shared";
@@ -41,7 +51,8 @@ export const KNOWLEDGE_ROOT_NAME = "knowledge";
 export type KnowledgeErrorCode =
   | "INVALID_SLUG"
   | "CATEGORY_NOT_FOUND"
-  | "DOCUMENT_NOT_FOUND";
+  | "DOCUMENT_NOT_FOUND"
+  | "NODE_NOT_FOUND";
 
 export class KnowledgeError extends Error {
   constructor(
@@ -53,40 +64,61 @@ export class KnowledgeError extends Error {
   }
 }
 
+/** "shared" = `chad_shared/knowledge` (everyonesees the same tree); "personal" = the current session's own repo's `knowledge` tree. */
+export type KnowledgeSource = "shared" | "personal";
+
 export interface KnowledgeCategorySummary {
   slug: string;
   name: string;
+  source: KnowledgeSource;
 }
 
-export interface KnowledgeDocumentSummary {
+/** One breadcrumb step from the category down to (and including, for a folder view) the current node. */
+export interface KnowledgeBreadcrumbSegment {
   slug: string;
   name: string;
 }
 
-export interface KnowledgeSection {
-  name: string;
-  documents: KnowledgeDocumentSummary[];
-}
-
-export interface KnowledgeCategoryView {
+export interface KnowledgeChildSummary {
   slug: string;
   name: string;
-  sections: KnowledgeSection[];
+  type: "Folder" | "Text";
 }
 
+/**
+ * A folder-level node — the category itself, or any Folder nested under it
+ * to any depth. Real knowledge trees are not a fixed 2-level
+ * category/section shape (some go 5+ levels deep), so this is a plain
+ * recursive "list this Folder's children" view, not a section/document
+ * grouping — Folder children render as clickable tiles that open another
+ * such view one level deeper; Text children open a document view.
+ */
+export interface KnowledgeFolderView {
+  kind: "folder";
+  slug: string;
+  name: string;
+  source: KnowledgeSource;
+  breadcrumb: KnowledgeBreadcrumbSegment[];
+  children: KnowledgeChildSummary[];
+}
+
+/** A document (Text item) node at any depth under a category. */
 export interface KnowledgeDocumentView {
+  kind: "document";
   slug: string;
   name: string;
   body: string;
-  sectionName: string;
-  category: KnowledgeCategorySummary;
+  source: KnowledgeSource;
+  /** Category down to (NOT including) this document's own name. */
+  breadcrumb: KnowledgeBreadcrumbSegment[];
 }
+
+export type KnowledgeNodeView = KnowledgeFolderView | KnowledgeDocumentView;
 
 /** Injectable seam for unit tests only (`knowledge.test.ts`) — mirrors `folders.ts`'s `FolderChildOps` pattern. */
 export interface KnowledgeOps {
   getItemByAddress: typeof realGetItemByAddress;
   getChildrenOf: typeof realGetChildrenOf;
-  findRecursively: typeof realFindRecursively;
   createOrGetChild: typeof realCreateOrGetChild;
   putItem: typeof realPutItem;
 }
@@ -94,7 +126,6 @@ export interface KnowledgeOps {
 const defaultOps: KnowledgeOps = {
   getItemByAddress: realGetItemByAddress,
   getChildrenOf: realGetChildrenOf,
-  findRecursively: realFindRecursively,
   createOrGetChild: realCreateOrGetChild,
   putItem: realPutItem,
 };
@@ -160,11 +191,11 @@ export function assignUniqueSlugs(items: CpItem[]): SluggedItem[] {
   });
 }
 
-/** Resolves the `knowledge` Folder under the chad_shared root, or null when the repo/folder doesn't exist yet (a valid empty state, not an error). */
-async function getKnowledgeRoot(ops: KnowledgeOps): Promise<CpItem | null> {
-  const repoRoot = await ops.getItemByAddress(CHAD_SHARED_REPO_GUID);
+/** Resolves the `knowledge` Folder directly under `repoGuid`'s root, or null when the repo/folder doesn't exist yet (a valid empty state, not an error). */
+async function getKnowledgeRootForRepo(repoGuid: string, ops: KnowledgeOps): Promise<CpItem | null> {
+  const repoRoot = await ops.getItemByAddress(repoGuid);
   if (!repoRoot) return null;
-  const children = await ops.getChildrenOf(CHAD_SHARED_REPO_GUID);
+  const children = await ops.getChildrenOf(repoGuid);
   return (
     children.find(
       (child) => child.config.type === "Folder" && child.config.name === KNOWLEDGE_ROOT_NAME
@@ -172,124 +203,292 @@ async function getKnowledgeRoot(ops: KnowledgeOps): Promise<CpItem | null> {
   );
 }
 
-async function listCategoryItems(ops: KnowledgeOps): Promise<SluggedItem[]> {
-  const root = await getKnowledgeRoot(ops);
+/** Folder children of `repoGuid`'s `knowledge` root — raw, not yet slugged. Only Folder children are categories; a stray Text directly under `knowledge` is ignored. */
+async function listCategoryItemsForRepo(repoGuid: string, ops: KnowledgeOps): Promise<CpItem[]> {
+  const root = await getKnowledgeRootForRepo(repoGuid, ops);
   if (!root) return [];
   const children = await ops.getChildrenOf(root.config.address);
-  // Only Folder children become menu tiles — a stray Text directly under
-  // `knowledge` has no place in the menu/category model and is ignored.
-  return assignUniqueSlugs(children.filter((child) => child.config.type === "Folder"));
+  return children.filter((child) => child.config.type === "Folder");
 }
 
-/** Menu tiles: Folder children of `chad_shared/knowledge`, in CP order. Empty list when the tree doesn't exist yet. */
-export async function listKnowledgeCategories(
-  ops: KnowledgeOps = defaultOps
-): Promise<KnowledgeCategorySummary[]> {
-  const categories = await listCategoryItems(ops);
-  return categories.map(({ slug, item }) => ({ slug, name: item.config.name }));
-}
-
-interface CategoryTree {
-  category: SluggedItem;
-  sections: Array<{
-    item: CpItem;
-    documents: SluggedItem[];
-  }>;
+interface TaggedSluggedItem extends SluggedItem {
+  source: KnowledgeSource;
 }
 
 /**
- * Fetches and shapes one category's whole subtree with a single bulk
- * descendants query (no per-section N+1). Sections = depth-1 Folder
- * children; documents = depth-2 Text children of a section. Document
- * slugs are unique across the whole category (they identify the document
- * in the `/dashboard/knowledge/[category]/[document]` URL).
+ * Slug uniqueness across a MERGED, cross-repo list: same rule as
+ * `assignUniqueSlugs` (name → CP-index fallback for duplicates), plus one
+ * more fallback level (append the source) for the vanishingly rare case
+ * where both sources have same-named categories that ALSO landed on the
+ * same CP index in their own repo.
  */
-async function getCategoryTree(categorySlug: string, ops: KnowledgeOps): Promise<CategoryTree> {
-  assertValidKnowledgeSlug(categorySlug);
+function assignUniqueSlugsAcrossSources(taggedItems: Array<{ item: CpItem; source: KnowledgeSource }>): TaggedSluggedItem[] {
+  const used = new Set<string>();
+  return taggedItems.map(({ item, source }) => {
+    let slug = slugifyKnowledgeName(item.config.name);
+    if (!slug || used.has(slug)) {
+      slug = slug ? `${slug}-${cpIndexOf(item)}` : `item-${cpIndexOf(item)}`;
+    }
+    if (used.has(slug)) {
+      slug = `${slug}-${source}`;
+    }
+    used.add(slug);
+    return { slug, item, source };
+  });
+}
 
-  const categories = await listCategoryItems(ops);
+/** The current session's own repoGuid, or null outside a request-scoped context (unit tests, scripts) — never throws, personal source is just empty then. */
+function tryGetCurrentPersonalRepoGuid(): string | null {
+  return tryGetCurrentActor()?.repoGuid ?? null;
+}
+
+/**
+ * Merges `chad_shared/knowledge` ("shared", always listed first) with the
+ * current session's own repo's `knowledge` ("personal", listed after) into
+ * one slugged list. The personal source is skipped entirely when there's no
+ * session (fake-ops unit tests) or the session's own repo happens to be
+ * `chad_shared` itself (can't normally happen — no login session owns it).
+ */
+async function listMergedCategoryItems(ops: KnowledgeOps): Promise<TaggedSluggedItem[]> {
+  const sharedItems = await listCategoryItemsForRepo(CHAD_SHARED_REPO_GUID, ops);
+  const personalRepoGuid = tryGetCurrentPersonalRepoGuid();
+  const personalItems =
+    personalRepoGuid && personalRepoGuid !== CHAD_SHARED_REPO_GUID
+      ? await listCategoryItemsForRepo(personalRepoGuid, ops)
+      : [];
+
+  return assignUniqueSlugsAcrossSources([
+    ...sharedItems.map((item) => ({ item, source: "shared" as const })),
+    ...personalItems.map((item) => ({ item, source: "personal" as const })),
+  ]);
+}
+
+/**
+ * Menu tiles: Folder children of `chad_shared/knowledge` (shared, first)
+ * followed by Folder children of the current session's own `knowledge`
+ * folder (personal, after) — the Dashboard renders a divider between the
+ * two groups. Empty list when neither tree exists yet.
+ */
+export async function listKnowledgeCategories(
+  ops: KnowledgeOps = defaultOps
+): Promise<KnowledgeCategorySummary[]> {
+  const categories = await listMergedCategoryItems(ops);
+  return categories.map(({ slug, item, source }) => ({ slug, name: item.config.name, source }));
+}
+
+interface ResolvedKnowledgeNode {
+  /** The resolved item itself. */
+  item: CpItem;
+  slug: string;
+  source: KnowledgeSource;
+  /** Category down to (not including) this node. */
+  breadcrumb: KnowledgeBreadcrumbSegment[];
+}
+
+/**
+ * Walks `pathSlugs` one level at a time starting from the resolved category
+ * (`pathSlugs` empty ⇒ the category itself), re-slugging each level's
+ * children fresh via `assignUniqueSlugs` (never a stored/cached tree) — a
+ * real knowledge tree is not a fixed category/section/document shape (some
+ * go 5+ levels deep), so this is a plain recursive "resolve one child at a
+ * time" walk, structurally identical to `folders.ts`'s own address-by-address
+ * navigation, just slug-addressed instead of index-addressed. A path
+ * segment landing on a Text item before the path is exhausted is a dead
+ * end (can't have children) — same as an unresolvable slug, both surface as
+ * `NODE_NOT_FOUND`.
+ *
+ * @throws KnowledgeError INVALID_SLUG / CATEGORY_NOT_FOUND / NODE_NOT_FOUND
+ */
+async function resolveKnowledgeNode(
+  categorySlug: string,
+  pathSlugs: string[],
+  ops: KnowledgeOps
+): Promise<ResolvedKnowledgeNode> {
+  assertValidKnowledgeSlug(categorySlug);
+  for (const slug of pathSlugs) assertValidKnowledgeSlug(slug);
+
+  const categories = await listMergedCategoryItems(ops);
   const category = categories.find((c) => c.slug === categorySlug);
   if (!category) {
     throw new KnowledgeError("CATEGORY_NOT_FOUND", `Knowledge category not found: "${categorySlug}"`);
   }
 
-  const categoryAddress = category.item.config.address;
-  const categoryDepth = splitAddress(categoryAddress).segments.length;
-  // Empty phrase == match-all: one query returns every descendant (with
-  // bodies), already in CP numeric-address order on both providers.
-  const descendants = await ops.findRecursively(categoryAddress, "");
+  let current = category.item;
+  let currentSlug = category.slug;
+  const breadcrumb: KnowledgeBreadcrumbSegment[] = [];
 
-  const sectionItems = descendants.filter(
-    (item) =>
-      item.config.type === "Folder" &&
-      splitAddress(item.config.address).segments.length === categoryDepth + 1
-  );
+  for (const slug of pathSlugs) {
+    breadcrumb.push({ slug: currentSlug, name: current.config.name });
 
-  const documentItems = descendants.filter(
-    (item) =>
-      item.config.type === "Text" &&
-      splitAddress(item.config.address).segments.length === categoryDepth + 2
-  );
-  const sluggedDocuments = assignUniqueSlugs(documentItems);
+    if (current.config.type !== "Folder") {
+      throw new KnowledgeError(
+        "NODE_NOT_FOUND",
+        `Knowledge path segment "${slug}" has no parent Folder to resolve against`
+      );
+    }
+    const children = await ops.getChildrenOf(current.config.address);
+    const slugged = assignUniqueSlugs(children);
+    const match = slugged.find((c) => c.slug === slug);
+    if (!match) {
+      throw new KnowledgeError("NODE_NOT_FOUND", `Knowledge item not found: "${slug}"`);
+    }
+    current = match.item;
+    currentSlug = match.slug;
+  }
 
-  const sections = sectionItems.map((sectionItem) => ({
-    item: sectionItem,
-    documents: sluggedDocuments.filter(({ item }) =>
-      item.config.address.startsWith(`${sectionItem.config.address}/`)
-    ),
-  }));
-
-  return { category, sections };
+  return { item: current, slug: currentSlug, source: category.source, breadcrumb };
 }
 
-/**
- * Category view for `/dashboard/knowledge/[category]`.
- * @throws KnowledgeError INVALID_SLUG / CATEGORY_NOT_FOUND
- */
-export async function getKnowledgeCategory(
-  categorySlug: string,
-  ops: KnowledgeOps = defaultOps
-): Promise<KnowledgeCategoryView> {
-  const tree = await getCategoryTree(categorySlug, ops);
+async function buildFolderView(resolved: ResolvedKnowledgeNode, ops: KnowledgeOps): Promise<KnowledgeFolderView> {
+  const children = await ops.getChildrenOf(resolved.item.config.address);
+  const slugged = assignUniqueSlugs(children);
+
   return {
-    slug: tree.category.slug,
-    name: tree.category.item.config.name,
-    sections: tree.sections.map(({ item, documents }) => ({
+    kind: "folder",
+    slug: resolved.slug,
+    name: resolved.item.config.name,
+    source: resolved.source,
+    breadcrumb: [...resolved.breadcrumb, { slug: resolved.slug, name: resolved.item.config.name }],
+    children: slugged.map(({ slug, item }) => ({
+      slug,
       name: item.config.name,
-      documents: documents.map(({ slug, item: doc }) => ({ slug, name: doc.config.name })),
+      type: item.config.type === "Folder" ? "Folder" : "Text",
     })),
   };
 }
 
+function buildDocumentView(resolved: ResolvedKnowledgeNode): KnowledgeDocumentView {
+  return {
+    kind: "document",
+    slug: resolved.slug,
+    name: resolved.item.config.name,
+    body: resolved.item.body,
+    source: resolved.source,
+    breadcrumb: resolved.breadcrumb,
+  };
+}
+
 /**
- * Document view (name + body) for `/dashboard/knowledge/[category]/[document]`.
- * @throws KnowledgeError INVALID_SLUG / CATEGORY_NOT_FOUND / DOCUMENT_NOT_FOUND
+ * Resolves `pathSlugs` under `categorySlug` to whichever kind of node is
+ * actually there — a Folder (listing) or a Text item (document) — without
+ * the caller having to guess in advance. The one function the API route
+ * uses (it doesn't know ahead of a request which kind a given URL path
+ * resolves to); `getKnowledgeFolder`/`getKnowledgeDocument` below are
+ * type-narrowing convenience wrappers over this same walk, for callers
+ * (tests, `updateKnowledgeDocumentBody`) that already know which kind they
+ * expect and want a typed result instead of a union.
+ *
+ * @throws KnowledgeError INVALID_SLUG / CATEGORY_NOT_FOUND / NODE_NOT_FOUND
+ */
+export async function getKnowledgeNode(
+  categorySlug: string,
+  pathSlugs: string[] = [],
+  ops: KnowledgeOps = defaultOps
+): Promise<KnowledgeNodeView> {
+  const resolved = await resolveKnowledgeNode(categorySlug, pathSlugs, ops);
+  return resolved.item.config.type === "Folder" ? buildFolderView(resolved, ops) : buildDocumentView(resolved);
+}
+
+/**
+ * Folder-level view — the category itself (`pathSlugs: []`) or any Folder
+ * nested under it. Folder children render as clickable tiles that open
+ * another such view one level deeper; Text children open a document view.
+ *
+ * @throws KnowledgeError INVALID_SLUG / CATEGORY_NOT_FOUND / NODE_NOT_FOUND
+ */
+export async function getKnowledgeFolder(
+  categorySlug: string,
+  pathSlugs: string[] = [],
+  ops: KnowledgeOps = defaultOps
+): Promise<KnowledgeFolderView> {
+  const resolved = await resolveKnowledgeNode(categorySlug, pathSlugs, ops);
+  if (resolved.item.config.type !== "Folder") {
+    throw new KnowledgeError("NODE_NOT_FOUND", `Knowledge node "${resolved.slug}" is not a Folder`);
+  }
+  return buildFolderView(resolved, ops);
+}
+
+/**
+ * Document (Text item) view at any depth under a category.
+ * @throws KnowledgeError INVALID_SLUG / CATEGORY_NOT_FOUND / NODE_NOT_FOUND / DOCUMENT_NOT_FOUND
  */
 export async function getKnowledgeDocument(
   categorySlug: string,
-  documentSlug: string,
+  pathSlugs: string[],
   ops: KnowledgeOps = defaultOps
 ): Promise<KnowledgeDocumentView> {
-  assertValidKnowledgeSlug(documentSlug);
-  const tree = await getCategoryTree(categorySlug, ops);
+  if (pathSlugs.length === 0) {
+    throw new KnowledgeError("DOCUMENT_NOT_FOUND", "No document slug given");
+  }
+  const resolved = await resolveKnowledgeNode(categorySlug, pathSlugs, ops);
+  if (resolved.item.config.type !== "Text") {
+    throw new KnowledgeError("DOCUMENT_NOT_FOUND", `Knowledge node "${resolved.slug}" is not a document`);
+  }
+  return buildDocumentView(resolved);
+}
 
-  for (const section of tree.sections) {
-    const match = section.documents.find(({ slug }) => slug === documentSlug);
-    if (match) {
-      return {
-        slug: match.slug,
-        name: match.item.config.name,
-        body: match.item.body,
-        sectionName: section.item.config.name,
-        category: { slug: tree.category.slug, name: tree.category.item.config.name },
-      };
-    }
+export type KnowledgeWriteErrorCode = "SHARED_WRITE_FORBIDDEN";
+
+export class KnowledgeWriteError extends Error {
+  constructor(
+    public readonly code: KnowledgeWriteErrorCode,
+    message: string
+  ) {
+    super(message);
+    this.name = "KnowledgeWriteError";
+  }
+}
+
+/**
+ * Overwrites a knowledge document's body in place — never re-allocates its
+ * address/id, same "overwrite, don't recreate" convention `folders.ts`'s
+ * `updateFolderTextBody` uses for ordinary Text items. Added so a document
+ * found to need a fix can be edited right from the Knowledge tab instead of
+ * requiring a detour through Folders.
+ *
+ * A "shared" (chad_shared) document is content every user sees — editing it
+ * is only allowed when the caller explicitly opts in via
+ * `allowSharedWrite` (the API route only sets this for an admin session,
+ * mirroring the same admin-only gate the Folders repo picker already
+ * enforces for chad_shared). A "personal" document is always editable —
+ * it's already scoped to the current session's own repo by
+ * `listMergedCategoryItems`/`resolveKnowledgeNode`, so there is no separate
+ * repo check needed here.
+ *
+ * @throws KnowledgeError INVALID_SLUG / CATEGORY_NOT_FOUND / NODE_NOT_FOUND / DOCUMENT_NOT_FOUND
+ * @throws KnowledgeWriteError SHARED_WRITE_FORBIDDEN
+ */
+export async function updateKnowledgeDocumentBody(
+  categorySlug: string,
+  pathSlugs: string[],
+  newBody: string,
+  options: { allowSharedWrite?: boolean } = {},
+  ops: KnowledgeOps = defaultOps
+): Promise<KnowledgeDocumentView> {
+  if (pathSlugs.length === 0) {
+    throw new KnowledgeError("DOCUMENT_NOT_FOUND", "No document slug given");
+  }
+  const resolved = await resolveKnowledgeNode(categorySlug, pathSlugs, ops);
+  if (resolved.item.config.type !== "Text") {
+    throw new KnowledgeError("DOCUMENT_NOT_FOUND", `Knowledge node "${resolved.slug}" is not a document`);
   }
 
-  throw new KnowledgeError(
-    "DOCUMENT_NOT_FOUND",
-    `Knowledge document not found: "${documentSlug}" in category "${categorySlug}"`
-  );
+  if (resolved.source === "shared" && !options.allowSharedWrite) {
+    throw new KnowledgeWriteError(
+      "SHARED_WRITE_FORBIDDEN",
+      "Editing a chad_shared knowledge document requires an admin session"
+    );
+  }
+
+  const updated = await ops.putItem({ ...resolved.item, body: newBody });
+  return {
+    kind: "document",
+    slug: resolved.slug,
+    name: updated.config.name,
+    body: updated.body,
+    source: resolved.source,
+    breadcrumb: resolved.breadcrumb,
+  };
 }
 
 export interface EnsureSharedKnowledgeResult {

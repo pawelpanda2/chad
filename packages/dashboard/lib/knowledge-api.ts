@@ -11,6 +11,7 @@ export function statusForKnowledgeError(error: KnowledgeError): number {
       return 400;
     case "CATEGORY_NOT_FOUND":
     case "DOCUMENT_NOT_FOUND":
+    case "NODE_NOT_FOUND":
       return 404;
     default:
       return 500;

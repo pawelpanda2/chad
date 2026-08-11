@@ -12,11 +12,16 @@ import { ErrorBox } from "@/components/shared/error-box";
  * hardcoded: each Folder child of `chad_shared/knowledge` (via
  * /api/knowledge → dba) becomes one tile, in CP order — adding a category
  * in Folders adds a tile here with no frontend change.
+ *
+ * Story 109 follow-up: /api/knowledge now also merges in the current
+ * session's own `knowledge` folder ("personal" source), listed after the
+ * shared tiles behind a visual divider.
  */
 
 interface KnowledgeCategory {
   slug: string;
   name: string;
+  source: "shared" | "personal";
 }
 
 export default function KnowledgePage() {
@@ -63,19 +68,63 @@ export default function KnowledgePage() {
           Brak kategorii — dodaj Folder Item pod knowledge w repo chad_shared (zakładka Folders).
         </p>
       ) : (
-        <div className="grid grid-cols-4 gap-2">
-          {categories.map((category) => (
-            <button
-              key={category.slug}
-              type="button"
-              onClick={() => router.push(`/dashboard/knowledge/${category.slug}`)}
-              className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
-            >
-              <span className="font-semibold text-sm uppercase">{category.name}</span>
-            </button>
-          ))}
-        </div>
+        <>
+          {(() => {
+            const shared = categories.filter((c) => c.source === "shared");
+            const personal = categories.filter((c) => c.source === "personal");
+            return (
+              <>
+                {shared.length > 0 && (
+                  <>
+                    <HubSectionDivider label="Shared Documents" />
+                    <CategoryGrid categories={shared} router={router} />
+                  </>
+                )}
+                {personal.length > 0 && (
+                  <>
+                    <HubSectionDivider label="My Documents" />
+                    <CategoryGrid categories={personal} router={router} />
+                  </>
+                )}
+              </>
+            );
+          })()}
+        </>
       )}
     </DashboardPageShell>
+  );
+}
+
+function HubSectionDivider({ label }: { label: string }) {
+  return (
+    <div className="my-4 flex items-center gap-3">
+      <div className="h-px flex-1 bg-border" />
+      <span className="text-xs font-medium uppercase text-muted-foreground">{label}</span>
+      <div className="h-px flex-1 bg-border" />
+    </div>
+  );
+}
+
+function CategoryGrid({
+  categories,
+  router,
+}: {
+  categories: KnowledgeCategory[];
+  router: ReturnType<typeof useRouter>;
+}) {
+  if (categories.length === 0) return null;
+  return (
+    <div className="grid grid-cols-4 gap-2">
+      {categories.map((category) => (
+        <button
+          key={category.slug}
+          type="button"
+          onClick={() => router.push(`/dashboard/knowledge/${category.slug}`)}
+          className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
+        >
+          <span className="font-semibold text-sm uppercase">{category.name}</span>
+        </button>
+      ))}
+    </div>
   );
 }
