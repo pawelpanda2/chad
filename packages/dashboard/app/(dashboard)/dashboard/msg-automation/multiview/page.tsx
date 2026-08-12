@@ -2,7 +2,7 @@
 
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Search } from "lucide-react";
+import { ChevronDown, ChevronUp, Search } from "lucide-react";
 import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -34,8 +34,10 @@ function isViewTab(value: string | null): value is ViewTab {
  * Msg Auto → MultiView (Story 105). Shared Conversations host with Permissions,
  * Groups, Msg workout. Dedicated Beeper page is `/dashboard/beeper`.
  *
- * Layout: `scroll={false}` — panes own their scroll. No collapse chevron in
- * the shell toolbar (removed — looked like an odd extra control at the top).
+ * Layout: `scroll={false}` — panes own their scroll. Height for chat panes is
+ * recovered by collapsing the in-frame tabs/filters via `toolbarLeading`
+ * chevron (`isViewToolbarCollapsed`) — same visual recipe as the fixed
+ * sidebar menu handle (see `ai-docs/gui-standard/ai-start.md`).
  */
 function BeeperContactsPageInner() {
 	const router = useRouter();
@@ -45,7 +47,13 @@ function BeeperContactsPageInner() {
 	const [searchQuery, setSearchQuery] = useState("");
 	const [permFilter, setPermFilter] = useState<PermissionFilter>("all");
 	const [contactsCount, setContactsCount] = useState<number | null>(null);
+	/** Hides only the in-frame tabs/filters block (not NavGroup / title / panels). */
+	const [isViewToolbarCollapsed, setIsViewToolbarCollapsed] = useState(false);
 	const appliedDefaultGroupRef = useRef(false);
+
+	const toggleViewToolbar = useCallback(() => {
+		setIsViewToolbarCollapsed((collapsed) => !collapsed);
+	}, []);
 
 	const tabParam = searchParams.get("tab");
 	const view: ViewTab = isViewTab(tabParam) ? tabParam : "conversations";
@@ -102,12 +110,36 @@ function BeeperContactsPageInner() {
 		[updateUrl, view],
 	);
 
+	// Same visual recipe as the fixed sidebar menu handle in
+	// app/(dashboard)/layout.tsx — size/border/radius/hover/icon — but
+	// in-flow (not `fixed`), so it sits between that handle and Back.
+	const viewToolbarToggle = (
+		<button
+			type="button"
+			onClick={toggleViewToolbar}
+			aria-label={isViewToolbarCollapsed ? "Pokaż pasek widoku MultiView" : "Ukryj pasek widoku MultiView"}
+			aria-expanded={!isViewToolbarCollapsed}
+			title={isViewToolbarCollapsed ? "Pokaż pasek widoku" : "Ukryj pasek widoku"}
+			className="flex h-9 w-12 shrink-0 items-center justify-center rounded-md border bg-card/95 text-muted-foreground shadow-md backdrop-blur hover:text-foreground"
+		>
+			{isViewToolbarCollapsed ? (
+				<ChevronDown className="h-5 w-5" />
+			) : (
+				<ChevronUp className="h-5 w-5" />
+			)}
+		</button>
+	);
+
 	return (
 		<DashboardPageShell
 			title="MultiView"
 			upLevel={{ href: "/dashboard/msg-automation" }}
 			scroll={false}
+			toolbarLeading={viewToolbarToggle}
 		>
+			{/* Tabs + filters INSIDE the frame. Hidden via toolbarLeading chevron
+			    to recover height for chat panes (gui-standard Beeper split-view). */}
+			{!isViewToolbarCollapsed && (
 			<div className="mb-1.5 flex w-full shrink-0 flex-col gap-1.5">
 				<Tabs value={view} onValueChange={handleTabChange}>
 					<TabsList aria-label="MultiView tabs">
@@ -142,7 +174,7 @@ function BeeperContactsPageInner() {
 							className="h-10 w-[140px] rounded-[9px] pl-7 text-sm"
 							value={searchQuery}
 							onChange={(e) => setSearchQuery(e.target.value)}
-							aria-label="Search contacts"
+							aria-label="Search"
 						/>
 					</div>
 					{isPermissions && (
@@ -164,6 +196,7 @@ function BeeperContactsPageInner() {
 					)}
 				</div>
 			</div>
+			)}
 
 			{isPermissions ? (
 				<div className="min-h-0 flex-1 overflow-y-auto">

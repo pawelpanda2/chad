@@ -12,6 +12,7 @@ import {
   updateFolderTextBody,
   updateFolderItemConfig,
   deleteFolderItem,
+  moveFolderItem,
   validateChildName,
   validateChildType,
   buildFolderExport,
@@ -67,12 +68,52 @@ function fakeOps(seed: CpItem[] = []): { ops: FolderChildOps; items: Map<string,
     },
     async putItemConfig(item: CpItem) {
       const existing = [...items.values()].find((i) => i._id === item._id);
+      if (existing) items.delete(existing.config.address);
       const updated = { ...item, body: existing?.body ?? "" };
       items.set(updated.config.address, updated);
       return updated;
     },
     async deleteItemByAddress(address: string) {
       return items.delete(address);
+    },
+    async moveItem(itemAddress: string, newParentAddress: string) {
+      const subtree = [...items.values()].filter(
+        (item) => item.config.address === itemAddress || item.config.address.startsWith(`${itemAddress}/`)
+      );
+      const root = subtree.find((item) => item.config.address === itemAddress);
+      if (!root) throw new Error(`moveItem: no item at "${itemAddress}"`);
+
+      const newRootAddress = `${newParentAddress}/${String(nextIndex++).padStart(2, "0")}`;
+      let moved: CpItem | null = null;
+      for (const item of subtree) {
+        items.delete(item.config.address);
+      }
+      for (const item of subtree) {
+        const rewrittenAddress = newRootAddress + item.config.address.slice(itemAddress.length);
+        const updated: CpItem = { ...item, config: { ...item.config, address: rewrittenAddress } };
+        items.set(rewrittenAddress, updated);
+        if (item.config.address === itemAddress) moved = updated;
+      }
+      return moved!;
+    },
+    async readdressItem(itemAddress: string, newAddress: string) {
+      const subtree = [...items.values()].filter(
+        (item) => item.config.address === itemAddress || item.config.address.startsWith(`${itemAddress}/`)
+      );
+      const root = subtree.find((item) => item.config.address === itemAddress);
+      if (!root) throw new Error(`readdressItem: no item at "${itemAddress}"`);
+
+      let moved: CpItem | null = null;
+      for (const item of subtree) {
+        items.delete(item.config.address);
+      }
+      for (const item of subtree) {
+        const rewrittenAddress = newAddress + item.config.address.slice(itemAddress.length);
+        const updated: CpItem = { ...item, config: { ...item.config, address: rewrittenAddress } };
+        items.set(rewrittenAddress, updated);
+        if (item.config.address === itemAddress) moved = updated;
+      }
+      return moved!;
     },
   };
 
@@ -293,12 +334,40 @@ describe("updateFolderItemConfig", () => {
     ).rejects.toMatchObject({ code: "FORBIDDEN_IDENTITY_CHANGE" });
   });
 
-  it("rejects changing address", async () => {
-    const item = textItem(`${REPO}/01`, "notes");
-    const { ops } = fakeOps([item]);
+  it("allows changing address to a free sibling slot (and rewrites subtree)", async () => {
+    const parent = folderItem(`${REPO}/14`, "parent");
+    const folder = folderItem(`${REPO}/14/09`, "notes");
+    const child = textItem(`${REPO}/14/09/01`, "child", "body stays");
+    const { ops, items } = fakeOps([folderItem(REPO, "repo"), parent, folder, child]);
+
+    const updated = await updateFolderItemConfig(
+      `${REPO}/14/09`,
+      { ...folder.config, address: `${REPO}/14/02` },
+      ops
+    );
+
+    expect(updated.config.address).toBe(`${REPO}/14/02`);
+    expect(items.has(`${REPO}/14/09`)).toBe(false);
+    expect(items.get(`${REPO}/14/02/01`)?.body).toBe("body stays");
+  });
+
+  it("rejects changing address when the target slot is taken", async () => {
+    const parent = folderItem(`${REPO}/14`, "parent");
+    const a = textItem(`${REPO}/14/09`, "notes");
+    const b = textItem(`${REPO}/14/02`, "other");
+    const { ops } = fakeOps([folderItem(REPO, "repo"), parent, a, b]);
+
     await expect(
-      updateFolderItemConfig(`${REPO}/01`, { ...item.config, address: `${REPO}/02` }, ops)
-    ).rejects.toMatchObject({ code: "FORBIDDEN_IDENTITY_CHANGE" });
+      updateFolderItemConfig(`${REPO}/14/09`, { ...a.config, address: `${REPO}/14/02` }, ops)
+    ).rejects.toMatchObject({ code: "ADDRESS_TAKEN" });
+  });
+
+  it("rejects an invalid address format on config save", async () => {
+    const item = textItem(`${REPO}/01`, "notes");
+    const { ops } = fakeOps([folderItem(REPO, "repo"), item]);
+    await expect(
+      updateFolderItemConfig(`${REPO}/01`, { ...item.config, address: `${REPO}/not-numeric` }, ops)
+    ).rejects.toMatchObject({ code: "VALIDATION" });
   });
 
   it("rejects changing type (Text -> Folder)", async () => {
@@ -403,6 +472,133 @@ describe("deleteFolderItem", () => {
     const { ops } = fakeOps([]);
     await expect(deleteFolderItem(`${REPO}/99`, ops)).rejects.toMatchObject({
       code: "ITEM_NOT_FOUND",
+    });
+  });
+});
+
+describe("moveFolderItem", () => {
+  const REPO2 = "9f1c2a3b-0000-4444-8888-000000000000";
+
+  it("moves an item (and its subtree) to a new parent, rewriting every descendant's address", async () => {
+    const source = folderItem(`${REPO}/01`, "source");
+    const moving = folderItem(`${REPO}/01/01`, "knowledge");
+    const child = folderItem(`${REPO}/01/01/01`, "Verbal Game");
+    const grandchild = textItem(`${REPO}/01/01/01/01`, "doc", "body");
+    const target = folderItem(`${REPO}/02`, "tematy");
+    const { ops, items } = fakeOps([source, moving, child, grandchild, target]);
+
+    const result = await moveFolderItem(`${REPO}/01/01`, `${REPO}/02`, ops);
+
+    expect(result.moved).toBe(true);
+    expect(result.item.config.name).toBe("knowledge");
+    expect(result.item.config.address.startsWith(`${REPO}/02/`)).toBe(true);
+    expect(items.has(`${REPO}/01/01`)).toBe(false); // gone from the old address
+    const newRoot = result.item.config.address;
+    expect(items.has(`${newRoot}/01`)).toBe(true); // child followed
+    expect(items.get(`${newRoot}/01`)?.config.name).toBe("Verbal Game");
+    expect(items.has(`${newRoot}/01/01`)).toBe(true); // grandchild followed
+    expect(items.get(`${newRoot}/01/01`)?.body).toBe("body");
+  });
+
+  it("is a no-op (moved: false, address unchanged) when the target is already the item's current parent", async () => {
+    const parent = folderItem(`${REPO}/01`, "parent");
+    const item = textItem(`${REPO}/01/01`, "notes");
+    const { ops } = fakeOps([parent, item]);
+
+    const result = await moveFolderItem(`${REPO}/01/01`, `${REPO}/01`, ops);
+
+    expect(result.moved).toBe(false);
+    expect(result.item.config.address).toBe(`${REPO}/01/01`);
+  });
+
+  it("rejects moving a non-existent item", async () => {
+    const target = folderItem(`${REPO}/01`, "target");
+    const { ops } = fakeOps([target]);
+    await expect(moveFolderItem(`${REPO}/99`, `${REPO}/01`, ops)).rejects.toMatchObject({
+      code: "ITEM_NOT_FOUND",
+    });
+  });
+
+  it("rejects moving the repo root item", async () => {
+    const root = folderItem(REPO, "root");
+    const target = folderItem(`${REPO}/01`, "target");
+    const { ops } = fakeOps([root, target]);
+    await expect(moveFolderItem(REPO, `${REPO}/01`, ops)).rejects.toMatchObject({
+      code: "MOVE_ROOT_ITEM",
+    });
+  });
+
+  it("rejects moving into a non-existent target", async () => {
+    const item = textItem(`${REPO}/01`, "notes");
+    const { ops } = fakeOps([item]);
+    await expect(moveFolderItem(`${REPO}/01`, `${REPO}/99`, ops)).rejects.toMatchObject({
+      code: "PARENT_NOT_FOUND",
+    });
+  });
+
+  it("rejects moving into a Text item (not a Folder)", async () => {
+    const item = textItem(`${REPO}/01`, "notes");
+    const notAFolder = textItem(`${REPO}/02`, "also-text");
+    const { ops } = fakeOps([item, notAFolder]);
+    await expect(moveFolderItem(`${REPO}/01`, `${REPO}/02`, ops)).rejects.toMatchObject({
+      code: "PARENT_NOT_FOLDER",
+    });
+  });
+
+  it("rejects moving into a different repo", async () => {
+    const item = textItem(`${REPO}/01`, "notes");
+    const otherRepoFolder = folderItem(`${REPO2}/01`, "other-repo-folder");
+    const { ops } = fakeOps([item, otherRepoFolder]);
+    await expect(moveFolderItem(`${REPO}/01`, `${REPO2}/01`, ops)).rejects.toMatchObject({
+      code: "MOVE_CROSS_REPO",
+    });
+  });
+
+  it("rejects moving a Folder into its own subtree (would create a cycle)", async () => {
+    const parent = folderItem(`${REPO}/01`, "parent");
+    const child = folderItem(`${REPO}/01/01`, "child");
+    const { ops } = fakeOps([parent, child]);
+    await expect(moveFolderItem(`${REPO}/01`, `${REPO}/01/01`, ops)).rejects.toMatchObject({
+      code: "MOVE_INTO_OWN_SUBTREE",
+    });
+  });
+
+  it("rejects moving a Folder onto itself", async () => {
+    const folder = folderItem(`${REPO}/01`, "self");
+    const { ops } = fakeOps([folder]);
+    await expect(moveFolderItem(`${REPO}/01`, `${REPO}/01`, ops)).rejects.toMatchObject({
+      code: "MOVE_INTO_OWN_SUBTREE",
+    });
+  });
+
+  it("rejects moving onto a target that already has a same-named child (never a silent overwrite)", async () => {
+    const item = textItem(`${REPO}/01`, "notes");
+    const target = folderItem(`${REPO}/02`, "target");
+    const clash = textItem(`${REPO}/02/01`, "notes");
+    const { ops } = fakeOps([item, target, clash]);
+    await expect(moveFolderItem(`${REPO}/01`, `${REPO}/02`, ops)).rejects.toMatchObject({
+      code: "MOVE_NAME_CONFLICT",
+    });
+  });
+
+  it("rejects moving INTO a system folder (create-child side)", async () => {
+    const item = textItem(`${REPO}/01`, "notes");
+    const views = folderItem(`${REPO}/05`, "views");
+    const daily = folderItem(`${REPO}/05/01`, "daily");
+    const { ops } = fakeOps([item, views, daily]);
+    await expect(moveFolderItem(`${REPO}/01`, `${REPO}/05/01`, ops)).rejects.toMatchObject({
+      code: "SYSTEM_FOLDER_READ_ONLY",
+    });
+  });
+
+  it("rejects moving OUT of a system folder (delete side)", async () => {
+    const views = folderItem(`${REPO}/05`, "views");
+    const daily = folderItem(`${REPO}/05/01`, "daily");
+    const row = textItem(`${REPO}/05/01/01`, "some-row");
+    const target = folderItem(`${REPO}/02`, "target");
+    const { ops } = fakeOps([views, daily, row, target]);
+    await expect(moveFolderItem(`${REPO}/05/01/01`, `${REPO}/02`, ops)).rejects.toMatchObject({
+      code: "SYSTEM_FOLDER_READ_ONLY",
     });
   });
 });

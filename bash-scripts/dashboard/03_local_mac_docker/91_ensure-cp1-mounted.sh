@@ -4,7 +4,7 @@
 #
 # Why this exists (real incident, Story 106 follow-up): the dashboard
 # container's audio-recordings and contact-photos bind mounts both point at
-# subtrees of /Volumes/cp_1/02_files_refrenced on the host. Compose's
+# subtrees of /Volumes/cp_1/chad-data/02_files_refrenced on the host. Compose's
 # `bind.create_host_path: true` on those mounts means that if /Volumes/cp_1
 # isn't mounted when `docker compose up` runs, Docker silently creates an
 # EMPTY LOCAL DIRECTORY at that path instead of erroring — uploads then

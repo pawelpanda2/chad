@@ -66,6 +66,11 @@ export default function ManuallyAddedMsgPage() {
   const [loadingLeads, setLoadingLeads] = useState(true);
   const [leadsError, setLeadsError] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
+  /** Extra attachment-count filters row (toggled by Filters). */
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  /** When true, leads with that exact archive count stay visible. Default: both on. */
+  const [showCount0, setShowCount0] = useState(true);
+  const [showCount1, setShowCount1] = useState(true);
   const [selectedUuid, setSelectedUuid] = useState<string | null>(null);
   const [archives, setArchives] = useState<ArchiveRow[]>([]);
   const [loadingArchives, setLoadingArchives] = useState(false);
@@ -148,9 +153,15 @@ export default function ManuallyAddedMsgPage() {
 
   const filtered = useMemo(() => {
     const q = filter.trim().toLowerCase();
-    if (!q) return leads;
-    return leads.filter((l) => l.leadName.toLowerCase().includes(q));
-  }, [leads, filter]);
+    return leads.filter((l) => {
+      if (q && !l.leadName.toLowerCase().includes(q)) return false;
+      const count = counts[l.leadUuid] ?? 0;
+      if (count === 0) return showCount0;
+      if (count === 1) return showCount1;
+      // 2+ attachments: always listed (no toggle for those counts yet).
+      return true;
+    });
+  }, [leads, filter, counts, showCount0, showCount1]);
 
   async function handleUpload(files: FileList | null) {
     if (!selectedUuid || !files || files.length === 0) return;
@@ -225,14 +236,53 @@ export default function ManuallyAddedMsgPage() {
       {leadsError ? <ErrorBox message={leadsError} className="mb-2 shrink-0" /> : null}
       <div className="flex min-h-0 flex-1 gap-3 overflow-hidden">
         <div className="flex w-full max-w-sm min-h-0 flex-col gap-2">
-          <input
-            type="search"
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            placeholder="Filter leads…"
-            className="h-9 w-full shrink-0 rounded-md border bg-background px-3 text-sm"
-            aria-label="Filter leads"
-          />
+          <div className="flex shrink-0 items-center gap-2">
+            <input
+              type="search"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              placeholder="Search"
+              className="h-9 min-w-0 flex-1 rounded-md border bg-background px-3 text-sm"
+              aria-label="Search"
+            />
+            <Button
+              type="button"
+              size="sm"
+              variant={filtersOpen ? "default" : "outline"}
+              className="h-9 shrink-0"
+              aria-pressed={filtersOpen}
+              aria-expanded={filtersOpen}
+              onClick={() => setFiltersOpen((open) => !open)}
+            >
+              Filters
+            </Button>
+          </div>
+          {filtersOpen && (
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant={showCount0 ? "default" : "outline"}
+                className="h-8 min-w-8 tabular-nums"
+                aria-pressed={showCount0}
+                title={showCount0 ? "Hide leads with 0 archives" : "Show leads with 0 archives"}
+                onClick={() => setShowCount0((v) => !v)}
+              >
+                0
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={showCount1 ? "default" : "outline"}
+                className="h-8 min-w-8 tabular-nums"
+                aria-pressed={showCount1}
+                title={showCount1 ? "Hide leads with 1 archive" : "Show leads with 1 archive"}
+                onClick={() => setShowCount1((v) => !v)}
+              >
+                1
+              </Button>
+            </div>
+          )}
           {loadingLeads ? (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />

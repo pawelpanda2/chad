@@ -197,6 +197,100 @@ describe("PostgresCpProvider — createChild", () => {
   });
 });
 
+describe("PostgresCpProvider — moveItem", () => {
+  it("reparents an item and its whole subtree, rewriting every descendant's address", async () => {
+    const repo = freshRepo();
+    const root = rootItem(repo);
+    await provider.executeWrite({ kind: "put-item", operationId: randomUUID(), createdAt: new Date().toISOString(), actor: null, item: root });
+
+    const sourceId = randomUUID();
+    const source = { _id: sourceId, config: { id: sourceId, address: `${repo}/01`, type: "Folder", name: "knowledge" }, body: "" };
+    const childId = randomUUID();
+    const child = { _id: childId, config: { id: childId, address: `${repo}/01/01`, type: "Folder", name: "Verbal Game" }, body: "" };
+    const grandchildId = randomUUID();
+    const grandchild = { _id: grandchildId, config: { id: grandchildId, address: `${repo}/01/01/01`, type: "Text", name: "doc" }, body: "hello" };
+    const targetId = randomUUID();
+    const target = { _id: targetId, config: { id: targetId, address: `${repo}/02`, type: "Folder", name: "tematy" }, body: "" };
+    for (const item of [source, child, grandchild, target]) {
+      await provider.executeWrite({ kind: "put-item", operationId: randomUUID(), createdAt: new Date().toISOString(), actor: null, item });
+    }
+
+    const moved = await provider.moveItem(`${repo}/01`, `${repo}/02`);
+
+    expect(moved._id).toBe(sourceId);
+    expect(moved.config.name).toBe("knowledge");
+    expect(moved.config.address).toBe(`${repo}/02/01`);
+
+    expect(await provider.getItem({ address: `${repo}/01` })).toBeNull(); // gone from the old address
+    const movedChild = await provider.getItem({ id: childId });
+    expect(movedChild?.config.address).toBe(`${repo}/02/01/01`);
+    const movedGrandchild = await provider.getItem({ id: grandchildId });
+    expect(movedGrandchild?.config.address).toBe(`${repo}/02/01/01/01`);
+    expect(movedGrandchild?.body).toBe("hello"); // body untouched by the address rewrite
+
+    const targetChildren = await provider.getChildren(`${repo}/02`);
+    expect(targetChildren.map((c) => c.config.name)).toEqual(["knowledge"]);
+  });
+
+  it("rejects moving onto a target with an existing same-named child (never a silent overwrite)", async () => {
+    const repo = freshRepo();
+    const root = rootItem(repo);
+    await provider.executeWrite({ kind: "put-item", operationId: randomUUID(), createdAt: new Date().toISOString(), actor: null, item: root });
+
+    const itemId = randomUUID();
+    const item = { _id: itemId, config: { id: itemId, address: `${repo}/01`, type: "Text", name: "notes" }, body: "" };
+    const targetId = randomUUID();
+    const target = { _id: targetId, config: { id: targetId, address: `${repo}/02`, type: "Folder", name: "target" }, body: "" };
+    const clashId = randomUUID();
+    const clash = { _id: clashId, config: { id: clashId, address: `${repo}/02/01`, type: "Text", name: "notes" }, body: "" };
+    for (const i of [item, target, clash]) {
+      await provider.executeWrite({ kind: "put-item", operationId: randomUUID(), createdAt: new Date().toISOString(), actor: null, item: i });
+    }
+
+    await expect(provider.moveItem(`${repo}/01`, `${repo}/02`)).rejects.toThrow(/already exists/);
+  });
+
+  it("rejects moving to a target address that doesn't exist", async () => {
+    const repo = freshRepo();
+    const root = rootItem(repo);
+    await provider.executeWrite({ kind: "put-item", operationId: randomUUID(), createdAt: new Date().toISOString(), actor: null, item: root });
+
+    const itemId = randomUUID();
+    const item = { _id: itemId, config: { id: itemId, address: `${repo}/01`, type: "Text", name: "notes" }, body: "" };
+    await provider.executeWrite({ kind: "put-item", operationId: randomUUID(), createdAt: new Date().toISOString(), actor: null, item });
+
+    await expect(provider.moveItem(`${repo}/01`, `${repo}/99`)).rejects.toThrow(/no longer exists/);
+  });
+
+  it("concurrent moves of different items into the SAME target get unique addresses with no gaps", async () => {
+    const repo = freshRepo();
+    const root = rootItem(repo);
+    await provider.executeWrite({ kind: "put-item", operationId: randomUUID(), createdAt: new Date().toISOString(), actor: null, item: root });
+
+    const targetId = randomUUID();
+    const target = { _id: targetId, config: { id: targetId, address: `${repo}/50`, type: "Folder", name: "target" }, body: "" };
+    await provider.executeWrite({ kind: "put-item", operationId: randomUUID(), createdAt: new Date().toISOString(), actor: null, item: target });
+
+    const names = ["alpha", "beta", "gamma", "delta", "epsilon"];
+    const sourceItems = names.map((name, i) => {
+      const id = randomUUID();
+      return { _id: id, config: { id, address: `${repo}/${10 + i}`, type: "Folder" as const, name }, body: "" };
+    });
+    for (const item of sourceItems) {
+      await provider.executeWrite({ kind: "put-item", operationId: randomUUID(), createdAt: new Date().toISOString(), actor: null, item });
+    }
+
+    const moved = await Promise.all(sourceItems.map((item) => provider.moveItem(item.config.address, `${repo}/50`)));
+
+    const addresses = moved.map((m) => m.config.address).sort();
+    const expected = [1, 2, 3, 4, 5].map((n) => `${repo}/50/0${n}`).sort();
+    expect(addresses).toEqual(expected);
+
+    const children = await provider.getChildren(`${repo}/50`);
+    expect(children).toHaveLength(5);
+  });
+});
+
 describe("PostgresCpProvider — putItem address conflict", () => {
   it("a second, different id claiming the same address is rejected as AddressConflictError", async () => {
     const repo = freshRepo();

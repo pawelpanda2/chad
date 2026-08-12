@@ -1,46 +1,46 @@
 // @vitest-environment jsdom
 /**
- * Story 113 — Dates Reports system-page: list from /api/views/dates-reports,
- * open item body, empty vs error.
+ * Story 113 — Dates Reports: Text opens editor; Folder shows parts on the right.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { DatesReportsView } from "./dates-reports-view.js";
 
-vi.mock("@/system-pages/views/shared/text-reports-browser", () => ({
-  TextReportsBrowser: (props: {
+vi.mock("@/components/shared/text-editor-with-toolbar", () => ({
+  TextEditorWithToolbar: ({ value }: { value: string }) => (
+    <div data-testid="editor-body">{value}</div>
+  ),
+}));
+
+vi.mock("@/components/shared/dashboard-page-shell", () => ({
+  DashboardPageShell: ({
+    title,
+    children,
+    upLevel,
+  }: {
     title: string;
-    loading: boolean;
-    error: string | null;
-    emptyMessage: string;
-    rows: { name: string; loca: string }[];
-    selectedReport: { name: string; loca: string } | null;
-    editorValue: string;
-    onSelectReport: (loca: string) => void;
+    children: React.ReactNode;
+    upLevel?: { onClick: () => void; label?: string };
   }) => (
     <div>
-      <h1>{props.title}</h1>
-      {props.loading ? <div>Loading reports...</div> : null}
-      {props.error ? <div role="alert">{props.error}</div> : null}
-      {!props.loading && !props.error && props.rows.length === 0 ? (
-        <div>{props.emptyMessage}</div>
+      <h1>{title}</h1>
+      {upLevel ? (
+        <button type="button" onClick={upLevel.onClick}>
+          {upLevel.label ?? "Up"}
+        </button>
       ) : null}
-      <ul>
-        {props.rows.map((r) => (
-          <li key={r.loca}>
-            <button type="button" onClick={() => props.onSelectReport(r.loca)}>
-              {r.name}
-            </button>
-          </li>
-        ))}
-      </ul>
-      {props.selectedReport ? <div data-testid="body">{props.editorValue}</div> : null}
+      {children}
     </div>
   ),
 }));
 
-vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock("@/components/shared/error-box", () => ({
+  ErrorBox: ({ message }: { message: string | null }) =>
+    message ? <div role="alert">{message}</div> : null,
+}));
+
+vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn(), message: vi.fn() } }));
 
 const fetchMock = vi.fn();
 
@@ -55,7 +55,72 @@ afterEach(() => {
 });
 
 describe("DatesReportsView", () => {
-  it("lists date reports and opens body from dates-reports item API", async () => {
+  it("opens Text report in the editor", async () => {
+    fetchMock.mockImplementation(async (input: RequestInfo) => {
+      const url = String(input);
+      if (url === "/api/views/dates-reports") {
+        return {
+          ok: true,
+          json: async () => ({
+            success: true,
+            reports: [
+              {
+                name: "22-08-13; Sabina",
+                loca: "06/11",
+                address: "repo/06/11",
+                kind: "Text",
+              },
+            ],
+          }),
+        };
+      }
+      if (url.includes("/api/views/dates-reports/item")) {
+        return {
+          ok: true,
+          json: async () => ({
+            success: true,
+            data: { body: "sabina body", editLoca: "06/11", editable: true },
+          }),
+        };
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    });
+
+    const onSelect = vi.fn();
+    const { rerender } = render(
+      <DatesReportsView
+        selectedReportLoca={null}
+        selectedPartLoca={null}
+        onSelectReport={onSelect}
+        onSelectPart={vi.fn()}
+        onBackToMenu={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("22-08-13; Sabina")).toBeTruthy();
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: "22-08-13; Sabina" }));
+    expect(onSelect).toHaveBeenCalledWith("06/11");
+
+    rerender(
+      <DatesReportsView
+        selectedReportLoca="06/11"
+        selectedPartLoca={null}
+        onSelectReport={onSelect}
+        onSelectPart={vi.fn()}
+        onBackToMenu={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("editor-body").textContent).toBe("sabina body");
+      expect(screen.getByRole("heading", { name: "22-08-13; Sabina" })).toBeTruthy();
+    });
+  });
+
+  it("shows Folder parts on the right, then opens a part in the editor", async () => {
     fetchMock.mockImplementation(async (input: RequestInfo) => {
       const url = String(input);
       if (url === "/api/views/dates-reports") {
@@ -74,16 +139,24 @@ describe("DatesReportsView", () => {
           }),
         };
       }
+      if (url.includes("/api/views/dates-reports/children")) {
+        return {
+          ok: true,
+          json: async () => ({
+            success: true,
+            children: [
+              { name: "before", loca: "06/37/01", address: "repo/06/37/01", kind: "Text" },
+              { name: "report", loca: "06/37/02", address: "repo/06/37/02", kind: "Text" },
+            ],
+          }),
+        };
+      }
       if (url.includes("/api/views/dates-reports/item")) {
         return {
           ok: true,
           json: async () => ({
             success: true,
-            data: {
-              body: "daria report body",
-              editLoca: "06/37/01",
-              editable: true,
-            },
+            data: { body: "daria report body", editLoca: "06/37/02", editable: true },
           }),
         };
       }
@@ -91,12 +164,18 @@ describe("DatesReportsView", () => {
     });
 
     const onSelect = vi.fn();
+    const onSelectPart = vi.fn();
     const { rerender } = render(
-      <DatesReportsView selectedReportLoca={null} onSelectReport={onSelect} onBackToMenu={vi.fn()} />,
+      <DatesReportsView
+        selectedReportLoca={null}
+        selectedPartLoca={null}
+        onSelectReport={onSelect}
+        onSelectPart={onSelectPart}
+        onBackToMenu={vi.fn()}
+      />,
     );
 
     await waitFor(() => {
-      expect(screen.getByText("Dates Reports")).toBeTruthy();
       expect(screen.getByText("26-05-13_r1__pn_Daria")).toBeTruthy();
     });
 
@@ -106,28 +185,36 @@ describe("DatesReportsView", () => {
     rerender(
       <DatesReportsView
         selectedReportLoca="06/37"
+        selectedPartLoca={null}
         onSelectReport={onSelect}
+        onSelectPart={onSelectPart}
         onBackToMenu={vi.fn()}
       />,
     );
 
     await waitFor(() => {
-      expect(screen.getByTestId("body").textContent).toBe("daria report body");
+      expect(screen.getByText(/Parts —/)).toBeTruthy();
+      expect(screen.getByText("before")).toBeTruthy();
+      expect(screen.getByText("report")).toBeTruthy();
     });
-  });
+    expect(screen.queryByTestId("editor-body")).toBeNull();
 
-  it("shows empty copy for dates when folder has no reports", async () => {
-    fetchMock.mockResolvedValue({
-      ok: true,
-      json: async () => ({ success: true, reports: [] }),
-    });
+    await userEvent.click(screen.getByRole("button", { name: "report" }));
+    expect(onSelectPart).toHaveBeenCalledWith("06/37/02");
 
-    render(
-      <DatesReportsView selectedReportLoca={null} onSelectReport={vi.fn()} onBackToMenu={vi.fn()} />,
+    rerender(
+      <DatesReportsView
+        selectedReportLoca="06/37"
+        selectedPartLoca="06/37/02"
+        onSelectReport={onSelect}
+        onSelectPart={onSelectPart}
+        onBackToMenu={vi.fn()}
+      />,
     );
 
     await waitFor(() => {
-      expect(screen.getByText("No date reports found (dates / randki).")).toBeTruthy();
+      expect(screen.getByTestId("editor-body").textContent).toBe("daria report body");
+      expect(screen.getByRole("heading", { name: "report" })).toBeTruthy();
     });
   });
 
@@ -138,7 +225,13 @@ describe("DatesReportsView", () => {
     });
 
     render(
-      <DatesReportsView selectedReportLoca={null} onSelectReport={vi.fn()} onBackToMenu={vi.fn()} />,
+      <DatesReportsView
+        selectedReportLoca={null}
+        selectedPartLoca={null}
+        onSelectReport={vi.fn()}
+        onSelectPart={vi.fn()}
+        onBackToMenu={vi.fn()}
+      />,
     );
 
     await waitFor(() => {

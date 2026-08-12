@@ -101,7 +101,10 @@ if [ "$DBA_MONGO_MODE" = "qnap" ]; then
   LOCAL_PG_PORT="$(read_env_var "$ENV_FILE" POSTGRES_PORT)"
   LOCAL_POSTGRES_HOST_URI="postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@127.0.0.1:${LOCAL_PG_PORT:-5433}/${POSTGRES_DB}"
   export LOCAL_POSTGRES_HOST_URI
-  log_info "DBA_MONGO_MODE=qnap — Beeper via QNAP (:${QNAP_BEEPER_MONGO_PORT}); CHAD Postgres via local mirror (postgres:5432)."
+  # Runtime CHAD Postgres default is Server (QNAP Tailscale) via Dev Panel /
+  # dev-db-override — NOT the compose sibling postgres:5432. That local
+  # volume is bootstrap/legacy only; emergency read path is offline-readonly-backup.
+  log_info "DBA_MONGO_MODE=qnap — Beeper via QNAP (:${QNAP_BEEPER_MONGO_PORT}); CHAD Postgres default = Server QNAP Tailscale (:${QNAP_POSTGRES_PORT:-12042}), not local sibling volume."
 elif [ "$DBA_MONGO_MODE" = "local" ]; then
   # Safety guard (2026-07-22, real incident): GOOGLE_SHEETS_ENABLED in
   # .env.local is a single flag with no awareness of DBA_MONGO_MODE — left

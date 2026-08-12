@@ -161,6 +161,9 @@ przez Message Creator), `leads/`, `forms/`, `views/`, `settings/`, `users/`,
 - `views/features/dates-reports.md` + `views/features/system-pages.md`
   (Story 113) — Views → Dates Reports (dane z root `randki`) oraz migracja
   implementacji Reports/Dates Reports do `packages/dashboard/system-pages/`.
+- `backlog/stories/113/06_offline_sync_gap_report.md` — luki auto-syncu
+  awaryjnego snapshotu (`offline-readonly-backup`) względem żywej bazy QNAP
+  (okresowy refresh + enqueue przy otwarciu strony); tylko analiza.
 - `forms/features/daily-tracker-dates.md` (zweryfikowane end-to-end,
   2026-07-12; dodane do tego indeksu w Story 62, 2026-07-16 — **przeczytaj
   przed dotknięciem Daily Entry/Tracker/Date Entry/Dates kodu**) — Forms →

@@ -1,14 +1,15 @@
 /**
  * Forms / Views → recordings: binary audio files plus minimal sidecar metadata.
  *
- * Not Content Provider / not speech-to-text. Files live directly under
- * `process.env.CHAD_AUDIO_RECORDINGS_DIR` (path as seen by the Node process).
- * New writes store a sibling JSON metadata file that carries `repoGuid` for
- * per-user filtering; legacy flat audio files without metadata are still
- * readable as a compatibility fallback.
+ * Not Content Provider / not speech-to-text.
  *
- * Host Mac root target: `/Volumes/cp_1/02_files_refrenced/10_files_audio/`
+ * Canonical (Story 111/112): writes under
+ *   `<CHAD_CONTACT_PHOTOS_DIR>/<user>/10_files_audio/recordings/`
+ * Host: `/Volumes/cp_1/chad-data/02_files_refrenced/<user>/10_files_audio/recordings/`
  * (spelling `refrenced` is intentional — do not "fix").
+ *
+ * `CHAD_AUDIO_RECORDINGS_DIR` remains an optional legacy read root (flat or
+ * `…/recordings` subdir) for migration compatibility only.
  */
 
 import { randomUUID } from "node:crypto";
@@ -63,10 +64,10 @@ export function getAudioRecordingsDir(): string {
 }
 
 /**
- * Story 111 — new writes go under
+ * Story 111/112 — new writes go under
  * `<CHAD_CONTACT_PHOTOS_DIR>/<user>/10_files_audio/recordings/`.
- * Falls back to legacy flat `CHAD_AUDIO_RECORDINGS_DIR` only when photos root
- * is unavailable (tests that pass `rootDirectory` bypass this).
+ * Falls back to legacy `CHAD_AUDIO_RECORDINGS_DIR` (+ `/recordings` if present)
+ * only when photos root is unavailable (tests may pass `rootDirectory`).
  */
 export function getUserAudioRecordingsWriteDir(
   username?: string,
@@ -77,7 +78,32 @@ export function getUserAudioRecordingsWriteDir(
     const user = username ?? getCurrentUsername();
     return resolveFeatureStorage(user, FILE_STORAGE_FEATURES.AUDIO_RECORDINGS);
   } catch {
-    return getAudioRecordingsDir();
+    const legacy = getAudioRecordingsDir();
+    return path.join(legacy, "recordings");
+  }
+}
+
+/** Per-user drafts root: `<user>/10_files_audio/drafts`. */
+export function getUserAudioDraftsDir(
+  username?: string,
+  rootDirectory?: string,
+): string {
+  if (rootDirectory) return path.resolve(rootDirectory, "drafts");
+  try {
+    const user = username ?? getCurrentUsername();
+    return resolveFeatureStorage(user, FILE_STORAGE_FEATURES.AUDIO_DRAFTS);
+  } catch {
+    return path.join(getAudioRecordingsDir(), "drafts");
+  }
+}
+
+/** Legacy list roots: flat mount + optional `recordings/` subdir. */
+export function listLegacyAudioRootDirs(): string[] {
+  try {
+    const root = getAudioRecordingsDir();
+    return [root, path.join(root, "recordings")];
+  } catch {
+    return [];
   }
 }
 
@@ -457,15 +483,11 @@ export async function listAudioRecordings(options?: {
   }
   const dirs = new Set<string>();
   try {
-    dirs.add(getAudioRecordingsDir());
-  } catch {
-    /* legacy mount optional */
-  }
-  try {
     dirs.add(getUserAudioRecordingsWriteDir());
   } catch {
     /* photos root optional */
   }
+  for (const legacy of listLegacyAudioRootDirs()) dirs.add(legacy);
   const merged = new Map<string, AudioRecordingListItem>();
   for (const dir of dirs) {
     const items = await listAudioRecordingsFromDir(dir, repoGuid);
@@ -536,11 +558,7 @@ export async function getAudioRecordingReadInfo(
   } catch {
     /* optional */
   }
-  try {
-    dirs.push(getAudioRecordingsDir());
-  } catch {
-    /* optional */
-  }
+  for (const legacy of listLegacyAudioRootDirs()) dirs.push(legacy);
   for (const dir of dirs) {
     const info = await getAudioRecordingReadInfoFromDir(dir, safeId, repoGuid);
     if (info) return info;

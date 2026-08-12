@@ -3,6 +3,13 @@
 Read `ai-docs/databases/red-rules.md` **first** — it lists the fixed rules
 for this area. This file is the orientation map; that file is the law.
 
+**LOCAL default = Tailscale Server PostgreSQL**, not the Mac Docker sibling
+Postgres volume. Emergency-only path = `offline-readonly-backup` (read-only).
+If you are about to `psql` into `localhost:5433` to "check real data", stop
+and re-read Rule 1 — that volume is not the app's normal source of truth.
+Gap analysis for making the emergency snapshot track the server
+periodically: `backlog/stories/113/06_offline_sync_gap_report.md`.
+
 ## The current architecture (2026-07-27)
 
 | Environment | CHAD cp_items backend | Beeper backend |

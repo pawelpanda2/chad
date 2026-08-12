@@ -18,6 +18,8 @@ import {
   putItemBody as realPutItemBody,
   putItemConfig as realPutItemConfig,
   deleteItemByAddress as realDeleteItemByAddress,
+  moveItemByAddress as realMoveItemByAddress,
+  readdressItemByAddress as realReaddressItemByAddress,
 } from "./item-ops.js";
 import type { CpItem, CpItemConfig } from "./cp-model.js";
 import { splitAddress, parseChildIndex } from "./cp-model.js";
@@ -26,6 +28,15 @@ import {
   SystemFolderReadOnlyError,
   type SystemFolderManagedBy,
 } from "./system-folders.js";
+
+function isAddressConflictError(err: unknown): err is Error & { address: string } {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    (err as { name?: string }).name === "AddressConflictError" &&
+    typeof (err as { address?: unknown }).address === "string"
+  );
+}
 
 export type FolderChildType = "Text" | "Folder";
 
@@ -39,7 +50,12 @@ export type FoldersErrorCode =
   | "FOLDER_NOT_EMPTY"
   | "FORBIDDEN_IDENTITY_CHANGE"
   | "ROOT_NOT_FOLDER"
-  | "EXPORT_LIMIT_EXCEEDED";
+  | "EXPORT_LIMIT_EXCEEDED"
+  | "MOVE_ROOT_ITEM"
+  | "MOVE_CROSS_REPO"
+  | "MOVE_INTO_OWN_SUBTREE"
+  | "MOVE_NAME_CONFLICT"
+  | "ADDRESS_TAKEN";
 
 export class FoldersOperationError extends Error {
   constructor(
@@ -67,6 +83,8 @@ export interface FolderChildOps {
   putItemBody: typeof realPutItemBody;
   putItemConfig: typeof realPutItemConfig;
   deleteItemByAddress: typeof realDeleteItemByAddress;
+  moveItem: typeof realMoveItemByAddress;
+  readdressItem: typeof realReaddressItemByAddress;
 }
 
 interface FolderWriteOptions {
@@ -80,7 +98,12 @@ const defaultOps: FolderChildOps = {
   putItemBody: realPutItemBody,
   putItemConfig: realPutItemConfig,
   deleteItemByAddress: realDeleteItemByAddress,
+  moveItem: realMoveItemByAddress,
+  readdressItem: realReaddressItemByAddress,
 };
+
+/** Same shape CP enforces on writes (`cp-model.ts` ADDRESS_PATTERN). */
+const CP_ADDRESS_PATTERN = /^[^/]+(\/\d{2,3})*$/;
 
 /** Walk parent chain collecting config.name → ["views","daily",...]. */
 export async function resolveLogicalNamePath(
@@ -265,15 +288,13 @@ export async function updateFolderTextBodyAllowingSystemFolderWrite(
 /**
  * Validates a client-supplied config JSON against the item it would
  * replace: must be a plain object (not null/array/primitive) carrying the
- * 4 keys CP itself enforces (`cp-model.ts`'s `CpItemConfig`). `id`/
- * `address`/`type` must stay byte-identical to the existing item —
- * changing those could silently orphan/duplicate an address, or (for
- * `type`) corrupt Text/Folder body semantics. `name` MAY change: CP
- * identity is the numeric address, not the display name, so rename is a
- * config-only write (no address rewrite, no children move). The caller
- * must still run the sibling-uniqueness check when the name actually
- * changes. Every other key round-trips through untouched — this is a
- * full-object replace, not a patch.
+ * 4 keys CP itself enforces (`cp-model.ts`'s `CpItemConfig`). `id`/`type`
+ * must stay byte-identical — changing those could orphan an item or (for
+ * `type`) corrupt Text/Folder body semantics. `name` MAY change (display
+ * identity; caller still runs sibling-uniqueness). `address` MAY change
+ * when the target slot is free — the write path rewrites the item (and
+ * its subtree) rather than a config-only put. Every other key round-trips
+ * through untouched — this is a full-object replace, not a patch.
  */
 function validateItemConfig(rawConfig: unknown, existing: CpItem): CpItemConfig {
   if (typeof rawConfig !== "object" || rawConfig === null || Array.isArray(rawConfig)) {
@@ -296,12 +317,6 @@ function validateItemConfig(rawConfig: unknown, existing: CpItem): CpItemConfig 
       `Config "id" must match the existing item's id (expected "${existing.config.id}", got "${candidate.id}")`
     );
   }
-  if (candidate.address !== existing.config.address) {
-    throw new FoldersOperationError(
-      "FORBIDDEN_IDENTITY_CHANGE",
-      `Config "address" must match the existing item's address (expected "${existing.config.address}", got "${candidate.address}")`
-    );
-  }
   if (candidate.type !== existing.config.type) {
     throw new FoldersOperationError(
       "FORBIDDEN_IDENTITY_CHANGE",
@@ -309,11 +324,109 @@ function validateItemConfig(rawConfig: unknown, existing: CpItem): CpItemConfig 
     );
   }
 
+  const address = String(candidate.address);
+  if (!CP_ADDRESS_PATTERN.test(address)) {
+    throw new FoldersOperationError(
+      "VALIDATION",
+      `Config "address" is not a valid CP address ("${address}")`
+    );
+  }
+
   // Same rules as create-child names: trim, reject empty / path-like values.
   // validateChildName throws VALIDATION on bad input.
   const name = validateChildName(String(candidate.name));
 
-  return { ...candidate, name } as CpItemConfig;
+  return { ...candidate, name, address } as CpItemConfig;
+}
+
+async function collectSubtreeAddresses(
+  rootAddress: string,
+  ops: Pick<FolderChildOps, "getChildrenOf">
+): Promise<string[]> {
+  const addresses = [rootAddress];
+  const children = await ops.getChildrenOf(rootAddress);
+  for (const child of children) {
+    addresses.push(...(await collectSubtreeAddresses(child.config.address, ops)));
+  }
+  return addresses;
+}
+
+/**
+ * Allows changing `config.address` only when the new slot (and every
+ * rewritten descendant slot) is free, same-repo, under an existing Folder
+ * parent, and not into the item's own subtree.
+ */
+async function assertCanReaddress(
+  existing: CpItem,
+  newAddress: string,
+  ops: FolderChildOps
+): Promise<void> {
+  const oldAddress = existing.config.address;
+  if (newAddress === oldAddress) return;
+
+  const { repoGuid: oldRepo } = splitAddress(oldAddress);
+  const { repoGuid: newRepo, segments: newSegments } = splitAddress(newAddress);
+
+  if (oldAddress === oldRepo) {
+    throw new FoldersOperationError("MOVE_ROOT_ITEM", "The repo root item's address cannot be changed");
+  }
+  if (newSegments.length === 0) {
+    throw new FoldersOperationError(
+      "VALIDATION",
+      "Config \"address\" cannot be changed to a bare repo GUID (only the repo root uses that form)"
+    );
+  }
+  if (newRepo !== oldRepo) {
+    throw new FoldersOperationError("MOVE_CROSS_REPO", "Changing an item's address into a different repo is not supported");
+  }
+  if (newAddress === oldAddress || newAddress.startsWith(`${oldAddress}/`)) {
+    throw new FoldersOperationError(
+      "MOVE_INTO_OWN_SUBTREE",
+      `Cannot readdress "${oldAddress}" into its own subtree (target "${newAddress}")`
+    );
+  }
+
+  const parentParts = newAddress.split("/");
+  parentParts.pop();
+  const newParentAddress = parentParts.join("/");
+  const newParent = await ops.getItemByAddress(newParentAddress);
+  if (!newParent) {
+    throw new FoldersOperationError(
+      "PARENT_NOT_FOUND",
+      `Target parent not found at address "${newParentAddress}"`
+    );
+  }
+  if (newParent.config.type !== "Folder") {
+    throw new FoldersOperationError(
+      "PARENT_NOT_FOLDER",
+      `Target parent at "${newParentAddress}" is not a Folder (type: "${newParent.config.type}")`
+    );
+  }
+
+  const subtree = await collectSubtreeAddresses(oldAddress, ops);
+  const subtreeSet = new Set(subtree);
+  for (const address of subtree) {
+    const rewritten = newAddress + address.slice(oldAddress.length);
+    if (subtreeSet.has(rewritten)) continue;
+    const occupant = await ops.getItemByAddress(rewritten);
+    if (occupant) {
+      throw new FoldersOperationError(
+        "ADDRESS_TAKEN",
+        `Address "${rewritten}" is already taken`
+      );
+    }
+  }
+
+  const siblings = await ops.getChildrenOf(newParentAddress);
+  const nameClash = siblings.find(
+    (s) => s.config.address !== oldAddress && s.config.name === existing.config.name
+  );
+  if (nameClash) {
+    throw new FoldersOperationError(
+      "MOVE_NAME_CONFLICT",
+      `A child named "${existing.config.name}" already exists under "${newParentAddress}" (at "${nameClash.config.address}")`
+    );
+  }
 }
 
 /**
@@ -367,21 +480,64 @@ async function updateFolderItemConfigInternal(
   }
 
   const config = validateItemConfig(rawConfig, existing);
+  const addressChanging = config.address !== existing.config.address;
 
+  if (addressChanging) {
+    await assertCanReaddress(existing, config.address, ops);
+  }
+
+  // Rename collision is checked against the *destination* parent's siblings
+  // when the address is also changing (assertCanReaddress already rejected
+  // a same-name clash under the new parent for the *current* name; here we
+  // cover a simultaneous rename to a different colliding name).
   if (config.name !== existing.config.name) {
-    await assertRenameDoesNotCollide(existing, config.name, ops);
+    if (addressChanging) {
+      const parentParts = config.address.split("/");
+      parentParts.pop();
+      const newParentAddress = parentParts.join("/");
+      const siblings = await ops.getChildrenOf(newParentAddress);
+      const clash = siblings.find(
+        (s) => s.config.address !== existing.config.address && s.config.name === config.name
+      );
+      if (clash) {
+        throw new FoldersOperationError(
+          "VALIDATION",
+          `A sibling item already uses the name "${config.name}" (at "${clash.config.address}")`
+        );
+      }
+    } else {
+      await assertRenameDoesNotCollide(existing, config.name, ops);
+    }
   }
 
   if (!options.allowSystemFolderWrite) {
     try {
       const names = await resolveLogicalNamePath(address, ops);
       assertNotSystemFolderWrite(names, "update-body");
+      if (addressChanging) {
+        const parentParts = config.address.split("/");
+        parentParts.pop();
+        const targetNames = await resolveLogicalNamePath(parentParts.join("/"), ops);
+        assertNotSystemFolderWrite(targetNames, "create-child");
+      }
     } catch (err) {
       rethrowSystemFolder(err);
     }
   }
 
-  return ops.putItemConfig({ _id: existing._id, config, body: existing.body });
+  let itemAtFinalAddress = existing;
+  if (addressChanging) {
+    try {
+      itemAtFinalAddress = await ops.readdressItem(existing.config.address, config.address);
+    } catch (err) {
+      if (isAddressConflictError(err)) {
+        throw new FoldersOperationError("ADDRESS_TAKEN", `Address "${err.address}" is already taken`);
+      }
+      throw err;
+    }
+  }
+
+  return ops.putItemConfig({ _id: itemAtFinalAddress._id, config, body: itemAtFinalAddress.body });
 }
 
 export async function updateFolderItemConfig(
@@ -447,6 +603,115 @@ export async function deleteFolderItem(address: string, ops: FolderChildOps = de
 
 export async function deleteFolderItemAllowingSystemFolderWrite(address: string): Promise<void> {
   return deleteFolderItemInternal(address, defaultOps, { allowSystemFolderWrite: true });
+}
+
+export interface MoveFolderItemResult {
+  item: CpItem;
+  /** `false` when the target parent was already the item's current parent — a no-op success, not an error. */
+  moved: boolean;
+}
+
+/**
+ * Moves a Text/Folder item — and its whole subtree, if it's a Folder — to
+ * a new parent Folder. Same repo only (moving across repos is not
+ * supported — a deliberate scope decision, not a limitation of the
+ * underlying storage). Refuses to move an item into its own subtree (would
+ * create a cycle) and never silently overwrites a same-named sibling
+ * already under the target (same "no silent overwrite" rule
+ * `createFolderChildItem`'s find-or-create semantics apply at create time).
+ * Moving an item to its OWN current parent is a no-op success, not an
+ * error — nothing to do, not a mistake.
+ *
+ * @throws FoldersOperationError ITEM_NOT_FOUND / MOVE_ROOT_ITEM /
+ *   PARENT_NOT_FOUND / PARENT_NOT_FOLDER / MOVE_CROSS_REPO /
+ *   MOVE_INTO_OWN_SUBTREE / MOVE_NAME_CONFLICT / SYSTEM_FOLDER_READ_ONLY
+ */
+async function moveFolderItemInternal(
+  address: string,
+  newParentAddress: string,
+  ops: FolderChildOps = defaultOps,
+  options: FolderWriteOptions = {}
+): Promise<MoveFolderItemResult> {
+  const existing = await ops.getItemByAddress(address);
+  if (!existing) {
+    throw new FoldersOperationError("ITEM_NOT_FOUND", `Item not found at address "${address}"`);
+  }
+
+  const { repoGuid: itemRepoGuid } = splitAddress(address);
+  if (address === itemRepoGuid) {
+    throw new FoldersOperationError("MOVE_ROOT_ITEM", "The repo root item cannot be moved");
+  }
+
+  const newParent = await ops.getItemByAddress(newParentAddress);
+  if (!newParent) {
+    throw new FoldersOperationError(
+      "PARENT_NOT_FOUND",
+      `Target parent not found at address "${newParentAddress}"`
+    );
+  }
+  if (newParent.config.type !== "Folder") {
+    throw new FoldersOperationError(
+      "PARENT_NOT_FOLDER",
+      `Target parent at "${newParentAddress}" is not a Folder (type: "${newParent.config.type}")`
+    );
+  }
+
+  const { repoGuid: targetRepoGuid } = splitAddress(newParentAddress);
+  if (targetRepoGuid !== itemRepoGuid) {
+    throw new FoldersOperationError("MOVE_CROSS_REPO", "Moving an item into a different repo is not supported");
+  }
+
+  if (newParentAddress === address || newParentAddress.startsWith(`${address}/`)) {
+    throw new FoldersOperationError(
+      "MOVE_INTO_OWN_SUBTREE",
+      `Cannot move "${address}" into its own subtree (target "${newParentAddress}")`
+    );
+  }
+
+  const addressParts = address.split("/");
+  addressParts.pop();
+  const currentParentAddress = addressParts.join("/");
+  if (currentParentAddress === newParentAddress) {
+    return { item: existing, moved: false };
+  }
+
+  const targetSiblings = await ops.getChildrenOf(newParentAddress);
+  const conflict = targetSiblings.find((sibling) => sibling.config.name === existing.config.name);
+  if (conflict) {
+    throw new FoldersOperationError(
+      "MOVE_NAME_CONFLICT",
+      `A child named "${existing.config.name}" already exists under "${newParentAddress}" (at "${conflict.config.address}")`
+    );
+  }
+
+  if (!options.allowSystemFolderWrite) {
+    try {
+      const sourceNames = await resolveLogicalNamePath(address, ops);
+      assertNotSystemFolderWrite(sourceNames, "delete");
+      const targetNames = await resolveLogicalNamePath(newParentAddress, ops);
+      assertNotSystemFolderWrite(targetNames, "create-child");
+    } catch (err) {
+      rethrowSystemFolder(err);
+    }
+  }
+
+  const item = await ops.moveItem(address, newParentAddress);
+  return { item, moved: true };
+}
+
+export async function moveFolderItem(
+  address: string,
+  newParentAddress: string,
+  ops: FolderChildOps = defaultOps
+): Promise<MoveFolderItemResult> {
+  return moveFolderItemInternal(address, newParentAddress, ops);
+}
+
+export async function moveFolderItemAllowingSystemFolderWrite(
+  address: string,
+  newParentAddress: string
+): Promise<MoveFolderItemResult> {
+  return moveFolderItemInternal(address, newParentAddress, defaultOps, { allowSystemFolderWrite: true });
 }
 
 // ============================================================================

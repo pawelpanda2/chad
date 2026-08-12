@@ -4,8 +4,6 @@ import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import { RefreshCw } from "lucide-react";
 import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
-import { EditorPageShell } from "@/components/shared/editor-page-shell";
-import { NavGroup } from "@/components/shared/nav-group";
 import { ErrorBox } from "@/components/shared/error-box";
 import { TextEditorWithToolbar } from "@/components/shared/text-editor-with-toolbar";
 import { FRAME_SECTION_GAP_CLASS, LIST_ROW_CLASS, LIST_ROW_WRAPPER_CLASS } from "@/components/shared/layout-tokens";
@@ -42,10 +40,12 @@ import { useKnowledgeGridLayout } from "@/components/shared/use-knowledge-grid-l
  *   (`LIST_ROW_WRAPPER_CLASS`/`LIST_ROW_CLASS`, icons, typography) are
  *   unchanged.
  * - `kind: "document"`: the same editable Preview/Editor toolbar every
- *   other single-document page in the app uses (`EditorPageShell`), wired
- *   to `PUT` the same endpoint. A "shared" (chad_shared) document is only
- *   actually saveable by an admin session — a non-admin still sees the
- *   editor, but a save attempt surfaces the server's 403 via the error box.
+ *   other single-document page in the app uses, inside `DashboardPageShell`
+ *   (the standard main frame — title/back button above it, everything else,
+ *   including the toolbar, inside it), wired to `PUT` the same endpoint. A
+ *   "shared" (chad_shared) document is only actually saveable by an admin
+ *   session — a non-admin still sees the editor, but a save attempt
+ *   surfaces the server's 403 via the error box.
  */
 
 interface KnowledgeChildSummary {
@@ -221,16 +221,27 @@ export default function KnowledgeNodePage({
 
   if (node?.kind === "document") {
     return (
-      <EditorPageShell>
-        <div className="flex min-h-9 shrink-0 flex-wrap items-center gap-x-3 gap-y-1 pl-14">
-          <NavGroup upLevel={{ href: upHref, label: upLabel }} />
-          <h2 className="text-sm font-bold tracking-wide">{node.name}</h2>
-        </div>
-        <ErrorBox message={saveError} className="mb-2 shrink-0" />
+      <DashboardPageShell
+        title={node.name}
+        upLevel={{ href: upHref, label: upLabel }}
+        contentClassName="overflow-x-auto"
+      >
+        <ErrorBox message={saveError} className="mb-0 shrink-0" />
         {/* Desktop gutter comes from layout `main` (`xl:pr-[150px]` only) —
             never duplicate it here with unconditional mr-[150px] (mobile
-            empty right strip — Story 117). Opt into collapsible helpers. */}
+            empty right strip — Story 117). Opt into collapsible helpers.
+            The main frame (DashboardPageShell) owns scroll — both axes,
+            same as every other DashboardPageShell page (`scroll` stays at
+            its default `true`; `overflow-x-auto` above only adds
+            horizontal, since the default hides it) — buttons and content
+            both live inside this one frame instead of above it. */}
         <TextEditorWithToolbar
+          // Remounts per document (this page never unmounts the editor
+          // between in-place navigations) so Preview format auto-detection
+          // re-runs against THIS document's real body instead of staying
+          // stuck on whatever it detected for the first document ever
+          // loaded here.
+          key={`${categorySlug}/${pathKey}`}
           value={editorBody}
           onChange={handleEditorBodyChange}
           onSave={handleSaveBody}
@@ -238,8 +249,9 @@ export default function KnowledgeNodePage({
           saved={saved}
           placeholder="Enter text body..."
           collapseEditorHelpers
+          className="flex-1"
         />
-      </EditorPageShell>
+      </DashboardPageShell>
     );
   }
 

@@ -17,7 +17,7 @@
  * `@testing-library/jest-dom`) to avoid that library's global-`expect`
  * auto-extend, which this repo's Vitest config does not enable.
  */
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { TextEditorWithToolbar } from "./text-editor-with-toolbar.js";
@@ -29,6 +29,14 @@ vi.mock("./body-text-editor.js", () => ({
 vi.mock("./headers-renderer.js", () => ({
   PreviewContent: ({ body }: { body: string }) => <div data-testid="preview-content">{body}</div>,
 }));
+
+// Safety net: a test that throws before its own manual cleanup() would
+// otherwise leak DOM into the next test (seen when a since-fixed assumption
+// broke — the leaked instance produced confusing "multiple elements found"
+// failures in whichever test ran next, not in the one that actually broke).
+afterEach(() => {
+  cleanup();
+});
 
 function noop() {}
 
@@ -176,7 +184,7 @@ describe("TextEditorWithToolbar — showPreview={false} Save regression", () => 
 });
 
 describe("TextEditorWithToolbar — collapseEditorHelpers (Story 117)", () => {
-  it("hides helpers behind More by default; shows wch/tab after More + Editor", async () => {
+  it("shows More only in Editor mode; hides helpers behind it until opened", async () => {
     const user = userEvent.setup();
     render(
       <TextEditorWithToolbar
@@ -190,11 +198,13 @@ describe("TextEditorWithToolbar — collapseEditorHelpers (Story 117)", () => {
       />,
     );
 
-    expect(screen.getByRole("button", { name: "More" })).not.toBeNull();
+    // Defaults to Preview — More belongs to Editor mode only, not shown yet.
+    expect(screen.queryByRole("button", { name: "More" })).toBeNull();
     expect(screen.queryByText("wch")).toBeNull();
     expect(screen.queryByRole("button", { name: "tab" })).toBeNull();
 
     await user.click(screen.getByText("Editor"));
+    expect(screen.getByRole("button", { name: "More" })).not.toBeNull();
     // Still hidden until More is opened.
     expect(screen.queryByText("wch")).toBeNull();
 

@@ -154,6 +154,43 @@ export async function putItemConfig(item: CpItem): Promise<CpItem> {
 }
 
 /**
+ * Reparents a single item (and its whole subtree) to a new parent Folder in
+ * the same repo, atomically. Bypasses `DbaDataRouter` — same convention as
+ * `deleteItemByAddress`/`putItemConfig` below (no router "move" command,
+ * no follower-replication path to solve here). Only implemented for the
+ * Postgres backend so far (`PostgresCpProvider.moveItem`) — the only
+ * backend real TEST/PROD actually run
+ * (`ai-docs/deploy/dashboard-deployment-scripts.md`); Mongo has no
+ * equivalent yet, same honest-error convention as `deleteItemByAddress`
+ * throwing when only the Content Provider backend is active.
+ */
+export async function moveItemByAddress(itemAddress: string, newParentAddress: string): Promise<CpItem> {
+  const config = loadDataProvidersConfig();
+  if (config.primaryBackend !== "postgres") {
+    throw new Error(
+      `Item move requires the Postgres backend (primaryBackend is "${config.primaryBackend}") — moveItem is not implemented for Mongo/content-provider yet.`
+    );
+  }
+  return getPostgresProvider().moveItem(itemAddress, newParentAddress);
+}
+
+/**
+ * Rewrites an item's address (and its whole subtree) to an exact free
+ * target address in the same repo. Same Postgres-only convention as
+ * `moveItemByAddress` — Folders config editor uses this when the user
+ * changes `config.address` to a vacant slot.
+ */
+export async function readdressItemByAddress(itemAddress: string, newAddress: string): Promise<CpItem> {
+  const config = loadDataProvidersConfig();
+  if (config.primaryBackend !== "postgres") {
+    throw new Error(
+      `Item readdress requires the Postgres backend (primaryBackend is "${config.primaryBackend}") — readdressItem is not implemented for Mongo/content-provider yet.`
+    );
+  }
+  return getPostgresProvider().readdressItem(itemAddress, newAddress);
+}
+
+/**
  * Permanently removes a single item by address. Bypasses `DbaDataRouter`
  * and calls the primary provider directly — same convention already
  * established by `leads.ts`'s `deleteDailyEntry`/`deleteDateEntry` (the

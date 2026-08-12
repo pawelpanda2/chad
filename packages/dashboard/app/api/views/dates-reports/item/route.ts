@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDateReportByAddress, runWithRepoContext } from "dba";
+import { getDateReportTextByAddress, runWithRepoContext } from "dba";
 import { getCurrentUserFromCookies } from "@/lib/session";
 
 /**
  * GET /api/views/dates-reports/item?address=…
  *
- * Full body for one date-report entry under the caller's `randki` folder.
+ * Full body for a Text item under the caller's `randki` tree
+ * (top-level Text report, or a part like before/after/report inside a Folder).
  */
 export async function GET(request: NextRequest) {
   const user = await getCurrentUserFromCookies();
@@ -19,7 +20,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const item = await runWithRepoContext(user, () => getDateReportByAddress(address));
+    const item = await runWithRepoContext(user, () => getDateReportTextByAddress(address));
     if (!item) {
       return NextResponse.json({ success: false, error: "Report not found" }, { status: 404 });
     }

@@ -59,7 +59,7 @@ function MsgAutoMsgWorkoutPageInner() {
             className="h-10 w-[140px] rounded-[9px] pl-7 text-sm"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            aria-label="Search contacts"
+            aria-label="Search"
           />
         </div>
       </div>

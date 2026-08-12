@@ -1,11 +1,19 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
+import { ErrorBox } from "@/components/shared/error-box";
+import { TextEditorWithToolbar } from "@/components/shared/text-editor-with-toolbar";
 import {
-  TextReportsBrowser,
-  type TextReportListRow,
-} from "@/system-pages/views/shared/text-reports-browser";
+  FRAME_SECTION_GAP_CLASS,
+  LIST_ROW_CLASS,
+  LIST_ROW_WRAPPER_CLASS,
+} from "@/components/shared/layout-tokens";
+import { cn } from "@/lib/utils";
+import { FileText, RefreshCw, Search } from "lucide-react";
+import { toast } from "sonner";
 
 interface DateReportEntry {
   itemName: string;
@@ -16,17 +24,23 @@ interface DateReportEntry {
 
 export interface DatesReportsViewProps {
   selectedReportLoca: string | null;
+  /** Nested Text part inside a Folder (`before` / `after` / `report` / …). */
+  selectedPartLoca: string | null;
   onSelectReport: (loca: string | null) => void;
+  onSelectPart: (loca: string | null) => void;
   onBackToMenu: () => void;
 }
 
 /**
- * Views → Dates Reports — lists free-text reports from root CP folder `randki`.
- * GUI shell matches Views → Reports (Story 113).
+ * Views → Dates Reports — root `randki`.
+ * Text entry → editor (same as Reports).
+ * Folder entry → children list on the right; click a Text part → editor.
  */
 export function DatesReportsView({
   selectedReportLoca,
+  selectedPartLoca,
   onSelectReport,
+  onSelectPart,
   onBackToMenu,
 }: DatesReportsViewProps) {
   const [reports, setReports] = useState<DateReportEntry[]>([]);
@@ -34,9 +48,13 @@ export function DatesReportsView({
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
   const [reloadEpoch, setReloadEpoch] = useState(0);
+
+  const [children, setChildren] = useState<DateReportEntry[]>([]);
+  const [childrenLoading, setChildrenLoading] = useState(false);
+  const [childrenError, setChildrenError] = useState<string | null>(null);
+
   const [editedContent, setEditedContent] = useState("");
   const [editLoca, setEditLoca] = useState<string | null>(null);
-  const [editable, setEditable] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -50,6 +68,17 @@ export function DatesReportsView({
     () => reports.find((r) => r.loca === selectedReportLoca) || null,
     [reports, selectedReportLoca],
   );
+
+  const selectedPart = useMemo(
+    () => children.find((c) => c.loca === selectedPartLoca) || null,
+    [children, selectedPartLoca],
+  );
+
+  const editingText =
+    (selectedReport?.kind === "Text" && !!selectedReportLoca && !selectedPartLoca) ||
+    (!!selectedPartLoca && selectedPart?.kind !== "Folder");
+
+  const showFolderParts = selectedReport?.kind === "Folder" && !selectedPartLoca;
 
   useEffect(() => {
     let cancelled = false;
@@ -88,33 +117,84 @@ export function DatesReportsView({
     };
   }, [reloadEpoch]);
 
+  // Load Folder children when a Folder is selected.
   useEffect(() => {
-    if (!selectedReportLoca) {
+    if (!selectedReport || selectedReport.kind !== "Folder") {
+      setChildren([]);
+      setChildrenError(null);
+      setChildrenLoading(false);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      setChildrenLoading(true);
+      setChildrenError(null);
+      try {
+        const params = new URLSearchParams({ address: selectedReport.address });
+        const res = await fetch(`/api/views/dates-reports/children?${params.toString()}`);
+        const json = await res.json();
+        if (cancelled) return;
+        if (!res.ok || !json.success) {
+          throw new Error(json.error || "Failed to load parts");
+        }
+        const items: DateReportEntry[] = Array.isArray(json.children)
+          ? json.children.map(
+              (r: { name: string; loca: string; address: string; kind: "Text" | "Folder" }) => ({
+                itemName: r.name,
+                loca: r.loca,
+                address: r.address,
+                kind: r.kind,
+              }),
+            )
+          : [];
+        setChildren(items);
+      } catch (err) {
+        if (!cancelled) {
+          setChildrenError(err instanceof Error ? err.message : String(err));
+          setChildren([]);
+        }
+      } finally {
+        if (!cancelled) setChildrenLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedReport?.address, selectedReport?.kind]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Load Text body for top-level Text or nested part.
+  useEffect(() => {
+    const textEntry =
+      selectedPartLoca && selectedPart
+        ? selectedPart.kind === "Text"
+          ? selectedPart
+          : null
+        : selectedReport?.kind === "Text"
+          ? selectedReport
+          : null;
+
+    if (!textEntry) {
       setEditedContent("");
       setEditLoca(null);
-      setEditable(true);
       setSaved(false);
       return;
     }
-    const fromList = reports.find((r) => r.loca === selectedReportLoca);
-    if (!fromList?.address) return;
+
     let cancelled = false;
     (async () => {
       try {
-        const params = new URLSearchParams({ address: fromList.address });
+        const params = new URLSearchParams({ address: textEntry.address });
         const res = await fetch(`/api/views/dates-reports/item?${params.toString()}`);
         const json = await res.json();
         if (cancelled) return;
         if (!res.ok || !json.success) throw new Error(json.error || "Failed to load report");
         setEditedContent(typeof json.data?.body === "string" ? json.data.body : "");
-        setEditLoca(typeof json.data?.editLoca === "string" ? json.data.editLoca : fromList.loca);
-        setEditable(json.data?.editable !== false);
+        setEditLoca(typeof json.data?.editLoca === "string" ? json.data.editLoca : textEntry.loca);
         setSaved(false);
       } catch {
         if (!cancelled) {
           setEditedContent("");
           setEditLoca(null);
-          setEditable(false);
           setSaved(false);
         }
       }
@@ -122,7 +202,14 @@ export function DatesReportsView({
     return () => {
       cancelled = true;
     };
-  }, [selectedReportLoca, selectedReport?.address]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [
+    selectedReportLoca,
+    selectedPartLoca,
+    selectedReport?.address,
+    selectedReport?.kind,
+    selectedPart?.address,
+    selectedPart?.kind,
+  ]);
 
   const handleChange = (value: string) => {
     setEditedContent(value);
@@ -130,7 +217,7 @@ export function DatesReportsView({
   };
 
   const handleSave = useCallback(async (): Promise<boolean> => {
-    if (!editLoca || !editable) return false;
+    if (!editLoca) return false;
     setSaving(true);
     try {
       const response = await fetch("/api/forms/reports", {
@@ -153,40 +240,180 @@ export function DatesReportsView({
     } finally {
       setSaving(false);
     }
-  }, [editLoca, editable, editedContent]);
+  }, [editLoca, editedContent]);
 
-  const rows: TextReportListRow[] = filteredReports.map((r) => ({
-    key: r.loca,
-    name: r.itemName,
-    loca: r.loca,
-  }));
+  const handleUpLevel = () => {
+    if (selectedPartLoca) {
+      onSelectPart(null);
+      return;
+    }
+    if (selectedReportLoca) {
+      onSelectReport(null);
+      return;
+    }
+    onBackToMenu();
+  };
 
-  const selectedRow = selectedReport
-    ? { key: selectedReport.loca, name: selectedReport.itemName, loca: selectedReport.loca }
-    : null;
+  const handleSelectMain = (entry: DateReportEntry) => {
+    onSelectPart(null);
+    onSelectReport(entry.loca);
+  };
+
+  const handleSelectPart = (entry: DateReportEntry) => {
+    if (entry.kind !== "Text") {
+      toast.message("Only text parts can be opened");
+      return;
+    }
+    onSelectPart(entry.loca);
+  };
+
+  const upLabel = selectedPartLoca
+    ? "Back to folder parts"
+    : selectedReportLoca
+      ? "Back to reports list"
+      : "Back to Views menu";
+
+  const pageTitle = selectedPart
+    ? selectedPart.itemName
+    : selectedReport
+      ? selectedReport.itemName
+      : "Dates Reports";
+
+  if (editingText) {
+    return (
+      <DashboardPageShell
+        scroll={false}
+        padded={false}
+        upLevel={{ onClick: handleUpLevel, label: upLabel }}
+        title={pageTitle}
+      >
+        <TextEditorWithToolbar
+          value={editedContent}
+          onChange={handleChange}
+          onSave={() => {
+            void handleSave();
+          }}
+          saving={saving}
+          saved={saved}
+          placeholder="This report is empty. Start writing..."
+          className="h-full"
+        />
+      </DashboardPageShell>
+    );
+  }
 
   return (
-    <TextReportsBrowser
-      title="Dates Reports"
-      selectedReport={selectedRow}
-      onBackToList={() => onSelectReport(null)}
-      onBackToMenu={onBackToMenu}
-      filter={filter}
-      onFilterChange={setFilter}
-      filterPlaceholder="Search reports"
-      onRefresh={() => setReloadEpoch((n) => n + 1)}
-      loading={loading}
-      error={error}
-      countLabel={`${filteredReports.length} of ${reports.length} reports`}
-      emptyMessage="No date reports found (dates / randki)."
-      rows={rows}
-      onSelectReport={(loca) => onSelectReport(loca)}
-      editorValue={editedContent}
-      onEditorChange={handleChange}
-      onSave={handleSave}
-      saving={saving}
-      saved={saved}
-      editorWritable={editable}
-    />
+    <DashboardPageShell
+      scroll={false}
+      padded
+      contentClassName={FRAME_SECTION_GAP_CLASS}
+      upLevel={{
+        onClick: handleUpLevel,
+        label: selectedReportLoca ? "Back to reports list" : "Back to Views menu",
+      }}
+      title={pageTitle}
+    >
+      <div className="flex shrink-0 flex-wrap items-center gap-3">
+        <div className="relative">
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+          <Input
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            placeholder="Search reports"
+            className="pl-7 h-7 text-xs w-[180px]"
+          />
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setReloadEpoch((n) => n + 1)}
+          disabled={loading}
+          className="gap-2 h-7 text-xs"
+        >
+          <RefreshCw className={`h-3 w-3 ${loading ? "animate-spin" : ""}`} />
+          Refresh
+        </Button>
+        <span className="text-xs text-muted-foreground">
+          {filteredReports.length} of {reports.length} reports
+        </span>
+      </div>
+
+      <ErrorBox message={error} className="mb-2" />
+
+      <div className="flex min-h-0 flex-1 gap-3 overflow-hidden">
+        <div
+          className={cn(
+            LIST_ROW_WRAPPER_CLASS,
+            "flex min-h-0 w-[400px] max-w-[400px] flex-1 flex-col overflow-y-auto",
+          )}
+        >
+          {loading ? (
+            <div className="flex items-center gap-2 py-4 text-muted-foreground">
+              <RefreshCw className="h-4 w-4 animate-spin" />
+              <span>Loading reports...</span>
+            </div>
+          ) : error ? null : filteredReports.length === 0 ? (
+            <div className="flex items-center gap-3 py-4 text-muted-foreground">
+              <FileText className="h-8 w-8 opacity-20" />
+              <span className="text-sm">No date reports found (dates / randki).</span>
+            </div>
+          ) : (
+            <div className="divide-y">
+              {filteredReports.map((report) => (
+                <button
+                  key={report.loca}
+                  type="button"
+                  onClick={() => handleSelectMain(report)}
+                  className={cn(
+                    `flex w-full items-center text-left ${LIST_ROW_CLASS}`,
+                    selectedReportLoca === report.loca && "bg-accent",
+                  )}
+                >
+                  <span className="font-medium text-sm truncate">{report.itemName}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {showFolderParts ? (
+          <div
+            className={cn(
+              LIST_ROW_WRAPPER_CLASS,
+              "flex min-h-0 w-[400px] max-w-[400px] flex-1 flex-col overflow-y-auto",
+            )}
+          >
+            <div className="border-b px-3 py-2 text-xs text-muted-foreground shrink-0">
+              Parts — {selectedReport?.itemName}
+            </div>
+            <ErrorBox message={childrenError} className="m-2" />
+            {childrenLoading ? (
+              <div className="flex items-center gap-2 py-4 px-3 text-muted-foreground">
+                <RefreshCw className="h-4 w-4 animate-spin" />
+                <span>Loading parts...</span>
+              </div>
+            ) : childrenError ? null : children.length === 0 ? (
+              <div className="flex items-center gap-3 py-4 px-3 text-muted-foreground">
+                <FileText className="h-8 w-8 opacity-20" />
+                <span className="text-sm">No parts in this folder.</span>
+              </div>
+            ) : (
+              <div className="divide-y">
+                {children.map((part) => (
+                  <button
+                    key={part.loca}
+                    type="button"
+                    onClick={() => handleSelectPart(part)}
+                    className={`flex w-full items-center text-left ${LIST_ROW_CLASS}`}
+                  >
+                    <span className="font-medium text-sm truncate">{part.itemName}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : null}
+      </div>
+    </DashboardPageShell>
   );
 }

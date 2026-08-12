@@ -8,7 +8,9 @@ z Views → DATES (tabela trackera) ani z Views → REPORTS (kategorie daygame).
 ## URL
 
 `/dashboard/views?view=dates-reports`  
-Otwórz raport: `&report=<loca>` (ten sam parametr co Reports).
+- Text na liście: `&report=<loca>` → edytor (jak Reports).
+- Folder na liście: `&report=<loca>` → lista części (before / after / report …) **po prawej**.
+- Część w Folderze: `&report=<folderLoca>&part=<partLoca>` → edytor tej części.
 
 ## Implementacja (system-pages)
 
@@ -20,12 +22,19 @@ Otwórz raport: `&report=<loca>` (ten sam parametr co Reports).
 
 Źródło: root Folder Content Providera **`randki`** (nie `views/dates`).
 
-- DBA: `listDateReports` / `getDateReportByAddress` (`packages/dba/src/date-reports.ts`)
-- API: `GET /api/views/dates-reports`, `GET /api/views/dates-reports/item?address=`
-- Save: istniejący `POST /api/forms/reports` z `loca` Text itemu (dla Folder —
-  zwykle zagnieżdżony Text `report`)
-- Izolacja: `runWithRepoContext` + adres musi być bezpośrednim dzieckiem
-  `randki` bieżącego repo
+- DBA: `listDateReports` / `listDateReportChildren` / `getDateReportTextByAddress`
+  (`packages/dba/src/date-reports.ts`)
+- API: `GET /api/views/dates-reports`, `…/children?address=`, `…/item?address=`
+- Save: istniejący `POST /api/forms/reports` z `loca` Text itemu
+- Izolacja: `runWithRepoContext` + adres pod `randki` bieżącego repo
+- **Kolejność listy głównej:** newest-first (reverse providera)
+- **Części Folderu:** kolejność providera (before / report / after …)
+
+## Źródło bazy przy weryfikacji
+
+LOCAL domyślnie czyta Server PostgreSQL (QNAP) przez Tailscale — nie lokalny
+volume Dockera. Patrz `ai-docs/begin_here/01_ai_start.md` (Błąd A) i
+`ai-docs/databases/red-rules.md` Rule 1.
 
 ## Empty vs error
 

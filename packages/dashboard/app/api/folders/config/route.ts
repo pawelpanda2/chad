@@ -27,10 +27,11 @@ import {
  * `resolveFoldersRepoAccess` (session's own repo, or `chad_shared` for an
  * admin session — Story 96); the client's optional `repoGuid` is never
  * trusted beyond that check. `updateFolderItemConfig` additionally rejects any
- * attempt to change `id`/`address`/`type` (409), a rename that collides with a
- * sibling's name (400), and any read-only system folder (403), same as
- * create/update-body/delete. Renaming is allowed: CP identity is the numeric
- * address, so `name` is a display/lookup field updated in place.
+ * attempt to change `id`/`type` (409), a rename that collides with a sibling's
+ * name (400), a readdress onto a taken slot (409 ADDRESS_TAKEN), and any
+ * read-only system folder (403), same as create/update-body/delete. Renaming
+ * and readdressing onto a free address are allowed: `name` is display/lookup;
+ * changing `address` rewrites the item (+ subtree) when the target is vacant.
  */
 export async function PUT(request: Request) {
   const user = await getCurrentUserFromCookies();

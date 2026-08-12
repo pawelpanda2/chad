@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+
+<html lang="pl">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width,initial-scale=1" name="viewport"/>
+<title>Knowledge v2 — intelligent width + wrap</title>
+<style>
+:root{
+  --bg:#0b0b0b;
+  --panel:#1b1b1b;
+  --border:#343434;
+  --text:#f5f5f5;
+  --gap:8px;
+  --radius:8px;
+  --row:29px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;max-width:100%;overflow-x:hidden}
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  font-size:9px;
+}
+.top{
+  height:25px;border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:5px;padding:0 7px;
+  position:sticky;top:0;background:#0d0d0d;z-index:5;
+}
+.btn{
+  height:19px;padding:0 7px;border:1px solid var(--border);
+  border-radius:5px;background:#171717;color:var(--text);font-size:8px
+}
+.title{font-weight:800;font-size:10px;margin-left:4px}
+.page{width:100%;padding:8px;overflow-x:hidden}
+.grid{
+  display:grid;
+  justify-content:start;
+  align-items:start;
+  gap:var(--gap);
+  width:100%;
+  max-width:100%;
+}
+.card{
+  width:100%;
+  min-width:0;
+  max-width:400px;
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  background:var(--panel);
+  overflow:hidden;
+}
+.head{
+  padding:9px 9px 5px;
+  font-size:8.5px;
+  font-weight:800;
+  white-space:normal;
+  overflow-wrap:anywhere;
+}
+.list{
+  overflow-y:auto;
+  overflow-x:hidden;
+  scrollbar-width:thin;
+  scrollbar-color:#666 transparent;
+}
+.list::-webkit-scrollbar{width:5px}
+.list::-webkit-scrollbar-thumb{background:#666;border-radius:999px}
+.row{
+  min-height:var(--row);
+  display:flex;
+  align-items:center;
+  gap:7px;
+  padding:5px 8px;
+  border-top:1px solid var(--border);
+  font-size:9px;
+  min-width:0;
+}
+.row:first-child{border-top:0}
+.icon{width:13px;flex:0 0 13px;color:#bbb;font-size:10px}
+.label{
+  min-width:0;
+  white-space:normal;
+  overflow-wrap:break-word;
+  word-break:normal;
+  line-height:1.25;
+}
+/* Tylko ekstremalny pojedynczy token bez spacji może być przesuwany lokalnie. */
+.label-wrap{
+  min-width:0;
+  display:flex;
+  align-items:center;
+  gap:3px;
+  flex:1;
+}
+.label{
+  min-width:0;
+  white-space:normal;
+  overflow-wrap:break-word;
+  word-break:normal;
+  line-height:1.25;
+}
+.label.unbreakable{
+  white-space:nowrap;
+  overflow:hidden;
+  position:relative;
+  flex:1;
+}
+.label.unbreakable .label-inner{
+  display:inline-block;
+  transform:translateX(var(--shift, 0px));
+  transition:transform .12s ease;
+}
+.shift-btn{
+  display:none;
+  width:14px;
+  height:16px;
+  padding:0;
+  border:1px solid #444;
+  border-radius:4px;
+  background:#171717;
+  color:#bbb;
+  font-size:9px;
+  line-height:1;
+  align-items:center;
+  justify-content:center;
+  cursor:pointer;
+  flex:0 0 14px;
+}
+.label-wrap.has-shift .shift-btn{
+  display:flex;
+}
+
+.shift-controls{
+  display:none;
+  flex:0 0 auto;
+  align-items:center;
+  gap:2px;
+}
+.label-wrap.has-shift .shift-controls{
+  display:flex;
+}
+
+</style>
+</head>
+<body>
+<div class="top">
+<button class="btn">‹</button>
+<button class="btn">↶ Back</button>
+<button class="btn">Forw →</button>
+<div class="title">TEMATY CIEKAWE — Knowledge v2</div>
+</div>
+<main class="page"><section class="grid" id="grid"></section></main>
+<script>
+const groups = [
+  ["krótka",["pytania od dziewczyn"]],
+  ["5 wpisów",["pierwszy temat","drugi temat","trzeci temat","czwarty temat","piąty temat"]],
+  ["3 wpisy",["one","two","three"]],
+
+  ["25 wpisów",Array.from({length:25},(_,i)=>`długi zestaw — wpis ${i+1}`)],
+  ["4 wpisy",["alpha","beta","gamma","delta"]],
+  ["8 wpisów",["a1","a2","a3","a4","a5","a6","a7","a8"]],
+
+  ["inteligentne zawijanie",[
+    "krótki",
+    "średniej długości temat rozmowy",
+    "to jest specjalnie bardzo bardzo bardzo bardzo bardzo bardzo bardzo bardzo długi pojedynczy napis który powinien się zawinąć zamiast rozszerzać całą kolumnę",
+    "normalny tekst"
+  ]],
+
+  ["12 wpisów",Array.from({length:12},(_,i)=>`sekcja B — ${i+1}`)],
+  ["2 wpisy",["mały 1","mały 2"]],
+
+  ["długi token",[
+    "normalny",
+    "bardzodlugipojedynczytokenniedajacysienaturalniezawijacbezspacji123456789012345678901234567890",
+    "normalny 2"
+  ]]
+];
+
+function icon(text){
+  return /(todo|historie|wiedza|ready)/i.test(text) ? "□" : "▤";
+}
+
+function allTexts(){
+  return groups.flatMap(([title,items])=>[title,...items]);
+}
+
+/*
+  Typowa długość:
+  - bierzemy średnią liczbę znaków WSZYSTKICH nazw,
+  - bardzo długie outliery nie mogą samodzielnie poszerzyć layoutu,
+  - dokładamy 30% zapasu, żeby większość zwykłych nazw mieściła się w 1 linii,
+  - minimum 16 znaków, maksimum 46 znaków "docelowej" szerokości.
+*/
+function charTargetForTexts(texts){
+  const lengths=texts.map(t=>t.length);
+  const avg=lengths.reduce((a,b)=>a+b,0)/Math.max(1,lengths.length);
+  return {
+    avg,
+    targetChars:Math.max(12,Math.min(46,Math.ceil(avg*1.30)))
+  };
+}
+
+/* Pomiar szerokości N przeciętnych znaków w aktualnej czcionce. */
+function widthForChars(chars){
+  const probe=document.createElement("span");
+  probe.style.cssText="position:absolute;visibility:hidden;white-space:nowrap;font:9px Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif";
+  probe.textContent="M".repeat(chars);
+  document.body.appendChild(probe);
+  const w=Math.ceil(probe.getBoundingClientRect().width);
+  probe.remove();
+  /* + ikona, gap i padding ramki */
+  return Math.min(400, Math.max(115, w + 42));
+}
+
+function build(){
+  const grid=document.getElementById("grid");
+  grid.innerHTML="";
+  groups.forEach(([title,items])=>{
+    const card=document.createElement("article");
+    card.className="card";
+    card.innerHTML=`
+      <div class="head">${title}</div>
+      <div class="list" data-count="${items.length}">
+        ${items.map(x=>`
+          <div class="row">
+            <div class="icon">${icon(x)}</div>
+            <div class="label-wrap">
+              <div class="label" title="${x.replace(/"/g,'&quot;')}"><span class="label-inner">${x}</span></div>
+              <div class="shift-controls">
+                <button class="shift-btn shift-left" type="button" aria-label="Przesuń tekst w lewo">‹</button>
+                <button class="shift-btn shift-right" type="button" aria-label="Przesuń tekst w prawo">›</button>
+              </div>
+            </div>
+          </div>`).join("")}
+      </div>
+      <div class="debug"></div>`;
+    grid.appendChild(card);
+  });
+  requestAnimationFrame(layout);
+}
+
+function targetForRow(counts){
+  const avg=counts.reduce((a,b)=>a+b,0)/counts.length;
+  const ceilAvg=Math.ceil(avg);
+  const allLarge=counts.every(n=>n>5);
+  const cap=allLarge ? 8 : 5;
+  return Math.max(1,Math.min(cap,ceilAvg));
+}
+
+function chooseColumns(available, preferredColumnWidth){
+  const gap=8;
+  for(let cols=3;cols>=1;cols--){
+    const needed=cols*preferredColumnWidth + (cols-1)*gap;
+    if(needed<=available) return cols;
+  }
+  return 1;
+}
+
+function balanceHeights(cards,cols){
+  cards.forEach(card=>{
+    card.querySelector(".list").style.maxHeight="";
+  });
+
+  for(let i=0;i<cards.length;i+=cols){
+    const rowCards=cards.slice(i,i+cols);
+    const counts=rowCards.map(c=>Number(c.querySelector(".list").dataset.count));
+    const target=targetForRow(counts);
+    const avg=(counts.reduce((a,b)=>a+b,0)/counts.length).toFixed(2);
+
+    rowCards.forEach((card,index)=>{
+      if(counts[index]>target){
+        card.querySelector(".list").style.maxHeight=`calc(var(--row) * ${target})`;
+      }
+    });
+  }
+}
+
+
+function prepareLongLabels(){
+  document.querySelectorAll(".label-wrap").forEach(wrap=>{
+    const label=wrap.querySelector(".label");
+    const inner=wrap.querySelector(".label-inner");
+    const txt=inner.textContent.trim();
+    const words=txt.split(/\s+/);
+    const longest=Math.max(...words.map(w=>w.length));
+
+    wrap.classList.remove("has-shift");
+    label.classList.remove("unbreakable");
+    inner.style.setProperty("--shift","0px");
+    inner.dataset.shift="0";
+
+    if(longest>42){
+      label.classList.add("unbreakable");
+      requestAnimationFrame(()=>{
+        const overflow=Math.max(0, inner.scrollWidth - label.clientWidth);
+        if(overflow>2){
+          wrap.classList.add("has-shift");
+          wrap.dataset.maxShift=String(overflow);
+        }
+      });
+    }
+  });
+}
+
+function bindShiftButtons(){
+  document.querySelectorAll(".label-wrap").forEach(wrap=>{
+    const label=wrap.querySelector(".label");
+    const inner=wrap.querySelector(".label-inner");
+    const left=wrap.querySelector(".shift-left");
+    const right=wrap.querySelector(".shift-right");
+
+    const apply=(delta)=>{
+      const maxShift=Number(wrap.dataset.maxShift || 0);
+      let current=Number(inner.dataset.shift || 0);
+      current=Math.max(-maxShift, Math.min(0, current + delta));
+      inner.dataset.shift=String(current);
+      inner.style.setProperty("--shift", `${current}px`);
+    };
+
+    left.onclick=()=>apply(40);
+    right.onclick=()=>apply(-40);
+  });
+}
+
+function textsForColumn(col, cols){
+  const texts=[];
+  groups.forEach(([title,items],index)=>{
+    if(index % cols === col){
+      texts.push(title, ...items);
+    }
+  });
+  return texts;
+}
+
+function chooseColumnsAndWidths(available){
+  const gap=8;
+
+  for(let cols=3; cols>=1; cols--){
+    const columnMeta=[];
+    const widths=[];
+
+    for(let col=0; col<cols; col++){
+      const meta=charTargetForTexts(textsForColumn(col,cols));
+      columnMeta.push(meta);
+      widths.push(widthForChars(meta.targetChars));
+    }
+
+    const needed=widths.reduce((a,b)=>a+b,0)+gap*(cols-1);
+    if(needed<=available){
+      return {cols,widths,columnMeta};
+    }
+  }
+
+  const meta=charTargetForTexts(allTexts());
+  return {
+    cols:1,
+    widths:[Math.min(widthForChars(meta.targetChars),available)],
+    columnMeta:[meta]
+  };
+}
+
+function layout(){
+  const grid=document.getElementById("grid");
+  const cards=[...grid.querySelectorAll(".card")];
+  const available=Math.max(115,grid.clientWidth);
+
+  const {cols,widths,columnMeta}=chooseColumnsAndWidths(available);
+
+  grid.style.gridTemplateColumns=
+    widths.map(w=>`${Math.min(w,available)}px`).join(" ");
+
+  balanceHeights(cards,cols);
+  prepareLongLabels();
+  bindShiftButtons();
+
+  cards.forEach((card,index)=>{
+    const col=index % cols;
+    const meta=columnMeta[col];
+  });
+}
+
+window.addEventListener("resize",()=>{
+  clearTimeout(window.__t);
+  window.__t=setTimeout(layout,80);
+});
+
+build();
+</script>
+</body>
+</html>
