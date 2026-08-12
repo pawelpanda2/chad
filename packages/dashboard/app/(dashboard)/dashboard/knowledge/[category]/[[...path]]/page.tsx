@@ -226,9 +226,10 @@ export default function KnowledgeNodePage({
           <NavGroup upLevel={{ href: upHref, label: upLabel }} />
           <h2 className="text-sm font-bold tracking-wide">{node.name}</h2>
         </div>
-        <div className="px-14">
-          <ErrorBox message={saveError} className="mb-2" />
-        </div>
+        <ErrorBox message={saveError} className="mb-2 shrink-0" />
+        {/* Desktop gutter comes from layout `main` (`xl:pr-[150px]` only) —
+            never duplicate it here with unconditional mr-[150px] (mobile
+            empty right strip — Story 117). Opt into collapsible helpers. */}
         <TextEditorWithToolbar
           value={editorBody}
           onChange={handleEditorBodyChange}
@@ -236,7 +237,7 @@ export default function KnowledgeNodePage({
           saving={saving}
           saved={saved}
           placeholder="Enter text body..."
-          className="mr-[150px]"
+          collapseEditorHelpers
         />
       </EditorPageShell>
     );

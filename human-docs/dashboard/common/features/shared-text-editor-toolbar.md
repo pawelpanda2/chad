@@ -2,7 +2,9 @@
 
 ## Overview
 
-The `TextEditorWithToolbar` component provides a standardized text editor interface used across all text-item views in the dashboard. It combines a toolbar with Save, Preview/Editor tabs, and WCH (whitespace toggle) button above a content area that switches between preview and editor modes.
+The `TextEditorWithToolbar` component provides a standardized text editor interface used across all text-item views in the dashboard. It combines a two-row toolbar (primary actions + editor helpers) above a content area that switches between preview and editor modes.
+
+**One standard:** every text-item editor in the dashboard must use this component (`BodyTextEditor` underneath), including Folders **Body** and **Config**. Do not hide Preview/Editor for Config (`showPreview={false}` is reserved for rare editor-only surfaces — prefer `defaultTab="editor"` instead). Do not add a second editor stack.
 
 ## Component Location
 
@@ -30,12 +32,22 @@ interface TextEditorWithToolbarProps {
   showPreview?: boolean;        // default: true
   showSave?: boolean;           // default: true
   showWhitespaceToggle?: boolean; // default: true
+  collapseEditorHelpers?: boolean; // default: false — Story 117 More / second row
   defaultTab?: "preview" | "editor"; // default: "preview" — which tab is active on first mount (Story 55)
   placeholder?: string;         // default: "Enter content..."
   toolbarExtra?: React.ReactNode; // extra content after main buttons
   className?: string;
 }
 ```
+
+### `collapseEditorHelpers` (Story 117)
+
+Opt-in compact toolbar for tight viewports / Knowledge document editor:
+
+- **`false` (default):** primary row is `[Preview|Editor] [Save]…`; undo/redo/wch/tab stay visible in editor mode inside the content frame — existing callers unchanged.
+- **`true`:** primary row is `[Save] [More] [Preview|Editor]…`; helpers move to a second row **above** the content frame, shown only while More is open and the Editor tab is active. More is local UI state (not persisted).
+
+Knowledge → document edit sets `collapseEditorHelpers`. Do not enable it on Msg Todo / Msg Workout / Folders / Reports unless intentionally migrating them.
 
 **Correction (Story 55, 2026-07-14):** this doc previously listed `label`/
 `icon` props — those never actually existed on the real component (verified
@@ -55,20 +67,32 @@ keep the existing Preview-first default.
 
 ## Layout
 
+Default (`collapseEditorHelpers` unset/false):
+
 ```
 [Header from page - back button, title, etc.]
 --------------------------------
-[Save] [Preview|Editor] [WCH] [Saved indicator] [extra]
+[Preview|Editor] [Save] [Saved indicator] [extra]
 --------------------------------
-[Card with Preview content OR BodyTextEditor]
+[Card: undo/redo/wch/tab (editor mode) + Preview OR BodyTextEditor]
+```
+
+With `collapseEditorHelpers` (Story 117 — Knowledge document editor):
+
+```
+[Save] [More] [Preview|Editor] [Saved] [extra]
+[undo] [redo] [wch] [tab]     ← only when More open + Editor
+--------------------------------
+[Card: Preview OR BodyTextEditor]
 ```
 
 Key rules:
-- Toolbar is a separate row above the content card
+- Primary toolbar is above the content card
 - Toolbar is NOT inside the Tabs component's content panels
 - Toolbar is NOT inside CodeMirror
 - Preview and Editor are Tabs inside the content Card
-
+- Helper labels (`wch`, `tab`) are lowercase
+- Never apply unconditional `mr-[150px]` on the editor — desktop gutter is `main`'s `xl:pr-[150px]` only (Story 117)
 ### Standard-frame styling (2026-07-12)
 The component root is now itself the **standard rounded frame** — it matches
 `DashboardPageShell`: `rounded-xl border bg-card overflow-hidden`, fills its
@@ -107,18 +131,38 @@ area) without forcing the editor into `DashboardPageShell`.
 - Tab state is managed internally by `TextEditorWithToolbar`
 - Switching tabs preserves scroll independently in each panel
 
-### WCH (Whitespace Toggle)
+### Second toolbar row (editor helpers)
+Visible only in Editor mode. Order: **undo → redo → wch → tab**.
+
+### Undo / Redo (3-step history)
+- Curved arrow buttons (`Undo2` / `Redo2`)
+- Backed by CodeMirror `history({ minDepth: 3 })` in `BodyTextEditor`
+- Remembers up to **3** edit groups backward; after undo, redo walks forward again
+- Buttons disable when `undoDepth` / `redoDepth` is 0
+- Keyboard shortcuts (Cmd/Ctrl+Z, Cmd/Ctrl+Shift+Z) still work via `historyKeymap`
+- Imperative API: `BodyTextEditorHandle.undo()` / `.redo()`
+
+### wch (Whitespace Toggle)
+- Lowercase label `wch`
 - Toggles visibility of whitespace characters (spaces, tabs) in the editor
 - Only affects the Editor tab (Preview doesn't show whitespace markers)
 - State is managed internally by `TextEditorWithToolbar`
-- Works correctly after switching between Preview and Editor
-- Works correctly after changing content / reloading data
+
+### tab (insert tab character)
+- Lowercase label `tab`; next to `wch` on the second row
+- Inserts a real `\t` at the current cursor/selection (same as the Tab key on desktop)
+- Exists mainly for phones/tablets that have no Tab key on the soft keyboard
+- Implemented via `BodyTextEditor` imperative handle (`insertTab`) → shared `insertTabInView`
+- After insert, focus returns to the editor
 
 ### BodyTextEditor (Low-level component)
 The `BodyTextEditor` component remains as the low-level CodeMirror wrapper. It accepts:
 - `showWhitespace: boolean` - controls whether whitespace is highlighted
 - `onSaveShortcut: (event: KeyboardEvent) => void` - Ctrl+S handler
+- `onHistoryChange: ({ canUndo, canRedo }) => void` - toolbar button enablement
 - Standard props: `value`, `onChange`, `placeholder`, `className`, `extraExtensions`
+- Imperative handle: `insertTab()`, `undo()`, `redo()`
+- History depth constant: `EDITOR_HISTORY_DEPTH = 3`
 
 ## Usage Examples
 
