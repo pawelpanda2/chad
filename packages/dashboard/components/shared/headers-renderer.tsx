@@ -15,69 +15,13 @@
 import { useMemo } from "react";
 import { parseHeadersFormat } from "@/lib/headers/parse-headers-format";
 import type { ParsedNode, LineType } from "@/lib/headers/types";
+import { groupNodes, type LineGroup } from "@/lib/headers/group-nodes";
+import type { PreviewFormat } from "@/lib/preview/preview-format";
+import { Hdr1Renderer } from "@/components/shared/hdr1-renderer";
+import { MarkdownPreview } from "@/components/shared/markdown-preview";
 
-// ============================================================================
-// Types
-// ============================================================================
-
-interface LineGroup {
-  type: "header-main" | "section";
-  content: string;
-  headerNumber?: number;
-  children: LineGroup[];
-  lines: ParsedNode[];
-}
-
-// ============================================================================
-// Grouping Logic
-// ============================================================================
-
-/**
- * Groups parsed nodes into a hierarchical structure:
- * - Level 0 headers become group headers
- * - Level 1 headers become sections within groups
- * - Everything else becomes lines within sections or groups
- */
-function groupNodes(nodes: ParsedNode[]): LineGroup[] {
-  const groups: LineGroup[] = [];
-  let currentGroup: LineGroup | null = null;
-  let currentSection: LineGroup | null = null;
-
-  for (const node of nodes) {
-    if (node.type === "header" && node.level === 0) {
-      // Main header - start new group
-      currentGroup = {
-        type: "header-main",
-        content: node.content,
-        children: [],
-        lines: [],
-      };
-      currentSection = null;
-      groups.push(currentGroup);
-    } else if (node.type === "header" && node.level === 1) {
-      // Sub-header - start new section within current group
-      if (currentGroup) {
-        currentSection = {
-          type: "section",
-          content: node.content,
-          headerNumber: node.headerNumber,
-          children: [],
-          lines: [],
-        };
-        currentGroup.children.push(currentSection);
-      }
-    } else {
-      // Content line - add to current section or group
-      if (currentSection) {
-        currentSection.lines.push(node);
-      } else if (currentGroup) {
-        currentGroup.lines.push(node);
-      }
-    }
-  }
-
-  return groups;
-}
+export type { LineGroup };
+export { groupNodes };
 
 // ============================================================================
 // Color Mapping
@@ -286,13 +230,59 @@ export function HeadersRenderer({ content }: { content: string }) {
 }
 
 // ============================================================================
-// Legacy Preview Component (for backward compatibility)
+// Shared Preview entry point — dispatches by selected format
 // ============================================================================
 
 /**
- * Legacy preview component that wraps HeadersRenderer.
- * Kept for backward compatibility with existing code.
+ * "no format" — shows the editor's raw text exactly as-is (1.3): no
+ * parsing, whitespace/newlines preserved via `whitespace-pre-wrap`.
  */
-export function PreviewContent({ body }: { body: string }) {
-  return <HeadersRenderer content={body} />;
+function RawTextPreview({ content }: { content: string }) {
+  if (!content) {
+    return (
+      <div className="flex items-center justify-center py-12 text-xs text-muted-foreground">
+        <span>Empty content</span>
+      </div>
+    );
+  }
+  return (
+    <pre className="whitespace-pre-wrap break-words p-3 font-mono text-xs text-foreground">
+      {content}
+    </pre>
+  );
+}
+
+/**
+ * Shared Preview entry point (used by TextEditorWithToolbar). Dispatches on
+ * `format`:
+ * - "no-format": raw text, unparsed.
+ * - "hdr1": new mockup-based renderer (see hdr1-renderer.tsx).
+ * - "hdr2": no dedicated design yet — safe fallback to this same legacy
+ *   HeadersRenderer (kept working, not reused as "no design" placeholder
+ *   text, so switching to hdr2 never looks broken).
+ * - "md": lib/markdown-preview.tsx.
+ *
+ * Defaults to "hdr2" (this file's original/legacy renderer) so any caller
+ * that doesn't pass `format` yet keeps its exact previous behavior.
+ */
+export function PreviewContent({
+  body,
+  format = "hdr2",
+  accentColor,
+}: {
+  body: string;
+  format?: PreviewFormat;
+  accentColor?: string;
+}) {
+  switch (format) {
+    case "no-format":
+      return <RawTextPreview content={body} />;
+    case "hdr1":
+      return <Hdr1Renderer content={body} accentColor={accentColor} />;
+    case "md":
+      return <MarkdownPreview content={body} />;
+    case "hdr2":
+    default:
+      return <HeadersRenderer content={body} />;
+  }
 }

@@ -1119,10 +1119,16 @@ function FormsPageContent() {
           </table>
         </div>
 
-        {/* 3) Record frame — voice dictation + report body */}
+        {/* 3) Record frame — voice dictation + report body. No card chrome of
+            its own: VoiceRecordingPanel and TextEditorWithToolbar are each
+            already self-bordered (for hdr1's Preview, TextEditorWithToolbar
+            deliberately drops its own border too — see its className below
+            and its component doc) — an outer border here just double-framed
+            them and, for hdr1's shrink-to-content boxes, left a large empty
+            box around otherwise small content. */}
         <div
           className={cn(
-            "flex min-h-0 flex-1 flex-col gap-[10px] rounded-lg border bg-muted/10",
+            "flex min-h-0 flex-1 flex-col gap-[10px]",
             SAVE_FRAME_PADDING_CLASS,
             isReportCreated ? "overflow-hidden" : "shrink-0"
           )}
