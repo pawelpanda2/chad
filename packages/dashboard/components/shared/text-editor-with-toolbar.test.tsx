@@ -60,7 +60,27 @@ describe("TextEditorWithToolbar — showPreview={false} Save regression", () => 
     cleanup();
   });
 
-  it("still shows WCH and Saved in showPreview={false} mode", () => {
+  it("keeps Preview/Editor when defaultTab=editor (Folders Config standard)", () => {
+    render(
+      <TextEditorWithToolbar
+        value='{"type":"Text"}'
+        onChange={noop}
+        onSave={noop}
+        saving={false}
+        saved={false}
+        showSave={true}
+        defaultTab="editor"
+      />
+    );
+
+    expect(screen.getByText("Preview")).not.toBeNull();
+    expect(screen.getByText("Editor")).not.toBeNull();
+    expect(screen.getByRole("button", { name: /save/i })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "tab" })).not.toBeNull();
+    cleanup();
+  });
+
+  it("still shows wch, tab, undo/redo and Saved in showPreview={false} mode", () => {
     render(
       <TextEditorWithToolbar
         value="hello"
@@ -74,8 +94,37 @@ describe("TextEditorWithToolbar — showPreview={false} Save regression", () => 
       />
     );
 
-    expect(screen.getByText("WCH")).not.toBeNull();
+    expect(screen.getByText("wch")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "tab" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "undo" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "redo" })).not.toBeNull();
     expect(screen.getByText("Saved")).not.toBeNull();
+    cleanup();
+  });
+
+  it("shows second-row helpers (undo/redo/wch/tab) only in Editor mode", async () => {
+    const user = userEvent.setup();
+    render(
+      <TextEditorWithToolbar
+        value="hello"
+        onChange={noop}
+        onSave={noop}
+        saving={false}
+        saved={false}
+        showSave={true}
+        showWhitespaceToggle={true}
+      />
+    );
+
+    expect(screen.queryByRole("button", { name: "tab" })).toBeNull();
+    expect(screen.queryByText("wch")).toBeNull();
+    expect(screen.queryByRole("button", { name: "undo" })).toBeNull();
+
+    await user.click(screen.getByText("Editor"));
+    expect(screen.getByRole("button", { name: "tab" })).not.toBeNull();
+    expect(screen.getByText("wch")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "undo" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "redo" })).not.toBeNull();
     cleanup();
   });
 
@@ -122,6 +171,59 @@ describe("TextEditorWithToolbar — showPreview={false} Save regression", () => 
     fireEvent.click(saveButton);
     expect(onSave).toHaveBeenCalledTimes(1);
 
+    cleanup();
+  });
+});
+
+describe("TextEditorWithToolbar — collapseEditorHelpers (Story 117)", () => {
+  it("hides helpers behind More by default; shows wch/tab after More + Editor", async () => {
+    const user = userEvent.setup();
+    render(
+      <TextEditorWithToolbar
+        value="hello"
+        onChange={noop}
+        onSave={noop}
+        saving={false}
+        saved={false}
+        collapseEditorHelpers
+        showWhitespaceToggle={true}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "More" })).not.toBeNull();
+    expect(screen.queryByText("wch")).toBeNull();
+    expect(screen.queryByRole("button", { name: "tab" })).toBeNull();
+
+    await user.click(screen.getByText("Editor"));
+    // Still hidden until More is opened.
+    expect(screen.queryByText("wch")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "More" }));
+    expect(screen.getByText("wch")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "tab" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "undo" })).not.toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "More" }));
+    expect(screen.queryByText("wch")).toBeNull();
+
+    cleanup();
+  });
+
+  it("does not render More when collapseEditorHelpers is unset (callers unchanged)", async () => {
+    const user = userEvent.setup();
+    render(
+      <TextEditorWithToolbar
+        value="hello"
+        onChange={noop}
+        onSave={noop}
+        saving={false}
+        saved={false}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: "More" })).toBeNull();
+    await user.click(screen.getByText("Editor"));
+    expect(screen.getByText("wch")).not.toBeNull();
     cleanup();
   });
 });

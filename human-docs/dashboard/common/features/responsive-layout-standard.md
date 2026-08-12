@@ -99,6 +99,9 @@ layout różnicuje desktop i mobile.
   (telefon, tablet, pół ekranu Maca) pas znika i ramka bierze pełną
   szerokość. Sidebar nadal używa `DESKTOP_QUERY` / `md` (768px) —
   niezależny próg. Jeden wspólny punkt zmiany dla wszystkich widoków.
+  **Nie duplikuj** tego pasa na dzieciach (`EditorPageShell` /
+  `TextEditorWithToolbar` z `mr-[150px]`) — na telefonie daje to pusty
+  pas po prawej (Story 117: Knowledge document editor).
   **Uwaga o historii tej wartości:** Story 56 (2026-07-14) opisał i
   oznaczył jako DONE wersję `md:pr-[100px]`, ale w rzeczywistym kodzie jej
   nigdy nie było (`git log -S"pr-[100px]"` na tym pliku nie ma ani jednego
