@@ -4,12 +4,25 @@ import { useState, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   BodyTextEditor,
   type BodyTextEditorHandle,
 } from "@/components/shared/body-text-editor";
 import { PreviewContent } from "@/components/shared/headers-renderer";
 import { Loader2, Redo2, Save, Undo2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  detectPreviewFormat,
+  PREVIEW_FORMAT_OPTIONS,
+  type PreviewFormat,
+} from "@/lib/preview/preview-format";
+import { DEFAULT_HDR1_ACCENT } from "@/lib/preview/hdr1-color";
 
 /** Match Preview/Editor tab trigger size (h-6 + text-xs). */
 const toolbarBtnClass =
@@ -97,6 +110,13 @@ export function TextEditorWithToolbar({
   const [moreOpen, setMoreOpen] = useState(false);
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
+  // Auto-detected once from the initial value only (same lazy-initializer
+  // pattern as `defaultTab` above) — the user can always override via the
+  // combobox afterwards; we never re-guess on top of their choice (1.3).
+  const [previewFormat, setPreviewFormat] = useState<PreviewFormat>(() =>
+    detectPreviewFormat(value),
+  );
+  const [hdr1AccentColor, setHdr1AccentColor] = useState(DEFAULT_HDR1_ACCENT);
   const editorRef = useRef<BodyTextEditorHandle | null>(null);
 
   // showPreview={false} means the editor is the ONLY possible view (there is
@@ -152,6 +172,41 @@ export function TextEditorWithToolbar({
         </TabsTrigger>
       </TabsList>
     </Tabs>
+  ) : null;
+
+  // Format combobox + hdr1 color picker — same row as Preview|Editor,
+  // directly next to it (left-aligned, not pushed to the right with
+  // toolbarExtra). Only meaningful when Preview exists at all (1.2, 1.5).
+  const formatControls = showPreview ? (
+    <div className="flex shrink-0 items-center gap-1">
+      <Select
+        value={previewFormat}
+        onValueChange={(v) => setPreviewFormat(v as PreviewFormat)}
+      >
+        <SelectTrigger
+          size="sm"
+          aria-label="Preview format"
+          className="h-8 w-[112px] text-xs"
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {PREVIEW_FORMAT_OPTIONS.map((option) => (
+            <SelectItem key={option.value} value={option.value} className="text-xs">
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <input
+        type="color"
+        value={hdr1AccentColor}
+        onChange={(e) => setHdr1AccentColor(e.target.value)}
+        aria-label="HDR accent color"
+        title="HDR accent color"
+        className="h-8 w-9 shrink-0 cursor-pointer rounded-md border border-input bg-transparent p-0.5"
+      />
+    </div>
   ) : null;
 
   const saveButton =
@@ -265,6 +320,15 @@ export function TextEditorWithToolbar({
         // top edge — every caller gets this, not just a one-off page).
         "flex h-full min-h-0 flex-col overflow-hidden",
         className,
+        // hdr1's own Preview: cancel any border/background/fixed-height
+        // chrome a caller's `className` applies to this root (e.g. Reports'
+        // "min-h-[240px] h-[320px] rounded-lg border bg-background") — last
+        // wins under tailwind-merge, so this always overrides regardless of
+        // what a given caller passed. hdr1's sections are already
+        // self-bordered and shrink to their own content; without this, a
+        // caller-sized card leaves a large empty frame around them.
+        previewFormat === "hdr1" && !isEditorMode &&
+          "h-auto min-h-0 flex-none rounded-none border-0 bg-transparent shadow-none",
       )}
     >
       {/* Row 1 — primary actions, ABOVE the frame */}
@@ -274,12 +338,14 @@ export function TextEditorWithToolbar({
             {saveButton}
             {moreButton}
             {previewEditorTabs}
+            {formatControls}
             {savedIndicator}
             {toolbarExtra}
           </>
         ) : (
           <>
             {previewEditorTabs}
+            {formatControls}
             {saveButton}
             {savedIndicator}
             {toolbarExtra}
@@ -297,8 +363,18 @@ export function TextEditorWithToolbar({
         </div>
       )}
 
-      {/* Bordered frame: optional in-frame helpers (legacy) + content */}
-      <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden rounded-xl border bg-card">
+      {/* Bordered frame: optional in-frame helpers (legacy) + content.
+          Suppressed for hdr1's own Preview only — hdr1's sections are
+          already self-bordered (per the mockup), so this shared card
+          would otherwise double-frame them and leave a large empty
+          margin around the content-sized boxes. Editor mode and every
+          other format still get this as their only boundary. */}
+      <div
+        className={cn(
+          "flex h-full min-h-0 flex-1 flex-col overflow-hidden",
+          previewFormat === "hdr1" && !isEditorMode ? "" : "rounded-xl border bg-card",
+        )}
+      >
         {showHelpersInside && (
           <div className="flex shrink-0 flex-wrap items-center gap-1 border-b px-1 py-1">
             {helperButtons}
@@ -317,7 +393,11 @@ export function TextEditorWithToolbar({
                 className="m-0 min-h-0 flex-1 overflow-hidden p-0"
               >
                 <div className="h-full overflow-auto">
-                  <PreviewContent body={value} />
+                  <PreviewContent
+                    body={value}
+                    format={previewFormat}
+                    accentColor={hdr1AccentColor}
+                  />
                 </div>
               </TabsContent>
 

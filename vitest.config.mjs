@@ -103,6 +103,14 @@ export default defineConfig({
       // must render Save/WCH/Saved unconditionally, not only when a caller
       // remembers to also pass defaultTab="editor").
       "packages/dashboard/components/shared/text-editor-with-toolbar.test.tsx",
+      // Shared Preview format selector (no format / hdr1 / hdr2 / md):
+      // detection heuristics, the hdr1 renderer (mockup
+      // examples/chad_hdr_preview_mockup_v7.html), the hand-rolled Markdown
+      // preview, and the combobox wired into the shared toolbar end-to-end.
+      "packages/dashboard/lib/preview/preview-format.test.ts",
+      "packages/dashboard/components/shared/hdr1-renderer.test.tsx",
+      "packages/dashboard/components/shared/markdown-preview.test.tsx",
+      "packages/dashboard/components/shared/text-editor-with-toolbar-preview-format.test.tsx",
       // Msg Auto AI Prompts — kind labels / Category mapping (mockup v4).
       "packages/dashboard/components/msg-automation/ai-prompt-kind.test.ts",
       // AI Prompts editor workspace (manage/leads/auto/base tabs + persistent
