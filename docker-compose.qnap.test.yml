@@ -133,12 +133,12 @@ services:
     volumes:
       - chad-dashboard-test-data:/app/data
       - type: bind
-        source: ${CHAD_AUDIO_RECORDINGS_HOST_PATH:-/share/cp_1/02_files_refrenced/10_files_audio}
+        source: ${CHAD_AUDIO_RECORDINGS_HOST_PATH:-/share/cp_1/chad-data/02_files_refrenced/pawel_f/10_files_audio}
         target: /app/audio-recordings
         bind:
           create_host_path: true
       - type: bind
-        source: ${CHAD_CONTACT_PHOTOS_HOST_PATH:-/share/cp_1/02_files_refrenced}
+        source: ${CHAD_CONTACT_PHOTOS_HOST_PATH:-/share/cp_1/chad-data/02_files_refrenced}
         target: /app/contact-photos
         bind:
           create_host_path: true

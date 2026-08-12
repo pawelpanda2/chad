@@ -23,4 +23,4 @@ Baseline przed AI: `a8c87b1`. WIP Story 112 pozostawione nienaruszone.
 
 - [x] `date-reports` + `report-browse` + UI system-pages (21 tests PASS)
 - [x] Lokalny Docker: `06_deploy.sh` → image `chad-dashboard:260809_215518`; API 401 unauth / 200 auth; test3 empty list OK; chunk zawiera Dates Reports + ReportsView
-- [x] Commit końcowy (bez push)
+- [x] Commit końcowy (bez push): `dac5fa7`

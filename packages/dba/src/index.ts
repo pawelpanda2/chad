@@ -44,6 +44,7 @@ export * from './lead-photos.js';
 export * from './lead-archives.js';
 export {
   FILE_STORAGE_FEATURES,
+  FILES_REFERENCED_HOST_PARENT,
   createFilesystemFileStorage,
   createMemoryReferencedFileStore,
   filesystemFileStorage,

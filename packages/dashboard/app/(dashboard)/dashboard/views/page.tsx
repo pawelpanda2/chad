@@ -157,6 +157,7 @@ function ViewsPageContent() {
       ? viewParam
       : null;
   const selectedReportLoca = searchParams.get("report");
+  const selectedPartLoca = searchParams.get("part");
   const selectedRecordingId = searchParams.get("recording");
   const returnTo = searchParams.toString() ? `${pathname}?${searchParams.toString()}` : pathname;
 
@@ -642,7 +643,9 @@ function ViewsPageContent() {
     return (
       <DatesReportsView
         selectedReportLoca={selectedReportLoca}
-        onSelectReport={(loca) => pushViewState({ report: loca })}
+        selectedPartLoca={selectedPartLoca}
+        onSelectReport={(loca) => pushViewState({ report: loca, part: null })}
+        onSelectPart={(loca) => pushViewState({ part: loca })}
         onBackToMenu={handleBack}
       />
     );

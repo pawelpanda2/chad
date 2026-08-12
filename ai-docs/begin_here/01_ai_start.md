@@ -9,6 +9,33 @@ kolejności czytania, nie opis standardów samych w sobie.
 
 ## Najczęstszy błąd AI w tym repo — przeczytaj to PIERWSZE
 
+### Błąd A — lokalny Postgres ≠ źródło danych LOCAL (powtarza się)
+
+**(wzmocnione 2026-08-09 po kolejnym incydencie: agent weryfikował Features
+na prawie pustym `chad-postgres-local-mac-docker` i wnioskował „brak danych”,
+mimo że normalny LOCAL czyta wspólną bazę QNAP przez Tailscale.)**
+
+- **Domyślne źródło danych LOCAL = Server PostgreSQL (QNAP) przez Tailscale**
+  (`100.117.139.83:12042`). TEST, PROD i LOCAL (normalny tryb) dzielą **tę
+  samą** żywą bazę. To jest zamierzone — patrz
+  `ai-docs/databases/red-rules.md` Rule 1.
+- Kontener `chad-postgres-local-mac-docker` / `POSTGRES_URI=…@postgres:5432`
+  w `docker-compose.local.yml` **nie jest** domyślnym źródłem aplikacji.
+  Dev Panel → Settings: **Server PostgreSQL** (primary) vs
+  **Offline backup — read only** (wyłącznie awaria bez sieci).
+- **Zakaz:** uznawać pustą lokalną volume za „stan produkcji” albo „brak
+  raportów użytkownika”. Zanim ocenisz dane: sprawdź aktywne źródło
+  (`GET /api/dev-settings/db-source` / Dev Panel) albo odpytaj QNAP
+  Tailscale — nie lokalny port `5433`, chyba że świadomie jesteś w trybie
+  awaryjnym.
+- `offline-readonly-backup` = tylko awaria / brak internetu / brak
+  Tailscale; **tylko odczyt**; nigdy development write ani „żeby login
+  działał”.
+- Pełne reguły: `ai-docs/databases/red-rules.md` →
+  `ai-docs/databases/ai-start.md`.
+
+### Błąd B — deploy PROD ≠ osobny build
+
 **(dodane 2026-07-22, po realnym incydencie: AI zapytało o zgodę na deploy
 PROD tak, jakby to była ryzykowna, osobna operacja budowania — mimo że
 odpowiedź jest już opisana w `04_deployment-rules.md` i

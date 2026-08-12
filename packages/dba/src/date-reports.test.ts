@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  getDateReportByAddress,
+  getDateReportTextByAddress,
+  listDateReportChildren,
   listDateReports,
   type DateReportsOps,
 } from "./date-reports.js";
@@ -26,17 +27,19 @@ function makeOps(items: CpItem[]): DateReportsOps {
       return null;
     },
     getChildrenOf: async (parentAddress) =>
-      items.filter((item) => {
-        const prefix = `${parentAddress}/`;
-        if (!item.config.address.startsWith(prefix)) return false;
-        return !item.config.address.slice(prefix.length).includes("/");
-      }),
+      items
+        .filter((item) => {
+          const prefix = `${parentAddress}/`;
+          if (!item.config.address.startsWith(prefix)) return false;
+          return !item.config.address.slice(prefix.length).includes("/");
+        })
+        .sort((a, b) => a.config.address.localeCompare(b.config.address, undefined, { numeric: true })),
     getItemByAddress: async (address) => items.find((i) => i.config.address === address) ?? null,
   };
 }
 
 describe("listDateReports", () => {
-  it("returns Text and Folder children in provider order (no alpha sort)", async () => {
+  it("returns Text and Folder children newest-first (reversed provider order, no alpha sort)", async () => {
     const ops = makeOps([
       folder(REPO, "root"),
       folder(`${REPO}/06`, "randki"),
@@ -46,11 +49,11 @@ describe("listDateReports", () => {
     ]);
     const list = await listDateReports(ops);
     expect(list.map((r) => r.name)).toEqual([
-      "22-08-13; Sabina",
       "26-05-13_r1__Daria",
+      "22-08-13; Sabina",
       "co analizować?",
     ]);
-    expect(list.map((r) => r.kind)).toEqual(["Text", "Folder", "Text"]);
+    expect(list.map((r) => r.kind)).toEqual(["Folder", "Text", "Text"]);
   });
 
   it("returns [] when randki folder is missing", async () => {
@@ -58,30 +61,52 @@ describe("listDateReports", () => {
   });
 });
 
-describe("getDateReportByAddress", () => {
+describe("listDateReportChildren", () => {
+  it("lists parts under a Folder in provider order", async () => {
+    const ops = makeOps([
+      folder(`${REPO}/06`, "randki"),
+      folder(`${REPO}/06/37`, "26-05-13_r1__Daria"),
+      text(`${REPO}/06/37/01`, "before", "prep"),
+      text(`${REPO}/06/37/02`, "report", "date report body"),
+      text(`${REPO}/06/37/03`, "after", "notes"),
+    ]);
+    const kids = await listDateReportChildren(`${REPO}/06/37`, ops);
+    expect(kids.map((k) => k.name)).toEqual(["before", "report", "after"]);
+  });
+
+  it("rejects addresses that are not direct Folder children of randki", async () => {
+    const ops = makeOps([
+      folder(`${REPO}/06`, "randki"),
+      folder(`${REPO}/06/37`, "Daria"),
+      text(`${REPO}/06/37/01`, "report", "x"),
+    ]);
+    expect(await listDateReportChildren(`${REPO}/06/37/01`, ops)).toEqual([]);
+    expect(await listDateReportChildren(`${OTHER}/06/37`, ops)).toEqual([]);
+  });
+});
+
+describe("getDateReportTextByAddress", () => {
   it("loads Text body for a direct Text child", async () => {
     const ops = makeOps([
       folder(`${REPO}/06`, "randki"),
       text(`${REPO}/06/11`, "22-08-13; Sabina", "hello\nworld"),
     ]);
-    const item = await getDateReportByAddress(`${REPO}/06/11`, ops);
+    const item = await getDateReportTextByAddress(`${REPO}/06/11`, ops);
     expect(item?.body).toBe("hello\nworld");
     expect(item?.editLoca).toBe("06/11");
     expect(item?.editable).toBe(true);
   });
 
-  it("loads nested report Text for a Folder child", async () => {
+  it("loads nested part Text under a Folder", async () => {
     const ops = makeOps([
       folder(`${REPO}/06`, "randki"),
       folder(`${REPO}/06/37`, "26-05-13_r1__Daria"),
       text(`${REPO}/06/37/01`, "before", "prep"),
       text(`${REPO}/06/37/02`, "report", "date report body"),
     ]);
-    const item = await getDateReportByAddress(`${REPO}/06/37`, ops);
-    expect(item?.name).toBe("26-05-13_r1__Daria");
+    const item = await getDateReportTextByAddress(`${REPO}/06/37/02`, ops);
+    expect(item?.name).toBe("report");
     expect(item?.body).toBe("date report body");
-    expect(item?.editAddress).toBe(`${REPO}/06/37/02`);
-    expect(item?.editable).toBe(true);
   });
 
   it("rejects addresses outside the caller's randki folder (isolation)", async () => {
@@ -91,7 +116,7 @@ describe("getDateReportByAddress", () => {
       folder(`${OTHER}/06`, "randki"),
       text(`${OTHER}/06/11`, "theirs", "secret"),
     ]);
-    expect(await getDateReportByAddress(`${OTHER}/06/11`, ops)).toBeNull();
-    expect(await getDateReportByAddress(`${REPO}/07/02/01`, ops)).toBeNull();
+    expect(await getDateReportTextByAddress(`${OTHER}/06/11`, ops)).toBeNull();
+    expect(await getDateReportTextByAddress(`${REPO}/07/02/01`, ops)).toBeNull();
   });
 });

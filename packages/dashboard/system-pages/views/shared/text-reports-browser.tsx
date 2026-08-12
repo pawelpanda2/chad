@@ -81,7 +81,7 @@ export function TextReportsBrowser({
         onClick: selectedReport ? onBackToList : onBackToMenu,
         label: selectedReport ? "Back to reports list" : "Back to Views menu",
       }}
-      title={title}
+      title={selectedReport ? selectedReport.name : title}
     >
       {selectedReport ? (
         <TextEditorWithToolbar

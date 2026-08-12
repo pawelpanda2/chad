@@ -47,6 +47,13 @@ export function statusForFoldersError(error: FoldersOperationError): number {
       return 409;
     case 'EXPORT_LIMIT_EXCEEDED':
       return 413;
+    case 'MOVE_ROOT_ITEM':
+    case 'MOVE_CROSS_REPO':
+      return 400;
+    case 'MOVE_INTO_OWN_SUBTREE':
+    case 'MOVE_NAME_CONFLICT':
+    case 'ADDRESS_TAKEN':
+      return 409;
     default:
       return 500;
   }

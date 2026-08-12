@@ -21,23 +21,18 @@ export interface DateReportListItem {
   address: string;
   name: string;
   loca: string;
-  /** Direct child type under `randki`. */
+  /** Direct child type under `randki` (or under a date-report Folder). */
   kind: "Text" | "Folder";
 }
 
 export interface DateReportText {
-  /** Address of the list entry (Text or Folder under `randki`). */
   address: string;
   name: string;
   loca: string;
   body: string;
-  /**
-   * Address of the Text item that holds/edits the body.
-   * For Folder entries this is usually the nested `report` Text (or first Text child).
-   */
+  /** Same as address/loca for Text items (edit target). */
   editAddress: string;
   editLoca: string;
-  /** False when the entry is a Folder with no Text child — openable, not writable. */
   editable: boolean;
 }
 
@@ -63,58 +58,111 @@ function isUnder(parentAddress: string, address: string): boolean {
   return address === parentAddress || address.startsWith(`${parentAddress}/`);
 }
 
-/**
- * Direct Text + Folder children of root `randki`, in provider order
- * (no alphabetical re-sort). Missing folder → `[]`.
- */
-export async function listDateReports(ops: DateReportsOps = defaultOps): Promise<DateReportListItem[]> {
+function toListItem(c: CpItem): DateReportListItem {
+  return {
+    address: c.config.address,
+    name: c.config.name,
+    loca: addressToRepoAndLoca(c.config.address).loca,
+    kind: c.config.type as "Text" | "Folder",
+  };
+}
+
+async function resolveRandkiFolder(ops: DateReportsOps): Promise<CpItem | null> {
   const folder = await ops.resolveByNames([...DATE_REPORTS_FOLDER_NAMES]);
-  if (!folder) return [];
+  if (!folder) return null;
   if (folder.config.type !== "Folder") {
     throw new Error(`Expected "randki" to be a Folder (got "${folder.config.type}")`);
   }
+  return folder;
+}
+
+/**
+ * Direct Text + Folder children of root `randki`.
+ * Provider order is oldest→newest (physical keys); we reverse so the UI
+ * shows newest date reports first. No alphabetical re-sort.
+ * Missing folder → `[]`.
+ */
+export async function listDateReports(ops: DateReportsOps = defaultOps): Promise<DateReportListItem[]> {
+  const folder = await resolveRandkiFolder(ops);
+  if (!folder) return [];
 
   const children = await ops.getChildrenOf(folder.config.address);
   return children
     .filter((c) => c.config.type === "Text" || c.config.type === "Folder")
-    .map((c) => ({
-      address: c.config.address,
-      name: c.config.name,
-      loca: addressToRepoAndLoca(c.config.address).loca,
-      kind: c.config.type as "Text" | "Folder",
-    }));
+    .map(toListItem)
+    .reverse();
 }
 
-async function resolveEditableText(
-  entry: CpItem,
-  ops: DateReportsOps,
-): Promise<{ text: CpItem; body: string; editable: boolean } | null> {
-  if (entry.config.type === "Text") {
-    return {
-      text: entry,
-      body: typeof entry.body === "string" ? entry.body : "",
-      editable: true,
-    };
-  }
-  if (entry.config.type !== "Folder") return null;
+/**
+ * Direct children of a date-report Folder (before / after / report / …).
+ * `folderAddress` must be a direct Folder child of `randki`.
+ * Order = provider order (oldest→newest); not reversed — parts keep natural order.
+ */
+export async function listDateReportChildren(
+  folderAddress: string,
+  ops: DateReportsOps = defaultOps,
+): Promise<DateReportListItem[]> {
+  const trimmed = folderAddress?.trim();
+  if (!trimmed) return [];
 
-  const children = await ops.getChildrenOf(entry.config.address);
-  const texts = children.filter((c) => c.config.type === "Text");
-  if (texts.length === 0) {
-    return { text: entry, body: "", editable: false };
+  const randki = await resolveRandkiFolder(ops);
+  if (!randki) return [];
+  if (!isDirectChildOf(randki.config.address, trimmed)) return [];
+
+  const entry = await ops.getItemByAddress(trimmed);
+  if (!entry || entry.config.type !== "Folder") return [];
+
+  const children = await ops.getChildrenOf(trimmed);
+  return children
+    .filter((c) => c.config.type === "Text" || c.config.type === "Folder")
+    .map(toListItem);
+}
+
+/**
+ * Full body for a Text item under `randki`.
+ * Allowed:
+ * - direct Text child of `randki`, or
+ * - Text descendant under a direct child Folder of `randki`.
+ */
+export async function getDateReportTextByAddress(
+  address: string,
+  ops: DateReportsOps = defaultOps,
+): Promise<DateReportText | null> {
+  const trimmed = address?.trim();
+  if (!trimmed) return null;
+
+  const randki = await resolveRandkiFolder(ops);
+  if (!randki) return null;
+  if (!isUnder(randki.config.address, trimmed) || trimmed === randki.config.address) return null;
+
+  const item = await ops.getItemByAddress(trimmed);
+  if (!item || item.config.type !== "Text") return null;
+
+  // Direct Text under randki, or any Text under a direct child of randki.
+  if (!isDirectChildOf(randki.config.address, trimmed)) {
+    const rest = trimmed.slice(randki.config.address.length + 1);
+    const firstSeg = rest.split("/")[0];
+    if (!firstSeg) return null;
+    const topChildAddress = `${randki.config.address}/${firstSeg}`;
+    if (!isDirectChildOf(randki.config.address, topChildAddress)) return null;
   }
-  const namedReport =
-    texts.find((c) => c.config.name.toLowerCase() === "report") ?? texts[0]!;
+
+  const body = typeof item.body === "string" ? item.body : "";
   return {
-    text: namedReport,
-    body: typeof namedReport.body === "string" ? namedReport.body : "",
+    address: item.config.address,
+    name: item.config.name,
+    loca: addressToRepoAndLoca(item.config.address).loca,
+    body,
+    editAddress: item.config.address,
+    editLoca: addressToRepoAndLoca(item.config.address).loca,
     editable: true,
   };
 }
 
 /**
- * Full body for a date-report list entry. `address` must be a direct child
- * of the caller's `randki` folder (cross-folder / cross-repo addresses → null).
+ * @deprecated Prefer {@link getDateReportTextByAddress} for Text and
+ * {@link listDateReportChildren} for Folders. Kept for callers that still
+ * expect auto-pick of nested `report` Text under a Folder.
  */
 export async function getDateReportByAddress(
   address: string,
@@ -123,20 +171,22 @@ export async function getDateReportByAddress(
   const trimmed = address?.trim();
   if (!trimmed) return null;
 
-  const folder = await ops.resolveByNames([...DATE_REPORTS_FOLDER_NAMES]);
-  if (!folder || folder.config.type !== "Folder") return null;
-
-  if (!isDirectChildOf(folder.config.address, trimmed)) return null;
+  const randki = await resolveRandkiFolder(ops);
+  if (!randki) return null;
+  if (!isDirectChildOf(randki.config.address, trimmed)) return null;
 
   const entry = await ops.getItemByAddress(trimmed);
   if (!entry) return null;
-  if (entry.config.type !== "Text" && entry.config.type !== "Folder") return null;
 
-  const resolved = await resolveEditableText(entry, ops);
-  if (!resolved) return null;
+  if (entry.config.type === "Text") {
+    return getDateReportTextByAddress(trimmed, ops);
+  }
 
-  const editItem = resolved.text;
-  if (!resolved.editable) {
+  if (entry.config.type !== "Folder") return null;
+
+  const children = await ops.getChildrenOf(entry.config.address);
+  const texts = children.filter((c) => c.config.type === "Text");
+  if (texts.length === 0) {
     return {
       address: entry.config.address,
       name: entry.config.name,
@@ -147,17 +197,7 @@ export async function getDateReportByAddress(
       editable: false,
     };
   }
-
-  if (editItem.config.type !== "Text") return null;
-  if (!isUnder(folder.config.address, editItem.config.address)) return null;
-
-  return {
-    address: entry.config.address,
-    name: entry.config.name,
-    loca: addressToRepoAndLoca(entry.config.address).loca,
-    body: resolved.body,
-    editAddress: editItem.config.address,
-    editLoca: addressToRepoAndLoca(editItem.config.address).loca,
-    editable: true,
-  };
+  const namedReport =
+    texts.find((c) => c.config.name.toLowerCase() === "report") ?? texts[0]!;
+  return getDateReportTextByAddress(namedReport.config.address, ops);
 }

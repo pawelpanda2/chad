@@ -114,7 +114,7 @@ describe("TextReportsBrowser", () => {
     expect(onSelectReport).toHaveBeenCalledWith("07/04/01");
   });
 
-  it("opens editor when a report is selected", () => {
+  it("opens editor when a report is selected and shows its name as title", () => {
     render(
       <TextReportsBrowser
         {...baseProps}
@@ -123,6 +123,6 @@ describe("TextReportsBrowser", () => {
       />,
     );
     expect(screen.getByTestId("editor-body").textContent).toBe("report body");
-    expect(screen.queryByText("26-07-14_dg")).toBeNull();
+    expect(screen.getByRole("heading", { name: "26-07-14_dg" })).toBeTruthy();
   });
 });

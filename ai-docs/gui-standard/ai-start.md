@@ -155,6 +155,24 @@ tekstem na ~2s, potem znika sam. Nigdy nie łącz z natywnym atrybutem
 `title` na tym samym elemencie — dwa niezależne mechanizmy tooltipa na
 raz są mylące.
 
+## Generyczne etykiety Search (obowiązkowe)
+
+**(dodane 2026-08-08.)** Pola wyszukiwania w listach/hubach używają
+**generycznej** nazwy — nie domenowej.
+
+| Dozwolone | Zakazane |
+|-----------|----------|
+| `placeholder="Search"` | `Filter leads…`, `Search leads...`, `Search contacts`, `Search reports…` |
+| `aria-label="Search"` | `aria-label="Filter leads"` / `Search contacts` |
+
+`aria-label` też ma być po prostu `"Search"` (ten sam generyczny token).
+Kontekst (leady, kontakty, raporty) wynika z otoczenia widoku, nie z
+placeholderu. Przy nowym Search albo przy restylu istniejącego — zawsze
+`Search`, nigdy „Search X” / „Filter X”.
+
+Przykład: Msg Auto → manually added msg — Search + opcjonalny przycisk
+**Filters** (osobna linia filtrów, nie w placeholderze Search).
+
 ## Powiązana dokumentacja
 
 - [../../human-docs/dashboard/common/features/responsive-layout-standard.md](../../human-docs/dashboard/common/features/responsive-layout-standard.md) —

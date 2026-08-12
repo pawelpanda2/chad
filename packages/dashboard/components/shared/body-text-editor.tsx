@@ -1,7 +1,15 @@
 "use client";
 
-import { useCallback } from "react";
+import { forwardRef, useCallback, useImperativeHandle, useRef } from "react";
 import { useTheme } from "next-themes";
+import {
+  history,
+  historyKeymap,
+  redo,
+  redoDepth,
+  undo,
+  undoDepth,
+} from "@codemirror/commands";
 import { Extension, Prec } from "@codemirror/state";
 import CodeMirror from "@uiw/react-codemirror";
 import {
@@ -10,6 +18,9 @@ import {
   highlightWhitespace,
 } from "@codemirror/view";
 import { cn } from "@/lib/utils";
+
+/** Max undo steps kept in the editor history (and redo after undo). */
+export const EDITOR_HISTORY_DEPTH = 3;
 
 interface BodyTextEditorProps {
   value: string;
@@ -21,6 +32,46 @@ interface BodyTextEditorProps {
   onSaveShortcut?: (event: KeyboardEvent) => void;
   /** Whether to show whitespace characters (spaces, tabs) */
   showWhitespace?: boolean;
+  /** Fired when undo/redo availability changes (for toolbar buttons). */
+  onHistoryChange?: (state: { canUndo: boolean; canRedo: boolean }) => void;
+}
+
+/** Imperative API for toolbar actions (tab / undo / redo on phones). */
+export type BodyTextEditorHandle = {
+  /** Insert `\t` at the current selection and refocus the editor. */
+  insertTab: () => boolean;
+  /** Undo last edit (up to EDITOR_HISTORY_DEPTH steps). */
+  undo: () => boolean;
+  /** Redo previously undone edit. */
+  redo: () => boolean;
+};
+
+/**
+ * Insert a real tab character at the main selection (same behavior as the Tab key).
+ * Used by the keyboard keymap and by the shared toolbar tab button (phones have no Tab key).
+ */
+export function insertTabInView(view: EditorView): boolean {
+  const selection = view.state.selection.main;
+  const from = selection.from;
+  const to = selection.to;
+  const nextCursorPos = from + 1;
+
+  view.dispatch(
+    view.state.update({
+      changes: { from, to, insert: "\t" },
+      selection: { anchor: nextCursorPos },
+      scrollIntoView: true,
+    }),
+  );
+  view.focus();
+  return true;
+}
+
+function historyStateOf(view: EditorView): { canUndo: boolean; canRedo: boolean } {
+  return {
+    canUndo: undoDepth(view.state) > 0,
+    canRedo: redoDepth(view.state) > 0,
+  };
 }
 
 /**
@@ -32,23 +83,11 @@ interface BodyTextEditorProps {
 function tabKeyExtension(): Extension {
   return Prec.highest(
     keymap.of([
-    {
-      key: "Tab",
-      run: ({ state, dispatch }) => {
-        const selection = state.selection.main;
-        const from = selection.from;
-        const to = selection.to;
-        const nextCursorPos = from + 1;
-
-        dispatch(state.update({
-          changes: { from, to, insert: "\t" },
-          selection: { anchor: nextCursorPos },
-          scrollIntoView: true,
-        }));
-        return true; // Prevent default behavior
+      {
+        key: "Tab",
+        run: (view) => insertTabInView(view),
       },
-    },
-  ])
+    ]),
   );
 }
 
@@ -59,36 +98,39 @@ function tabKeyExtension(): Extension {
 function enterKeyExtension(): Extension {
   return Prec.highest(
     keymap.of([
-    {
-      key: "Enter",
-      run: ({ state, dispatch }) => {
-        const selection = state.selection.main;
-        const from = selection.from;
-        const to = selection.to;
-        const currentLine = state.doc.lineAt(from).text;
-        const currentLinePrefix = currentLine.match(/^[\t ]*/)?.[0] ?? "";
-        const insertedText = `\n${currentLinePrefix}`;
-        const nextCursorPos = from + insertedText.length;
+      {
+        key: "Enter",
+        run: ({ state, dispatch }) => {
+          const selection = state.selection.main;
+          const from = selection.from;
+          const to = selection.to;
+          const currentLine = state.doc.lineAt(from).text;
+          const currentLinePrefix = currentLine.match(/^[\t ]*/)?.[0] ?? "";
+          const insertedText = `\n${currentLinePrefix}`;
+          const nextCursorPos = from + insertedText.length;
 
-        if (process.env.NODE_ENV !== "production") {
-          console.debug("[BodyTextEditor] Enter prefix:", debugWhitespace(currentLinePrefix));
-        }
+          if (process.env.NODE_ENV !== "production") {
+            console.debug(
+              "[BodyTextEditor] Enter prefix:",
+              debugWhitespace(currentLinePrefix),
+            );
+          }
 
-        dispatch(
-          state.update({
-            changes: {
-              from,
-              to,
-              insert: insertedText,
-            },
-            selection: { anchor: nextCursorPos },
-            scrollIntoView: true,
-          })
-        );
-        return true;
+          dispatch(
+            state.update({
+              changes: {
+                from,
+                to,
+                insert: insertedText,
+              },
+              selection: { anchor: nextCursorPos },
+              scrollIntoView: true,
+            }),
+          );
+          return true;
+        },
       },
-    },
-  ])
+    ]),
   );
 }
 
@@ -99,97 +141,166 @@ export function debugWhitespace(text: string): string {
     .replace(/\n/g, "\\n");
 }
 
-export function BodyTextEditor({
-  value,
-  onChange,
-  placeholder,
-  className,
-  extraExtensions = [],
-  onSaveShortcut,
-  showWhitespace = false,
-}: BodyTextEditorProps) {
-  // Follow the app theme so text stays readable in dark mode (otherwise the
-  // default light CodeMirror theme keeps a white background).
-  const { resolvedTheme } = useTheme();
-  const isDark = resolvedTheme === "dark";
+export const BodyTextEditor = forwardRef<BodyTextEditorHandle, BodyTextEditorProps>(
+  function BodyTextEditor(
+    {
+      value,
+      onChange,
+      placeholder,
+      className,
+      extraExtensions = [],
+      onSaveShortcut,
+      showWhitespace = false,
+      onHistoryChange,
+    },
+    ref,
+  ) {
+    // Follow the app theme so text stays readable in dark mode (otherwise the
+    // default light CodeMirror theme keeps a white background).
+    const { resolvedTheme } = useTheme();
+    const isDark = resolvedTheme === "dark";
+    const viewRef = useRef<EditorView | null>(null);
+    const onHistoryChangeRef = useRef(onHistoryChange);
+    onHistoryChangeRef.current = onHistoryChange;
 
-  const containerRef = useCallback((node: HTMLDivElement | null) => {
-    if (!node || !onSaveShortcut) return;
+    const emitHistory = useCallback((view: EditorView) => {
+      onHistoryChangeRef.current?.(historyStateOf(view));
+    }, []);
 
-    const handleKeyDown = (event: KeyboardEvent) => {
-      const isSaveShortcut =
-        (event.ctrlKey || event.metaKey) &&
-        event.key.toLowerCase() === "s";
+    useImperativeHandle(
+      ref,
+      () => ({
+        insertTab: () => {
+          const view = viewRef.current;
+          if (!view) return false;
+          const ok = insertTabInView(view);
+          emitHistory(view);
+          return ok;
+        },
+        undo: () => {
+          const view = viewRef.current;
+          if (!view) return false;
+          const ok = undo(view);
+          if (ok) {
+            view.focus();
+            emitHistory(view);
+          }
+          return ok;
+        },
+        redo: () => {
+          const view = viewRef.current;
+          if (!view) return false;
+          const ok = redo(view);
+          if (ok) {
+            view.focus();
+            emitHistory(view);
+          }
+          return ok;
+        },
+      }),
+      [emitHistory],
+    );
 
-      if (isSaveShortcut) {
-        event.preventDefault();
-        onSaveShortcut(event);
-      }
-    };
+    const containerRef = useCallback(
+      (node: HTMLDivElement | null) => {
+        if (!node || !onSaveShortcut) return;
 
-    node.addEventListener("keydown", handleKeyDown);
+        const handleKeyDown = (event: KeyboardEvent) => {
+          const isSaveShortcut =
+            (event.ctrlKey || event.metaKey) &&
+            event.key.toLowerCase() === "s";
 
-    return () => {
-      node.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [onSaveShortcut]);
+          if (isSaveShortcut) {
+            event.preventDefault();
+            onSaveShortcut(event);
+          }
+        };
 
-  return (
-    <div ref={containerRef} className={cn("flex h-full min-h-0 flex-col overflow-hidden", className)}>
-      <CodeMirror
-        value={value}
-        height="100%"
-        theme={isDark ? "dark" : "light"}
-        basicSetup={{
-          lineNumbers: true,
-          highlightActiveLineGutter: false,
-          highlightActiveLine: false,
-          highlightSelectionMatches: false,
-          foldGutter: false,
-          autocompletion: false,
-          closeBrackets: false,
-          indentOnInput: false,
-          searchKeymap: false,
-          allowMultipleSelections: false,
-        }}
-        extensions={[
-          EditorView.lineWrapping,
-          tabKeyExtension(), // Ensure Tab inserts \t character
-          enterKeyExtension(),
-          ...(showWhitespace ? [highlightWhitespace()] : []),
-          EditorView.theme({
-            "&": {
-              height: "100%",
-            },
-            "&.cm-editor": {
-              height: "100%",
-            },
-            ".cm-content": {
-              padding: "4px 12px",
-              tabSize: "4",
-              fontFamily: "var(--font-mono, monospace)",
-              whiteSpace: "pre-wrap",
-            },
-            ".cm-line": {
-              tabSize: "4",
-            },
-            ".cm-scroller": {
-              height: "100%",
-              overflowY: "auto",
-              overflowX: "hidden",
-            },
-            // Line-number gutter (left of each line): keep it subtle.
-            ".cm-gutters": {
-              border: "none",
-              backgroundColor: "transparent",
-            },
-          }),
-          ...extraExtensions,
-        ]}
-        onChange={onChange}
-        className="h-full min-h-0 flex-1"
-        placeholder={placeholder}
-      />
-    </div>
-  );
-}
+        node.addEventListener("keydown", handleKeyDown);
+
+        return () => {
+          node.removeEventListener("keydown", handleKeyDown);
+        };
+      },
+      [onSaveShortcut],
+    );
+
+    return (
+      <div
+        ref={containerRef}
+        className={cn("flex h-full min-h-0 flex-col overflow-hidden", className)}
+      >
+        <CodeMirror
+          value={value}
+          height="100%"
+          theme={isDark ? "dark" : "light"}
+          basicSetup={{
+            lineNumbers: true,
+            highlightActiveLineGutter: false,
+            highlightActiveLine: false,
+            highlightSelectionMatches: false,
+            foldGutter: false,
+            autocompletion: false,
+            closeBrackets: false,
+            indentOnInput: false,
+            searchKeymap: false,
+            allowMultipleSelections: false,
+            // Own history with depth 3 — see history({ minDepth }) below.
+            history: false,
+          }}
+          extensions={[
+            history({ minDepth: EDITOR_HISTORY_DEPTH }),
+            keymap.of(historyKeymap),
+            EditorView.lineWrapping,
+            tabKeyExtension(),
+            enterKeyExtension(),
+            ...(showWhitespace ? [highlightWhitespace()] : []),
+            EditorView.updateListener.of((update) => {
+              if (
+                update.docChanged ||
+                update.transactions.some((tr) => tr.isUserEvent("undo") || tr.isUserEvent("redo"))
+              ) {
+                onHistoryChangeRef.current?.(historyStateOf(update.view));
+              }
+            }),
+            EditorView.theme({
+              "&": {
+                height: "100%",
+              },
+              "&.cm-editor": {
+                height: "100%",
+              },
+              ".cm-content": {
+                padding: "4px 12px",
+                tabSize: "4",
+                fontFamily: "var(--font-mono, monospace)",
+                whiteSpace: "pre-wrap",
+              },
+              ".cm-line": {
+                tabSize: "4",
+              },
+              ".cm-scroller": {
+                height: "100%",
+                overflowY: "auto",
+                overflowX: "hidden",
+              },
+              // Line-number gutter (left of each line): keep it subtle.
+              ".cm-gutters": {
+                border: "none",
+                backgroundColor: "transparent",
+              },
+            }),
+            ...extraExtensions,
+          ]}
+          onCreateEditor={(view) => {
+            viewRef.current = view;
+            emitHistory(view);
+          }}
+          onChange={onChange}
+          className="h-full min-h-0 flex-1"
+          placeholder={placeholder}
+        />
+      </div>
+    );
+  },
+);

@@ -5,6 +5,13 @@ and not regressions to "fix" if you rediscover them while investigating
 something else. If a behavior below looks surprising or looks like a bug,
 it is very likely intentional — check this file before changing it.
 
+**AI trap (powtarza się):** kontener `chad-postgres-local-mac-docker` /
+port hosta `:5433` **nie jest** domyślnym źródłem Dashboardu LOCAL.
+Domyślnie aplikacja czyta **Server PostgreSQL przez Tailscale**
+(`100.117.139.83:12042`). Pusta lokalna volume ≠ „brak danych użytkownika”.
+Zanim ocenisz dane: Dev Panel / `GET /api/dev-settings/db-source`, albo
+odpytaj QNAP. Skrót też w `ai-docs/begin_here/01_ai_start.md` (Błąd A).
+
 ## Rule 1 — LOCAL connects to the real shared Server PostgreSQL over Tailscale
 
 CHAD TEST, CHAD PROD, and LOCAL development all use the **same one shared

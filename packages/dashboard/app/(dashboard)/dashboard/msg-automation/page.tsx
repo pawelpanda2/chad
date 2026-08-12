@@ -3,6 +3,17 @@
 import { useRouter } from "next/navigation";
 import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
 
+/** Labeled horizontal rule — same recipe as Knowledge hub (MY DOCUMENTS). */
+function HubSectionDivider({ label }: { label: string }) {
+  return (
+    <div className="my-4 flex items-center gap-3">
+      <div className="h-px flex-1 bg-border" />
+      <span className="text-xs font-medium uppercase text-muted-foreground">{label}</span>
+      <div className="h-px flex-1 bg-border" />
+    </div>
+  );
+}
+
 /**
  * Hub for messaging / leads automation pages — same button-grid pattern as
  * Forms and Views. Individual pages keep their own routes; this menu is only
@@ -17,6 +28,7 @@ export default function MsgAutomationPage() {
         Fixed 4-column grid (same as Forms / Views): buttons keep column
         width; leftover cells on the last row stay empty instead of stretching.
         Row 1: primary messaging surfaces. Below the separator: planning/status tools.
+        Bottom (OBSOLETE): legacy Links + Manual Messages.
       */}
       <div className="grid grid-cols-4 gap-2">
         <button
@@ -42,13 +54,6 @@ export default function MsgAutomationPage() {
         </button>
         <button
           type="button"
-          onClick={() => router.push("/dashboard/msg-automation/links")}
-          className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
-        >
-          <span className="font-semibold text-sm">LINKS</span>
-        </button>
-        <button
-          type="button"
           onClick={() => router.push("/dashboard/msg-automation/links-v2")}
           className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
         >
@@ -60,13 +65,6 @@ export default function MsgAutomationPage() {
           className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
         >
           <span className="font-semibold text-sm">AI PROMPTS</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => router.push("/dashboard/messages")}
-          className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
-        >
-          <span className="font-semibold text-sm">MANUAL MESSAGES</span>
         </button>
         <button
           type="button"
@@ -118,6 +116,25 @@ export default function MsgAutomationPage() {
           title="MANUALLY ADDED MSG"
         >
           <span className="font-semibold text-sm leading-tight">MANUALLY ADDED MSG</span>
+        </button>
+      </div>
+
+      <HubSectionDivider label="Obsolete" />
+
+      <div className="grid grid-cols-4 gap-2">
+        <button
+          type="button"
+          onClick={() => router.push("/dashboard/msg-automation/links")}
+          className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
+        >
+          <span className="font-semibold text-sm">LINKS</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => router.push("/dashboard/messages")}
+          className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
+        >
+          <span className="font-semibold text-sm">MANUAL MESSAGES</span>
         </button>
       </div>
     </DashboardPageShell>

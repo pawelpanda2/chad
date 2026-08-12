@@ -233,6 +233,207 @@ export class PostgresCpProvider implements CpCompatibleDataProvider {
     return true;
   }
 
+  /**
+   * Reparents a single item (and its whole subtree, if it's a Folder) under
+   * a new parent Folder, in ONE transaction: every item in the subtree gets
+   * its address rewritten (the old subtree-root prefix replaced by a freshly
+   * allocated new address under `newParentAddress`) via the same `runCpMutation`
+   * "put" path `createChild` uses, so each rewrite still gets its own
+   * `cp_history` row (there is no dedicated bulk "move" event type — one
+   * history row per subtree item is the accepted trade-off, same as any
+   * other multi-item write in this schema). `id`/`name`/`type`/every custom
+   * config field is otherwise untouched.
+   *
+   * Not part of `CpCompatibleDataProvider` — same convention as `deleteItem`/
+   * `putItemConfig` (Mongo has no equivalent yet; see `item-ops.ts`'s
+   * `moveItemByAddress`, which only wires this up when Postgres is the
+   * active primary — the only backend real TEST/PROD actually run).
+   *
+   * Callers (`folders.ts`'s `moveFolderItem`) already validate existence,
+   * Folder-ness, same-repo, no-cycle and no-name-collision before calling
+   * this — the re-checks here guard against a genuine race (a concurrent
+   * write landing between that validation and this transaction opening),
+   * not the primary validation path.
+   */
+  async moveItem(itemAddress: string, newParentAddress: string): Promise<CpItem> {
+    assertRepoAllowlisted(splitAddress(itemAddress).repoGuid);
+    assertRepoAllowlisted(splitAddress(newParentAddress).repoGuid);
+
+    return withPostgresClient(async (client) => {
+      await client.query("BEGIN");
+      try {
+        const { repoGuid } = splitAddress(newParentAddress);
+        // Same transaction-scoped advisory lock `createChild` takes on the
+        // target parent — serializes sibling-index allocation against any
+        // concurrent create/move under the same parent.
+        await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [
+          `${repoGuid}:${newParentAddress}`,
+        ]);
+
+        const { rows: parentRows } = await client.query<CpItemsRow>(
+          "SELECT * FROM cp_items WHERE address = $1",
+          [newParentAddress]
+        );
+        const parentRow = parentRows[0];
+        if (!parentRow) {
+          throw new Error(
+            `moveItem: target parent no longer exists at "${newParentAddress}" (race with a concurrent delete)`
+          );
+        }
+        if (parentRow.type !== "Folder") {
+          throw new Error(
+            `moveItem: target parent at "${newParentAddress}" is no longer a Folder (race with a concurrent write)`
+          );
+        }
+
+        const { rows: subtreeRows } = await client.query<CpItemsRow>(
+          "SELECT * FROM cp_items WHERE address = $1 OR address ~ $2 ORDER BY address",
+          [itemAddress, `^${escapeRegex(itemAddress)}/`]
+        );
+        const rootRow = subtreeRows.find((row) => row.address === itemAddress);
+        if (!rootRow) {
+          throw new Error(`moveItem: item to move no longer exists at "${itemAddress}" (race with a concurrent delete)`);
+        }
+
+        const siblings = await this.queryChildren(client, newParentAddress);
+        if (siblings.some((child) => child.config.name === rootRow.name)) {
+          throw new Error(
+            `moveItem: a child named "${rootRow.name}" already exists under "${newParentAddress}" (race with a concurrent write)`
+          );
+        }
+
+        const newRootAddress = `${newParentAddress}/${nextChildIndexFromSiblings(newParentAddress, siblings.map((c) => c.config.address))}`;
+
+        let movedItem: CpItem | null = null;
+        for (const row of subtreeRows) {
+          const rewrittenAddress = newRootAddress + row.address.slice(itemAddress.length);
+          const result = await runCpMutation(
+            client,
+            this.clock.newId(),
+            { kind: "put", itemId: row.id, config: { ...row.config, address: rewrittenAddress }, body: row.body },
+            { actor: tryGetCurrentActor(), requestId: tryGetCurrentRequestId() },
+            this.clock
+          );
+          if (row.id === rootRow.id) movedItem = result.item;
+        }
+
+        await client.query("COMMIT");
+        return movedItem!;
+      } catch (error) {
+        await client.query("ROLLBACK").catch(() => {
+          /* connection may already be broken; nothing more to do */
+        });
+        if (isUniqueViolation(error)) {
+          throw new AddressConflictError(newParentAddress, error);
+        }
+        throw error;
+      }
+    });
+  }
+
+  /**
+   * Rewrites one item (and its subtree) to an exact free `newAddress`.
+   * Unlike `moveItem`, the caller chooses the full target address (not
+   * "next free sibling index under a parent"). Callers
+   * (`folders.ts` config update) must already confirm format, same-repo,
+   * parent Folder, vacancy, and no move-into-own-subtree; the checks here
+   * only cover races between that validation and this transaction.
+   */
+  async readdressItem(itemAddress: string, newAddress: string): Promise<CpItem> {
+    assertRepoAllowlisted(splitAddress(itemAddress).repoGuid);
+    assertRepoAllowlisted(splitAddress(newAddress).repoGuid);
+
+    const newParentParts = newAddress.split("/");
+    newParentParts.pop();
+    const newParentAddress = newParentParts.join("/");
+
+    return withPostgresClient(async (client) => {
+      await client.query("BEGIN");
+      try {
+        const { repoGuid } = splitAddress(newParentAddress);
+        await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [
+          `${repoGuid}:${newParentAddress}`,
+        ]);
+
+        const { rows: parentRows } = await client.query<CpItemsRow>(
+          "SELECT * FROM cp_items WHERE address = $1",
+          [newParentAddress]
+        );
+        const parentRow = parentRows[0];
+        if (!parentRow) {
+          throw new Error(
+            `readdressItem: target parent no longer exists at "${newParentAddress}" (race with a concurrent delete)`
+          );
+        }
+        if (parentRow.type !== "Folder") {
+          throw new Error(
+            `readdressItem: target parent at "${newParentAddress}" is no longer a Folder (race with a concurrent write)`
+          );
+        }
+
+        const { rows: subtreeRows } = await client.query<CpItemsRow>(
+          "SELECT * FROM cp_items WHERE address = $1 OR address ~ $2 ORDER BY address",
+          [itemAddress, `^${escapeRegex(itemAddress)}/`]
+        );
+        const rootRow = subtreeRows.find((row) => row.address === itemAddress);
+        if (!rootRow) {
+          throw new Error(
+            `readdressItem: item to readdress no longer exists at "${itemAddress}" (race with a concurrent delete)`
+          );
+        }
+
+        const subtreeAddresses = new Set(subtreeRows.map((row) => row.address));
+        for (const row of subtreeRows) {
+          const rewrittenAddress = newAddress + row.address.slice(itemAddress.length);
+          if (subtreeAddresses.has(rewrittenAddress)) continue;
+          const { rows: conflictRows } = await client.query<{ address: string }>(
+            "SELECT address FROM cp_items WHERE address = $1 LIMIT 1",
+            [rewrittenAddress]
+          );
+          if (conflictRows[0]) {
+            throw new AddressConflictError(rewrittenAddress, new Error("address already occupied"));
+          }
+        }
+
+        const siblings = await this.queryChildren(client, newParentAddress);
+        if (
+          siblings.some(
+            (child) => child.config.name === rootRow.name && child.config.address !== itemAddress
+          )
+        ) {
+          throw new Error(
+            `readdressItem: a child named "${rootRow.name}" already exists under "${newParentAddress}" (race with a concurrent write)`
+          );
+        }
+
+        let movedItem: CpItem | null = null;
+        for (const row of subtreeRows) {
+          const rewrittenAddress = newAddress + row.address.slice(itemAddress.length);
+          const result = await runCpMutation(
+            client,
+            this.clock.newId(),
+            { kind: "put", itemId: row.id, config: { ...row.config, address: rewrittenAddress }, body: row.body },
+            { actor: tryGetCurrentActor(), requestId: tryGetCurrentRequestId() },
+            this.clock
+          );
+          if (row.id === rootRow.id) movedItem = result.item;
+        }
+
+        await client.query("COMMIT");
+        return movedItem!;
+      } catch (error) {
+        await client.query("ROLLBACK").catch(() => {
+          /* connection may already be broken; nothing more to do */
+        });
+        if (error instanceof AddressConflictError) throw error;
+        if (isUniqueViolation(error)) {
+          throw new AddressConflictError(newAddress, error);
+        }
+        throw error;
+      }
+    });
+  }
+
   private async createChild(command: Extract<DataWriteCommand, { kind: "create-child-item" }>): Promise<DataWriteResult> {
     // Follower replay of a primary's already-decided item — never re-run allocation (Story 72 §8/§23, unchanged for Postgres).
     if (command.item) {

@@ -10,12 +10,12 @@
  * Duration header + cues (also fixing MediaRecorder's missing-duration
  * quirk for single-segment recordings).
  *
- * Storage layout (under the same CHAD_AUDIO_RECORDINGS_DIR root as final
- * recordings; the root listing only looks at files, so the drafts
- * subdirectory is invisible to it):
+ * Storage layout (Story 112 — per-user under referenced files):
  *
- *   <root>/drafts/<draftId>/draft.json
- *   <root>/drafts/<draftId>/segment-<sessionId>.<ext>
+ *   <CHAD_CONTACT_PHOTOS_DIR>/<user>/10_files_audio/drafts/<draftId>/draft.json
+ *   <CHAD_CONTACT_PHOTOS_DIR>/<user>/10_files_audio/drafts/<draftId>/segment-<sessionId>.<ext>
+ *
+ * Final recordings live in the sibling `…/recordings/` directory.
  *
  * Every write is atomic: temp file in the same directory → rename. The
  * draft.json is the single source of truth — a segment file not referenced
@@ -32,7 +32,8 @@ import {
   AUDIO_RECORDING_MAX_BYTES,
   AudioRecordingError,
   assertSafeResolvedPath,
-  getAudioRecordingsDir,
+  getUserAudioDraftsDir,
+  getUserAudioRecordingsWriteDir,
   resolveAudioExtension,
   isValidIsoLocalDate,
   normalizeAudioRecordingDisplayName,
@@ -103,16 +104,20 @@ function assertValidSessionId(id: string): string {
   return trimmed;
 }
 
-function draftsRootDir(rootDir: string): string {
-  return path.resolve(rootDir, DRAFTS_DIR_NAME);
+function draftDir(draftsRoot: string, draftId: string): string {
+  return assertSafeResolvedPath(draftsRoot, assertValidDraftId(draftId));
 }
 
-function draftDir(rootDir: string, draftId: string): string {
-  return assertSafeResolvedPath(draftsRootDir(rootDir), assertValidDraftId(draftId));
+/** Absolute path to the drafts directory (not the recordings parent). */
+function resolveDraftsRoot(rootDirectory?: string): string {
+  if (rootDirectory) return path.resolve(rootDirectory, DRAFTS_DIR_NAME);
+  return getUserAudioDraftsDir();
 }
 
-function resolveRoot(rootDirectory?: string): string {
-  return rootDirectory ? path.resolve(rootDirectory) : getAudioRecordingsDir();
+/** Absolute path where finalized recordings are written. */
+function resolveRecordingsRoot(rootDirectory?: string): string {
+  if (rootDirectory) return path.resolve(rootDirectory);
+  return getUserAudioRecordingsWriteDir();
 }
 
 function toListItem(draft: AudioRecordingDraft): AudioDraftListItem {
@@ -244,7 +249,7 @@ export async function createAudioRecordingDraft(
     throw new AudioRecordingError("INVALID_DATE", "Recording date is invalid");
   }
   const repoGuid = input.repoGuid ?? getCurrentRepoGuid();
-  const rootDir = resolveRoot(input.rootDirectory);
+  const rootDir = resolveDraftsRoot(input.rootDirectory);
   const displayName = normalizeAudioRecordingDisplayName(input.displayName ?? "");
   if (displayName.length > 180) {
     throw new AudioRecordingError("INVALID_DISPLAY_NAME", "Recording name is too long");
@@ -275,7 +280,7 @@ export async function getAudioRecordingDraft(
   options?: { rootDirectory?: string; repoGuid?: string },
 ): Promise<AudioRecordingDraft | null> {
   const repoGuid = options?.repoGuid ?? getCurrentRepoGuid();
-  const rootDir = resolveRoot(options?.rootDirectory);
+  const rootDir = resolveDraftsRoot(options?.rootDirectory);
   return readDraft(rootDir, draftId, repoGuid);
 }
 
@@ -289,10 +294,10 @@ export async function listAudioRecordingDrafts(options?: {
   repoGuid?: string;
 }): Promise<AudioDraftListItem[]> {
   const repoGuid = options?.repoGuid ?? getCurrentRepoGuid();
-  const rootDir = resolveRoot(options?.rootDirectory);
+  const rootDir = resolveDraftsRoot(options?.rootDirectory);
   let entries;
   try {
-    entries = await readdir(draftsRootDir(rootDir), { withFileTypes: true });
+    entries = await readdir(rootDir, { withFileTypes: true });
   } catch (error) {
     if ((error as NodeJS.ErrnoException)?.code === "ENOENT") return [];
     throw new AudioRecordingError("WRITE_FAILED", "Could not list drafts");
@@ -332,7 +337,7 @@ export async function saveAudioRecordingDraftSegment(
   input: SaveDraftSegmentInput,
 ): Promise<AudioRecordingDraft> {
   const repoGuid = input.repoGuid ?? getCurrentRepoGuid();
-  const rootDir = resolveRoot(input.rootDirectory);
+  const rootDir = resolveDraftsRoot(input.rootDirectory);
   const sessionId = assertValidSessionId(input.sessionId);
   const ext = resolveAudioExtension(input.mimeType);
   if (!ext) {
@@ -418,7 +423,7 @@ export async function getAudioRecordingDraftSegmentReadInfo(
   options?: { rootDirectory?: string; repoGuid?: string },
 ): Promise<AudioDraftSegmentReadInfo | null> {
   const repoGuid = options?.repoGuid ?? getCurrentRepoGuid();
-  const rootDir = resolveRoot(options?.rootDirectory);
+  const rootDir = resolveDraftsRoot(options?.rootDirectory);
   const safeSessionId = assertValidSessionId(sessionId);
   const draft = await readDraft(rootDir, draftId, repoGuid);
   if (!draft) return null;
@@ -439,7 +444,7 @@ export async function discardAudioRecordingDraft(
   options?: { rootDirectory?: string; repoGuid?: string },
 ): Promise<boolean> {
   const repoGuid = options?.repoGuid ?? getCurrentRepoGuid();
-  const rootDir = resolveRoot(options?.rootDirectory);
+  const rootDir = resolveDraftsRoot(options?.rootDirectory);
   const draft = await readDraft(rootDir, draftId, repoGuid);
   if (!draft) return false;
   if (draft.status === "finalizing") {
@@ -537,16 +542,18 @@ async function finalizeDraftInner(
   input: FinalizeAudioDraftInput,
 ): Promise<SaveAudioRecordingResult> {
   const repoGuid = input.repoGuid ?? getCurrentRepoGuid();
-  const rootDir = resolveRoot(input.rootDirectory);
+  const rootDir = resolveDraftsRoot(input.rootDirectory);
   const draft = await readDraft(rootDir, input.draftId, repoGuid);
   if (!draft) {
     throw new AudioRecordingError("INVALID_ID", "Draft not found");
   }
 
+  const recordingsDir = resolveRecordingsRoot(input.rootDirectory);
+
   if (draft.finalizedRecordingId) {
     // Already finalized (e.g. retry after a lost response). Return the
     // existing recording instead of creating a duplicate.
-    const finalized = await buildResultForFinalized(draft, rootDir);
+    const finalized = await buildResultForFinalized(draft, recordingsDir);
     await rm(draftDir(rootDir, draft.id), { recursive: true, force: true }).catch(() => {});
     return finalized;
   }
@@ -618,7 +625,7 @@ async function finalizeDraftInner(
       displayName: displayNameInput,
       recordedDate: draft.recordedDate,
       durationMs: totalDurationMs > 0 ? totalDurationMs : undefined,
-      rootDirectory: rootDir,
+      rootDirectory: recordingsDir,
       repoGuid,
     });
 
