@@ -21,9 +21,13 @@ function isSafeHref(href: string): boolean {
   return SAFE_LINK_PROTOCOLS.some((prefix) => href.startsWith(prefix));
 }
 
-// Order matters: inline code first (so its contents are never re-scanned for
-// bold/italic/link markers), then links, then bold, then italic.
-const INLINE_TOKEN = /`([^`]+)`|\[([^\]\n]+)\]\(([^\s)]+)\)|\*\*([^*]+)\*\*|__([^_]+)__|\*([^*]+)\*|_([^_]+)_/g;
+// Order matters: inline code and autolinks first (protects their contents
+// from being re-scanned), then links, then bold+italic combined (***x***)
+// BEFORE plain bold/italic (**x**/*x*) — tried in that order so a triple
+// marker doesn't get parsed as bold with one leftover literal `*`/`_`),
+// then strikethrough, then bold, then italic.
+const INLINE_TOKEN =
+  /`([^`]+)`|<((?:https?:\/\/|mailto:)[^\s<>]+)>|\[([^\]\n]+)\]\(([^\s)]+)\)|\*\*\*([^*]+)\*\*\*|___([^_]+)___|\*\*([^*]+)\*\*|__([^_]+)__|~~([^~]+)~~|\*([^*]+)\*|_([^_]+)_/g;
 
 function parseInline(text: string): ReactNode[] {
   const nodes: ReactNode[] = [];
@@ -36,12 +40,37 @@ function parseInline(text: string): ReactNode[] {
     if (match.index > lastIndex) {
       nodes.push(text.slice(lastIndex, match.index));
     }
-    const [, code, linkText, linkHref, boldStar, boldUnder, italicStar, italicUnder] = match;
+    const [
+      ,
+      code,
+      autolink,
+      linkText,
+      linkHref,
+      boldItalicStar,
+      boldItalicUnder,
+      boldStar,
+      boldUnder,
+      strike,
+      italicStar,
+      italicUnder,
+    ] = match;
     if (code !== undefined) {
       nodes.push(
         <code key={key++} className="rounded bg-muted px-1 py-0.5 font-mono text-[11px]">
           {code}
         </code>,
+      );
+    } else if (autolink !== undefined) {
+      nodes.push(
+        <a
+          key={key++}
+          href={autolink}
+          target="_blank"
+          rel="noopener noreferrer nofollow"
+          className="text-primary underline underline-offset-2"
+        >
+          {autolink}
+        </a>,
       );
     } else if (linkText !== undefined) {
       if (isSafeHref(linkHref)) {
@@ -60,8 +89,16 @@ function parseInline(text: string): ReactNode[] {
         // Unsafe scheme (e.g. javascript:) — render as plain text, never as a clickable link.
         nodes.push(`${linkText} (${linkHref})`);
       }
+    } else if (boldItalicStar !== undefined || boldItalicUnder !== undefined) {
+      nodes.push(
+        <strong key={key++}>
+          <em>{boldItalicStar ?? boldItalicUnder}</em>
+        </strong>,
+      );
     } else if (boldStar !== undefined || boldUnder !== undefined) {
       nodes.push(<strong key={key++}>{boldStar ?? boldUnder}</strong>);
+    } else if (strike !== undefined) {
+      nodes.push(<del key={key++}>{strike}</del>);
     } else if (italicStar !== undefined || italicUnder !== undefined) {
       nodes.push(<em key={key++}>{italicStar ?? italicUnder}</em>);
     }
@@ -78,7 +115,12 @@ type Block =
   | { kind: "code"; lang: string; code: string }
   | { kind: "ul"; items: string[] }
   | { kind: "ol"; items: string[] }
+  | { kind: "blockquote"; lines: string[] }
+  | { kind: "hr" }
   | { kind: "p"; text: string };
+
+const HR_RE = /^ {0,3}(?:-{3,}|\*{3,}|_{3,})\s*$/;
+const BLOCKQUOTE_RE = /^ {0,3}>\s?(.*)$/;
 
 function parseBlocks(content: string): Block[] {
   const lines = content.split(/\r?\n/);
@@ -107,10 +149,30 @@ function parseBlocks(content: string): Block[] {
       continue;
     }
 
+    if (HR_RE.test(line)) {
+      blocks.push({ kind: "hr" });
+      i++;
+      continue;
+    }
+
     const heading = line.match(/^ {0,3}(#{1,6})\s+(.*)$/);
     if (heading) {
       blocks.push({ kind: "heading", level: heading[1].length, text: heading[2].trim() });
       i++;
+      continue;
+    }
+
+    const quote = line.match(BLOCKQUOTE_RE);
+    if (quote) {
+      const quoteLines: string[] = [quote[1]];
+      i++;
+      while (i < lines.length) {
+        const next = lines[i].match(BLOCKQUOTE_RE);
+        if (!next) break;
+        quoteLines.push(next[1]);
+        i++;
+      }
+      blocks.push({ kind: "blockquote", lines: quoteLines });
       continue;
     }
 
@@ -149,7 +211,9 @@ function parseBlocks(content: string): Block[] {
       i < lines.length &&
       lines[i].trim() !== "" &&
       !/^ {0,3}```/.test(lines[i]) &&
+      !HR_RE.test(lines[i]) &&
       !/^ {0,3}#{1,6}\s+/.test(lines[i]) &&
+      !BLOCKQUOTE_RE.test(lines[i]) &&
       !/^ {0,3}[-*+]\s+/.test(lines[i]) &&
       !/^ {0,3}\d+\.\s+/.test(lines[i])
     ) {
@@ -170,6 +234,25 @@ const HEADING_CLASS: Record<number, string> = {
   5: "text-xs font-semibold",
   6: "text-xs font-semibold",
 };
+
+/** GitHub-style task list item (`- [ ] foo` / `- [x] foo`) — renders a
+ * disabled checkbox instead of showing the literal brackets. Regular list
+ * items fall through unchanged. */
+function ListItemContent({ item }: { item: string }) {
+  const task = item.match(/^\[( |x|X)\]\s+(.*)$/);
+  if (!task) {
+    return <>{parseInline(item)}</>;
+  }
+  const checked = task[1].toLowerCase() === "x";
+  return (
+    <label className="inline-flex items-start gap-1.5">
+      <input type="checkbox" checked={checked} readOnly disabled className="mt-0.5" />
+      <span className={checked ? "text-muted-foreground line-through" : undefined}>
+        {parseInline(task[2])}
+      </span>
+    </label>
+  );
+}
 
 export function MarkdownPreview({ content }: { content: string }) {
   const blocks = useMemo(() => parseBlocks(content ?? ""), [content]);
@@ -201,11 +284,32 @@ export function MarkdownPreview({ content }: { content: string }) {
                 <code>{block.code}</code>
               </pre>
             );
+          case "hr":
+            return <hr key={i} className="border-border" />;
+          case "blockquote":
+            return (
+              <blockquote
+                key={i}
+                className="space-y-1 border-l-2 border-muted-foreground/40 pl-3 text-muted-foreground italic"
+              >
+                {block.lines.map((line, j) =>
+                  line.trim() === "" ? (
+                    <div key={j} className="h-1" />
+                  ) : (
+                    <p key={j} className="whitespace-pre-wrap break-words">
+                      {parseInline(line)}
+                    </p>
+                  ),
+                )}
+              </blockquote>
+            );
           case "ul":
             return (
-              <ul key={i} className="list-disc space-y-0.5 pl-5">
+              <ul key={i} className="list-disc space-y-0.5 pl-5 marker:text-muted-foreground">
                 {block.items.map((item, j) => (
-                  <li key={j}>{parseInline(item)}</li>
+                  <li key={j} className={/^\[( |x|X)\]\s+/.test(item) ? "list-none -ml-5" : undefined}>
+                    <ListItemContent item={item} />
+                  </li>
                 ))}
               </ul>
             );

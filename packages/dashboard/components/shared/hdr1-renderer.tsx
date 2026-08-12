@@ -59,16 +59,12 @@ function Subsection({
   section,
   index,
   color,
-  isFirst,
-  isLast,
   collapsed,
   onToggle,
 }: {
   section: LineGroup;
   index: number;
   color: string;
-  isFirst: boolean;
-  isLast: boolean;
   collapsed: boolean;
   onToggle: () => void;
 }) {
@@ -78,14 +74,11 @@ function Subsection({
   const bodyBg = hexToRgba(color, 0.08);
 
   return (
-    <div className="ml-[28px] grid w-max max-w-[calc(100%-28px)] grid-cols-[max-content] max-[700px]:ml-4 max-[700px]:w-[calc(100%-16px)] max-[700px]:max-w-[calc(100%-16px)]">
+    <div className="ml-[21px] grid w-max max-w-[calc(100%-21px)] grid-cols-[max-content] max-[700px]:ml-3 max-[700px]:w-[calc(100%-12px)] max-[700px]:max-w-[calc(100%-12px)]">
       <button
         type="button"
         onClick={onToggle}
-        className={cn(
-          "flex h-7 w-auto min-w-full max-w-full items-center gap-2 border px-2 text-left text-xs font-semibold text-foreground",
-          isFirst && "rounded-t-md",
-        )}
+        className="flex h-7 w-auto min-w-full max-w-full items-center gap-2 rounded-t-md border px-2 text-left text-xs font-semibold text-foreground"
         style={{ borderColor, backgroundColor: headBg }}
       >
         <Chevron collapsed={collapsed} color={color} />
@@ -94,7 +87,7 @@ function Subsection({
       </button>
       {!collapsed && (
         <div
-          className={cn("w-auto min-w-full max-w-full border border-t-0 px-3 py-1.5", isLast && "rounded-b-md")}
+          className="w-auto min-w-full max-w-full rounded-b-md border border-t-0 px-3 py-1.5"
           style={{ borderColor, backgroundColor: bodyBg }}
         >
           <ChildLines lines={section.lines} />
@@ -121,6 +114,7 @@ function TopSection({
 }) {
   const key = `g${index}`;
   const collapsed = collapsedKeys.has(key);
+  const hasSubsections = group.children.length > 0;
   const borderColor = hexToRgba(color, 0.6);
   const headBg = hexToRgba(color, 0.2);
   const bodyBg = hexToRgba(color, 0.1);
@@ -143,18 +137,29 @@ function TopSection({
       </button>
       {!collapsed && (
         <div
-          className="w-auto min-w-full max-w-full space-y-0 rounded-b-lg border border-t-0 px-3 py-2 max-[700px]:w-full"
+          className={cn(
+            "w-auto min-w-full max-w-full space-y-0 rounded-b-lg border border-t-0 max-[700px]:w-full",
+            // No padding when the body is just a stack of child sections
+            // (e.g. "details") — they should touch the parent header
+            // directly, not float below a padding gap. Direct content
+            // lines (e.g. "short") keep the padding, applied to their own
+            // wrapper below so a group that happens to have BOTH still
+            // looks right.
+            hasSubsections ? "p-0" : "px-3 py-2",
+          )}
           style={{ borderColor, backgroundColor: bodyBg }}
         >
-          <ChildLines lines={group.lines} />
+          {group.lines.length > 0 && (
+            <div className={hasSubsections ? "px-3 py-2" : undefined}>
+              <ChildLines lines={group.lines} />
+            </div>
+          )}
           {group.children.map((section, si) => (
             <Subsection
               key={si}
               section={section}
               index={si}
               color={color}
-              isFirst={si === 0}
-              isLast={si === group.children.length - 1}
               collapsed={collapsedKeys.has(`${key}-s${si}`)}
               onToggle={() => onToggle(`${key}-s${si}`)}
             />

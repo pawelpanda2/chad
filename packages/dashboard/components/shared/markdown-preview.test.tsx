@@ -64,4 +64,50 @@ describe("MarkdownPreview", () => {
     expect(screen.getByText("Empty content")).not.toBeNull();
     cleanup();
   });
+
+  it("renders combined bold+italic (***text***) as one nested strong>em, no leftover marker", () => {
+    const { container } = render(<MarkdownPreview content="This is ***very*** important." />);
+    const strong = container.querySelector("strong");
+    expect(strong?.querySelector("em")?.textContent).toBe("very");
+    // No stray literal "*" left over from a partially-matched triple marker.
+    expect(container.textContent).not.toContain("*");
+  });
+
+  it("renders strikethrough", () => {
+    const { container } = render(<MarkdownPreview content="~~gone~~" />);
+    expect(container.querySelector("del")?.textContent).toBe("gone");
+  });
+
+  it("renders an autolink (<https://...>) as a clickable link", () => {
+    render(<MarkdownPreview content="See <https://example.com> for details." />);
+    const link = screen.getByText("https://example.com").closest("a");
+    expect(link?.getAttribute("href")).toBe("https://example.com");
+  });
+
+  it("renders a horizontal rule as <hr>, not literal dashes", () => {
+    const { container } = render(<MarkdownPreview content={"above\n\n---\n\nbelow"} />);
+    expect(container.querySelector("hr")).not.toBeNull();
+    expect(screen.queryByText("---")).toBeNull();
+  });
+
+  it("renders a blockquote as <blockquote>, not a squashed paragraph", () => {
+    const { container } = render(
+      <MarkdownPreview content={"> first line\n>\n> second line with **bold**"} />,
+    );
+    const quote = container.querySelector("blockquote");
+    expect(quote).not.toBeNull();
+    expect(quote?.textContent).toContain("first line");
+    expect(quote?.textContent).toContain("second line with");
+    expect(quote?.querySelector("strong")?.textContent).toBe("bold");
+  });
+
+  it("renders a GitHub-style task list with checked/unchecked checkboxes", () => {
+    const { container } = render(<MarkdownPreview content={"- [x] done\n- [ ] not done"} />);
+    const boxes = container.querySelectorAll('input[type="checkbox"]');
+    expect(boxes).toHaveLength(2);
+    expect((boxes[0] as HTMLInputElement).checked).toBe(true);
+    expect((boxes[1] as HTMLInputElement).checked).toBe(false);
+    expect(screen.getByText("done")).not.toBeNull();
+    expect(screen.getByText("not done")).not.toBeNull();
+  });
 });

@@ -176,8 +176,10 @@ export function TextEditorWithToolbar({
 
   // Format combobox + hdr1 color picker — same row as Preview|Editor,
   // directly next to it (left-aligned, not pushed to the right with
-  // toolbarExtra). Only meaningful when Preview exists at all (1.2, 1.5).
-  const formatControls = showPreview ? (
+  // toolbarExtra). Preview-only: these are meaningless while typing raw
+  // text in Editor mode, so they're hidden there instead of cluttering the
+  // row next to Save/More.
+  const formatControls = showPreview && !isEditorMode ? (
     <div className="flex shrink-0 items-center gap-1">
       <Select
         value={previewFormat}
@@ -238,7 +240,7 @@ export function TextEditorWithToolbar({
       </span>
     ) : null;
 
-  const moreButton = collapseEditorHelpers ? (
+  const moreButton = collapseEditorHelpers && isEditorMode ? (
     <Button
       type="button"
       onClick={() => setMoreOpen((open) => !open)}
@@ -331,26 +333,23 @@ export function TextEditorWithToolbar({
           "h-auto min-h-0 flex-none rounded-none border-0 bg-transparent shadow-none",
       )}
     >
-      {/* Row 1 — primary actions, ABOVE the frame */}
+      {/* Row 1 — primary actions, ABOVE the frame. Preview|Editor always
+          leads; what follows depends only on which tab is active —
+          Save/More in Editor mode, the format combobox + color picker in
+          Preview mode — never both at once, same order in every caller
+          (collapseEditorHelpers no longer reorders this). */}
       <div className="flex shrink-0 flex-wrap items-center gap-1 pb-1">
-        {collapseEditorHelpers ? (
+        {previewEditorTabs}
+        {isEditorMode ? (
           <>
             {saveButton}
             {moreButton}
-            {previewEditorTabs}
-            {formatControls}
-            {savedIndicator}
-            {toolbarExtra}
           </>
         ) : (
-          <>
-            {previewEditorTabs}
-            {formatControls}
-            {saveButton}
-            {savedIndicator}
-            {toolbarExtra}
-          </>
+          formatControls
         )}
+        {savedIndicator}
+        {toolbarExtra}
       </div>
 
       {/* Collapsible helpers — between primary toolbar and content frame */}
