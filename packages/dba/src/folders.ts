@@ -557,34 +557,35 @@ export async function updateFolderItemConfigAllowingSystemFolderWrite(
   });
 }
 
+interface FolderDeleteOptions extends FolderWriteOptions {
+  /**
+   * When true, a non-empty Folder is deleted deepest-first (every descendant,
+   * then the folder itself). Default false keeps the historical guard that
+   * refuses non-empty folders with FOLDER_NOT_EMPTY.
+   */
+  recursive?: boolean;
+}
+
 /**
- * Permanently deletes a Text or Folder item. A Folder can only be deleted
- * while empty — this never cascades to children, so nothing is silently
- * removed alongside what the user actually selected; delete the children
- * first.
+ * Permanently deletes a Text or Folder item. By default a Folder can only
+ * be deleted while empty (FOLDER_NOT_EMPTY) so nothing is silently removed
+ * alongside what the user selected. Pass `recursive: true` (after an
+ * explicit UI confirmation) to cascade deepest-first through the subtree.
  *
  * @throws FoldersOperationError ITEM_NOT_FOUND / FOLDER_NOT_EMPTY / SYSTEM_FOLDER_READ_ONLY
  */
 async function deleteFolderItemInternal(
   address: string,
   ops: FolderChildOps = defaultOps,
-  options: FolderWriteOptions = {}
+  options: FolderDeleteOptions = {}
 ): Promise<void> {
   const existing = await ops.getItemByAddress(address);
   if (!existing) {
     throw new FoldersOperationError("ITEM_NOT_FOUND", `Item not found at address "${address}"`);
   }
 
-  if (existing.config.type === "Folder") {
-    const children = await ops.getChildrenOf(address);
-    if (children.length > 0) {
-      throw new FoldersOperationError(
-        "FOLDER_NOT_EMPTY",
-        `Folder at "${address}" still has ${children.length} child item(s) — delete those first`
-      );
-    }
-  }
-
+  // Refuse protected system folders before any child deletion starts, so a
+  // recursive call never leaves a half-deleted tree under a blocked root.
   if (!options.allowSystemFolderWrite) {
     try {
       const names = await resolveLogicalNamePath(address, ops);
@@ -594,15 +595,43 @@ async function deleteFolderItemInternal(
     }
   }
 
+  if (existing.config.type === "Folder") {
+    const children = await ops.getChildrenOf(address);
+    if (children.length > 0) {
+      if (!options.recursive) {
+        throw new FoldersOperationError(
+          "FOLDER_NOT_EMPTY",
+          `Folder at "${address}" still has ${children.length} child item(s) — delete those first`
+        );
+      }
+      for (const child of children) {
+        await deleteFolderItemInternal(child.config.address, ops, {
+          ...options,
+          recursive: true,
+        });
+      }
+    }
+  }
+
   await ops.deleteItemByAddress(address);
 }
 
-export async function deleteFolderItem(address: string, ops: FolderChildOps = defaultOps): Promise<void> {
-  return deleteFolderItemInternal(address, ops);
+export async function deleteFolderItem(
+  address: string,
+  ops: FolderChildOps = defaultOps,
+  options: { recursive?: boolean } = {}
+): Promise<void> {
+  return deleteFolderItemInternal(address, ops, options);
 }
 
-export async function deleteFolderItemAllowingSystemFolderWrite(address: string): Promise<void> {
-  return deleteFolderItemInternal(address, defaultOps, { allowSystemFolderWrite: true });
+export async function deleteFolderItemAllowingSystemFolderWrite(
+  address: string,
+  options: { recursive?: boolean } = {}
+): Promise<void> {
+  return deleteFolderItemInternal(address, defaultOps, {
+    allowSystemFolderWrite: true,
+    recursive: options.recursive,
+  });
 }
 
 export interface MoveFolderItemResult {

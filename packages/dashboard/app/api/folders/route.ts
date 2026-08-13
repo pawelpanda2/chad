@@ -218,11 +218,11 @@ export async function PUT(request: Request) {
 }
 
 /**
- * DELETE /api/folders?loca=<slash-joined loca>&allowSystemFolderWrite=true
+ * DELETE /api/folders?loca=<slash-joined loca>&allowSystemFolderWrite=true&recursive=true
  *
- * Permanently removes a Text or Folder item. A Folder can only be deleted
- * while empty (409 FOLDER_NOT_EMPTY otherwise) — this never cascades, so a
- * single click can never remove more than the one item the user selected.
+ * Permanently removes a Text or Folder item. By default a Folder can only
+ * be deleted while empty (409 FOLDER_NOT_EMPTY). Pass `recursive=true` after
+ * an explicit UI confirmation to cascade deepest-first through the subtree.
  *
  * SECURITY: same repo-isolation rule as GET/POST/PUT — `loca` is only ever
  * resolved relative to `user.repoGuid`. `allowSystemFolderWrite` is only
@@ -238,6 +238,7 @@ export async function DELETE(request: Request) {
   const { searchParams } = new URL(request.url);
   const loca = searchParams.get('loca') ?? '';
   const allowSystemFolderWrite = searchParams.get('allowSystemFolderWrite') === 'true';
+  const recursive = searchParams.get('recursive') === 'true';
 
   if (!loca) {
     return NextResponse.json({ error: 'Missing "loca" — refusing to delete the repo root' }, { status: 400 });
@@ -255,8 +256,8 @@ export async function DELETE(request: Request) {
   try {
     await runWithRepoContext(user, () =>
       user.isAdmin && allowSystemFolderWrite
-        ? deleteFolderItemAllowingSystemFolderWrite(address)
-        : deleteFolderItem(address)
+        ? deleteFolderItemAllowingSystemFolderWrite(address, { recursive })
+        : deleteFolderItem(address, undefined, { recursive })
     );
 
     const parent = await getItemByAddress(parentAddress);
