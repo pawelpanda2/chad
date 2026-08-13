@@ -2,6 +2,7 @@
 
 import { use, useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { RefreshCw } from "lucide-react";
 import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
 import { ErrorBox } from "@/components/shared/error-box";
@@ -9,10 +10,16 @@ import { TextEditorWithToolbar } from "@/components/shared/text-editor-with-tool
 import { FRAME_SECTION_GAP_CLASS, LIST_ROW_CLASS, LIST_ROW_WRAPPER_CLASS } from "@/components/shared/layout-tokens";
 import { KnowledgeGridRow } from "@/components/shared/knowledge-grid-row";
 import { useKnowledgeGridLayout } from "@/components/shared/use-knowledge-grid-layout";
+import {
+  cpAddressToItemViewHref,
+  cpAddressToKnowledgeHref,
+  cpRouteSlugToParts,
+  type CpAddressParts,
+} from "@/lib/cp-address/route-codec";
 
 /**
  * Knowledge folder/document browser (Story 96, Story 109 follow-up, Story
- * 114 intelligent grid).
+ * 114 intelligent grid, Story 120 follow-up address mode).
  *
  * Real knowledge trees are not a fixed category → section → document
  * (2-level) shape — some go 5+ levels deep — so this single catch-all page
@@ -20,6 +27,34 @@ import { useKnowledgeGridLayout } from "@/components/shared/use-knowledge-grid-l
  * `[category]/[document]` pair: `path` is an arbitrary-depth chain of
  * slugs, and `/api/knowledge/[category]/[[...path]]` resolves it to
  * whichever kind of node is actually there.
+ *
+ * Story 120 follow-up ("address mode"): the shared Preview's CP-link needs
+ * to open a Folder item's card-grid view for ANY CP address, not just ones
+ * organized under the Knowledge menu tree — and per a live clarification, a
+ * Folder CP-link should land HERE, not on Item View. Rather than a second,
+ * parallel route (which `[[...path]]`'s catch-all would collide with
+ * anyway — `/dashboard/knowledge/<anything>` already matches `category`
+ * alone), this SAME page detects whether `category` (with no further
+ * `path`) parses as a canonical CP address slug (`cpRouteSlugToParts` —
+ * a Knowledge category's own name-slug is short and human-readable, so it
+ * can never accidentally match the strict 36-char-UUID-prefixed format).
+ * When it does, data comes from `/api/folders` (repoGuid+loca) instead of
+ * `/api/knowledge/[category]/[[...path]]`, and every link this page
+ * generates targets `/dashboard/knowledge/<childAddressSlug>` (Folder
+ * children) or `/dashboard/item-view/<childAddressSlug>` (Text children)
+ * instead of the name-based `knowledgePageHref`.
+ *
+ * Story 120 follow-up ("address mode" made canonical, per live feedback):
+ * name mode is no longer a real parallel browsing UI — it still resolves a
+ * name-slug URL server-side (so an old bookmark/link doesn't dead-end), but
+ * the moment a node is resolved, this page immediately `router.replace`s to
+ * that node's own address-based URL (`cpAddressToKnowledgeHref`/
+ * `cpAddressToItemViewHref`, by `kind`) instead of rendering name-mode
+ * cards/rows. A name-slug URL is therefore always a transient hop, never a
+ * page the user actually looks at or clicks further from — the old
+ * `knowledgePageHref`-based rendering below only remains as a defensive
+ * fallback for the (should-not-happen) case where a resolved node somehow
+ * has no address.
  *
  * - `kind: "folder"` (the category itself when `path` is empty, or any
  *   Folder nested under it): a card per direct Folder child (fetched in
@@ -39,10 +74,11 @@ import { useKnowledgeGridLayout } from "@/components/shared/use-knowledge-grid-l
  *   `/dashboard/examples/knowledge-v1`); card visuals themselves
  *   (`LIST_ROW_WRAPPER_CLASS`/`LIST_ROW_CLASS`, icons, typography) are
  *   unchanged.
- * - `kind: "document"`: the same editable Preview/Editor toolbar every
- *   other single-document page in the app uses, inside `DashboardPageShell`
- *   (the standard main frame — title/back button above it, everything else,
- *   including the toolbar, inside it), wired to `PUT` the same endpoint. A
+ * - `kind: "document"` (fallback rendering only — both modes now redirect a
+ *   Text node straight to Item View instead of reaching this branch, see
+ *   above): the same editable
+ *   Preview/Editor toolbar every other single-document page in the app
+ *   uses, inside `DashboardPageShell`, wired to `PUT` the same endpoint. A
  *   "shared" (chad_shared) document is only actually saveable by an admin
  *   session — a non-admin still sees the editor, but a save attempt
  *   surfaces the server's 403 via the error box.
@@ -66,6 +102,7 @@ interface KnowledgeFolderView {
   source: "shared" | "personal";
   breadcrumb: KnowledgeBreadcrumbSegment[];
   children: KnowledgeChildSummary[];
+  address: string;
 }
 
 interface KnowledgeDocumentView {
@@ -75,6 +112,7 @@ interface KnowledgeDocumentView {
   body: string;
   source: "shared" | "personal";
   breadcrumb: KnowledgeBreadcrumbSegment[];
+  address: string;
 }
 
 type KnowledgeNodeView = KnowledgeFolderView | KnowledgeDocumentView;
@@ -92,10 +130,34 @@ interface KnowledgeCard {
   children: KnowledgeChildSummary[];
 }
 
-/** Builds `/dashboard/knowledge/[category]/[...path]`, `path` may be empty (category root). */
+/** Builds `/dashboard/knowledge/[category]/[...path]`, `path` may be empty (category root). Name mode only. */
 function knowledgePageHref(categorySlug: string, pathSlugs: string[]): string {
   const encoded = pathSlugs.map(encodeURIComponent).join("/");
   return encoded ? `/dashboard/knowledge/${encodeURIComponent(categorySlug)}/${encoded}` : `/dashboard/knowledge/${encodeURIComponent(categorySlug)}`;
+}
+
+interface CpConfigLike {
+  id: string;
+  type: string;
+  name: string;
+  address: string;
+  [key: string]: unknown;
+}
+
+interface CpItemLike {
+  Body: string;
+  Config: CpConfigLike;
+  Address: string;
+  ChildrenDetailed?: { index: string; name: string; type: string }[];
+}
+
+interface FolderApiResponseLike {
+  item?: CpItemLike;
+  error?: string;
+}
+
+function joinAddress(repoGuid: string, loca: string): string {
+  return loca ? `${repoGuid}/${loca}` : repoGuid;
 }
 
 export default function KnowledgeNodePage({
@@ -104,7 +166,9 @@ export default function KnowledgeNodePage({
   params: Promise<{ category: string; path?: string[] }>;
 }) {
   const { category: categorySlug, path: pathSlugs = [] } = use(params);
+  const router = useRouter();
   const [node, setNode] = useState<KnowledgeNodeView | null>(null);
+  const [nodeAddress, setNodeAddress] = useState<string | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -115,6 +179,7 @@ export default function KnowledgeNodePage({
   const [cards, setCards] = useState<KnowledgeCard[] | null>(null);
 
   const pathKey = pathSlugs.join("/");
+  const addressParts: CpAddressParts | null = pathSlugs.length === 0 ? cpRouteSlugToParts(categorySlug) : null;
 
   useEffect(() => {
     let cancelled = false;
@@ -124,6 +189,72 @@ export default function KnowledgeNodePage({
       setError(null);
       setCards(null);
       try {
+        if (addressParts) {
+          const query = new URLSearchParams({ loca: addressParts.loca, repoGuid: addressParts.repoGuid });
+          const res = await fetch(`/api/folders?${query}`, { cache: "no-store" });
+          const data: FolderApiResponseLike = await res.json();
+          if (cancelled) return;
+          if (!res.ok || !data.item) {
+            setNotFound(true);
+            return;
+          }
+          if (data.item.Config.type !== "Folder") {
+            // A Text address landed here (deep link, stale bookmark) —
+            // Item View is the canonical place for it, symmetric with Item
+            // View redirecting a Folder address back to Knowledge.
+            const href = cpAddressToItemViewHref(data.item.Address);
+            if (href) router.replace(href);
+            return;
+          }
+
+          setNodeAddress(data.item.Address);
+          const directChildren: KnowledgeChildSummary[] = (data.item.ChildrenDetailed ?? []).map((c) => ({
+            slug: c.index,
+            name: c.name,
+            type: c.type === "Folder" ? "Folder" : "Text",
+          }));
+          setNode({
+            kind: "folder",
+            slug: categorySlug,
+            name: data.item.Config.name,
+            source: "shared",
+            breadcrumb: [],
+            children: directChildren,
+            address: data.item.Address,
+          });
+
+          const folderChildren = directChildren.filter((c) => c.type === "Folder");
+          const cardResults = await Promise.all(
+            folderChildren.map(async (child) => {
+              const childLoca = addressParts.loca ? `${addressParts.loca}/${child.slug}` : child.slug;
+              const childRes = await fetch(
+                `/api/folders?${new URLSearchParams({ loca: childLoca, repoGuid: addressParts.repoGuid })}`,
+                { cache: "no-store" },
+              );
+              const childData: FolderApiResponseLike = await childRes.json();
+              const grandchildren: KnowledgeChildSummary[] = (childData.item?.ChildrenDetailed ?? []).map((g) => ({
+                slug: g.index,
+                name: g.name,
+                type: g.type === "Folder" ? "Folder" : "Text",
+              }));
+              return { slug: child.slug, name: child.name, children: grandchildren };
+            }),
+          );
+          if (!cancelled) setCards(cardResults);
+          return;
+        }
+
+        // Name mode: resolve by name, then redirect straight to the
+        // canonical address-based URL (Knowledge for a Folder, Item View
+        // for a Text item) instead of rendering here — per live feedback, a
+        // name-slug URL (e.g. /dashboard/knowledge/tematy-przed-lustrem/...)
+        // should never be the one the user ends up looking at or clicking
+        // deeper from, only ever a transient hop that immediately
+        // canonicalizes. An old bookmark/link still resolves (no 404), it
+        // just bounces to the address equivalent instead of rendering its
+        // own parallel name-mode UI (which used to keep compounding
+        // further name-slug segments on every click, including for Text
+        // items that should have gone straight to Item View).
         const res = await fetch(
           `/api/knowledge/${encodeURIComponent(categorySlug)}${pathKey ? `/${pathKey}` : ""}`,
           { cache: "no-store" }
@@ -138,7 +269,19 @@ export default function KnowledgeNodePage({
           setError(data.error ?? `Request failed (${res.status})`);
           return;
         }
+        const redirectHref =
+          data.node.kind === "folder"
+            ? cpAddressToKnowledgeHref(data.node.address)
+            : cpAddressToItemViewHref(data.node.address);
+        if (redirectHref) {
+          router.replace(redirectHref);
+          return;
+        }
+
+        // Fallback (should not happen — every CP item has an address):
+        // render the old name-mode UI rather than dead-ending on nothing.
         setNode(data.node);
+        setNodeAddress(null);
         if (data.node.kind === "document") {
           setEditorBody(data.node.body);
           return;
@@ -171,7 +314,8 @@ export default function KnowledgeNodePage({
     return () => {
       cancelled = true;
     };
-  }, [categorySlug, pathKey]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [categorySlug, pathKey, addressParts?.repoGuid, addressParts?.loca, router]);
 
   function handleEditorBodyChange(value: string) {
     setEditorBody(value);
@@ -210,14 +354,24 @@ export default function KnowledgeNodePage({
   // "Up one level": category root -> the Knowledge index; anywhere deeper ->
   // one path segment shallower (using the resolved breadcrumb's parent name
   // once loaded, falling back to the category slug before that arrives).
-  const upHref =
-    pathSlugs.length === 0
+  // Address mode: strips the last loca segment (same structural rule as
+  // Folders'/Item View's own "up"), landing on the Knowledge index at the
+  // repo root since there's no bare-repoGuid Knowledge tile to return to.
+  const upHref = addressParts
+    ? (() => {
+        const segments = addressParts.loca.split("/").filter(Boolean);
+        if (segments.length === 0) return "/dashboard/knowledge";
+        const parentLoca = segments.slice(0, -1).join("/");
+        return cpAddressToKnowledgeHref(joinAddress(addressParts.repoGuid, parentLoca)) ?? "/dashboard/knowledge";
+      })()
+    : pathSlugs.length === 0
       ? "/dashboard/knowledge"
       : knowledgePageHref(categorySlug, pathSlugs.slice(0, -1));
-  const upLabel =
-    pathSlugs.length === 0
+  const upLabel = addressParts
+    ? "Up one level"
+    : pathSlugs.length === 0
       ? "Knowledge"
-      : (node?.breadcrumb[node.breadcrumb.length - (node.kind === "folder" ? 2 : 1)]?.name ?? categorySlug);
+      : (node?.breadcrumb[node.breadcrumb.length - (node?.kind === "folder" ? 2 : 1)]?.name ?? categorySlug);
 
   if (node?.kind === "document") {
     return (
@@ -285,6 +439,8 @@ export default function KnowledgeNodePage({
             pathSlugs={pathSlugs}
             looseDocuments={looseDocuments}
             cards={cards}
+            addressMode={addressParts !== null}
+            nodeAddress={nodeAddress}
           />
         );
       })() : null}
@@ -314,17 +470,30 @@ type GridCardEntry =
  * Every title/row is a real `<Link>` (via `KnowledgeGridRow`/the title link
  * below), so ctrl/cmd-click, middle-click, and "open in new tab" work for
  * both Folder and Text entries, same as any other link in the app.
+ *
+ * Story 120 follow-up: `addressMode`/`nodeAddress` switch every href this
+ * component builds from the name-based `knowledgePageHref` to
+ * `cpAddressToKnowledgeHref`/`cpAddressToItemViewHref` (Folder vs Text) —
+ * `addressMode: false` (`knowledgePageHref`) is now reachable only via the
+ * parent page's defensive fallback (a resolved node with no address, which
+ * should not happen in practice — see the parent's own doc comment), since
+ * name mode redirects away before this component ever renders for a normal
+ * name-slug URL.
  */
 function KnowledgeFolderGrid({
   categorySlug,
   pathSlugs,
   looseDocuments,
   cards,
+  addressMode,
+  nodeAddress,
 }: {
   categorySlug: string;
   pathSlugs: string[];
   looseDocuments: KnowledgeChildSummary[];
   cards: KnowledgeCard[];
+  addressMode: boolean;
+  nodeAddress: string | null;
 }) {
   const gridCards: GridCardEntry[] = [
     ...(looseDocuments.length > 0
@@ -341,6 +510,15 @@ function KnowledgeFolderGrid({
     })
   );
 
+  function hrefFor(type: "Folder" | "Text", childSlug: string, baseAddress: string | null): string {
+    if (addressMode && baseAddress) {
+      const childAddress = `${baseAddress}/${childSlug}`;
+      const href = type === "Folder" ? cpAddressToKnowledgeHref(childAddress) : cpAddressToItemViewHref(childAddress);
+      return href ?? "#";
+    }
+    return "#";
+  }
+
   return (
     <div
       ref={containerRef}
@@ -351,11 +529,17 @@ function KnowledgeFolderGrid({
         const rows = entry.kind === "loose" ? entry.rows : entry.card.children;
         const cap = rowCaps[index];
         const basePathSlugs = entry.kind === "loose" ? pathSlugs : [...pathSlugs, entry.card.slug];
+        const baseAddress =
+          entry.kind === "loose" ? nodeAddress : nodeAddress ? `${nodeAddress}/${entry.card.slug}` : null;
         return (
           <div key={entry.key} className={`${LIST_ROW_WRAPPER_CLASS} min-w-0`}>
             {entry.kind === "folder" && (
               <Link
-                href={knowledgePageHref(categorySlug, [...pathSlugs, entry.card.slug])}
+                href={
+                  addressMode
+                    ? (nodeAddress ? cpAddressToKnowledgeHref(`${nodeAddress}/${entry.card.slug}`) ?? "#" : "#")
+                    : knowledgePageHref(categorySlug, [...pathSlugs, entry.card.slug])
+                }
                 className="block w-full break-words px-[10px] pt-1 pb-2 text-left text-sm font-bold hover:underline"
               >
                 {entry.card.name}
@@ -370,7 +554,11 @@ function KnowledgeFolderGrid({
                   key={row.slug}
                   type={row.type}
                   name={row.name}
-                  href={knowledgePageHref(categorySlug, [...basePathSlugs, row.slug])}
+                  href={
+                    addressMode
+                      ? hrefFor(row.type, row.slug, baseAddress)
+                      : knowledgePageHref(categorySlug, [...basePathSlugs, row.slug])
+                  }
                 />
               ))}
               {rows.length === 0 && (

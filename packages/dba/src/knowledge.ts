@@ -71,6 +71,16 @@ export interface KnowledgeCategorySummary {
   slug: string;
   name: string;
   source: KnowledgeSource;
+  /**
+   * The category's own CP address (Story 120 follow-up) — lets the
+   * Knowledge menu link straight to the address-based
+   * `/dashboard/knowledge/<address-slug>` view instead of the name-slug
+   * route. Additive: existing `{slug, name, source}` consumers are
+   * unaffected. (Story 96's original design deliberately never sent a CP
+   * address to the client — no longer load-bearing now that Folders/Item
+   * View/CP-links already put addresses in URLs throughout the dashboard.)
+   */
+  address: string;
 }
 
 /** One breadcrumb step from the category down to (and including, for a folder view) the current node. */
@@ -100,6 +110,8 @@ export interface KnowledgeFolderView {
   source: KnowledgeSource;
   breadcrumb: KnowledgeBreadcrumbSegment[];
   children: KnowledgeChildSummary[];
+  /** This node's own CP address — lets a name-slug resolution redirect straight to the address-based view (see `KnowledgeCategorySummary.address`). */
+  address: string;
 }
 
 /** A document (Text item) node at any depth under a category. */
@@ -111,6 +123,8 @@ export interface KnowledgeDocumentView {
   source: KnowledgeSource;
   /** Category down to (NOT including) this document's own name. */
   breadcrumb: KnowledgeBreadcrumbSegment[];
+  /** This node's own CP address — lets a name-slug resolution redirect straight to Item View (see `KnowledgeCategorySummary.address`). */
+  address: string;
 }
 
 export type KnowledgeNodeView = KnowledgeFolderView | KnowledgeDocumentView;
@@ -273,7 +287,12 @@ export async function listKnowledgeCategories(
   ops: KnowledgeOps = defaultOps
 ): Promise<KnowledgeCategorySummary[]> {
   const categories = await listMergedCategoryItems(ops);
-  return categories.map(({ slug, item, source }) => ({ slug, name: item.config.name, source }));
+  return categories.map(({ slug, item, source }) => ({
+    slug,
+    name: item.config.name,
+    source,
+    address: item.config.address,
+  }));
 }
 
 interface ResolvedKnowledgeNode {
@@ -354,6 +373,7 @@ async function buildFolderView(resolved: ResolvedKnowledgeNode, ops: KnowledgeOp
       name: item.config.name,
       type: item.config.type === "Folder" ? "Folder" : "Text",
     })),
+    address: resolved.item.config.address,
   };
 }
 
@@ -365,6 +385,7 @@ function buildDocumentView(resolved: ResolvedKnowledgeNode): KnowledgeDocumentVi
     body: resolved.item.body,
     source: resolved.source,
     breadcrumb: resolved.breadcrumb,
+    address: resolved.item.config.address,
   };
 }
 
@@ -488,6 +509,7 @@ export async function updateKnowledgeDocumentBody(
     body: updated.body,
     source: resolved.source,
     breadcrumb: resolved.breadcrumb,
+    address: updated.config.address,
   };
 }
 

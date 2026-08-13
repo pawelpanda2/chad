@@ -2,32 +2,59 @@
 
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-
-const MAX_BACK = 5;
+import {
+  applyHistoryUrlChange,
+  initialHistoryStackState,
+  type HistoryStackState,
+} from "@/lib/dashboard-history-reducer";
 
 interface DashboardHistoryValue {
   canGoBack: boolean;
   canGoForward: boolean;
   goBack: () => void;
   goForward: () => void;
+  /**
+   * Call synchronously, immediately before a `router.replace(...)` that
+   * canonicalizes the CURRENT history entry to a different URL for the
+   * SAME conceptual identity (e.g. Folders' bare `/dashboard/folders`
+   * resolving to `/dashboard/folders/<slug>` on load) — never for a
+   * genuinely new navigation to a different item. Marks the next observed
+   * URL change as replacing the current stack entry instead of pushing a
+   * new one, so a plain visit to a base route never leaves a dead,
+   * un-Back-able step in the shared history. See
+   * `dashboard-history-reducer.ts`'s own doc comment for why this is an
+   * explicit opt-in (Next gives no way to distinguish push from replace
+   * just by observing the resulting URL) — deliberately narrow: only this
+   * Story's Folders base-route canonicalization uses it, so every
+   * pre-existing `router.replace` call site elsewhere in the dashboard
+   * (Beeper/multiview/msg-workout/ai-prompts pages) keeps behaving exactly
+   * as it did before, unaffected.
+   */
+  notifyReplace: () => void;
 }
 
 const DashboardHistoryContext = createContext<DashboardHistoryValue | null>(null);
 
 /**
- * Tracks the dashboard's own visited-URL stack (`pathname` + `?form=`/`?view=`
- * search params — the existing source of truth for in-page navigation), so
- * `Back`/`Next` (see `nav-group.tsx`) can reliably know whether there's
- * anywhere to go, which the raw browser History API doesn't expose across
- * browsers.
+ * Tracks the dashboard's own visited-URL stack (`pathname` + full search
+ * params), so `Back`/`Forw` (`nav-group.tsx`) can reliably know whether
+ * there's anywhere to go — the raw browser History API doesn't expose
+ * this across browsers. Story 120 replaced the previous URL-equality
+ * heuristic (misclassified a fresh `A → B → A` navigation as a Back) with
+ * a `popstate`-driven signal: real session-history navigation (browser
+ * buttons, or our own `goBack`/`goForward`, which now call
+ * `router.back()`/`router.forward()` instead of re-pushing a remembered
+ * URL) always fires a native `popstate` event; `pushState`/`replaceState`
+ * never do. See `dashboard-history-reducer.ts` for the actual (unit
+ * tested) transition logic — this component only wires the browser/router
+ * events to it.
  *
- * Deliberately the simplest thing that works: plain React state, in RAM
- * only — no `localStorage`/`sessionStorage`/backend. A page refresh clears
- * it for free (the provider remounts from scratch). Capped at 5 entries
- * back and 5 forward: every new (non-Back/Forward) navigation trims the
- * back portion of the stack to at most 5, which automatically caps the
- * forward portion too (it can only ever be repopulated by going Back
- * through those same 5 entries).
+ * Plain React state, in RAM only — no `localStorage`/`sessionStorage`. A
+ * page refresh clears it for free (the provider remounts from scratch);
+ * Story 120's Folders keeps its own separate, smaller, per-repo/user
+ * `lastAddress` in `localStorage` (see `lib/cp-address/last-address-store.ts`)
+ * for restoring across a fresh visit — that's a different, narrower
+ * mechanism, not this stack.
  */
 export function DashboardHistoryProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -35,35 +62,30 @@ export function DashboardHistoryProvider({ children }: { children: React.ReactNo
   const searchParams = useSearchParams();
   const url = searchParams.toString() ? `${pathname}?${searchParams.toString()}` : pathname;
 
-  const stateRef = useRef({ entries: [url], index: 0 });
+  const stateRef = useRef<HistoryStackState>(initialHistoryStackState(url));
+  const isPopStateRef = useRef(false);
+  const pendingReplaceRef = useRef(false);
   const [, setTick] = useState(0);
 
   useEffect(() => {
-    const s = stateRef.current;
-    if (s.entries[s.index] === url) return;
+    const handlePopState = () => {
+      isPopStateRef.current = true;
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
 
-    if (s.entries[s.index - 1] === url) {
-      // Matches the previous entry: a Back navigation (ours or the
-      // browser's own back button).
-      s.index -= 1;
-    } else if (s.entries[s.index + 1] === url) {
-      // Matches the next entry: a Forward navigation.
-      s.index += 1;
-    } else {
-      // A genuinely new navigation from the current point — drop any
-      // forward stack (standard browser semantics) and push the new URL.
-      s.entries = [...s.entries.slice(0, s.index + 1), url];
-      s.index = s.entries.length - 1;
+  useEffect(() => {
+    const wasPopState = isPopStateRef.current;
+    isPopStateRef.current = false;
+    const wasReplace = pendingReplaceRef.current;
+    pendingReplaceRef.current = false;
 
-      // Cap the back portion at MAX_BACK by dropping the oldest entries.
-      const backCount = s.index;
-      if (backCount > MAX_BACK) {
-        const excess = backCount - MAX_BACK;
-        s.entries = s.entries.slice(excess);
-        s.index -= excess;
-      }
+    const next = applyHistoryUrlChange(stateRef.current, { url, wasPopState, wasReplace });
+    if (next !== stateRef.current) {
+      stateRef.current = next;
+      setTick((t) => t + 1);
     }
-    setTick((t) => t + 1);
   }, [url]);
 
   const value = useMemo<DashboardHistoryValue>(() => {
@@ -72,10 +94,13 @@ export function DashboardHistoryProvider({ children }: { children: React.ReactNo
       canGoBack: s.index > 0,
       canGoForward: s.index < s.entries.length - 1,
       goBack: () => {
-        if (s.index > 0) router.push(s.entries[s.index - 1]);
+        if (s.index > 0) router.back();
       },
       goForward: () => {
-        if (s.index < s.entries.length - 1) router.push(s.entries[s.index + 1]);
+        if (s.index < s.entries.length - 1) router.forward();
+      },
+      notifyReplace: () => {
+        pendingReplaceRef.current = true;
       },
     };
     // Re-derived whenever the URL changes (after the effect above updates

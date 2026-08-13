@@ -10,12 +10,21 @@ import { getChildrenOf, type CpItem, type FoldersOperationError } from 'dba';
  */
 export async function toApiItem(found: CpItem) {
   let body = found.body;
+  // Additive alongside `Body` (the index->name map every existing consumer
+  // already parses via `parseFolderChildNameMap`) — `ChildrenDetailed` also
+  // carries each child's `type`, which the plain map never did. Added for
+  // Story 120's address-based Knowledge/Item View pages, which need to tell
+  // a Folder child from a Text child without an extra request per child.
+  // Never removes/changes `Body`, so no existing consumer is affected.
+  let childrenDetailed: { index: string; name: string; type: string }[] | undefined;
   if (found.config.type === 'Folder') {
     const children = await getChildrenOf(found.config.address);
     const childMap: Record<string, string> = {};
+    childrenDetailed = [];
     for (const child of children) {
       const index = child.config.address.split('/').pop() ?? child.config.address;
       childMap[index] = child.config.name;
+      childrenDetailed.push({ index, name: child.config.name, type: child.config.type });
     }
     body = JSON.stringify(childMap);
   }
@@ -24,6 +33,7 @@ export async function toApiItem(found: CpItem) {
     Config: found.config,
     Settings: found.config,
     Address: found.config.address,
+    ChildrenDetailed: childrenDetailed,
   };
 }
 

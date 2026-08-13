@@ -150,8 +150,8 @@ describe("listKnowledgeCategories", () => {
       folder(`${ROOT}/01/02`, "Alpha Category"),
     ]);
     expect(await listKnowledgeCategories(ops)).toEqual([
-      { slug: "zeta-category", name: "Zeta Category", source: "shared" },
-      { slug: "alpha-category", name: "Alpha Category", source: "shared" },
+      { slug: "zeta-category", name: "Zeta Category", source: "shared", address: `${ROOT}/01/01` },
+      { slug: "alpha-category", name: "Alpha Category", source: "shared", address: `${ROOT}/01/02` },
     ]);
   });
 
@@ -162,7 +162,9 @@ describe("listKnowledgeCategories", () => {
       folder(`${ROOT}/01/02`, "Real Category"),
     ]);
     const categories = await listKnowledgeCategories(ops);
-    expect(categories).toEqual([{ slug: "real-category", name: "Real Category", source: "shared" }]);
+    expect(categories).toEqual([
+      { slug: "real-category", name: "Real Category", source: "shared", address: `${ROOT}/01/02` },
+    ]);
   });
 });
 
@@ -417,7 +419,7 @@ describe("knowledge merge — shared + current session's own repo", () => {
   it("lists only shared categories outside any repo context (no session, e.g. a script)", async () => {
     const { ops } = makeFakeOps([...baseTree(), folder(`${ROOT}/01/01`, "Shared Category")]);
     expect(await listKnowledgeCategories(ops)).toEqual([
-      { slug: "shared-category", name: "Shared Category", source: "shared" },
+      { slug: "shared-category", name: "Shared Category", source: "shared", address: `${ROOT}/01/01` },
     ]);
   });
 
@@ -433,8 +435,8 @@ describe("knowledge merge — shared + current session's own repo", () => {
       () => listKnowledgeCategories(ops)
     );
     expect(categories).toEqual([
-      { slug: "shared-category", name: "Shared Category", source: "shared" },
-      { slug: "my-category", name: "My Category", source: "personal" },
+      { slug: "shared-category", name: "Shared Category", source: "shared", address: `${ROOT}/01/01` },
+      { slug: "my-category", name: "My Category", source: "personal", address: `${PERSONAL_REPO}/01/01` },
     ]);
   });
 
@@ -448,7 +450,9 @@ describe("knowledge merge — shared + current session's own repo", () => {
       { repoGuid: PERSONAL_REPO, username: "test-user" },
       () => listKnowledgeCategories(ops)
     );
-    expect(categories).toEqual([{ slug: "shared-category", name: "Shared Category", source: "shared" }]);
+    expect(categories).toEqual([
+      { slug: "shared-category", name: "Shared Category", source: "shared", address: `${ROOT}/01/01` },
+    ]);
   });
 
   it("skips the personal source entirely when the session's own repo is chad_shared itself (defensive guard)", async () => {
@@ -457,7 +461,9 @@ describe("knowledge merge — shared + current session's own repo", () => {
       { repoGuid: ROOT, username: "chad_shared" },
       () => listKnowledgeCategories(ops)
     );
-    expect(categories).toEqual([{ slug: "shared-category", name: "Shared Category", source: "shared" }]);
+    expect(categories).toEqual([
+      { slug: "shared-category", name: "Shared Category", source: "shared", address: `${ROOT}/01/01` },
+    ]);
   });
 
   it("disambiguates a same-name/same-CP-index collision across sources with a further -source suffix", async () => {
@@ -476,9 +482,9 @@ describe("knowledge merge — shared + current session's own repo", () => {
       () => listKnowledgeCategories(ops)
     );
     expect(categories).toEqual([
-      { slug: "same-name", name: "Same Name", source: "shared" },
-      { slug: "same-name-02", name: "Same Name", source: "shared" },
-      { slug: "same-name-02-personal", name: "Same Name", source: "personal" },
+      { slug: "same-name", name: "Same Name", source: "shared", address: `${ROOT}/01/01` },
+      { slug: "same-name-02", name: "Same Name", source: "shared", address: `${ROOT}/01/02` },
+      { slug: "same-name-02-personal", name: "Same Name", source: "personal", address: `${PERSONAL_REPO}/01/02` },
     ]);
   });
 

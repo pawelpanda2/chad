@@ -15,6 +15,13 @@ const SHIFT_STEP_PX = 40;
  * new tab" all work like any other link — same for a Folder row/title as
  * for a Text document row).
  *
+ * Story 120 follow-up: a Text row opens in a NEW TAB by default
+ * (`target="_blank"`) — clicking a document would otherwise navigate this
+ * tab away from the folder card-grid it was just browsing (Item View is a
+ * separate single-document surface now, not inline here). A Folder row/
+ * title stays a normal same-tab link — that's the whole point of staying
+ * "in Knowledge and its nice view".
+ *
  * Normal names (including ones that wrap over spaces) render as a single
  * `<Link>`, just wrapping instead of `truncate`. A name containing a single
  * word with no spaces longer than the unbreakable-token threshold
@@ -39,17 +46,18 @@ export function KnowledgeGridRow({
   const unbreakable = hasUnbreakableToken(name);
   const Icon = type === "Folder" ? FolderIcon : FileText;
   const rowClassName = `flex w-full items-center gap-3 text-left ${LIST_ROW_CLASS}`;
+  const newTabProps = type === "Text" ? { target: "_blank" as const, rel: "noopener noreferrer" } : {};
 
   if (!unbreakable) {
     return (
-      <Link href={href} className={rowClassName}>
+      <Link href={href} className={rowClassName} {...newTabProps}>
         <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
         <span className="min-w-0 flex-1 whitespace-normal break-words text-sm leading-snug">{name}</span>
       </Link>
     );
   }
 
-  return <UnbreakableRow href={href} name={name} Icon={Icon} rowClassName={rowClassName} />;
+  return <UnbreakableRow href={href} name={name} Icon={Icon} rowClassName={rowClassName} newTabProps={newTabProps} />;
 }
 
 /** Shifts only this row's own text — never the card, column, or page. */
@@ -58,11 +66,13 @@ function UnbreakableRow({
   name,
   Icon,
   rowClassName,
+  newTabProps,
 }: {
   href: string;
   name: string;
   Icon: LucideIcon;
   rowClassName: string;
+  newTabProps: { target?: "_blank"; rel?: string };
 }) {
   const innerRef = useRef<HTMLSpanElement>(null);
   const [maxShift, setMaxShift] = useState(0);
@@ -79,7 +89,7 @@ function UnbreakableRow({
 
   return (
     <div className={rowClassName}>
-      <Link href={href} className="flex min-w-0 flex-1 items-center gap-3">
+      <Link href={href} className="flex min-w-0 flex-1 items-center gap-3" {...newTabProps}>
         <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
         <span className="min-w-0 flex-1 overflow-hidden whitespace-nowrap" title={name}>
           <span
