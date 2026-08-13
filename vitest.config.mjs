@@ -113,6 +113,11 @@ export default defineConfig({
       "packages/dashboard/components/shared/hdr1-renderer.test.tsx",
       "packages/dashboard/components/shared/markdown-preview.test.tsx",
       "packages/dashboard/components/shared/text-editor-with-toolbar-preview-format.test.tsx",
+      // Story 119 — shared Preview CP-link ([uuid] marker + next dash line):
+      // pure parser (no fetches) and its dba-side id→address resolver
+      // (real local Postgres, same convention as leads-postgres.test.ts).
+      "packages/dashboard/lib/preview/cp-link.test.ts",
+      "packages/dba/src/cp-link-resolver.test.ts",
       // Msg Auto AI Prompts — kind labels / Category mapping (mockup v4).
       "packages/dashboard/components/msg-automation/ai-prompt-kind.test.ts",
       // AI Prompts editor workspace (manage/leads/auto/base tabs + persistent

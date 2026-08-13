@@ -104,6 +104,7 @@ export * from './folders.js';
 export * from './cp-import.js';
 export * from './knowledge.js';
 export * from './shared-repo-access.js';
+export * from './cp-link-resolver.js';
 export * from './admin-users.js';
 export * from './cp-history.js';
 export * from './history-pages.js';

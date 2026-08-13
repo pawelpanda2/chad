@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
 import { ErrorBox } from "@/components/shared/error-box";
 import { TextEditorWithToolbar } from "@/components/shared/text-editor-with-toolbar";
@@ -219,6 +220,12 @@ function relativeLoca(address: string, repoGuid: string): string {
 
 
 export default function FoldersPage() {
+  // Deep-link support for the shared Preview's CP-link (Story 119):
+  // `cp-link-text.tsx` navigates here with `?repoGuid=&loca=` after
+  // resolving a CpItem.id server-side. Read once on mount only — this page
+  // owns its own nav history afterward (Back/Forw/GO), it does not keep
+  // syncing to the URL like a router-driven page would.
+  const searchParams = useSearchParams();
   const [repos, setRepos] = useState<RepoOption[]>([]);
   const [selectedRepoGuid, setSelectedRepoGuid] = useState<string>("");
   const [nav, setNav] = useState<{ items: CpItem[]; index: number }>({ items: [], index: -1 });
@@ -358,10 +365,18 @@ export default function FoldersPage() {
         }
         setRepos(reposData.repos);
 
-        const initialRepoGuid = reposData.repos[0]?.id ?? "";
+        // A CP-link deep-link only wins when its repoGuid is one this
+        // session may actually browse (same list the repo dropdown itself
+        // offers) — an unrecognized/forged value silently falls back to
+        // the default own-repo root, same as no query params at all.
+        const requestedRepoGuid = searchParams.get("repoGuid");
+        const requestedLoca = searchParams.get("loca");
+        const deepLinkRepoGuid =
+          requestedRepoGuid && reposData.repos.some((r) => r.id === requestedRepoGuid) ? requestedRepoGuid : null;
+        const initialRepoGuid = deepLinkRepoGuid ?? reposData.repos[0]?.id ?? "";
         setSelectedRepoGuid(initialRepoGuid);
 
-        const result = await fetchItem(initialRepoGuid, "");
+        const result = await fetchItem(initialRepoGuid, deepLinkRepoGuid ? requestedLoca ?? "" : "");
         if (result) pushItem(result.item);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load Folders tab");
@@ -959,8 +974,23 @@ export default function FoldersPage() {
           TALLER than that when content needs more room, so the border
           always wraps the real content and DashboardPageShell's own
           `overflow-y-auto` (default) scrolls the whole frame, same as
-          every other page using this shell. */}
-      <div className="flex min-h-full flex-col space-y-3 rounded-lg border bg-muted/10 p-3">
+          every other page using this shell.
+          `shrink-0`: this div is a flex item of that `overflow-y-auto`
+          column. `min-h-full` (`min-height: 100%`) REPLACES a flex item's
+          default `min-height: auto` — the auto value is what normally
+          stops a shrinkable flex item from being squashed below its own
+          content size. With the default `flex-shrink: 1` still active and
+          no `min-height: auto` protection left, the browser was shrinking
+          this box down to exactly the scroll container's viewport height
+          on a long tree, so the border (this box's own edge) ended well
+          above the last row even though the rows themselves (normal flow,
+          `overflow: visible`) kept rendering past it — the reported bug.
+          `shrink-0` stops the shrink; the box then sizes to its real
+          content (still never less than `min-h-full`), so the border
+          always reaches the actual last item. Verified against the live
+          long-tree repro (leads/all items, 72 rows) via DOM measurement
+          before/after. */}
+      <div className="flex min-h-full shrink-0 flex-col space-y-3 rounded-lg border bg-muted/10 p-3">
         <div className="shrink-0 space-y-2 border-b pb-3">
           <div className="flex items-center gap-2">
             <span className="text-sm text-muted-foreground whitespace-nowrap">Repo::</span>
@@ -1030,6 +1060,9 @@ export default function FoldersPage() {
             <div className="shrink-0 text-sm text-muted-foreground">
               <div>
                 Address: <span className="font-mono">{currentItem.Address}</span>
+              </div>
+              <div>
+                item-id: <span className="font-mono">{currentItem.Config.id}</span>
               </div>
               <div>
                 Type: <span className="font-mono">{currentItem.Config.type}</span>

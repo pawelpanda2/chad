@@ -18,8 +18,10 @@ import { ChevronRight } from "lucide-react";
 import { parseHeadersFormat } from "@/lib/headers/parse-headers-format";
 import type { ParsedNode } from "@/lib/headers/types";
 import { groupNodes, type LineGroup } from "@/lib/headers/group-nodes";
+import { annotateCpLinkTargets } from "@/lib/preview/cp-link";
 import { DEFAULT_HDR1_ACCENT, hexToRgba } from "@/lib/preview/hdr1-color";
 import { cn } from "@/lib/utils";
+import { CpLinkText } from "@/components/shared/cp-link-text";
 
 function lineLabel(node: ParsedNode): string {
   switch (node.type) {
@@ -38,7 +40,11 @@ function ChildLines({ lines }: { lines: ParsedNode[] }) {
     <ul className="list-disc pl-4 marker:text-muted-foreground">
       {lines.map((node, i) => (
         <li key={i} className="py-0.5 text-[11px] leading-snug whitespace-pre-wrap break-words text-foreground">
-          {lineLabel(node)}
+          {node.cpLinkTargetId ? (
+            <CpLinkText text={lineLabel(node)} targetItemId={node.cpLinkTargetId} />
+          ) : (
+            lineLabel(node)
+          )}
         </li>
       ))}
     </ul>
@@ -180,7 +186,7 @@ export function Hdr1Renderer({
   const groups = useMemo(() => {
     if (!content || !content.trim()) return null;
     const parsed = parseHeadersFormat(content);
-    return groupNodes(parsed.nodes);
+    return groupNodes(annotateCpLinkTargets(parsed.nodes));
   }, [content]);
 
   const [collapsedKeys, setCollapsedKeys] = useState<Set<string>>(new Set());

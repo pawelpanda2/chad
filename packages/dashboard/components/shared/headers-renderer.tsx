@@ -16,9 +16,11 @@ import { useMemo } from "react";
 import { parseHeadersFormat } from "@/lib/headers/parse-headers-format";
 import type { ParsedNode, LineType } from "@/lib/headers/types";
 import { groupNodes, type LineGroup } from "@/lib/headers/group-nodes";
+import { annotateCpLinkTargets } from "@/lib/preview/cp-link";
 import type { PreviewFormat } from "@/lib/preview/preview-format";
 import { Hdr1Renderer } from "@/components/shared/hdr1-renderer";
 import { MarkdownPreview } from "@/components/shared/markdown-preview";
+import { CpLinkText } from "@/components/shared/cp-link-text";
 
 export type { LineGroup };
 export { groupNodes };
@@ -119,7 +121,7 @@ function ContentLine({ node }: { node: ParsedNode }) {
         </span>
       )}
       <span className={`text-xs whitespace-pre-wrap break-words ${styles.text}`}>
-        {node.content}
+        {node.cpLinkTargetId ? <CpLinkText text={node.content} targetItemId={node.cpLinkTargetId} /> : node.content}
       </span>
     </div>
   );
@@ -209,7 +211,7 @@ export function HeadersRenderer({ content }: { content: string }) {
       return null;
     }
     const parsed = parseHeadersFormat(content);
-    return groupNodes(parsed.nodes);
+    return groupNodes(annotateCpLinkTargets(parsed.nodes));
   }, [content]);
 
   if (!groups || groups.length === 0) {
