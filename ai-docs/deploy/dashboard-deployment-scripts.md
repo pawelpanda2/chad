@@ -119,7 +119,7 @@ deployuje.
 
 ### `02_local_mac_tmux/` — 6 plików (slot `06`/deploy celowo pusty): `01_config`, `02_build`, `03_re-start`, `04_end`, `05_status`, `07_logs` — patrz `dashboard-start-scripts.md` dla pełnego opisu tego dev-flow.
 
-### `03_local_mac_docker/` — 7 plików: `01_config`, `02_build`, `03_re-start`, `04_end`, `05_status`, `06_deploy`, plus `90_port-kill.sh` (poza zakresem slotów — patrz niżej).
+### `03_local_mac_docker/` — 7 plików: `01_config`, `02_build`, `03_re-start`, `04_end`, `05_status`, `06_deploy`, plus `9x_*` tools (poza zakresem slotów — patrz niżej). `cp_1` preflight/recovery: `ai-docs/bash-scripts/local-mac-cp1.md`.
 
 #### `90_port-kill.sh` — ręczne/automatyczne zwalnianie zajętego portu
 

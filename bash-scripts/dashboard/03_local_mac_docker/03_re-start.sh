@@ -3,6 +3,10 @@
 # Never builds. Idempotent: checks whether the stack is already running; if
 # so, calls 04_end.sh (docker compose down --remove-orphans, never -v) then
 # starts fresh. Use 06_deploy.sh for build+restart.
+#
+# Story 118: ensure/repair host cp_1 as early as possible after config/tool
+# validation. Fail hard if repair fails (no Compose decoy under /Volumes/cp_1).
+# After up, verify binds from inside the dashboard container.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -21,6 +25,27 @@ cd "$REPO_ROOT"
 
 # No `:latest` fallback — refuses to start without a recorded release tag.
 require_image_tag "$(dashboard_image_tag_file)" "chad-dashboard" || exit 1
+
+# Story 118 — host cp_1 preflight BEFORE port kill / compose up so a dead
+# SMB share never becomes a local decoy directory via create_host_path.
+log_info "Preflight: ensure/repair QNAP SMB cp_1 on host (/Volumes/cp_1)..."
+bash "$SCRIPT_DIR/91_ensure-cp1-mounted.sh" || exit 1
+if ! /usr/bin/perl -e '
+  use strict; use warnings;
+  my ($path, $timeout) = @ARGV;
+  eval {
+    local $SIG{ALRM} = sub { die "timeout\n" };
+    alarm $timeout;
+    opendir(my $dh, $path) or die $!;
+    readdir($dh); closedir($dh);
+    alarm 0;
+  };
+  exit($@ ? 1 : 0);
+' "/Volumes/cp_1/chad-data/02_files_refrenced" "${CP1_FS_TIMEOUT_SEC:-5}"; then
+  log_error "Host read of /Volumes/cp_1/chad-data/02_files_refrenced failed after ensure."
+  exit 1
+fi
+log_ok "Host cp_1 read verified."
 
 if docker compose -p "$COMPOSE_PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps --format json 2>/dev/null | grep -q '"State":"running"'; then
   log_warn "chad-local stack is already running — stopping it first, then starting fresh."
@@ -48,15 +73,12 @@ for port in "${REQUIRED_PORTS[@]}"; do
   ensure_port_available "$port" || exit 1
 done
 
-# Story 106 follow-up — real incident: the dashboard container's audio-
-# recordings / contact-photos bind mounts point at /Volumes/cp_1 subtrees;
-# if that SMB share isn't mounted, Compose's create_host_path silently
-# creates an empty local decoy directory instead of failing, and uploads
-# "succeed" into it without ever reaching the real network share. Fails
-# loudly here instead, before the stack starts.
-bash "$SCRIPT_DIR/91_ensure-cp1-mounted.sh" || exit 1
-
 docker compose -p "$COMPOSE_PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d
+
+# Story 118 — virtiofs may keep a stale bind after host remount; probe from
+# inside the dashboard container (not only docker inspect).
+log_info "Verifying cp_1 binds from inside dashboard container..."
+bash "$SCRIPT_DIR/92_verify-cp1-in-container.sh" || exit 1
 
 # Keep the local Postgres volume as a mirror of QNAP (Story 89) so login
 # (chad_admin/users-list) and Dev Panel reads use real data.

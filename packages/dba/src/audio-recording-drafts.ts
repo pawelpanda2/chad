@@ -29,6 +29,10 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { getCurrentRepoGuid } from "./repo-context.js";
 import {
+  isCp1StorageFailure,
+  maybeRequestCp1Repair,
+} from "./file-storage/cp1-storage-failure.js";
+import {
   AUDIO_RECORDING_MAX_BYTES,
   AudioRecordingError,
   assertSafeResolvedPath,
@@ -408,6 +412,13 @@ export async function saveAudioRecordingDraftSegment(
     }
   } catch (error) {
     if (error instanceof AudioRecordingError) throw error;
+    maybeRequestCp1Repair(error, "audio-drafts");
+    if (isCp1StorageFailure(error)) {
+      throw new AudioRecordingError(
+        "STORAGE_UNAVAILABLE",
+        "Storage unavailable — repairing…",
+      );
+    }
     throw new AudioRecordingError("WRITE_FAILED", "Could not save segment");
   }
   return draft;

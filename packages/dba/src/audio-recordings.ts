@@ -17,7 +17,22 @@ import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { getCurrentRepoGuid, getCurrentUsername } from "./repo-context.js";
 import { FILE_STORAGE_FEATURES } from "./file-storage/features.js";
+import {
+  isCp1StorageFailure,
+  maybeRequestCp1Repair,
+} from "./file-storage/cp1-storage-failure.js";
 import { resolveFeatureStorage } from "./file-storage/path-policy.js";
+
+function throwAudioFsError(error: unknown, fallbackMessage: string): never {
+  maybeRequestCp1Repair(error, "audio-recordings");
+  if (isCp1StorageFailure(error)) {
+    throw new AudioRecordingError(
+      "STORAGE_UNAVAILABLE",
+      "Storage unavailable — repairing…",
+    );
+  }
+  throw new AudioRecordingError("WRITE_FAILED", fallbackMessage);
+}
 
 export const AUDIO_RECORDING_MAX_BYTES = 50 * 1024 * 1024; // 50 MiB
 
@@ -43,7 +58,8 @@ export class AudioRecordingError extends Error {
       | "INVALID_ID"
       | "EMPTY"
       | "TOO_LARGE"
-      | "WRITE_FAILED",
+      | "WRITE_FAILED"
+      | "STORAGE_UNAVAILABLE",
     message: string,
   ) {
     super(message);
@@ -373,10 +389,7 @@ export async function saveAudioRecording(
     await writeFile(metadataPath, JSON.stringify(metadata, null, 2), { flag: "wx" });
   } catch (error) {
     if (error instanceof AudioRecordingError) throw error;
-    throw new AudioRecordingError(
-      "WRITE_FAILED",
-      "Could not save recording",
-    );
+    throwAudioFsError(error, "Could not save recording");
   }
 
   return {
@@ -469,7 +482,7 @@ async function listAudioRecordingsFromDir(
       "[audio-recordings] listAudioRecordings failed:",
       error instanceof Error ? `${(error as NodeJS.ErrnoException).code ?? ""} ${error.message}` : error,
     );
-    throw new AudioRecordingError("WRITE_FAILED", "Could not list recordings");
+    throwAudioFsError(error, "Could not list recordings");
   }
 }
 
@@ -539,7 +552,7 @@ async function getAudioRecordingReadInfoFromDir(
       }
     }
     if (error instanceof AudioRecordingError && error.code === "INVALID_ID") throw error;
-    throw new AudioRecordingError("WRITE_FAILED", "Could not read recording");
+    throwAudioFsError(error, "Could not read recording");
   }
 }
 

@@ -17,6 +17,7 @@ import {
   postgresReferencedFileStore,
   type ReferencedFileMetadataStore,
 } from "./metadata-store.js";
+import { maybeRequestCp1Repair, isCp1StorageFailure } from "./cp1-storage-failure.js";
 import {
   buildReadableFileName,
   buildRelativeStoragePath,
@@ -32,6 +33,7 @@ export class FileStorageError extends Error {
       | "NOT_CONFIGURED"
       | "NOT_FOUND"
       | "WRITE_FAILED"
+      | "STORAGE_UNAVAILABLE"
       | "EMPTY"
       | "TOO_LARGE"
       | "INVALID",
@@ -40,6 +42,17 @@ export class FileStorageError extends Error {
     super(message);
     this.name = "FileStorageError";
   }
+}
+
+function throwMappedFsError(error: unknown, fallbackMessage: string): never {
+  maybeRequestCp1Repair(error, "file-storage");
+  if (isCp1StorageFailure(error)) {
+    throw new FileStorageError(
+      "STORAGE_UNAVAILABLE",
+      "Storage unavailable — repairing…",
+    );
+  }
+  throw new FileStorageError("WRITE_FAILED", fallbackMessage);
 }
 
 function mapPathError(error: unknown): never {
@@ -58,7 +71,7 @@ async function listDirNames(dir: string): Promise<Set<string>> {
     return new Set(entries.filter((e) => e.isFile()).map((e) => e.name));
   } catch (error) {
     if ((error as NodeJS.ErrnoException)?.code === "ENOENT") return new Set();
-    throw new FileStorageError("WRITE_FAILED", "Could not list storage directory");
+    throwMappedFsError(error, "Could not list storage directory");
   }
 }
 
@@ -133,7 +146,7 @@ export function createFilesystemFileStorage(options?: {
       } catch (error) {
         await rm(tempPath, { force: true }).catch(() => {});
         if (error instanceof FileStorageError) throw error;
-        throw new FileStorageError("WRITE_FAILED", "Could not save file");
+        throwMappedFsError(error, "Could not save file");
       }
 
       try {
@@ -221,7 +234,7 @@ export function createFilesystemFileStorage(options?: {
         await rm(filePath, { force: false });
       } catch (error) {
         if ((error as NodeJS.ErrnoException)?.code !== "ENOENT") {
-          throw new FileStorageError("WRITE_FAILED", "Could not delete file");
+          throwMappedFsError(error, "Could not delete file");
         }
       }
       const deleted = await store.deleteById(repoGuid, id);
