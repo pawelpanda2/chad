@@ -21,7 +21,7 @@ Compose must never create a local decoy under `/Volumes/cp_1` via
 
 | Script | Role |
 |--------|------|
-| `91_ensure-cp1-mounted.sh` | Classify HEALTHY / UNMOUNTED / STALE; timed FS probe; unmount+remount via `/sbin/mount_smbfs -N` |
+| `91_ensure-cp1-mounted.sh` | Classify HEALTHY / UNMOUNTED / STALE; timed FS probe; unmount+remount via `/sbin/mount_smbfs -N`; register volume in Finder Locations + one-shot Favorites |
 | `92_verify-cp1-in-container.sh` | `docker exec` readdir probe of bind paths |
 | `03_re-start.sh` | Early host ensure → ports → `compose up` → container verify → health |
 | `06_deploy.sh` | `02_build` → `03_re-start` → `05_status` (no duplicated preflight) |
@@ -39,6 +39,18 @@ Never commit passwords. Never put them in process argv / logs.
    (aliases `NAS_USER` / `NAS_PASSWORD` also accepted)
 
 Password is piped to `mount_smbfs -N` on stdin.
+
+### Finder sidebar
+
+After a healthy mount, `91_ensure-cp1-mounted.sh` also:
+
+1. Calls AppleScript `mount volume smb://user@host/cp_1` (Keychain, no password
+   in the script) so Finder lists `cp_1` under **Locations** as a mounted volume
+   (same as shares opened via Finder).
+2. Once, tries **Add to Sidebar** (Favorites, Cmd+Control+T). Marker:
+   `.runtime/cp1-repair/sidebar-favorite-done`. Needs Accessibility for
+   Terminal/iTerm if System Events is used; otherwise drag `/Volumes/cp_1`
+   into Favorites once manually.
 
 ### Mount-point directory (`/Volumes/cp_1`)
 

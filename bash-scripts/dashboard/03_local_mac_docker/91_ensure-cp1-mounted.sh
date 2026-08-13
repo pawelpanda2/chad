@@ -292,6 +292,71 @@ mount_smbfs_cp1() {
   return 1
 }
 
+# mount_smbfs alone often leaves the share invisible in Finder's sidebar.
+# Register it the same way Finder-native mounts (ProPictures/qnap) appear:
+#   1) `mount volume` (Keychain, no password in script) → Locations as mounted disk
+#   2) once: File → Add to Sidebar (Favorites) via Cmd+Control+T
+ensure_cp1_visible_in_finder() {
+  [ -d "$CP1_MOUNT_POINT" ] || return 0
+  is_smbfs_at_point || return 0
+
+  local user="${CP1_SMB_USER:-}"
+  if [ -z "$user" ]; then
+    load_cp1_creds_from_env || true
+    load_cp1_creds_from_keychain || true
+    user="${CP1_SMB_USER:-}"
+  fi
+  if [ -z "$user" ]; then
+    user="$(/sbin/mount | /usr/bin/sed -n "s#^//\\([^@]*\\)@${CP1_SMB_HOST}/${CP1_SHARE_NAME} on ${CP1_MOUNT_POINT} .*#\\1#p" | /usr/bin/head -n1)"
+  fi
+
+  if [ -n "$user" ]; then
+    # No password in URL — macOS uses Keychain. Already-mounted → no-op + sidebar refresh.
+    /usr/bin/osascript -e "try
+      mount volume \"smb://${user}@${CP1_SMB_HOST}/${CP1_SHARE_NAME}\"
+    end try" >/dev/null 2>&1 || true
+  fi
+
+  # Soft reveal (no focus steal) so Locations lists the mounted volume.
+  /usr/bin/open -g "$CP1_MOUNT_POINT" 2>/dev/null || true
+
+  local marker="$REPO_ROOT/.runtime/cp1-repair/sidebar-favorite-done"
+  mkdir -p "$(dirname "$marker")" 2>/dev/null || true
+  if [ -f "$marker" ]; then
+    log_ok "Finder: cp_1 registered (Locations); Favorites already added earlier."
+    return 0
+  fi
+
+  # Best-effort Favorites (top sidebar). Needs Accessibility for System Events;
+  # fails quietly if denied. One-shot so we do not create duplicates.
+  if /usr/bin/osascript >/dev/null 2>&1 <<'APPLESCRIPT'
+tell application "Finder"
+  try
+    open disk "cp_1"
+  on error
+    try
+      open (POSIX file "/Volumes/cp_1")
+    end try
+  end try
+end tell
+delay 0.4
+tell application "System Events"
+  tell process "Finder"
+    try
+      set frontmost to true
+      keystroke "t" using {command down, control down}
+    end try
+  end tell
+end tell
+APPLESCRIPT
+  then
+    printf 'cp_1\n' >"$marker" 2>/dev/null || true
+    log_ok "Finder: cp_1 added to sidebar Favorites (Cmd+Control+T)."
+  else
+    log_warn "Finder Favorites add skipped (grant Terminal/Cursor Accessibility, or drag /Volumes/cp_1 to Favorites once)."
+  fi
+}
+
 repair_cp1() {
   local state
   state="$(classify_cp1)"
@@ -353,6 +418,7 @@ if [ "$(uname -s)" != "Darwin" ]; then
 fi
 
 if repair_cp1; then
+  ensure_cp1_visible_in_finder || true
   exit 0
 fi
 
