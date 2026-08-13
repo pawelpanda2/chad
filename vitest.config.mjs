@@ -94,6 +94,8 @@ export default defineConfig({
       // Story 111 — unified file-storage path policy + filesystem provider
       "packages/dba/src/file-storage/path-policy.test.ts",
       "packages/dba/src/file-storage/filesystem-provider.test.ts",
+      // Story 118 — local Mac cp_1 storage-failure detection (ENOENT ≠ repair)
+      "packages/dba/src/file-storage/cp1-storage-failure.test.ts",
       // Msg Workout → Manually Added Messages (.zip/.rar per lead)
       "packages/dba/src/lead-archives.test.ts",
       "packages/dba/src/lead-archives-failure-paths.test.ts",

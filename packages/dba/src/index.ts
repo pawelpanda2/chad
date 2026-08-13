@@ -57,6 +57,9 @@ export {
   resolveUserStorageRoot,
   FileStorageError,
   FileStoragePathError,
+  isCp1StorageFailure,
+  requestLocalCp1Repair,
+  maybeRequestCp1Repair,
 } from './file-storage/index.js';
 export type {
   FileStorageFeature,

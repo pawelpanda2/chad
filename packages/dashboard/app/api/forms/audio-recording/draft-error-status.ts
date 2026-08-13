@@ -4,6 +4,7 @@ import type { AudioRecordingError } from "dba";
 export function audioRecordingErrorStatus(error: AudioRecordingError): number {
   switch (error.code) {
     case "NOT_CONFIGURED":
+    case "STORAGE_UNAVAILABLE":
       return 503;
     case "TOO_LARGE":
       return 413;

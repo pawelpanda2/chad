@@ -70,3 +70,14 @@ Tools:
 - `packages/dba/src/file-storage/` — features, path-policy, contracts, filesystem-provider, metadata-store
 - Lead photos: `packages/dba/src/lead-photos.ts`
 - Audio: `packages/dba/src/audio-recordings.ts` + `audio-recording-drafts.ts`
+
+## Local Mac mount / recovery (Story 118)
+
+Host mount + watchdog live under `bash-scripts/dashboard/03_local_mac_docker/`
+(`91_ensure-cp1-mounted.sh`, `93_cp1-watchdog.sh`). Docs:
+`ai-docs/bash-scripts/local-mac-cp1.md`.
+
+On `CHAD_ENVIRONMENT=local`, real storage failures (`EBADF` / `ENOTDIR` /
+`EIO` / confirmed `EPERM`, …) write `.runtime/cp1-repair/request` and surface
+`STORAGE_UNAVAILABLE` (“Storage unavailable — repairing…”). Plain `ENOENT`
+does not trigger repair.

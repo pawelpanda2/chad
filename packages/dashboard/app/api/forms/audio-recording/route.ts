@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     if (error instanceof AudioRecordingError) {
       const status =
-        error.code === "NOT_CONFIGURED"
+        error.code === "NOT_CONFIGURED" || error.code === "STORAGE_UNAVAILABLE"
           ? 503
           : error.code === "TOO_LARGE"
             ? 413

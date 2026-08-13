@@ -50,3 +50,9 @@ Provider, GHCR, porty, Beeper) żyje w `ai-docs/deploy/` — zacznij od
 Local Mac only: `bash-scripts/beeper-synch/start-helper.sh` +
 `local-helper.mjs` — loopback allowlist for Dashboard **Plugin synch**.
 See `ai-docs/plugin-beeper-synch/ai-start.md`. Not for QNAP/TEST/PROD.
+
+## Local Mac `cp_1` mount & recovery (Story 118)
+
+QNAP SMB → `/Volumes/cp_1` → Docker bind → dashboard. Preflight, stale
+repair, watchdog LaunchAgent, dashboard signal file. See
+**[local-mac-cp1.md](local-mac-cp1.md)**.
