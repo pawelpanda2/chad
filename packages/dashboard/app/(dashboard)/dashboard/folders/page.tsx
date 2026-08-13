@@ -256,8 +256,11 @@ export default function FoldersPage() {
   const [canUnlockSystemFolders, setCanUnlockSystemFolders] = useState(false);
   const [unlockedFolderAddresses, setUnlockedFolderAddresses] = useState<string[]>([]);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  /** `confirm-word` = type DELETE; `confirm-recursive` = second Yes for non-empty Folder. */
+  const [deleteStep, setDeleteStep] = useState<"confirm-word" | "confirm-recursive">("confirm-word");
   const [deleteConfirmWord, setDeleteConfirmWord] = useState("");
   const [deleteConfirmInput, setDeleteConfirmInput] = useState("");
+  const [deleteChildCount, setDeleteChildCount] = useState(0);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [moveDialogOpen, setMoveDialogOpen] = useState(false);
@@ -713,6 +716,8 @@ export default function FoldersPage() {
   function openDeleteDialog() {
     setDeleteConfirmWord(DELETE_CONFIRM_WORDS[Math.floor(Math.random() * DELETE_CONFIRM_WORDS.length)]);
     setDeleteConfirmInput("");
+    setDeleteStep("confirm-word");
+    setDeleteChildCount(0);
     setDeleteError(null);
     setDeleteDialogOpen(true);
   }
@@ -837,13 +842,13 @@ export default function FoldersPage() {
   }
 
   /**
-   * Permanently deletes the currently-open item (Text, or an empty Folder —
-   * the API refuses a non-empty Folder with 409 FOLDER_NOT_EMPTY, never
-   * cascading). Retype-a-random-word confirmation mirrors the Forms page's
-   * Daily/Date Entry delete (Story 62 Round 8) — see DELETE_CONFIRM_WORDS.
+   * Permanently deletes the currently-open item. Step 1 is retype-a-random-word
+   * (Forms Daily/Date Entry pattern). If the open Folder still has children,
+   * step 2 asks for an explicit Yes and then DELETE runs with `recursive=true`
+   * (deepest-first cascade) instead of surfacing FOLDER_NOT_EMPTY as an error.
    */
-  async function handleDeleteItem() {
-    if (!currentItem || deleting || deleteConfirmInput.trim() !== deleteConfirmWord) return;
+  async function performDeleteItem(recursive: boolean) {
+    if (!currentItem || deleting) return;
     const loca = relativeLoca(currentItem.Address, selectedRepoGuid);
     if (!loca) {
       setDeleteError("Nie można usunąć głównego folderu repo");
@@ -856,6 +861,7 @@ export default function FoldersPage() {
       const query = new URLSearchParams({ loca });
       if (selectedRepoGuid) query.set("repoGuid", selectedRepoGuid);
       if (isProtectedWriteUnlocked) query.set("allowSystemFolderWrite", "true");
+      if (recursive) query.set("recursive", "true");
       const res = await fetch(`/api/folders?${query}`, { method: "DELETE" });
       const data: { success?: boolean; parent?: CpItem | null; error?: string; details?: string } = await res.json();
       if (!res.ok || !data.success) {
@@ -863,7 +869,7 @@ export default function FoldersPage() {
         return;
       }
 
-      toast.success("Element usunięty");
+      toast.success(recursive ? "Folder i zawartość usunięte" : "Element usunięty");
       setDeleteDialogOpen(false);
       if (data.parent) {
         pushItem(data.parent);
@@ -875,6 +881,24 @@ export default function FoldersPage() {
     } finally {
       setDeleting(false);
     }
+  }
+
+  async function handleDeleteConfirmWord() {
+    if (!currentItem || deleting || deleteConfirmInput.trim() !== deleteConfirmWord) return;
+    if (currentItem.Config.type === "Folder") {
+      const childCount = parseFolderChildNameMap(currentItem.Body, currentItem.Config.sorting).length;
+      if (childCount > 0) {
+        setDeleteChildCount(childCount);
+        setDeleteError(null);
+        setDeleteStep("confirm-recursive");
+        return;
+      }
+    }
+    await performDeleteItem(false);
+  }
+
+  async function handleDeleteConfirmRecursive() {
+    await performDeleteItem(true);
   }
 
   // Config Save's disabled/error state — computed on every render (cheap,
@@ -1040,40 +1064,54 @@ export default function FoldersPage() {
             {currentItem.Config.type === "Text" && (
             <div className="flex min-h-0 flex-1 flex-col space-y-2">
               <div className="flex shrink-0 flex-wrap gap-2">
-                <Button
-                  type="button"
-                  variant="destructive"
-                  size="sm"
-                  onClick={openDeleteDialog}
-                  disabled={Boolean(protectingFolder && !isProtectedWriteUnlocked)}
-                  title={
-                    protectingFolder && !isProtectedWriteUnlocked
-                      ? `Managed by ${protectingFolder.managedBy} — read-only here`
-                      : "Permanently deletes this item"
-                  }
-                >
-                  <Trash2 className="mr-1 h-3.5 w-3.5" />
-                  Delete
+                <Button type="button" variant="outline" size="sm" onClick={toggleEditorMode}>
+                  {editorMode === "body" ? "Config" : "Body"}
                 </Button>
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={openMoveDialog}
-                  disabled={Boolean(protectingFolder && !isProtectedWriteUnlocked)}
-                  title={
-                    protectingFolder && !isProtectedWriteUnlocked
-                      ? `Managed by ${protectingFolder.managedBy} — read-only here`
-                      : "Moves this item to a different Folder"
-                  }
+                  onClick={() => setShowMoreActions((v) => !v)}
+                  aria-expanded={showMoreActions}
                 >
-                  <FolderInput className="mr-1 h-3.5 w-3.5" />
-                  Move
-                </Button>
-                <Button type="button" variant="outline" size="sm" onClick={toggleEditorMode}>
-                  {editorMode === "body" ? "Config" : "Body"}
+                  <MoreHorizontal className="mr-1 h-3.5 w-3.5" />
+                  More
                 </Button>
               </div>
+              {showMoreActions && (
+                <div className="flex shrink-0 flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="sm"
+                    onClick={openDeleteDialog}
+                    disabled={Boolean(protectingFolder && !isProtectedWriteUnlocked)}
+                    title={
+                      protectingFolder && !isProtectedWriteUnlocked
+                        ? `Managed by ${protectingFolder.managedBy} — read-only here`
+                        : "Permanently deletes this item"
+                    }
+                  >
+                    <Trash2 className="mr-1 h-3.5 w-3.5" />
+                    Delete
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={openMoveDialog}
+                    disabled={Boolean(protectingFolder && !isProtectedWriteUnlocked)}
+                    title={
+                      protectingFolder && !isProtectedWriteUnlocked
+                        ? `Managed by ${protectingFolder.managedBy} — read-only here`
+                        : "Moves this item to a different Folder"
+                    }
+                  >
+                    <FolderInput className="mr-1 h-3.5 w-3.5" />
+                    Move
+                  </Button>
+                </div>
+              )}
               {editorMode === "body" && (
                 <TextEditorWithToolbar
                   // Remounts per item (Folders never unmounts this component
@@ -1108,21 +1146,6 @@ export default function FoldersPage() {
           {currentItem.Config.type === "Folder" && (
             <div className="flex min-h-0 flex-1 flex-col space-y-2">
               <div className="flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  variant="destructive"
-                  size="sm"
-                  onClick={openDeleteDialog}
-                  disabled={Boolean(protectingFolder && !isProtectedWriteUnlocked)}
-                  title={
-                    protectingFolder && !isProtectedWriteUnlocked
-                      ? `Managed by ${protectingFolder.managedBy} — read-only here`
-                      : "Permanently deletes this folder (must be empty)"
-                  }
-                >
-                  <Trash2 className="mr-1 h-3.5 w-3.5" />
-                  Delete
-                </Button>
                 <Button type="button" variant="outline" size="sm" onClick={toggleEditorMode}>
                   {editorMode === "body" ? "Config" : "Body"}
                 </Button>
@@ -1139,6 +1162,21 @@ export default function FoldersPage() {
               </div>
               {showMoreActions && (
                 <div className="flex flex-wrap items-start gap-2">
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="sm"
+                    onClick={openDeleteDialog}
+                    disabled={Boolean(protectingFolder && !isProtectedWriteUnlocked)}
+                    title={
+                      protectingFolder && !isProtectedWriteUnlocked
+                        ? `Managed by ${protectingFolder.managedBy} — read-only here`
+                        : "Permanently deletes this folder (and contents after confirmation)"
+                    }
+                  >
+                    <Trash2 className="mr-1 h-3.5 w-3.5" />
+                    Delete
+                  </Button>
                   <Button
                     type="button"
                     variant="outline"
@@ -1310,42 +1348,71 @@ export default function FoldersPage() {
         )}
       </div>
 
-      {/* Delete confirmation — retype a randomly-picked word, same pattern
-          as the Forms page's Daily/Date Entry delete (Story 62 Round 8). */}
+      {/* Delete confirmation — step 1: retype a randomly-picked word (Forms
+          Daily/Date Entry pattern). Step 2 (non-empty Folder only): explicit
+          Yes for recursive delete instead of FOLDER_NOT_EMPTY error. */}
       <Dialog open={deleteDialogOpen} onOpenChange={(open) => !deleting && setDeleteDialogOpen(open)}>
         <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete this item?</DialogTitle>
-            <DialogDescription>
-              This permanently removes{" "}
-              <span className="font-mono">{currentItem?.Config.name}</span>. This can&apos;t be undone.
-              {currentItem?.Config.type === "Folder" && " A non-empty folder cannot be deleted."}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2">
-            <p className="text-sm">
-              Type <span className="font-mono font-bold">{deleteConfirmWord}</span> to confirm.
-            </p>
-            <Input
-              value={deleteConfirmInput}
-              onChange={(e) => setDeleteConfirmInput(e.target.value)}
-              placeholder={deleteConfirmWord}
-              autoFocus
-            />
-            <ErrorBox message={deleteError} className="mb-0" />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} disabled={deleting}>
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handleDeleteItem}
-              disabled={deleting || deleteConfirmInput.trim() !== deleteConfirmWord}
-            >
-              {deleting ? "Deleting..." : "Delete"}
-            </Button>
-          </DialogFooter>
+          {deleteStep === "confirm-word" ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>Delete this item?</DialogTitle>
+                <DialogDescription>
+                  This permanently removes{" "}
+                  <span className="font-mono">{currentItem?.Config.name}</span>. This can&apos;t be undone.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-2">
+                <p className="text-sm">
+                  Type <span className="font-mono font-bold">{deleteConfirmWord}</span> to confirm.
+                </p>
+                <Input
+                  value={deleteConfirmInput}
+                  onChange={(e) => setDeleteConfirmInput(e.target.value)}
+                  placeholder={deleteConfirmWord}
+                  autoFocus
+                />
+                <ErrorBox message={deleteError} className="mb-0" />
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} disabled={deleting}>
+                  Cancel
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={handleDeleteConfirmWord}
+                  disabled={deleting || deleteConfirmInput.trim() !== deleteConfirmWord}
+                >
+                  {deleting ? "Deleting..." : "Delete"}
+                </Button>
+              </DialogFooter>
+            </>
+          ) : (
+            <>
+              <DialogHeader>
+                <DialogTitle>Are you sure that you want to delete this item?</DialogTitle>
+                <DialogDescription>
+                  It has {deleteChildCount} child item{deleteChildCount === 1 ? "" : "s"}. This will
+                  permanently remove{" "}
+                  <span className="font-mono">{currentItem?.Config.name}</span> and everything inside
+                  it. This can&apos;t be undone.
+                </DialogDescription>
+              </DialogHeader>
+              <ErrorBox message={deleteError} className="mb-0" />
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => setDeleteStep("confirm-word")}
+                  disabled={deleting}
+                >
+                  Back
+                </Button>
+                <Button variant="destructive" onClick={handleDeleteConfirmRecursive} disabled={deleting}>
+                  {deleting ? "Deleting..." : "Yes"}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
         </DialogContent>
       </Dialog>
 

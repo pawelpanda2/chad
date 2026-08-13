@@ -468,6 +468,21 @@ describe("deleteFolderItem", () => {
     expect(items.has(`${REPO}/01`)).toBe(true);
   });
 
+  it("recursively deletes a Folder and its whole subtree when recursive=true", async () => {
+    const folder = folderItem(`${REPO}/01`, "sub");
+    const nested = folderItem(`${REPO}/01/01`, "nested");
+    const child = textItem(`${REPO}/01/01/01`, "child");
+    const sibling = textItem(`${REPO}/01/02`, "sib");
+    const { ops, items } = fakeOps([folder, nested, child, sibling]);
+
+    await deleteFolderItem(`${REPO}/01`, ops, { recursive: true });
+
+    expect(items.has(`${REPO}/01`)).toBe(false);
+    expect(items.has(`${REPO}/01/01`)).toBe(false);
+    expect(items.has(`${REPO}/01/01/01`)).toBe(false);
+    expect(items.has(`${REPO}/01/02`)).toBe(false);
+  });
+
   it("rejects deleting a non-existent item", async () => {
     const { ops } = fakeOps([]);
     await expect(deleteFolderItem(`${REPO}/99`, ops)).rejects.toMatchObject({
