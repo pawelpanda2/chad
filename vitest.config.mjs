@@ -118,6 +118,13 @@ export default defineConfig({
       // (real local Postgres, same convention as leads-postgres.test.ts).
       "packages/dashboard/lib/preview/cp-link.test.ts",
       "packages/dba/src/cp-link-resolver.test.ts",
+      // Story 120 — canonical Folders address<->slug codec (pure, UUID
+      // round-trip despite hyphens, path-traversal rejection) and the
+      // shared DashboardHistoryProvider's extracted pure reducer (real
+      // Back/Forward vs a fresh navigation that happens to match a stack
+      // neighbor, branching, MAX_BACK cap, replace-in-place canonicalization).
+      "packages/dashboard/lib/cp-address/route-codec.test.ts",
+      "packages/dashboard/lib/dashboard-history-reducer.test.ts",
       // Msg Auto AI Prompts — kind labels / Category mapping (mockup v4).
       "packages/dashboard/components/msg-automation/ai-prompt-kind.test.ts",
       // AI Prompts editor workspace (manage/leads/auto/base tabs + persistent

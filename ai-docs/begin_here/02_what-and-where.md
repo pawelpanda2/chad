@@ -131,6 +131,26 @@ przez Message Creator), `leads/`, `forms/`, `views/`, `settings/`, `users/`,
   standard layoutu (DashboardPageShell/EditorPageShell), scroll, mobile,
   **wspólny komponent `BackButton`, zawsze po prawej stronie toolbara**
   (Story 55, 2026-07-14).
+- `common/features/shared-navigation-history.md` (Story 120, 2026-08-13) —
+  `DashboardHistoryProvider`/`NavGroup`: jedna wspólna historia Back/Forward
+  całego dashboardu napędzana realnym URL-em (nie prywatnym stanem strony),
+  `popstate`-based rozróżnienie prawdziwego Back/Forward od świeżej
+  nawigacji trafiającej na ten sam URL (np. `A → B → A`), `MAX_BACK = 30`.
+- `folders/features/canonical-urls-and-cp-links.md` (Story 120, 2026-08-13,
+  z żywymi poprawkami tego samego dnia) — canonical
+  `/dashboard/folders/<address-slug>` (codec w `lib/cp-address/route-codec.ts`,
+  `Folders` UI teraz w `layout.tsx`, nie `page.tsx` — uwaga na remount
+  `[slug]` przy zwykłym `page.tsx` re-eksporcie), CP-link jako prawdziwy
+  `<Link href target="_blank">` przez `/dashboard/item-view/by-id/<uuid>`,
+  przekierowanie po TYPIE targetu (Text → nowy `/dashboard/item-view/<slug>`
+  chrome-free viewer, Folder → `/dashboard/knowledge/<slug>` — Knowledge
+  zyskał drugi, adresowy tryb obok istniejącego trybu po nazwach-slugach, w
+  tym samym pliku `[category]/[[...path]]/page.tsx`), `localStorage`
+  last-address (per user+repo, tylko fallback), `navigateToCpItem` jako
+  jedyne miejsce zmiany identity, strukturalny stos Wstecz/Naprzód
+  (`strippedLocaSegments`) niezależny od współdzielonej historii. Czytaj
+  przed kolejną zmianą w Folders/Knowledge/Item View/CP-linkach —
+  kontynuacja Story 119.
 - `common/features/shared-text-editor-toolbar.md` — wspólny edytor
   (CodeMirror), dark mode, numery linii, Preview/Editor tabs, **prop
   `defaultTab`** (Story 55).

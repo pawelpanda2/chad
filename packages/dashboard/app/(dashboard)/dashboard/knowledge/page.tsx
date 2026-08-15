@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { RefreshCw } from "lucide-react";
 import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
 import { ErrorBox } from "@/components/shared/error-box";
+import { cpAddressToKnowledgeHref } from "@/lib/cp-address/route-codec";
 
 /**
  * Hub for the Knowledge sidebar item — same button-grid pattern as Forms,
@@ -16,12 +17,18 @@ import { ErrorBox } from "@/components/shared/error-box";
  * Story 109 follow-up: /api/knowledge now also merges in the current
  * session's own `knowledge` folder ("personal" source), listed after the
  * shared tiles behind a visual divider.
+ *
+ * Story 120 follow-up: tiles link to the address-based
+ * `/dashboard/knowledge/<address-slug>` view (`cpAddressToKnowledgeHref`)
+ * instead of the name-slug route — this bare `/dashboard/knowledge` menu
+ * page itself is otherwise unchanged.
  */
 
 interface KnowledgeCategory {
   slug: string;
   name: string;
   source: "shared" | "personal";
+  address: string;
 }
 
 export default function KnowledgePage() {
@@ -119,7 +126,13 @@ function CategoryGrid({
         <button
           key={category.slug}
           type="button"
-          onClick={() => router.push(`/dashboard/knowledge/${category.slug}`)}
+          onClick={() => {
+            // Only the address-based href is ever navigated to — no
+            // name-slug fallback (per live feedback, name-slug Knowledge
+            // URLs should never be reachable, even from here).
+            const href = cpAddressToKnowledgeHref(category.address);
+            if (href) router.push(href);
+          }}
           className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
         >
           <span className="font-semibold text-sm uppercase">{category.name}</span>
