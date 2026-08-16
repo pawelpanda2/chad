@@ -121,6 +121,9 @@ export default defineConfig({
       // Story 121 — CP-link [uuid] markers extended to headers (hdr2 fallback
       // renderer's own coverage; hdr1 coverage lives in the file above).
       "packages/dashboard/components/shared/headers-renderer.test.tsx",
+      // Story 121 — multi-line Tab/Shift+Tab pure line-indent/dedent helpers
+      // for the shared body editor (body-text-editor.tsx).
+      "packages/dashboard/lib/multi-line-tab.test.ts",
       // Story 120 — canonical Folders address<->slug codec (pure, UUID
       // round-trip despite hyphens, path-traversal rejection) and the
       // shared DashboardHistoryProvider's extracted pure reducer (real

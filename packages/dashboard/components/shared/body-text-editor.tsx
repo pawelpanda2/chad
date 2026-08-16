@@ -18,6 +18,7 @@ import {
   highlightWhitespace,
 } from "@codemirror/view";
 import { cn } from "@/lib/utils";
+import { applyMultiLineTab, applyMultiLineShiftTab } from "@/lib/multi-line-tab";
 
 /** Max undo steps kept in the editor history (and redo after undo). */
 export const EDITOR_HISTORY_DEPTH = 3;
@@ -47,19 +48,52 @@ export type BodyTextEditorHandle = {
 };
 
 /**
- * Insert a real tab character at the main selection (same behavior as the Tab key).
- * Used by the keyboard keymap and by the shared toolbar tab button (phones have no Tab key).
+ * Tab at the main selection — a single caret inserts a literal `\t` (same
+ * as before); a real (multi- or single-line) selection instead prepends
+ * `\t` to the start of every touched line, per `applyMultiLineTab` (Story
+ * 121 — the previous implementation always replaced the whole selection
+ * with one `\t`, destroying multi-line selections instead of indenting
+ * them). Used by the keyboard keymap and by the shared toolbar tab button
+ * (phones have no Tab key).
  */
 export function insertTabInView(view: EditorView): boolean {
   const selection = view.state.selection.main;
-  const from = selection.from;
-  const to = selection.to;
-  const nextCursorPos = from + 1;
+  const docText = view.state.doc.toString();
+  const { nextValue, nextSelectionStart, nextSelectionEnd } = applyMultiLineTab(
+    docText,
+    selection.from,
+    selection.to,
+  );
 
   view.dispatch(
     view.state.update({
-      changes: { from, to, insert: "\t" },
-      selection: { anchor: nextCursorPos },
+      changes: { from: 0, to: docText.length, insert: nextValue },
+      selection: { anchor: nextSelectionStart, head: nextSelectionEnd },
+      scrollIntoView: true,
+    }),
+  );
+  view.focus();
+  return true;
+}
+
+/**
+ * Shift+Tab at the main selection — removes at most one leading `\t` from
+ * every touched line (see `applyMultiLineShiftTab`). Never touches leading
+ * spaces, never touches lines with no leading `\t`.
+ */
+export function removeTabInView(view: EditorView): boolean {
+  const selection = view.state.selection.main;
+  const docText = view.state.doc.toString();
+  const { nextValue, nextSelectionStart, nextSelectionEnd } = applyMultiLineShiftTab(
+    docText,
+    selection.from,
+    selection.to,
+  );
+
+  view.dispatch(
+    view.state.update({
+      changes: { from: 0, to: docText.length, insert: nextValue },
+      selection: { anchor: nextSelectionStart, head: nextSelectionEnd },
       scrollIntoView: true,
     }),
   );
@@ -86,6 +120,10 @@ function tabKeyExtension(): Extension {
       {
         key: "Tab",
         run: (view) => insertTabInView(view),
+      },
+      {
+        key: "Shift-Tab",
+        run: (view) => removeTabInView(view),
       },
     ]),
   );
@@ -247,6 +285,21 @@ export const BodyTextEditor = forwardRef<BodyTextEditorHandle, BodyTextEditorPro
             allowMultipleSelections: false,
             // Own history with depth 3 — see history({ minDepth }) below.
             history: false,
+            // Story 121 — the selection-gap bug: CodeMirror's synthetic
+            // drawSelection() overlay computes each line's highlighted
+            // selection-background rectangle in JS from character
+            // coordinates; measured live, a line whose selection starts
+            // with a leading `\t` gets a rectangle ~6px too far left —
+            // spilling past .cm-content's own left padding — while a line
+            // starting on a plain character aligns correctly. That fixed,
+            // tab-triggered offset (same regardless of tab count) is
+            // exactly the jagged left edge between the gutter and the
+            // highlighted text on tab-indented lines. Turning this overlay
+            // off falls back to the browser's own native text-selection
+            // painting, which is computed by the same layout engine that
+            // renders the tab in the first place, so it can't drift from
+            // it — no layout/gutter-width change either way.
+            drawSelection: false,
           }}
           extensions={[
             history({ minDepth: EDITOR_HISTORY_DEPTH }),
