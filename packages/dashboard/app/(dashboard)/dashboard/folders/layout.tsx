@@ -170,11 +170,15 @@ interface MoveApiResponse {
 /** Which panel the item view shows — independent of item type (Text or Folder), toggled by the Config/Body button next to Delete. */
 type EditorMode = "body" | "config";
 
-/** Transport-form values `GET /api/folders/export` accepts — matches `dba`'s `FolderExportMode` (Story 98). */
-type FolderExportMode = "body-l1" | "body-l2" | "all-l1";
+/** Transport-form `content` values `GET /api/folders/export` accepts — matches `dba`'s `FolderExportContent` (Story 98, unified contract — Story 121). */
+type FolderExportContent = "body" | "config" | "both";
+
+/** `0` = unlimited depth (recurse to the bottom of the tree) — same convention as `dba`'s `FolderExportResult.depth`. */
+const EXPORT_DEPTH_UNLIMITED = 0;
+const EXPORT_DEPTH_MAX = 99;
 
 interface FolderExportApiResponse {
-  export?: { mode: string; items: unknown[] };
+  export?: { content: string; depth: number; items: unknown[] };
   itemCount?: number;
   error?: string;
   details?: string;
@@ -314,7 +318,11 @@ export default function FoldersLayout({ children }: { children?: React.ReactNode
   const [savingConfig, setSavingConfig] = useState(false);
   const [configSaveError, setConfigSaveError] = useState<string | null>(null);
   const [configSaved, setConfigSaved] = useState(false);
-  const [exportMode, setExportMode] = useState<FolderExportMode>("body-l1");
+  const [exportContent, setExportContent] = useState<FolderExportContent>("body");
+  // Free-typed text, not a number — lets the field be temporarily empty
+  // while editing rather than snapping to 0/1 on every keystroke. Parsed +
+  // validated (integer, 0..EXPORT_DEPTH_MAX) only when Copy actually runs.
+  const [exportDepthInput, setExportDepthInput] = useState("1");
   const [copying, setCopying] = useState(false);
   const [copyError, setCopyError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -918,12 +926,29 @@ export default function FoldersLayout({ children }: { children?: React.ReactNode
    */
   async function handleCopyExport() {
     if (!currentItem || currentItem.Config.type !== "Folder" || copying) return;
+
+    // Client-side validation mirrors dba's parseFolderExportDepth (integer,
+    // >= 0) — reject before ever hitting the network, and the small UI cap
+    // of 99 (0 already means unlimited, so nothing above 99 is ever useful
+    // to type) — the server has no such cap itself, only the real safety
+    // limits (max item count / body size), which apply regardless of depth.
+    const trimmedDepth = exportDepthInput.trim();
+    if (!/^\d+$/.test(trimmedDepth)) {
+      setCopyError("Level must be a whole number ≥ 0 (0 = unlimited).");
+      return;
+    }
+    const depth = Number(trimmedDepth);
+    if (!Number.isSafeInteger(depth) || depth > EXPORT_DEPTH_MAX) {
+      setCopyError(`Level must be between 0 (unlimited) and ${EXPORT_DEPTH_MAX}.`);
+      return;
+    }
+
     const loca = relativeLoca(currentItem.Address, selectedRepoGuid);
 
     setCopying(true);
     setCopyError(null);
     try {
-      const query = new URLSearchParams({ loca, mode: exportMode });
+      const query = new URLSearchParams({ loca, content: exportContent, depth: String(depth) });
       if (selectedRepoGuid) query.set("repoGuid", selectedRepoGuid);
       const res = await fetch(`/api/folders/export?${query}`);
       const data: FolderExportApiResponse = await res.json();
@@ -942,7 +967,10 @@ export default function FoldersLayout({ children }: { children?: React.ReactNode
         return;
       }
 
-      toast.success(`Copied ${data.itemCount ?? data.export.items.length} item(s) — ${data.export.mode}`);
+      const depthLabel = data.export.depth === EXPORT_DEPTH_UNLIMITED ? "∞" : String(data.export.depth);
+      toast.success(
+        `Copied ${data.itemCount ?? data.export.items.length} item(s) — ${data.export.content}, depth ${depthLabel}`
+      );
     } catch (err) {
       setCopyError(err instanceof Error ? err.message : "Nie udało się pobrać eksportu");
     } finally {
@@ -1470,29 +1498,19 @@ export default function FoldersLayout({ children }: { children?: React.ReactNode
                     Move
                   </Button>
                   {/*
-                    Copy (Story 98): read-only Folder-tree export for pasting
-                    context into AI. Independent of Body/Config mode (works in
+                    Copy (Story 98, unified content/depth contract — Story
+                    121): read-only Folder-tree export for pasting context
+                    into AI. Independent of Body/Config editor mode (works in
                     either), always reads the server's saved data — never the
                     local editorBody/configText drafts, never requires
-                    unlocking a protected system folder. Joined into one
-                    vertical segmented control (combobox on top, Copy below) —
-                    same "one connected control" idiom as the Preview|Editor
-                    tab pair above, just stacked instead of side-by-side.
+                    unlocking a protected system folder. Copy leftmost, then
+                    the content-type combobox, then the depth field —
+                    "Level" — right next to it: 0 = unlimited (recurse to the
+                    bottom of the tree), 1..99 = an explicit level cap. The
+                    server enforces its own real safety caps (max item
+                    count / body size) regardless of what's typed here.
                   */}
-                  <div className="flex flex-col gap-1 rounded-lg border bg-card p-1">
-                    <Select value={exportMode} onValueChange={(v) => setExportMode(v as FolderExportMode)}>
-                      <SelectTrigger
-                        className="h-6 w-[100px] rounded-md border-0 bg-transparent px-3 text-xs font-medium shadow-none"
-                        title="Copies saved data."
-                      >
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="body-l1">body l1</SelectItem>
-                        <SelectItem value="body-l2">body l2</SelectItem>
-                        <SelectItem value="all-l1">all l1</SelectItem>
-                      </SelectContent>
-                    </Select>
+                  <div className="flex items-center gap-1 rounded-lg border bg-card p-1">
                     <Button
                       type="button"
                       size="sm"
@@ -1504,6 +1522,47 @@ export default function FoldersLayout({ children }: { children?: React.ReactNode
                       <Copy className="mr-1 h-3 w-3" />
                       {copying ? "Copying..." : "Copy"}
                     </Button>
+                    <Select
+                      value={exportContent}
+                      onValueChange={(v) => setExportContent(v as FolderExportContent)}
+                    >
+                      <SelectTrigger
+                        className="h-6 w-[92px] rounded-md border-0 bg-transparent px-2 text-xs font-medium shadow-none"
+                        title="What to copy: item body, item config, or both."
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="body">Body</SelectItem>
+                        <SelectItem value="config">Config</SelectItem>
+                        <SelectItem value="both">Both</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <div className="flex items-center gap-1">
+                      <span className="text-[10px] text-muted-foreground">Lvl</span>
+                      <Input
+                        value={exportDepthInput}
+                        onChange={(e) => setExportDepthInput(e.target.value)}
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        min={0}
+                        max={EXPORT_DEPTH_MAX}
+                        placeholder="1"
+                        title={`Recursion depth: 0 = unlimited (∞, to the bottom of the tree), 1..${EXPORT_DEPTH_MAX} = explicit level cap.`}
+                        aria-label="Copy depth (0 = unlimited)"
+                        className="h-6 w-10 rounded-md border-0 bg-transparent px-1 text-center text-xs font-medium shadow-none"
+                      />
+                      {/* Explicit "0 = unlimited" affordance — a tooltip alone isn't clear enough at a glance. */}
+                      <span
+                        className={`text-xs font-medium ${
+                          exportDepthInput.trim() === "0" ? "text-foreground" : "text-transparent"
+                        }`}
+                        aria-hidden={exportDepthInput.trim() !== "0"}
+                        title="0 = unlimited depth"
+                      >
+                        ∞
+                      </span>
+                    </div>
                   </div>
                   <input
                     ref={importFileInputRef}
@@ -1592,17 +1651,35 @@ export default function FoldersLayout({ children }: { children?: React.ReactNode
                           handleChildDrop(index, name);
                         }}
                       >
-                        <span className="w-8 shrink-0 font-mono text-xs text-muted-foreground">{index}</span>
+                        {/*
+                          Both the index and the name must stay mouse-selectable as
+                          plain text (Story 121) — the root cause of them not being
+                          selectable was never padding/layout, it's two native
+                          browser behaviors stacking: (1) a <button> element's own
+                          UA stylesheet default is `user-select: none`, which
+                          `select-text` below overrides with higher (class vs.
+                          bare-element) specificity; (2) a `draggable` ancestor
+                          claims mousedown+move as a native HTML5 drag gesture
+                          before it ever becomes a text selection, so the name text
+                          itself additionally needs `-webkit-user-drag: none` to opt
+                          back into normal selection — drag-to-reorder still works
+                          from anywhere else on the button (e.g. its padding),
+                          exactly like before. A plain click (no pointer movement)
+                          is unaffected either way and still navigates.
+                        */}
+                        <span className="w-8 shrink-0 select-text font-mono text-xs text-muted-foreground">
+                          {index}
+                        </span>
                         <Button
                           variant="outline"
                           size="sm"
-                          className="justify-start"
+                          className="justify-start select-text"
                           draggable
                           onDragStart={() => setDraggedChild({ index, name })}
                           onDragEnd={() => setDraggedChild(null)}
                           onClick={() => handleChildClick(index)}
                         >
-                          {name}
+                          <span className="select-text [-webkit-user-drag:none]">{name}</span>
                         </Button>
                       </div>
                     ))}
