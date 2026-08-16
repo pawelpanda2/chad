@@ -1467,82 +1467,57 @@ export default function FoldersLayout({ children }: { children?: React.ReactNode
               </div>
               {showMoreActions && (
                 <div className="flex flex-wrap items-start gap-2">
-                  <Button
-                    type="button"
-                    variant="destructive"
-                    size="sm"
-                    onClick={openDeleteDialog}
-                    disabled={Boolean(protectingFolder && !isProtectedWriteUnlocked)}
-                    title={
-                      protectingFolder && !isProtectedWriteUnlocked
-                        ? `Managed by ${protectingFolder.managedBy} — read-only here`
-                        : "Permanently deletes this folder (and contents after confirmation)"
-                    }
-                  >
-                    <Trash2 className="mr-1 h-3.5 w-3.5" />
-                    Delete
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={openMoveDialog}
-                    disabled={Boolean(protectingFolder && !isProtectedWriteUnlocked)}
-                    title={
-                      protectingFolder && !isProtectedWriteUnlocked
-                        ? `Managed by ${protectingFolder.managedBy} — read-only here`
-                        : "Moves this Folder (+ its whole subtree) to a different Folder"
-                    }
-                  >
-                    <FolderInput className="mr-1 h-3.5 w-3.5" />
-                    Move
-                  </Button>
                   {/*
                     Copy (Story 98, unified content/depth contract — Story
                     121): read-only Folder-tree export for pasting context
                     into AI. Independent of Body/Config editor mode (works in
                     either), always reads the server's saved data — never the
                     local editorBody/configText drafts, never requires
-                    unlocking a protected system folder. Copy leftmost, then
-                    the content-type combobox, then the depth field —
-                    "Level" — right next to it: 0 = unlimited (recurse to the
-                    bottom of the tree), 1..99 = an explicit level cap. The
-                    server enforces its own real safety caps (max item
-                    count / body size) regardless of what's typed here.
+                    unlocking a protected system folder. Leftmost of this
+                    row (before Delete/Move), one connected two-row control
+                    (same "joined" idiom as the Preview|Editor tab pair,
+                    just stacked instead of side-by-side): content combobox
+                    + depth field together on top, Copy spanning the row
+                    below. No caption labels next to the controls (see
+                    ai-docs/begin_here/01_ai_start.md, "no suggestive
+                    labels") — hover title text carries the explanation
+                    instead. depth: 0 = unlimited (recurse to the bottom of
+                    the tree), 1..99 = an explicit level cap; the server
+                    enforces its own real safety caps (max item count /
+                    body size) regardless of what's typed here.
                   */}
-                  <div className="flex items-center gap-1 rounded-lg border bg-card p-1">
-                    <Button
-                      type="button"
-                      size="sm"
-                      onClick={handleCopyExport}
-                      disabled={copying}
-                      title="Copies saved data."
-                      className="h-6 rounded-md px-3 text-xs font-medium"
-                    >
-                      <Copy className="mr-1 h-3 w-3" />
-                      {copying ? "Copying..." : "Copy"}
-                    </Button>
-                    <Select
-                      value={exportContent}
-                      onValueChange={(v) => setExportContent(v as FolderExportContent)}
-                    >
-                      <SelectTrigger
-                        className="h-6 w-[92px] rounded-md border-0 bg-transparent px-2 text-xs font-medium shadow-none"
-                        title="What to copy: item body, item config, or both."
-                      >
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="body">Body</SelectItem>
-                        <SelectItem value="config">Config</SelectItem>
-                        <SelectItem value="both">Both</SelectItem>
-                      </SelectContent>
-                    </Select>
+                  <div className="flex flex-col gap-1 rounded-lg border bg-card p-1">
                     <div className="flex items-center gap-1">
-                      <span className="text-[10px] text-muted-foreground">Lvl</span>
+                      <Select
+                        value={exportContent}
+                        onValueChange={(v) => setExportContent(v as FolderExportContent)}
+                      >
+                        <SelectTrigger
+                          className="h-6 w-[92px] rounded-md border-0 bg-transparent px-2 text-xs font-medium shadow-none"
+                          title="What to copy: item body, item config, or both."
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="body">Body</SelectItem>
+                          <SelectItem value="config">Config</SelectItem>
+                          <SelectItem value="both">Both</SelectItem>
+                        </SelectContent>
+                      </Select>
                       <Input
                         value={exportDepthInput}
-                        onChange={(e) => setExportDepthInput(e.target.value)}
+                        onChange={(e) => {
+                          // Digits only (no -, ., e, ...) and clamped live —
+                          // 99 is the highest anything typed here can ever
+                          // reach, not just a submit-time validation.
+                          const digitsOnly = e.target.value.replace(/[^0-9]/g, "");
+                          if (digitsOnly === "") {
+                            setExportDepthInput("");
+                            return;
+                          }
+                          const n = Number(digitsOnly);
+                          setExportDepthInput(n > EXPORT_DEPTH_MAX ? String(EXPORT_DEPTH_MAX) : String(n));
+                        }}
                         inputMode="numeric"
                         pattern="[0-9]*"
                         min={0}
@@ -1563,6 +1538,52 @@ export default function FoldersLayout({ children }: { children?: React.ReactNode
                         ∞
                       </span>
                     </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={handleCopyExport}
+                      disabled={copying}
+                      title="Copies saved data."
+                      className="h-6 rounded-md px-3 text-xs font-medium"
+                    >
+                      <Copy className="mr-1 h-3 w-3" />
+                      {copying ? "Copying..." : "Copy"}
+                    </Button>
+                  </div>
+                  {/* Delete + Move: stacked vertically, but each its own
+                      separate button (not a joined/bordered group like
+                      Copy above) — per explicit layout request. */}
+                  <div className="flex flex-col gap-1">
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      size="sm"
+                      onClick={openDeleteDialog}
+                      disabled={Boolean(protectingFolder && !isProtectedWriteUnlocked)}
+                      title={
+                        protectingFolder && !isProtectedWriteUnlocked
+                          ? `Managed by ${protectingFolder.managedBy} — read-only here`
+                          : "Permanently deletes this folder (and contents after confirmation)"
+                      }
+                    >
+                      <Trash2 className="mr-1 h-3.5 w-3.5" />
+                      Delete
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={openMoveDialog}
+                      disabled={Boolean(protectingFolder && !isProtectedWriteUnlocked)}
+                      title={
+                        protectingFolder && !isProtectedWriteUnlocked
+                          ? `Managed by ${protectingFolder.managedBy} — read-only here`
+                          : "Moves this Folder (+ its whole subtree) to a different Folder"
+                      }
+                    >
+                      <FolderInput className="mr-1 h-3.5 w-3.5" />
+                      Move
+                    </Button>
                   </div>
                   <input
                     ref={importFileInputRef}
