@@ -22,10 +22,10 @@
 services:
   dashboard:
     # No ":latest" fallback - own CHAD images must be deployed by an explicit
-    # release tag (see ai-docs/bash-scripts/image-tagging-standard.md).
+    # release tag (see ../chad-docs/ai-docs/bash-scripts/image-tagging-standard.md).
     # 04_qnap_test/03_re-start.sh sets IMAGE_TAG before calling this; the
     # required-var syntax below is a defense-in-depth backstop.
-    image: "chad-dashboard:${IMAGE_TAG:?IMAGE_TAG is required, see ai-docs/bash-scripts/image-tagging-standard.md}"
+    image: "chad-dashboard:${IMAGE_TAG:?IMAGE_TAG is required, see ../chad-docs/ai-docs/bash-scripts/image-tagging-standard.md}"
     build:
       context: .
       dockerfile: packages/dashboard/Dockerfile
@@ -79,7 +79,7 @@ services:
       - DBA_PRIMARY_BACKEND=postgres
       # Story 109 — packages/content-provider's own router (cp-entry) reads a
       # SEPARATE env var from DBA_PRIMARY_BACKEND above (different package,
-      # see ai-docs/content-provider/ai-start.md). Hardcoded literal for the
+      # see ../chad-docs/ai-docs/content-provider/ai-start.md). Hardcoded literal for the
       # same reason as DBA_PRIMARY_BACKEND above (never a shared-env default
       # PROD could accidentally inherit). Without it, cp-entry defaults to
       # "net-adapter" (the removed legacy .NET Content Provider) — a hard

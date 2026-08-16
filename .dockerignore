@@ -61,3 +61,4 @@ coverage
 .nyc_output
 htmlcov
 test-results
+# Docs/tests live in sibling repo chad-docs (2026-08-16). Keep ignoring md.

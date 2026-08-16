@@ -176,37 +176,6 @@ export default defineConfig({
       // Story 114 — Knowledge v2 intelligent grid layout: pure column/width/
       // row-cap/unbreakable-token math (no DOM).
       "packages/dashboard/lib/knowledge-layout.test.ts",
-      // tests/ reorg (2026-07-28) — only the Vitest-based files from each
-      // pillar's unit/integration dirs; the node:test-based files in the
-      // same directories (no-chad-mongo-runtime, config-validator,
-      // delete-physical, worker-order, status-shape, mapping-schema,
-      // system-folders) run via `node --test` (see package.json), never
-      // through this config.
-      "tests/1_1_data-protection/integration/local-login-api.test.mjs",
-      "tests/1_1_data-protection/integration/session-signing-configured.test.mjs",
-      "tests/1_1_data-protection/unit/session-token.test.ts",
-      "tests/1_1_data-protection/integration/offline-readonly-backup-workers.test.ts",
-      // AI Prompts conversation "run" endpoint — session-boundary smoke.
-      "tests/1_1_data-protection/integration/ai-prompts-run-api.test.mjs",
-      "tests/1_1_data-protection/unit/offline-readonly-backup-mode-and-formatters.test.ts",
-      "tests/1_2_google-sheets-sync/integration/local-google-sheets-info.test.mjs",
-      "tests/1_2_google-sheets-sync/integration/qnap-test3-google-sheets.test.mjs",
-      // 2026-07-28 — real-user (pawel_f/kamil_s) read-only reconciliation,
-      // added after the Story 82 migration was found to have left pawel_f's
-      // Daily entries without any Google Sheets outbox job ever.
-      "tests/1_2_google-sheets-sync/integration/reconcile-real-users.test.mjs",
-      "tests/1_2_google-sheets-sync/integration/blocked-outbox-job.test.mjs",
-      "tests/1_2_google-sheets-sync/integration/history-outbox-sheet-lifecycle.test.mjs",
-      "tests/1_1_data-protection/integration/cross-user-data-integrity.test.mjs",
-      "tests/1_4_tables-release/daily/integration/qnap-test3-daily-dates.test.mjs",
-      "tests/1_4_tables-release/leads/integration/local-msg-auto-links-api.test.mjs",
-      // Story 97 — CHAD MCP server (packages/mcp): unit (config/logging/
-      // cp-output/errors/identity guard rails), a static no-direct-provider-
-      // access check, protocol smoke over an in-memory transport, and real
-      // integration/stdio tests against test3 on QNAP Postgres (both
-      // self-skip via `describe.skipIf` when their real prerequisites — a
-      // built dist/ or a real .env.mcp — aren't present, same convention as
-      // the QNAP-targeted tests above).
       "packages/mcp/src/config.test.ts",
       "packages/mcp/src/logging.test.ts",
       "packages/mcp/src/cp-output.test.ts",

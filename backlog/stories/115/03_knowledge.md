@@ -1,8 +1,0 @@
-# Story 115 — Knowledge
-
-- `packages/dba/src/cp-import.ts` — Story 109's ZIP Folder import orchestration; the one place in the whole import path that called `getCurrentRepoGuid()` for repo resolution (everything else in `folders.ts` uses the address directly).
-- `packages/dba/src/repo-context.ts` — `RepoContext`/`runWithRepoContext`/`getCurrentRepoGuid()`: per-request `AsyncLocalStorage`, always set from the session's own identity (`user.repoGuid` from the login token), never from a per-request repo selection. This is why it was the wrong source for "which repo is this write authorized to target."
-- `packages/dba/src/shared-repo-access.ts` — the actual authorization boundary for cross-repo Folders access (`resolveFoldersRepoAccess`/`listSelectableFoldersRepos`), previously admin-only for `chad_shared`.
-- `packages/dashboard/app/api/folders/import/route.ts` — already correctly resolved `access.repoGuid` for building `parentAddress`, but didn't also pass it to `dba` for repo-resolution purposes, which is what let the two diverge.
-- `packages/dba/src/cp-import.test.ts` — pre-existing "cross-user isolation" test that made blindly trusting `parentAddress`'s own prefix the wrong fix (would have silently dropped that protection) — this is what pushed the fix toward an explicit `targetRepoGuid` field instead.
-- `packages/dba/src/dev-db-override.ts` — `getEffectivePostgresUri()`/`buildPostgresUriForSource()` always default to the real QNAP server (`currentPostgresSource` initial value), which is why `cp-import.test.ts`'s own `process.env.POSTGRES_URI` override (pointed at the local Docker Postgres) is never actually used by `postgres.ts`'s connection pool in this environment — a pre-existing gap, not touched here.

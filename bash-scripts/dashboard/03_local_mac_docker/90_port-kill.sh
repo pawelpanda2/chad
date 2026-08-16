@@ -3,7 +3,7 @@
 # 03_re-start.sh (and transitively 06_deploy.sh), and for direct manual use.
 # Numbered 90 (outside the 01-07 standard operation slots) because it's a
 # manual technical tool, not one of the seven standard operations — see
-# documentation/ai-docs/deploy/dashboard-deployment-scripts.md.
+# ../chad-docs/ai-docs/deploy/dashboard-deployment-scripts.md.
 #
 # Two cases, both handled by the shared kill_process_on_port() in
 # bash-scripts/common/lib.sh (this file is a thin CLI wrapper around it —

@@ -268,7 +268,7 @@ require_image_tag() {
   if [ ! -f "$tag_file" ]; then
     log_error "No release tag recorded for $image_label."
     log_error "  Missing: $tag_file"
-    log_error "  Fix: run the build script for $image_label first (see ai-docs/bash-scripts/image-tagging-standard.md)."
+    log_error "  Fix: run the build script for $image_label first (see ../chad-docs/ai-docs/bash-scripts/image-tagging-standard.md)."
     return 1
   fi
   # shellcheck disable=SC1090
@@ -330,7 +330,7 @@ read_env_var() {
 # Creates the directory if missing, verifies it's writable, and verifies the
 # underlying filesystem has at least min_free_kb free (default 1,048,576 KB =
 # 1GB). This is a tripwire for the QNAP_CONTAINER_DATA_PATH-on-tmpfs class of
-# bug (see documentation/ai-docs/deploy/qnap-data-path.md): a 16MB tmpfs looks
+# bug (see ../chad-docs/ai-docs/deploy/qnap-data-path.md): a 16MB tmpfs looks
 # like a perfectly normal, writable directory right up until MongoDB's
 # WiredTiger journal fills it and the container crash-loops with "No space
 # left on device". Also WARNS (does not fail) when the path resolves onto a
@@ -361,7 +361,7 @@ require_data_path_writable() {
     log_error "  Available: ${avail_kb}KB, required at least: ${min_free_kb}KB."
     log_error "  This is the exact signature of QNAP_CONTAINER_DATA_PATH pointing at a"
     log_error "  small tmpfs instead of the real data volume."
-    log_error "  Fix: see documentation/ai-docs/deploy/qnap-data-path.md"
+    log_error "  Fix: see ../chad-docs/ai-docs/deploy/qnap-data-path.md"
     return 1
   fi
 

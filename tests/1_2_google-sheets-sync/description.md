@@ -1,1 +1,0 @@
-Ten dział zawiera testy regresyjne synchronizacji tabel CHAD z Google Sheets. Muszą przejść przed zakończeniem zadania zmieniającego Daily, Dates, Leads, outbox, mapper, worker, nagłówki, History Google Sheets status albo konfigurację spreadsheetów.

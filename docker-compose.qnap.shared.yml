@@ -22,7 +22,7 @@
 # the path from ${QNAP_CONTAINER_DATA_PATH}, only .env.qnap's value changed.
 #
 # 2026-07-27 — CHAD Mongo runtime fully removed (see
-# ai-docs/databases/red-rules.md): the old `chad-mongodb` replica-set
+# ../chad-docs/ai-docs/databases/red-rules.md): the old `chad-mongodb` replica-set
 # service (+ its `mongo-keyfile-init`/`mongo-rs-init` helpers), which used
 # to hold cp_items/cp_history for CHAD, is gone. PostgreSQL (below) is now
 # CHAD's ONLY datastore — no fallback, no dual-write, no Dev Panel option to
@@ -30,7 +30,7 @@
 # only active MongoDB in this stack, used exclusively by Beeper CRM
 # (`beeper_<repoGuid>` databases). See git history (pre-2026-07-27) for the
 # removed `chad-mongodb`/`mongo-keyfile-init`/`mongo-rs-init` service
-# definitions and `ai-docs/deploy/2026-07-22_mongodb-chad-beeper-split.md`
+# definitions and `../chad-docs/ai-docs/deploy/2026-07-22_mongodb-chad-beeper-split.md`
 # for the (now superseded) two-Mongo-instance history.
 #
 # beeper-mongodb: every beeper_<repoGuid> database. Standalone —
@@ -154,7 +154,7 @@ services:
   # 2026-07-27 Postgres cutover, this applies to the Postgres write path
   # (executeCpMutationWithHistoryPostgres) — no Mongo/Change-Streams
   # involvement in CHAD history at all anymore. See
-  # ai-docs/history/how-it-works.md.
+  # ../chad-docs/ai-docs/history/how-it-works.md.
 
 networks:
   default:

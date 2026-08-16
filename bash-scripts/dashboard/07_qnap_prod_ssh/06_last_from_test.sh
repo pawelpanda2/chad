@@ -10,7 +10,7 @@
 #
 # This is PROD's ONLY deployment operation (05_qnap_prod/{02_build,06_deploy}.sh
 # do not exist — PROD never builds or deploys independently, see
-# documentation/ai-docs/deploy/dashboard-deployment-scripts.md).
+# ../chad-docs/ai-docs/deploy/dashboard-deployment-scripts.md).
 set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel)"

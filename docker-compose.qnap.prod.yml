@@ -23,10 +23,10 @@
 services:
   dashboard:
     # No ":latest" fallback - own CHAD images must be deployed by an explicit
-    # release tag (see ai-docs/bash-scripts/image-tagging-standard.md).
+    # release tag (see ../chad-docs/ai-docs/bash-scripts/image-tagging-standard.md).
     # 05_qnap_prod/03_re-start.sh sets IMAGE_TAG before calling this; the
     # required-var syntax below is a defense-in-depth backstop.
-    image: "chad-dashboard:${IMAGE_TAG:?IMAGE_TAG is required, see ai-docs/bash-scripts/image-tagging-standard.md}"
+    image: "chad-dashboard:${IMAGE_TAG:?IMAGE_TAG is required, see ../chad-docs/ai-docs/bash-scripts/image-tagging-standard.md}"
     container_name: chad-dashboard-prod
     restart: unless-stopped
     ports:
@@ -55,7 +55,7 @@ services:
       - DBA_PRIMARY_BACKEND=${DBA_PRIMARY_BACKEND:-mongo}
       # Story 109 — packages/content-provider's own router (cp-entry) reads a
       # SEPARATE env var from DBA_PRIMARY_BACKEND above (different package,
-      # see ai-docs/content-provider/ai-start.md). Only the new ZIP-import
+      # see ../chad-docs/ai-docs/content-provider/ai-start.md). Only the new ZIP-import
       # feature uses cp-entry today, and it always targets Postgres — if
       # DBA_PRIMARY_BACKEND above is still "mongo" here, GetItem simply
       # won't find the target parent Folder (it lives in Mongo, not
@@ -74,7 +74,7 @@ services:
       # only becomes active once .env.qnap sets GOOGLE_SHEETS_ENABLED=true
       # AND production-guard.ts's checks pass (CHAD_ENVIRONMENT=prod above
       # + MONGODB_URI resolving to a known production host, both already
-      # satisfied on this file). See ai-docs/google-sheets/architecture.md.
+      # satisfied on this file). See ../chad-docs/ai-docs/google-sheets/architecture.md.
       - GOOGLE_SHEETS_ENABLED=${GOOGLE_SHEETS_ENABLED:-false}
       - GOOGLE_SHEETS_SPREADSHEET_MAP=${GOOGLE_SHEETS_SPREADSHEET_MAP:-}
       - GOOGLE_SHEETS_DAILY_TRACKER_SHEET_NAME=${GOOGLE_SHEETS_DAILY_TRACKER_SHEET_NAME:-}

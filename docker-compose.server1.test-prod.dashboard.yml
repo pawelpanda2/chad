@@ -12,7 +12,7 @@
 # (CHAD's sole primary — cp_items/cp_history/cp_outbox_* — for BOTH
 # environments). The old chad-mongodb service no longer exists at all
 # (2026-07-27, CHAD Mongo runtime removed — see
-# ai-docs/databases/red-rules.md).
+# ../chad-docs/ai-docs/databases/red-rules.md).
 #
 # Usage (see bash-scripts/dashboard/04_qnap_test/ and 05_qnap_prod/ — those
 # scripts are what actually invoke this; the commands below are the manual
@@ -34,7 +34,7 @@
 # Image/promotion model deliberately UNCHANGED (explicit 2026-07-27
 # decision): build once (chad-dashboard image), deploy to TEST, verify,
 # promote the SAME verified image to PROD — see
-# ai-docs/bash-scripts/image-tagging-standard.md and
+# ../chad-docs/ai-docs/bash-scripts/image-tagging-standard.md and
 # bash-scripts/dashboard/07_qnap_prod_ssh/06_last_from_test.sh. Both
 # environments still read the one shared .image-tag.chad-dashboard.env file
 # via require_image_tag() — no separate TEST/PROD image lifecycle. The
@@ -46,7 +46,7 @@
 # is what keeps PROD from ever running an unverified image.
 services:
   dashboard:
-    image: "chad-dashboard:${IMAGE_TAG:?IMAGE_TAG is required, see ai-docs/bash-scripts/image-tagging-standard.md}"
+    image: "chad-dashboard:${IMAGE_TAG:?IMAGE_TAG is required, see ../chad-docs/ai-docs/bash-scripts/image-tagging-standard.md}"
     build:
       context: .
       dockerfile: packages/dashboard/Dockerfile
@@ -63,7 +63,7 @@ services:
       - DATABASE_URL=file:/app/data/dev.db
       # Beeper CRM's own Mongo — UNCHANGED, unaffected by the CHAD backend
       # decision below. No MONGODB_URI here at all (2026-07-27, CHAD Mongo
-      # runtime removed — see ai-docs/databases/red-rules.md): the
+      # runtime removed — see ../chad-docs/ai-docs/databases/red-rules.md): the
       # chad-mongodb service no longer exists in
       # docker-compose.qnap.shared.yml, and the dashboard must never be
       # able to resolve a CHAD-Mongo connection string, not even an unused

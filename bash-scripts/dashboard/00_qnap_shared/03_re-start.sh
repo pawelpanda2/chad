@@ -40,7 +40,7 @@ cd "$REPO_ROOT"
 # needed a recorded release tag) was removed.
 
 # Preflight: QNAP_CONTAINER_DATA_PATH must point at a real, writable volume
-# with enough room — NOT a small tmpfs (see documentation/ai-docs/deploy/
+# with enough room — NOT a small tmpfs (see ../chad-docs/ai-docs/deploy/
 # qnap-data-path.md for the real incident this guards against: a Mongo
 # container crash-looping with "No space left on device" because this path
 # resolved onto the 16MB /share tmpfs instead of the data volume). Same

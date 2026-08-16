@@ -8,7 +8,7 @@
 #
 # Kept as a no-op (rather than deleted) so the numbered-slot convention
 # (01_config/02_build/03_re-start/04_end/05_status/06_deploy) stays intact
-# across every environment — see documentation/ai-docs/deploy/
+# across every environment — see ../chad-docs/ai-docs/deploy/
 # dashboard-deployment-scripts.md.
 set -euo pipefail
 

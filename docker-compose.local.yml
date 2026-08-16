@@ -65,10 +65,10 @@ services:
 
   dashboard:
     # No ":latest" fallback - own CHAD images must be deployed by an explicit
-    # release tag (see ai-docs/bash-scripts/image-tagging-standard.md).
+    # release tag (see ../chad-docs/ai-docs/bash-scripts/image-tagging-standard.md).
     # 03_local_mac_docker/03_re-start.sh sets IMAGE_TAG before calling this; the
     # required-var syntax below is a defense-in-depth backstop.
-    image: "chad-dashboard:${IMAGE_TAG:?IMAGE_TAG is required, see ai-docs/bash-scripts/image-tagging-standard.md}"
+    image: "chad-dashboard:${IMAGE_TAG:?IMAGE_TAG is required, see ../chad-docs/ai-docs/bash-scripts/image-tagging-standard.md}"
     build:
       context: .
       dockerfile: packages/dashboard/Dockerfile
@@ -153,7 +153,7 @@ services:
       # Story 109 — packages/content-provider's own router (cp-entry) has a
       # SEPARATE backend-selection env var from DBA_PRIMARY_BACKEND above
       # (different package, different config surface — see
-      # ai-docs/content-provider/ai-start.md). Without this, cp-entry
+      # ../chad-docs/ai-docs/content-provider/ai-start.md). Without this, cp-entry
       # defaults to "net-adapter" (the legacy .NET Content Provider, removed
       # from this repo 2026-07-27) — a hard failure, not a silent fallback to
       # something that still works. Only the new ZIP-import feature uses
@@ -173,7 +173,7 @@ services:
       # integration's real-sheet verification was done via a one-off
       # scratchpad script, not the running Dashboard) — the sync worker now
       # runs inside this same process via instrumentation.ts, so these must
-      # actually reach it. See ai-docs/google-sheets/architecture.md.
+      # actually reach it. See ../chad-docs/ai-docs/google-sheets/architecture.md.
       - GOOGLE_SHEETS_ENABLED=${GOOGLE_SHEETS_ENABLED:-false}
       # Passthrough (no ${...} interpolation) so JSON quotes in the map survive.
       # Compose ${VAR} stripping turned {"a":"b"} into {a:b} and 500'd History
@@ -261,7 +261,7 @@ services:
   # Story 79 — cp_history is now written transactionally by the Dashboard's
   # own dba layer (executeCpMutationWithHistory), alongside every cp_items
   # write, instead of by a separate async process. See
-  # ai-docs/history/how-it-works.md. rs0 itself stays (still required for
+  # ../chad-docs/ai-docs/history/how-it-works.md. rs0 itself stays (still required for
   # multi-document transactions, not just Change Streams).
 
 volumes:

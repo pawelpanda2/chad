@@ -2,8 +2,8 @@ name: Build & push chad-dashboard to GHCR
 
 # Manual only (Story 70) — this repo's own deployment standard prefers
 # explicit, deliberate build/deploy actions over auto-triggering on every
-# push (see ai-docs/bash-scripts/image-tagging-standard.md and
-# documentation/ai-docs/deploy/dashboard-deployment-scripts.md). Use this
+# push (see ../chad-docs/ai-docs/bash-scripts/image-tagging-standard.md and
+# ../chad-docs/ai-docs/deploy/dashboard-deployment-scripts.md). Use this
 # when you want CI (not your Mac) to build+push — functionally identical
 # to running bash-scripts/dashboard/08_registry_test/02_build.sh locally;
 # neither is required over the other.
