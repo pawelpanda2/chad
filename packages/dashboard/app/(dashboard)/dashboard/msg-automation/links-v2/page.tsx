@@ -942,7 +942,7 @@ export default function LinksV2Page() {
       */}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         {(leadsSelectedLoca || leadsSelectedChatId) && (
-          <div className="flex shrink-0 items-center justify-between">
+          <div className="relative flex shrink-0 items-center justify-between">
             {leadsSelectedLoca ? (
               <button
                 type="button"
@@ -953,6 +953,14 @@ export default function LinksV2Page() {
               </button>
             ) : (
               <span />
+            )}
+            {/* Centered exactly between Links and Conv, regardless of which
+                is active — dragging an already-linked conversation here
+                unlinks it (only meaningful with a lead selected). */}
+            {leadsSelectedLoca && (
+              <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+                <RemoveDropZone onDrop={handleRemoveBeeperDrop} />
+              </div>
             )}
             {leadsSelectedChatId ? (
               <button
@@ -975,7 +983,6 @@ export default function LinksV2Page() {
               className="min-h-full"
               data-testid="links-assign-drop-zone"
             >
-              <RemoveDropZone onDrop={handleRemoveBeeperDrop} />
               <div className="space-y-0.5">
                 {linkedBeeperForSelected.map((entry) => {
                   const contact = beeperContactsById.get(entry.chatId);

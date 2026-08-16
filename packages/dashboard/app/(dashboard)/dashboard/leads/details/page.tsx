@@ -192,6 +192,7 @@ function LeadDetailsPageContent() {
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [photosError, setPhotosError] = useState<string | null>(null);
+  const [leadGroups, setLeadGroups] = useState<{ _id: string; name: string }[] | null>(null);
 
   /** Load lead details */
   const loadDetails = useCallback(async () => {
@@ -226,6 +227,46 @@ function LeadDetailsPageContent() {
   useEffect(() => {
     loadDetails();
   }, [loadDetails]);
+
+  // Which Beeper group(s) this lead belongs to — derived, not stored on the
+  // lead itself: a linked chat's `chatId` IS its Beeper contact `_id`, and
+  // the contact carries `groupId` (see `packages/dba/src/beeper-crm.ts`).
+  // No dedicated endpoint for "resolve groups for these chatIds" exists, so
+  // this reuses the same two read-only list endpoints Links V2's own page
+  // already reads client-side (`/api/beeper-crm/contacts`, `/api/beeper-crm/groups`)
+  // rather than adding a new one.
+  useEffect(() => {
+    if (!details) {
+      setLeadGroups(null);
+      return;
+    }
+    if (details.links.beeper.length === 0) {
+      setLeadGroups([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const [contactsRes, groupsRes] = await Promise.all([
+          fetch("/api/beeper-crm/contacts"),
+          fetch("/api/beeper-crm/groups"),
+        ]);
+        const contacts: { _id: string; groupId: string | null }[] = contactsRes.ok ? await contactsRes.json() : [];
+        const groups: { _id: string; name: string }[] = groupsRes.ok ? await groupsRes.json() : [];
+        if (cancelled) return;
+        const chatIds = new Set(details.links.beeper.map((entry) => entry.chatId));
+        const groupIds = new Set(
+          contacts.filter((c) => chatIds.has(c._id) && c.groupId).map((c) => c.groupId as string)
+        );
+        setLeadGroups(groups.filter((g) => groupIds.has(g._id)));
+      } catch {
+        if (!cancelled) setLeadGroups([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [details]);
 
   /** Go back to leads list */
   const handleBack = () => {
@@ -473,6 +514,31 @@ function LeadDetailsPageContent() {
                     Open conversation
                   </Link>
                 </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Groups Card — which Beeper group(s) this lead's linked conversations belong to */}
+      <Card className="gap-0 py-0">
+        <CardContent className="px-[14px] py-[10px]">
+          <div className="mb-2 flex items-center justify-between">
+            <h2 className="text-sm font-semibold">Groups</h2>
+            <Link href="/dashboard/msg-automation/groups" className="text-xs text-primary underline underline-offset-4">
+              Full View
+            </Link>
+          </div>
+          {leadGroups === null ? (
+            <div className="text-sm text-muted-foreground">Loading…</div>
+          ) : leadGroups.length === 0 ? (
+            <div className="text-sm text-muted-foreground">No group</div>
+          ) : (
+            <div className="flex flex-wrap gap-1.5">
+              {leadGroups.map((group) => (
+                <span key={group._id} className="rounded bg-muted px-2 py-0.5 text-xs">
+                  {group.name}
+                </span>
               ))}
             </div>
           )}

@@ -164,6 +164,11 @@ export default defineConfig({
       // single-row layout, lead/conversation name links, Links(left)/
       // Conv(right) center-panel selection states.
       "packages/dashboard/app/(dashboard)/dashboard/msg-automation/links-v2/page.test.tsx",
+      // Groups — standalone Msg Automation entry point reusing BeeperGroupsView,
+      // and the Lead Details "Groups" card (derived lead↔group resolution +
+      // Full View link).
+      "packages/dashboard/app/(dashboard)/dashboard/msg-automation/groups/page.test.tsx",
+      "packages/dashboard/app/(dashboard)/dashboard/leads/details/page.test.tsx",
       // Story 99 — msg workout ↔ Beeper message matching engine (pure) and
       // config.links.beeper / proposal-tree CP write paths (Postgres,
       // throwaway repoGuids — same local test Postgres as leads-postgres.test.ts).

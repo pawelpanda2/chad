@@ -557,4 +557,23 @@ describe("Links V2 — Links(left)/Conv(right) center panel, 4 selection states"
     // Still just one Links panel, no stale duplicate, no reload needed.
     expect(leadsGrid().getAllByRole("button", { name: "Links" })).toHaveLength(1);
   });
+
+  it("REMOVE drop zone sits in the header row, centered between Links and Conv — not inside the scrollable Links content", async () => {
+    const fetchMock = makeFetchMock({ leads: [LEAD_A, LEAD_B] });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<LinksV2Page />);
+    await screen.findByText("Lead A");
+    clickLeadRow("01");
+    await leadsGrid().findByRole("button", { name: "Links" });
+
+    const removeZone = screen.getByText("REMOVE");
+    const dropZone = leadsGrid().getByTestId("links-assign-drop-zone");
+    // Not a descendant of the scrollable assign-drop-zone content...
+    expect(dropZone.contains(removeZone)).toBe(false);
+    // ...but is a sibling of the Links/Conv buttons, in the same header row.
+    const linksBtn = leadsGrid().getByRole("button", { name: "Links" });
+    expect(removeZone.closest(".relative.flex.shrink-0.items-center.justify-between")).toBe(
+      linksBtn.closest(".relative.flex.shrink-0.items-center.justify-between")
+    );
+  });
 });

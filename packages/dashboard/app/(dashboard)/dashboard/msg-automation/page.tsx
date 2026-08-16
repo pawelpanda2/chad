@@ -40,6 +40,13 @@ export default function MsgAutomationPage() {
         </button>
         <button
           type="button"
+          onClick={() => router.push("/dashboard/msg-automation/groups")}
+          className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
+        >
+          <span className="font-semibold text-sm">GROUPS</span>
+        </button>
+        <button
+          type="button"
           onClick={() => router.push("/dashboard/beeper")}
           className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
         >
