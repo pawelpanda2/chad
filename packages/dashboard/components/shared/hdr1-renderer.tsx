@@ -78,19 +78,38 @@ function Subsection({
   const borderColor = hexToRgba(color, 0.55);
   const headBg = hexToRgba(color, 0.16);
   const bodyBg = hexToRgba(color, 0.08);
+  const linkTargetId = section.cpLinkTargetId;
 
   return (
     <div className="ml-[21px] grid w-max max-w-[calc(100%-21px)] grid-cols-[max-content] max-[700px]:ml-3 max-[700px]:w-[calc(100%-12px)] max-[700px]:max-w-[calc(100%-12px)]">
-      <button
-        type="button"
-        onClick={onToggle}
-        className="flex h-7 w-auto min-w-full max-w-full items-center gap-2 rounded-t-md border px-2 text-left text-xs font-semibold text-foreground"
-        style={{ borderColor, backgroundColor: headBg }}
-      >
-        <Chevron collapsed={collapsed} color={color} />
-        <span className="font-mono font-bold tabular-nums text-foreground">{ordinal}</span>
-        <span className="truncate">{section.content}</span>
-      </button>
+      {linkTargetId ? (
+        <div
+          className="flex h-7 w-auto min-w-full max-w-full items-center gap-2 rounded-t-md border px-2 text-left text-xs font-semibold text-foreground"
+          style={{ borderColor, backgroundColor: headBg }}
+        >
+          <button
+            type="button"
+            onClick={onToggle}
+            className="flex shrink-0 items-center gap-2"
+            aria-label={collapsed ? "Expand" : "Collapse"}
+          >
+            <Chevron collapsed={collapsed} color={color} />
+            <span className="font-mono font-bold tabular-nums text-foreground">{ordinal}</span>
+          </button>
+          <CpLinkText text={section.content} targetItemId={linkTargetId} className="truncate" />
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={onToggle}
+          className="flex h-7 w-auto min-w-full max-w-full items-center gap-2 rounded-t-md border px-2 text-left text-xs font-semibold text-foreground"
+          style={{ borderColor, backgroundColor: headBg }}
+        >
+          <Chevron collapsed={collapsed} color={color} />
+          <span className="font-mono font-bold tabular-nums text-foreground">{ordinal}</span>
+          <span className="truncate">{section.content}</span>
+        </button>
+      )}
       {!collapsed && (
         <div
           className="w-auto min-w-full max-w-full rounded-b-md border border-t-0 px-3 py-1.5"
@@ -124,6 +143,7 @@ function TopSection({
   const borderColor = hexToRgba(color, 0.6);
   const headBg = hexToRgba(color, 0.2);
   const bodyBg = hexToRgba(color, 0.1);
+  const linkTargetId = group.cpLinkTargetId;
 
   return (
     <div
@@ -132,15 +152,32 @@ function TopSection({
         !isLast && "mb-0",
       )}
     >
-      <button
-        type="button"
-        onClick={() => onToggle(key)}
-        className="flex h-8 w-auto min-w-full max-w-full items-center gap-2 rounded-t-lg border px-2.5 text-left text-xs font-bold text-foreground max-[700px]:w-full"
-        style={{ borderColor, backgroundColor: headBg }}
-      >
-        <Chevron collapsed={collapsed} color={color} />
-        <span className="truncate">{group.content}</span>
-      </button>
+      {linkTargetId ? (
+        <div
+          className="flex h-8 w-auto min-w-full max-w-full items-center gap-2 rounded-t-lg border px-2.5 text-left text-xs font-bold text-foreground max-[700px]:w-full"
+          style={{ borderColor, backgroundColor: headBg }}
+        >
+          <button
+            type="button"
+            onClick={() => onToggle(key)}
+            className="flex shrink-0 items-center"
+            aria-label={collapsed ? "Expand" : "Collapse"}
+          >
+            <Chevron collapsed={collapsed} color={color} />
+          </button>
+          <CpLinkText text={group.content} targetItemId={linkTargetId} className="truncate" />
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => onToggle(key)}
+          className="flex h-8 w-auto min-w-full max-w-full items-center gap-2 rounded-t-lg border px-2.5 text-left text-xs font-bold text-foreground max-[700px]:w-full"
+          style={{ borderColor, backgroundColor: headBg }}
+        >
+          <Chevron collapsed={collapsed} color={color} />
+          <span className="truncate">{group.content}</span>
+        </button>
+      )}
       {!collapsed && (
         <div
           className={cn(

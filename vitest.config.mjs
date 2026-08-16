@@ -118,6 +118,9 @@ export default defineConfig({
       // (real local Postgres, same convention as leads-postgres.test.ts).
       "packages/dashboard/lib/preview/cp-link.test.ts",
       "packages/dba/src/cp-link-resolver.test.ts",
+      // Story 121 — CP-link [uuid] markers extended to headers (hdr2 fallback
+      // renderer's own coverage; hdr1 coverage lives in the file above).
+      "packages/dashboard/components/shared/headers-renderer.test.tsx",
       // Story 120 — canonical Folders address<->slug codec (pure, UUID
       // round-trip despite hyphens, path-traversal rejection) and the
       // shared DashboardHistoryProvider's extracted pure reducer (real

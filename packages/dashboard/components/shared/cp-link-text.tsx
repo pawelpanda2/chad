@@ -23,7 +23,15 @@
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 
-export function CpLinkText({ text, targetItemId }: { text: string; targetItemId: string }) {
+export function CpLinkText({
+  text,
+  targetItemId,
+  className,
+}: {
+  text: string;
+  targetItemId: string;
+  className?: string;
+}) {
   return (
     <Link
       href={`/dashboard/item-view/by-id/${encodeURIComponent(targetItemId)}`}
@@ -31,6 +39,7 @@ export function CpLinkText({ text, targetItemId }: { text: string; targetItemId:
       rel="noopener noreferrer"
       className={cn(
         "cursor-pointer whitespace-pre-wrap break-words text-left underline decoration-dotted underline-offset-2 hover:decoration-solid",
+        className,
       )}
     >
       {text}

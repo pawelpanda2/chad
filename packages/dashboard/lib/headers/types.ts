@@ -29,9 +29,10 @@ export interface ParsedNode {
   rawLine: string;
   /**
    * Set by `lib/preview/cp-link.ts`'s `annotateCpLinkTargets` when this node
-   * is the note immediately following a valid `[uuid]` marker line — the
-   * CpItem.id the rendered line should link to. The marker line itself is
-   * dropped from the node array, never rendered. Absent on every other node.
+   * is the note or header immediately following a valid `[uuid]` marker
+   * line — the CpItem.id the rendered line should link to. The marker line
+   * itself is dropped from the node array, never rendered. Absent on every
+   * other node.
    */
   cpLinkTargetId?: string;
 }

@@ -163,7 +163,11 @@ function Section({ section, index }: { section: LineGroup; index: number }) {
           {section.headerNumber ?? index + 1}
         </span>
         <span className="font-bold text-sm text-gray-800 dark:text-gray-200">
-          {section.content}
+          {section.cpLinkTargetId ? (
+            <CpLinkText text={section.content} targetItemId={section.cpLinkTargetId} />
+          ) : (
+            section.content
+          )}
         </span>
       </div>
       <div className="p-2 space-y-1">
@@ -182,7 +186,11 @@ function Group({ group }: { group: LineGroup }) {
   return (
     <section className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden mb-2 last:mb-0">
       <div className="px-3 py-2 font-bold text-sm bg-gradient-to-r from-purple-50 to-white dark:from-purple-950/30 dark:to-transparent border-b border-purple-100 dark:border-purple-900/30 text-purple-900 dark:text-purple-300">
-        {group.content}
+        {group.cpLinkTargetId ? (
+          <CpLinkText text={group.content} targetItemId={group.cpLinkTargetId} />
+        ) : (
+          group.content
+        )}
       </div>
       <div className="p-2">
         {/* Direct lines in group (no section) */}

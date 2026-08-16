@@ -78,3 +78,87 @@ describe("Hdr1Renderer", () => {
     cleanup();
   });
 });
+
+describe("Hdr1Renderer — CP-link headers (Story 121)", () => {
+  const VALID_UUID = "ca38d1cb-eb58-42f6-b202-21223b18911b";
+
+  it("[uuid] + header: hides the marker, renders the header as a link to the item, marker not visible", () => {
+    const content = [`[${VALID_UUID}]`, "//braki wiedzy"].join("\n");
+    render(<Hdr1Renderer content={content} />);
+
+    expect(screen.queryByText(VALID_UUID)).toBeNull();
+    expect(screen.queryByText(`[${VALID_UUID}]`)).toBeNull();
+
+    const link = screen.getByText("braki wiedzy").closest("a");
+    expect(link).not.toBeNull();
+    expect(link!.getAttribute("href")).toBe(`/dashboard/item-view/by-id/${VALID_UUID}`);
+    expect(link!.getAttribute("target")).toBe("_blank");
+    expect(link!.getAttribute("rel")).toContain("noopener");
+
+    cleanup();
+  });
+
+  it("[uuid] + indented header (tab), nested under a top-level group: same linking behavior", () => {
+    const content = ["//top", `\t[${VALID_UUID}]`, "\t//braki wiedzy"].join("\n");
+    render(<Hdr1Renderer content={content} />);
+
+    const link = screen.getByText("braki wiedzy").closest("a");
+    expect(link).not.toBeNull();
+    expect(link!.getAttribute("href")).toBe(`/dashboard/item-view/by-id/${VALID_UUID}`);
+
+    cleanup();
+  });
+
+  it("[uuid] + header: clicking near the chevron still collapses/expands, without navigating", async () => {
+    const user = userEvent.setup();
+    const content = ["//details", `\t[${VALID_UUID}]`, "\t//braki wiedzy", "\t- kakao ceremonialne"].join("\n");
+    render(<Hdr1Renderer content={content} />);
+
+    expect(screen.getByText("kakao ceremonialne")).not.toBeNull();
+
+    // toggle zone = chevron + ordinal button, distinct from the link itself
+    const link = screen.getByText("braki wiedzy").closest("a")!;
+    const toggleButton = link.previousElementSibling as HTMLElement;
+    expect(toggleButton.tagName).toBe("BUTTON");
+
+    await user.click(toggleButton);
+    expect(screen.queryByText("kakao ceremonialne")).toBeNull();
+
+    await user.click(toggleButton);
+    expect(screen.getByText("kakao ceremonialne")).not.toBeNull();
+
+    cleanup();
+  });
+
+  it("invalid UUID + header: stays plain text, marker preserved, no link", () => {
+    const content = ["//top", "\t[not-a-real-uuid]", "\t//header"].join("\n");
+    render(<Hdr1Renderer content={content} />);
+
+    expect(screen.getByText("[not-a-real-uuid]")).not.toBeNull();
+    expect(screen.getByText("header").closest("a")).toBeNull();
+
+    cleanup();
+  });
+
+  it("valid UUID + plain text (not note/header): marker preserved as plain text", () => {
+    const content = ["//top", `\t[${VALID_UUID}]`, "\tplain text"].join("\n");
+    render(<Hdr1Renderer content={content} />);
+
+    expect(screen.getByText(`[${VALID_UUID}]`)).not.toBeNull();
+    expect(screen.getByText("plain text")).not.toBeNull();
+
+    cleanup();
+  });
+
+  it("existing note-link regression: [uuid] + note still links the note (unaffected by header support)", () => {
+    const content = ["//details", `\t[${VALID_UUID}]`, "\t- kakao ceremonialne"].join("\n");
+    render(<Hdr1Renderer content={content} />);
+
+    const link = screen.getByText("kakao ceremonialne").closest("a");
+    expect(link).not.toBeNull();
+    expect(link!.getAttribute("href")).toBe(`/dashboard/item-view/by-id/${VALID_UUID}`);
+    expect(link!.getAttribute("target")).toBe("_blank");
+
+    cleanup();
+  });
+});

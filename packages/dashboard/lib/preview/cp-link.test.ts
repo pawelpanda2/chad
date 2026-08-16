@@ -78,4 +78,45 @@ describe("annotateCpLinkTargets", () => {
 
     expect(result).toEqual(nodes);
   });
+
+  it("attaches the target id to a header immediately following a valid [uuid] marker", () => {
+    const nodes = parseHeadersFormat(`[${VALID_UUID}]\n//braki wiedzy`).nodes;
+    const result = annotateCpLinkTargets(nodes);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].type).toBe("header");
+    expect(result[0].content).toBe("braki wiedzy");
+    expect(result[0].cpLinkTargetId).toBe(VALID_UUID);
+  });
+
+  it("handles a tab-indented header immediately following a valid [uuid] marker", () => {
+    const nodes = parseHeadersFormat(`[${VALID_UUID}]\n\t//braki wiedzy`).nodes;
+    const result = annotateCpLinkTargets(nodes);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].type).toBe("header");
+    expect(result[0].cpLinkTargetId).toBe(VALID_UUID);
+  });
+
+  it("does not treat an invalid UUID as a marker before a header", () => {
+    const nodes = parseHeadersFormat("[invalid]\n//header").nodes;
+    const result = annotateCpLinkTargets(nodes);
+
+    expect(result).toHaveLength(2);
+    expect(result[0].type).toBe("text");
+    expect(result[0].content).toBe("[invalid]");
+    expect(result[1].type).toBe("header");
+    expect(result[1].cpLinkTargetId).toBeUndefined();
+  });
+
+  it("fails safe when a valid UUID marker is followed by plain text (not note/header)", () => {
+    const nodes = parseHeadersFormat(`[${VALID_UUID}]\nplain text`).nodes;
+    const result = annotateCpLinkTargets(nodes);
+
+    expect(result).toHaveLength(2);
+    expect(result[0].content).toBe(`[${VALID_UUID}]`);
+    expect(result[0].cpLinkTargetId).toBeUndefined();
+    expect(result[1].type).toBe("text");
+    expect(result[1].cpLinkTargetId).toBeUndefined();
+  });
 });

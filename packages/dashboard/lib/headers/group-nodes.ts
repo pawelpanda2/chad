@@ -14,6 +14,8 @@ export interface LineGroup {
   type: "header-main" | "section";
   content: string;
   headerNumber?: number;
+  /** CpLinkText target id, carried over from the header node's own `cpLinkTargetId` (see `lib/preview/cp-link.ts`). */
+  cpLinkTargetId?: string;
   children: LineGroup[];
   lines: ParsedNode[];
 }
@@ -28,6 +30,7 @@ export function groupNodes(nodes: ParsedNode[]): LineGroup[] {
       currentGroup = {
         type: "header-main",
         content: node.content,
+        cpLinkTargetId: node.cpLinkTargetId,
         children: [],
         lines: [],
       };
@@ -39,6 +42,7 @@ export function groupNodes(nodes: ParsedNode[]): LineGroup[] {
           type: "section",
           content: node.content,
           headerNumber: node.headerNumber,
+          cpLinkTargetId: node.cpLinkTargetId,
           children: [],
           lines: [],
         };
