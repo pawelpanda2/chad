@@ -78,6 +78,12 @@ const CONTACT_X = {
   lastMessage: { text: "hi", timestamp: null, network: "whatsapp" },
   groupId: null,
 };
+const GOOGLE_CONTACT_Z = {
+  resourceName: "people/z1",
+  displayName: "Contact Z",
+  phones: ["+48123456789"],
+  photoUrl: null,
+};
 
 function jsonResponse(body: unknown, ok = true): Response {
   return { ok, json: async () => body } as Response;
@@ -96,10 +102,14 @@ function makeFetchMock({
   leads: initialLeads,
   linkImpl,
   unlinkImpl,
+  googleContacts = [],
+  googleLinkImpl,
 }: {
   leads: (typeof LEAD_A)[];
   linkImpl?: () => Promise<Response>;
   unlinkImpl?: () => Promise<Response>;
+  googleContacts?: (typeof GOOGLE_CONTACT_Z)[];
+  googleLinkImpl?: () => Promise<Response>;
 }) {
   const leads = initialLeads.map((l) => ({
     ...l,
@@ -113,7 +123,7 @@ function makeFetchMock({
       return jsonResponse([CONTACT_X]);
     }
     if (url === "/api/google-contacts/list") {
-      return jsonResponse({ contacts: [] });
+      return jsonResponse({ contacts: googleContacts });
     }
     if (url === "/api/beeper-crm/groups/default") {
       return jsonResponse(null);
@@ -135,6 +145,26 @@ function makeFetchMock({
       if (res.ok) {
         const lead = leads.find((l) => l.loca === body.leadLoca);
         if (lead) lead.links.beeper = lead.links.beeper.filter((e) => e.chatId !== body.chatId);
+      }
+      return res;
+    }
+    if (url === "/api/msg-automation/links-v2/google-link" && init?.method === "POST") {
+      const body = JSON.parse(String(init.body)) as {
+        leadLoca: string;
+        resourceName: string;
+        displayName: string;
+        phone: string;
+      };
+      const res = googleLinkImpl ? await googleLinkImpl() : jsonResponse({ success: true });
+      if (res.ok) {
+        const lead = leads.find((l) => l.loca === body.leadLoca);
+        if (lead && !lead.links.googleContacts.some((e) => e.resourceName === body.resourceName)) {
+          lead.links.googleContacts.push({
+            resourceName: body.resourceName,
+            displayName: body.displayName,
+            phone: body.phone,
+          });
+        }
       }
       return res;
     }
@@ -263,6 +293,79 @@ describe("Links V2 — optimistic drag/drop linking", () => {
   });
 });
 
+describe("Links V2 — Google tab: same optimistic drag/drop as Beeper", () => {
+  async function loadAndSelectLeadOnGoogleTab() {
+    render(<LinksV2Page />);
+    await screen.findByText("Lead A");
+    act(() => {
+      [...document.querySelectorAll("button")].find((b) => b.textContent.trim() === "Google")!.click();
+    });
+    await screen.findByText("Contact Z");
+    clickLeadRow("01");
+  }
+
+  it("shows the dropped Google contact immediately with a pending spinner, before the link POST resolves", async () => {
+    const link = deferred<Response>();
+    const fetchMock = makeFetchMock({ leads: [LEAD_A], googleContacts: [GOOGLE_CONTACT_Z], googleLinkImpl: () => link.promise });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await loadAndSelectLeadOnGoogleTab();
+
+    const dt = makeDataTransfer();
+    fireDragEvent(screen.getByText("Contact Z").closest('[draggable="true"]')!, "dragstart", dt);
+    const dropZone = screen.getByTestId("google-assign-drop-zone");
+    fireDragEvent(dropZone, "drop", dt);
+
+    expect(within(dropZone).getByText("Contact Z")).toBeTruthy();
+    expect(screen.getByLabelText("Linking…")).toBeTruthy();
+
+    link.resolve(jsonResponse({ success: true }));
+    await waitFor(() => expect(screen.queryByLabelText("Linking…")).toBeNull());
+    expect(within(dropZone).getByText("Contact Z")).toBeTruthy();
+  });
+
+  it("rolls back on failure", async () => {
+    const link = deferred<Response>();
+    const fetchMock = makeFetchMock({ leads: [LEAD_A], googleContacts: [GOOGLE_CONTACT_Z], googleLinkImpl: () => link.promise });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await loadAndSelectLeadOnGoogleTab();
+
+    const dt = makeDataTransfer();
+    fireDragEvent(screen.getByText("Contact Z").closest('[draggable="true"]')!, "dragstart", dt);
+    const dropZone = screen.getByTestId("google-assign-drop-zone");
+    fireDragEvent(dropZone, "drop", dt);
+
+    link.reject(new Error("google link failed"));
+    await waitFor(() => expect(screen.queryByLabelText("Linking…")).toBeNull());
+    expect(within(dropZone).queryByText("Contact Z")).toBeNull();
+    await screen.findByText("google link failed");
+  });
+
+  it("blocks a duplicate pending link for the same Google contact", async () => {
+    const link = deferred<Response>();
+    const fetchMock = makeFetchMock({ leads: [LEAD_A], googleContacts: [GOOGLE_CONTACT_Z], googleLinkImpl: () => link.promise });
+    vi.stubGlobal("fetch", fetchMock);
+    await loadAndSelectLeadOnGoogleTab();
+
+    const dt = makeDataTransfer();
+    const source = screen.getByText("Contact Z").closest('[draggable="true"]')!;
+    const dropZone = screen.getByTestId("google-assign-drop-zone");
+
+    fireDragEvent(source, "dragstart", dt);
+    fireDragEvent(dropZone, "drop", dt);
+    const callsAfterFirst = fetchMock.mock.calls.filter((c) => c[0] === "/api/msg-automation/links-v2/google-link").length;
+
+    fireDragEvent(source, "dragstart", dt);
+    fireDragEvent(dropZone, "drop", dt);
+    const callsAfterSecond = fetchMock.mock.calls.filter((c) => c[0] === "/api/msg-automation/links-v2/google-link").length;
+
+    expect(callsAfterSecond).toBe(callsAfterFirst);
+    link.resolve(jsonResponse({ success: true }));
+    await waitFor(() => expect(screen.queryByLabelText("Linking…")).toBeNull());
+  });
+});
+
 describe("Links V2 — Search + Group in one row", () => {
   // Both panels list the same Beeper contacts, so the group filter's own
   // aria-label is unambiguous even though "Search" (placeholder) isn't —
@@ -324,14 +427,15 @@ describe("Links V2 — Search + Group in one row", () => {
   });
 });
 
-describe("Links V2 — lead and conversation names are links", () => {
-  it("lead name is an <a target=_blank> to the canonical Lead Details route, click doesn't select the row", async () => {
+describe("Links V2 — lead/conversation icons are links, names just select (like before)", () => {
+  it("lead's 'L' icon is an <a target=_blank> to the canonical Lead Details route, click doesn't select the row", async () => {
     const fetchMock = makeFetchMock({ leads: [LEAD_A] });
     vi.stubGlobal("fetch", fetchMock);
     render(<LinksV2Page />);
     await screen.findByText("Lead A");
 
-    const link = screen.getByText("Lead A").closest("a")!;
+    const link = screen.getByLabelText("Open Lead A in Lead Details");
+    expect(link.tagName).toBe("A");
     expect(link.getAttribute("target")).toBe("_blank");
     expect(link.getAttribute("rel")).toContain("noopener");
     // URLSearchParams (used by getLeadDetailsHref), not encodeURIComponent —
@@ -340,21 +444,42 @@ describe("Links V2 — lead and conversation names are links", () => {
       `/dashboard/leads/details?${new URLSearchParams({ leadName: "Lead A", leadLoca: "01" }).toString()}`
     );
 
-    // Row itself is still not "selected" (Links panel not yet shown) purely from a name click.
+    // Icon click doesn't also select the row (Links panel not yet shown).
     fireEvent.click(link);
     expect(screen.queryByRole("button", { name: "Links" })).toBeNull();
   });
 
-  it("conversation name is an <a target=_blank> to /dashboard/beeper?contact=<chatId>", async () => {
+  it("clicking the lead NAME (not the icon) still just selects the row, like before", async () => {
+    const fetchMock = makeFetchMock({ leads: [LEAD_A] });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<LinksV2Page />);
+    await screen.findByText("Lead A");
+
+    fireEvent.click(screen.getByText("Lead A"));
+    await screen.findByRole("button", { name: "Links" });
+  });
+
+  it("conversation's platform icon is an <a target=_blank> to /dashboard/beeper?contact=<chatId>", async () => {
     const fetchMock = makeFetchMock({ leads: [LEAD_A] });
     vi.stubGlobal("fetch", fetchMock);
     render(<LinksV2Page />);
     await screen.findByText("Contact X");
 
-    const link = screen.getByText("Contact X").closest("a")!;
+    const link = screen.getByLabelText("Open Contact X in Beeper");
+    expect(link.tagName).toBe("A");
     expect(link.getAttribute("target")).toBe("_blank");
     expect(link.getAttribute("rel")).toContain("noopener");
     expect(link.getAttribute("href")).toBe(`/dashboard/beeper?contact=${encodeURIComponent("chat-x")}`);
+  });
+
+  it("clicking the conversation NAME (not the icon) still just selects it, like before", async () => {
+    const fetchMock = makeFetchMock({ leads: [LEAD_A, LEAD_B] });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<LinksV2Page />);
+    await screen.findByText("Contact X");
+
+    fireEvent.click(screen.getByText("Contact X"));
+    await leadsGrid().findByRole("button", { name: "Conv" });
   });
 });
 
@@ -390,7 +515,7 @@ describe("Links V2 — Links(left)/Conv(right) center panel, 4 selection states"
     expect(leadsGrid().queryByRole("button", { name: "Links" })).toBeNull();
   });
 
-  it("both selected: Links and Conv show at once, Links before Conv in DOM order (left before right)", async () => {
+  it("both selected: Links and Conv buttons both show (Links before Conv in DOM order), but only ONE panel's content is active at a time — never a 50/50 split", async () => {
     const fetchMock = makeFetchMock({ leads: [LEAD_A, LEAD_B] });
     vi.stubGlobal("fetch", fetchMock);
     render(<LinksV2Page />);
@@ -398,12 +523,25 @@ describe("Links V2 — Links(left)/Conv(right) center panel, 4 selection states"
     clickLeadRow("01");
     await leadsGrid().findByRole("button", { name: "Links" });
 
+    // Selecting a lead makes Links the active (content-showing) panel.
+    expect(leadsGrid().getByTestId("links-assign-drop-zone")).toBeTruthy();
+
     clickConvRow("chat-x");
     await leadsGrid().findByRole("button", { name: "Conv" });
 
+    // Both buttons exist and are positioned left-then-right in the DOM...
     const linksBtn = leadsGrid().getByRole("button", { name: "Links" });
     const convBtn = leadsGrid().getByRole("button", { name: "Conv" });
     expect(linksBtn.compareDocumentPosition(convBtn) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    // ...but selecting the conversation switched the ACTIVE panel to Conv —
+    // Links' own content (the drop zone) is no longer rendered at all, not
+    // squeezed into half the width.
+    expect(leadsGrid().queryByTestId("links-assign-drop-zone")).toBeNull();
+
+    // Clicking back to Links restores it exclusively, hiding Conv's content.
+    fireEvent.click(linksBtn);
+    expect(leadsGrid().getByTestId("links-assign-drop-zone")).toBeTruthy();
   });
 
   it("selection change updates visibility immediately, no refresh", async () => {

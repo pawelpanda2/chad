@@ -227,26 +227,29 @@ function LeadRow({
       onClick={onClick}
       data-lead-loca={lead.loca}
     >
+      {/*
+        Only the "L" icon opens Lead Details, in a new tab — the name
+        itself is plain text again, and the row's own click-to-select /
+        drag-to-assign behavior is untouched everywhere else (including
+        clicking the name). `stopPropagation` keeps the icon click from
+        also firing the row's onClick; `draggable={false}` keeps the
+        browser's native "drag this link" gesture from hijacking a drag
+        that started on the icon.
+      */}
+      <Link
+        href={getLeadDetailsHref(lead.leadName, lead.loca)}
+        target="_blank"
+        rel="noopener noreferrer"
+        draggable={false}
+        onClick={(e) => e.stopPropagation()}
+        aria-label={`Open ${lead.leadName} in Lead Details`}
+        title="Open Lead Details"
+        className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-muted text-[9px] font-bold text-muted-foreground hover:bg-accent-foreground/20 hover:text-foreground"
+      >
+        L
+      </Link>
       <div className="min-w-0 flex-1 truncate text-xs font-medium">
-        {/*
-          Only the name is a link — the row itself keeps its own
-          click-to-select and drag-to-assign behavior. `stopPropagation`
-          keeps a name click from also firing the row's onClick (selection);
-          `draggable={false}` keeps the browser's native "drag this link"
-          gesture from hijacking a drag that started on the name text,
-          so the row's own draggable ancestor still initiates the intended
-          lead-drag from there.
-        */}
-        <Link
-          href={getLeadDetailsHref(lead.leadName, lead.loca)}
-          target="_blank"
-          rel="noopener noreferrer"
-          draggable={false}
-          onClick={(e) => e.stopPropagation()}
-          className="hover:underline"
-        >
-          {lead.leadName}
-        </Link>
+        {lead.leadName}
         {lead.draft && (
           <span className="ml-1.5 rounded bg-amber-500/20 px-1 py-0.5 text-[9px] font-semibold uppercase text-amber-500">
             Draft
@@ -305,21 +308,29 @@ function BeeperRow({
       data-chat-id={chatId}
       data-pending={pending || undefined}
     >
-      <BeeperPlatformIcon network={network} size="sm" />
+      {/*
+        The platform icon itself is the link to the conversation, opened in
+        a new tab — the name is plain text again (row click still selects,
+        same as LeadRow's name). BeeperPlatformIcon has its own onClick
+        (reveals the platform name for ~2s, with its own stopPropagation)
+        which still runs as a nested handler — harmless alongside the
+        anchor's navigation, and left alone since this component is shared
+        with the real Beeper page.
+      */}
+      <Link
+        href={`/dashboard/beeper?contact=${encodeURIComponent(chatId)}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        draggable={false}
+        onClick={(e) => e.stopPropagation()}
+        aria-label={`Open ${name} in Beeper`}
+        title="Open conversation"
+        className="shrink-0"
+      >
+        <BeeperPlatformIcon network={network} size="sm" />
+      </Link>
       <div className="min-w-0 flex-1">
-        <div className="truncate text-xs font-medium">
-          {/* Same link-carve-out as LeadRow's name — see its comment. */}
-          <Link
-            href={`/dashboard/beeper?contact=${encodeURIComponent(chatId)}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            draggable={false}
-            onClick={(e) => e.stopPropagation()}
-            className="hover:underline"
-          >
-            {name}
-          </Link>
-        </div>
+        <div className="truncate text-xs font-medium">{name}</div>
         {assignedLeadName ? (
           <div className="truncate text-[10px] text-muted-foreground">{assignedLeadName}</div>
         ) : preview ? (
@@ -474,6 +485,21 @@ export default function LinksV2Page() {
     [pendingBeeperLinks]
   );
 
+  // Same optimistic-pending treatment for the Google tab's drag-to-assign
+  // (previously missing here — only the Beeper flow had it).
+  interface PendingGoogleLink {
+    resourceName: string;
+    leadLoca: string;
+    displayName: string;
+    phone: string;
+    status: "pending" | "error";
+  }
+  const [pendingGoogleLinks, setPendingGoogleLinks] = useState<PendingGoogleLink[]>([]);
+  const pendingGoogleResourceNames = useMemo(
+    () => new Set(pendingGoogleLinks.filter((p) => p.status === "pending").map((p) => p.resourceName)),
+    [pendingGoogleLinks]
+  );
+
   // Shared Beeper contact-group filter (Leads tab's right panel and Conv tab's
   // left panel both list the same Beeper conversations) — defaults to the
   // user's default group from Beeper → Groups (same convention as the Beeper
@@ -493,15 +519,14 @@ export default function LinksV2Page() {
 
   // Leads tab
   const [leadsSelectedLoca, setLeadsSelectedLoca] = useState<string | null>(null);
-  // Links (pinned left) and Conv (pinned right) are two independent
-  // toggle panels, not a mutually-exclusive tab pair: Links only exists
-  // once a lead is selected on the left, Conv only exists once a
-  // conversation is selected (either from the linked list or the right
-  // panel) — both can be open at once. Each starts open the moment its
-  // selection appears (matching the prior single-click behavior for Conv),
-  // and its own label toggles it shut/open afterward.
-  const [leadsLinksOpen, setLeadsLinksOpen] = useState(false);
-  const [leadsConvOpen, setLeadsConvOpen] = useState(false);
+  // Links (pinned left) and Conv (pinned right) are positioned at opposite
+  // ends of the center panel, but only one of them ever shows its content
+  // at a time (full width) — not a 50/50 split. Each button only renders
+  // once its own selection exists (a lead for Links, a conversation for
+  // Conv); clicking whichever is available makes it the active one, and
+  // selecting a lead/conversation also makes its own panel active
+  // (matching the prior single-click-reveals behavior).
+  const [leadsActivePanel, setLeadsActivePanel] = useState<"links" | "conv" | null>(null);
   const [leadsSelectedChatId, setLeadsSelectedChatId] = useState<string | null>(null);
   const [leadsSearchLeft, setLeadsSearchLeft] = useState("");
   const [leadsSearchRight, setLeadsSearchRight] = useState("");
@@ -614,7 +639,23 @@ export default function LinksV2Page() {
     return map;
   }, [beeperChatIdToLead, pendingBeeperLinks]);
   const googleSelectedLead = googleSelectedLoca ? leadsByLoca.get(googleSelectedLoca) ?? null : null;
-  const linkedGoogleForSelected = googleSelectedLead?.links.googleContacts ?? [];
+  // Same persisted+pending merge as linkedBeeperForSelected, for the Google tab.
+  const linkedGoogleForSelected = useMemo(() => {
+    const persisted = googleSelectedLead?.links.googleContacts ?? [];
+    const persistedNames = new Set(persisted.map((e) => e.resourceName));
+    const pendingForLead = pendingGoogleLinks.filter(
+      (p) => p.leadLoca === googleSelectedLoca && p.status === "pending" && !persistedNames.has(p.resourceName)
+    );
+    return [
+      ...persisted.map((e) => ({ ...e, pending: false })),
+      ...pendingForLead.map((p) => ({
+        resourceName: p.resourceName,
+        displayName: p.displayName,
+        phone: p.phone,
+        pending: true,
+      })),
+    ];
+  }, [googleSelectedLead, pendingGoogleLinks, googleSelectedLoca]);
 
   const filteredLeadsLeft = useMemo(
     () => (leads ?? []).filter((l) => matches(leadsSearchLeft, l.leadName)),
@@ -649,12 +690,10 @@ export default function LinksV2Page() {
 
   // ── Leads-tab conversation selection / reset on lead change ──
   useEffect(() => {
-    // A newly selected lead immediately opens its own Links panel (no
-    // extra click needed, same as picking a conversation already does for
-    // Conv) and closes any previously open Conv panel — a different lead
-    // means a different conversation context.
-    setLeadsLinksOpen(true);
-    setLeadsConvOpen(false);
+    // A newly selected lead immediately becomes the active (Links) panel —
+    // a different lead means a different conversation context, so any
+    // previously selected conversation is cleared too.
+    setLeadsActivePanel("links");
     setLeadsSelectedChatId(null);
     setConvState({ status: "idle" });
   }, [leadsSelectedLoca]);
@@ -683,7 +722,7 @@ export default function LinksV2Page() {
 
   function selectLeadsConversation(chatId: string) {
     setLeadsSelectedChatId(chatId);
-    setLeadsConvOpen(true);
+    setLeadsActivePanel("conv");
   }
 
   // ── Mutations ──
@@ -800,14 +839,30 @@ export default function LinksV2Page() {
     e.preventDefault();
     const payload = readDragPayload(e);
     if (!payload || payload.kind !== "google-contact" || !googleSelectedLoca) return;
-    void runAction(async () => {
-      await postJson("/api/msg-automation/links-v2/google-link", {
-        leadLoca: googleSelectedLoca,
+    // Same duplicate-pending guard as the Beeper flow.
+    if (pendingGoogleResourceNames.has(payload.resourceName)) return;
+    setPendingGoogleLinks((prev) => [
+      ...prev,
+      {
         resourceName: payload.resourceName,
+        leadLoca: googleSelectedLoca,
         displayName: payload.displayName,
         phone: payload.phone,
-      });
-      await loadLeads();
+        status: "pending",
+      },
+    ]);
+    void runAction(async () => {
+      try {
+        await postJson("/api/msg-automation/links-v2/google-link", {
+          leadLoca: googleSelectedLoca,
+          resourceName: payload.resourceName,
+          displayName: payload.displayName,
+          phone: payload.phone,
+        });
+        await loadLeads();
+      } finally {
+        setPendingGoogleLinks((prev) => prev.filter((p) => p.resourceName !== payload.resourceName));
+      }
     });
   }
 
@@ -878,73 +933,74 @@ export default function LinksV2Page() {
       </div>
       <Resizer containerRef={leadsGridRef} side="left" min={SIDE_MIN} centerMin={CENTER_MIN} />
       {/*
-        Links (pinned left) and Conv (pinned right) are independent panels,
-        not a mutually-exclusive tab pair — each only exists once its own
-        selection exists (a lead for Links, a conversation for Conv), each
-        can be open or closed on its own, and both can show at once, split
-        evenly across the center column.
+        Links and Conv buttons sit at opposite ends of one header row (Links
+        pinned left, Conv pinned right) — each only rendered once its own
+        selection exists (a lead for Links, a conversation for Conv) — but
+        only ONE of them is ever the active panel below, shown at full
+        width, never a 50/50 split. Selecting a lead/conversation also makes
+        its own panel the active one (single-click reveal, same as before).
       */}
-      <div className="flex min-h-0 min-w-0 flex-1">
-        {leadsSelectedLoca && (
-          <div className={cn("flex min-h-0 min-w-0 flex-1 flex-col", leadsSelectedChatId && "border-r")}>
-            <button
-              type="button"
-              onClick={() => setLeadsLinksOpen((v) => !v)}
-              className={cn(INNER_TAB_CLASS, "shrink-0 self-start", leadsLinksOpen && INNER_TAB_ON_CLASS)}
-            >
-              Links
-            </button>
-            {leadsLinksOpen && (
-              <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-2">
-                <div
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={handleAssignBeeperDrop}
-                  className="min-h-full"
-                  data-testid="links-assign-drop-zone"
-                >
-                  <RemoveDropZone onDrop={handleRemoveBeeperDrop} />
-                  <div className="space-y-0.5">
-                    {linkedBeeperForSelected.map((entry) => {
-                      const contact = beeperContactsById.get(entry.chatId);
-                      return (
-                        <BeeperRow
-                          key={entry.chatId}
-                          chatId={entry.chatId}
-                          name={contact?.displayName || entry.chatId}
-                          network={contact?.platformNetwork ?? entry.type}
-                          selected={entry.chatId === leadsSelectedChatId}
-                          draggable
-                          onDragStart={(e) => setDragPayload(e, { kind: "beeper-linked", chatId: entry.chatId })}
-                          onClick={() => selectLeadsConversation(entry.chatId)}
-                          pending={entry.pending}
-                        />
-                      );
-                    })}
-                    {selectedLead && linkedBeeperForSelected.length === 0 && (
-                      <div className="px-1 py-2 text-[11px] text-muted-foreground">—</div>
-                    )}
-                  </div>
-                </div>
-              </div>
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        {(leadsSelectedLoca || leadsSelectedChatId) && (
+          <div className="flex shrink-0 items-center justify-between">
+            {leadsSelectedLoca ? (
+              <button
+                type="button"
+                onClick={() => setLeadsActivePanel("links")}
+                className={cn(INNER_TAB_CLASS, leadsActivePanel === "links" && INNER_TAB_ON_CLASS)}
+              >
+                Links
+              </button>
+            ) : (
+              <span />
+            )}
+            {leadsSelectedChatId ? (
+              <button
+                type="button"
+                onClick={() => setLeadsActivePanel("conv")}
+                className={cn(INNER_TAB_CLASS, leadsActivePanel === "conv" && INNER_TAB_ON_CLASS)}
+              >
+                Conv
+              </button>
+            ) : (
+              <span />
             )}
           </div>
         )}
-        {leadsSelectedChatId && (
-          <div className="ml-auto flex min-h-0 min-w-0 flex-1 flex-col">
-            <button
-              type="button"
-              onClick={() => setLeadsConvOpen((v) => !v)}
-              className={cn(INNER_TAB_CLASS, "shrink-0 self-end", leadsConvOpen && INNER_TAB_ON_CLASS)}
+        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-2">
+          {leadsActivePanel === "links" && leadsSelectedLoca && (
+            <div
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={handleAssignBeeperDrop}
+              className="min-h-full"
+              data-testid="links-assign-drop-zone"
             >
-              Conv
-            </button>
-            {leadsConvOpen && (
-              <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-2">
-                <ConvView state={convState} />
+              <RemoveDropZone onDrop={handleRemoveBeeperDrop} />
+              <div className="space-y-0.5">
+                {linkedBeeperForSelected.map((entry) => {
+                  const contact = beeperContactsById.get(entry.chatId);
+                  return (
+                    <BeeperRow
+                      key={entry.chatId}
+                      chatId={entry.chatId}
+                      name={contact?.displayName || entry.chatId}
+                      network={contact?.platformNetwork ?? entry.type}
+                      selected={entry.chatId === leadsSelectedChatId}
+                      draggable
+                      onDragStart={(e) => setDragPayload(e, { kind: "beeper-linked", chatId: entry.chatId })}
+                      onClick={() => selectLeadsConversation(entry.chatId)}
+                      pending={entry.pending}
+                    />
+                  );
+                })}
+                {selectedLead && linkedBeeperForSelected.length === 0 && (
+                  <div className="px-1 py-2 text-[11px] text-muted-foreground">—</div>
+                )}
               </div>
-            )}
-          </div>
-        )}
+            </div>
+          )}
+          {leadsActivePanel === "conv" && leadsSelectedChatId && <ConvView state={convState} />}
+        </div>
       </div>
       <Resizer containerRef={leadsGridRef} side="right" min={SIDE_MIN} centerMin={CENTER_MIN} />
       <div className="flex min-h-0 min-w-0 flex-col border-l bg-muted/5">
@@ -1057,6 +1113,7 @@ export default function LinksV2Page() {
         onDragOver={(e) => e.preventDefault()}
         onDrop={handleGoogleAssignDrop}
         className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-2"
+        data-testid="google-assign-drop-zone"
       >
         <RemoveDropZone onDrop={handleGoogleRemoveDrop} />
         <div className="space-y-0.5">
@@ -1065,15 +1122,20 @@ export default function LinksV2Page() {
             return (
               <div
                 key={entry.resourceName}
-                className={cn(ROW_CLASS, "cursor-grab active:cursor-grabbing")}
-                draggable
+                className={cn(ROW_CLASS, !entry.pending && "cursor-grab active:cursor-grabbing", entry.pending && "opacity-70")}
+                draggable={!entry.pending}
                 onDragStart={(e) => setDragPayload(e, { kind: "google-linked", resourceName: entry.resourceName })}
+                data-resource-name={entry.resourceName}
+                data-pending={entry.pending || undefined}
               >
                 <GoogleAvatar photoUrl={full?.photoUrl} name={full?.displayName || entry.displayName} />
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-xs font-medium">{full?.displayName || entry.displayName}</div>
                   <div className="truncate text-[10px] text-muted-foreground">{full?.phones[0] || entry.phone}</div>
                 </div>
+                {entry.pending && (
+                  <Loader2 className="h-3 w-3 shrink-0 animate-spin text-muted-foreground" aria-label="Linking…" />
+                )}
               </div>
             );
           })}
