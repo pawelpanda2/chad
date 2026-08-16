@@ -770,10 +770,15 @@ export function parseFolderExportDepth(raw: string): number | null {
 }
 
 export interface FolderExportItem {
-  index: string;
-  address: string;
-  name: string;
-  type: string;
+  /**
+   * Only present when `config` is NOT included on this item (`content ===
+   * "body"`) — `config` itself already carries `address`/`name`/`type`
+   * (see `CpItemConfig`), so repeating them (plus a derivable-from-address
+   * `index`) would just be redundant noise once `config` is present.
+   */
+  address?: string;
+  name?: string;
+  type?: string;
   /** Present when `content` is `"body"` or `"both"`. */
   body?: string;
   /** Present when `content` is `"config"` or `"both"`. */
@@ -870,15 +875,18 @@ export async function buildFolderExport({
   }
 
   function toItem(child: CpItem): FolderExportItem {
-    const base = {
-      index: lastAddressSegment(child.config.address),
-      address: child.config.address,
-      name: child.config.name,
-      type: child.config.type,
-    };
-    if (content === "body") return { ...base, body: child.body };
-    if (content === "config") return { ...base, config: child.config };
-    return { ...base, body: child.body, config: child.config };
+    // "body" is the only mode where the item's own config isn't already
+    // present — that's the only time address/name/type earn their keep.
+    if (content === "body") {
+      return {
+        address: child.config.address,
+        name: child.config.name,
+        type: child.config.type,
+        body: child.body,
+      };
+    }
+    if (content === "config") return { config: child.config };
+    return { body: child.body, config: child.config };
   }
 
   // levelsRemaining counts down toward 1 (the last level actually

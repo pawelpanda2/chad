@@ -681,9 +681,18 @@ describe("buildFolderExport / exportFolderTree", () => {
     expect(result.source).toEqual({ address: `${REPO}/01`, name: "docs", type: "Folder" });
     expect(result.content).toBe("body");
     expect(result.depth).toBe(1);
-    expect(result.items.map((i) => i.index)).toEqual(["01", "02", "03", "10"]);
+    // numeric address order, matches numeric index order ("10" sorts after "02")
+    expect(result.items.map((i) => i.address)).toEqual([
+      `${REPO}/01/01`,
+      `${REPO}/01/02`,
+      `${REPO}/01/03`,
+      `${REPO}/01/10`,
+    ]);
     expect(result.items.map((i) => i.name)).toEqual(["readme", "sub", "emptysub", "z-item"]);
     for (const item of result.items) {
+      // "body" mode: no top-level "index" (redundant with address's own
+      // last segment) and no "config" (that's what "config"/"both" are for).
+      expect((item as { index?: unknown }).index).toBeUndefined();
       expect(item.config).toBeUndefined();
       expect(item.children).toBeUndefined();
     }
@@ -700,13 +709,19 @@ describe("buildFolderExport / exportFolderTree", () => {
     expect(result.content).toBe("config");
     expect(result.depth).toBe(2);
 
-    const readmeItem = result.items.find((i) => i.name === "readme")!;
+    const readmeItem = result.items.find((i) => i.config?.name === "readme")!;
     expect(readmeItem.body).toBeUndefined();
+    // "config" mode: no redundant top-level address/name/type/index —
+    // config already carries all of that.
+    expect((readmeItem as { address?: unknown }).address).toBeUndefined();
+    expect((readmeItem as { name?: unknown }).name).toBeUndefined();
+    expect((readmeItem as { type?: unknown }).type).toBeUndefined();
     expect(readmeItem.config).toMatchObject({ type: "Text", name: "readme" });
 
-    const subItem = result.items.find((i) => i.name === "sub")!;
+    const subItem = result.items.find((i) => i.config?.name === "sub")!;
     expect(subItem.children).toBeDefined();
-    expect(subItem.children!.map((c) => c.index)).toEqual(["01", "10"]); // numeric, not lexicographic
+    // numeric address order, matches numeric index order ("10" sorts after "01")
+    expect(subItem.children!.map((c) => c.config?.address)).toEqual([`${REPO}/01/02/01`, `${REPO}/01/02/10`]);
     for (const grandchild of subItem.children!) {
       expect(grandchild.body).toBeUndefined();
       expect(grandchild.config).toBeDefined();
@@ -724,19 +739,24 @@ describe("buildFolderExport / exportFolderTree", () => {
     expect(result.content).toBe("both");
     expect(result.depth).toBe(0);
 
-    const subItem = result.items.find((i) => i.name === "sub")!;
+    const subItem = result.items.find((i) => i.config?.name === "sub")!;
     expect(subItem.body).toBeDefined();
     expect(subItem.config).toMatchObject({ type: "Folder", name: "sub", tag: "custom" });
+    // "both" mode: no redundant top-level address/name/type either —
+    // config already carries them, only body+config are kept.
+    expect((subItem as { address?: unknown }).address).toBeUndefined();
+    expect((subItem as { name?: unknown }).name).toBeUndefined();
+    expect((subItem as { type?: unknown }).type).toBeUndefined();
     expect(subItem.children).toBeDefined();
     // depth=0 must not stop at the old depth-2 boundary — grandchildren
     // (leaf Text items here) still get a `children` field since they ARE
     // Folders-with-no-children would, but these are Text so none; the point
     // is "sub"'s own children were reached at all, past the old l2 cutoff.
-    const deep1 = subItem.children!.find((c) => c.name === "deep1")!;
+    const deep1 = subItem.children!.find((c) => c.config?.name === "deep1")!;
     expect(deep1.body).toBe("deepbody");
     expect(deep1.config).toMatchObject({ type: "Text", name: "deep1" });
 
-    const readmeItem = result.items.find((i) => i.name === "readme")!;
+    const readmeItem = result.items.find((i) => i.config?.name === "readme")!;
     expect(readmeItem.body).toBe("hello");
     expect(readmeItem.config).toMatchObject({ type: "Text", name: "readme" });
   });
