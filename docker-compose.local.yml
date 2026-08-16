@@ -219,6 +219,8 @@ services:
       # `/Volumes/cp_1/chad-data/02_files_refrenced` → `/app/contact-photos`.
       # Per-user trees: photos, zip, audio recordings/drafts.
       - CHAD_CONTACT_PHOTOS_DIR=/app/contact-photos
+      # Story 123 — healthy | degraded. In degraded, file-storage writes are rejected.
+      - CHAD_CP1_MODE=${CHAD_CP1_MODE:-healthy}
       # Story 105 — local Mac only. Dashboard (Docker) → host helper via
       # host.docker.internal (helper binds 0.0.0.0:12701 + Bearer token;
       # Docker Desktop cannot use host UDS / 127.0.0.1-only). Unset on

@@ -12,8 +12,14 @@
 #   2) CP1_SMB_USER / CP1_SMB_PASSWORD from .env.local (gitignored)
 # Password is piped to `mount_smbfs -N` on stdin (not process args).
 #
-# CHAD_ALLOW_WITHOUT_CP1=1 remains an emergency escape only — normal flow
-# must FAIL so Compose cannot create a local decoy under /Volumes/cp_1.
+# Degraded / fail-closed (Story 123):
+#   Default LOCAL: if repair fails → exit 0 in DEGRADED mode (Dashboard may
+#   start; file-storage writes blocked). Marker: .runtime/cp1-repair/mode
+#   CHAD_ALLOW_WITHOUT_CP1=1 — same (compat)
+#   CHAD_REQUIRE_CP1=1 — fail-closed (exit 1), never degraded
+#
+# Also reclaim when macOS mounted the share at /Volumes/cp_1-N because an
+# empty local placeholder occupied /Volumes/cp_1 (common Auth error cause).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -136,6 +142,63 @@ resolve_cp1_creds() {
 
 is_smbfs_at_point() {
   /sbin/mount | /usr/bin/grep -q " on ${CP1_MOUNT_POINT} (smbfs"
+}
+
+# When /Volumes/cp_1 is an empty placeholder, Finder/osascript often mounts
+# the real share at /Volumes/cp_1-1 (or -2…). Return that path or empty.
+find_alternate_cp1_mount() {
+  /sbin/mount | /usr/bin/sed -n \
+    "s#^//[^[:space:]]*@${CP1_SMB_HOST}/${CP1_SHARE_NAME} on \\(/Volumes/${CP1_SHARE_NAME}-[0-9][0-9]*\\) (smbfs.*#\\1#p" \
+    | /usr/bin/head -n1
+}
+
+write_cp1_mode() {
+  local mode="$1"
+  local dir="$REPO_ROOT/.runtime/cp1-repair"
+  mkdir -p "$dir" 2>/dev/null || true
+  printf '%s\n' "$mode" >"$dir/mode" 2>/dev/null || true
+}
+
+# Move a healthy alternate mount onto the canonical /Volumes/cp_1 path that
+# docker-compose.local.yml binds.
+reclaim_canonical_cp1_from_alternate() {
+  local alt
+  alt="$(find_alternate_cp1_mount)"
+  [ -n "$alt" ] || return 1
+  [ "$alt" != "$CP1_MOUNT_POINT" ] || return 1
+
+  log_warn "cp_1 is mounted at $alt (canonical $CP1_MOUNT_POINT is not smbfs)."
+  log_info "Reclaiming canonical path for Docker binds..."
+
+  # Empty local placeholder at canonical — remove so remount can use it.
+  if [ -d "$CP1_MOUNT_POINT" ] && ! is_smbfs_at_point; then
+    if [ -n "$(/bin/ls -A "$CP1_MOUNT_POINT" 2>/dev/null || true)" ]; then
+      log_error "$CP1_MOUNT_POINT exists, is non-empty, and is NOT smbfs — cannot reclaim automatically."
+      return 1
+    fi
+    sudo_rmdir_if_empty "$CP1_MOUNT_POINT" || return 1
+  fi
+
+  log_info "Unmounting alternate $alt..."
+  /usr/sbin/diskutil unmount force "$alt" >/dev/null 2>&1 || \
+    /sbin/umount -f "$alt" >/dev/null 2>&1 || true
+
+  # Prefer Keychain-backed Finder mount onto canonical (no password in argv).
+  load_cp1_creds_from_env || true
+  load_cp1_creds_from_keychain || true
+  if [ -n "${CP1_SMB_USER:-}" ]; then
+    /usr/bin/osascript -e "try
+      mount volume \"smb://${CP1_SMB_USER}@${CP1_SMB_HOST}/${CP1_SHARE_NAME}\"
+    end try" >/dev/null 2>&1 || true
+  fi
+
+  if is_smbfs_at_point && fs_probe_ok; then
+    log_ok "cp_1 HEALTHY at $CP1_MOUNT_POINT (reclaimed from $alt)"
+    return 0
+  fi
+
+  # Fallback: mount_smbfs -N to canonical.
+  mount_smbfs_cp1
 }
 
 # Timed FS probe — a hung SMB must not block restart forever.
@@ -359,6 +422,13 @@ APPLESCRIPT
 
 repair_cp1() {
   local state
+  # Story 123 — if share is already healthy at /Volumes/cp_1-N, reclaim first.
+  if ! is_smbfs_at_point; then
+    if reclaim_canonical_cp1_from_alternate; then
+      return 0
+    fi
+  fi
+
   state="$(classify_cp1)"
   log_info "cp_1 state: $state"
 
@@ -419,12 +489,25 @@ fi
 
 if repair_cp1; then
   ensure_cp1_visible_in_finder || true
+  write_cp1_mode "healthy"
+  # Clear stale degraded env hint for callers that source nothing.
   exit 0
 fi
 
-log_error "cp_1 repair failed — refusing to start Docker with a decoy bind."
-if [ "${CHAD_ALLOW_WITHOUT_CP1:-}" = "1" ]; then
-  log_warn "CHAD_ALLOW_WITHOUT_CP1=1 — continuing WITHOUT healthy cp_1 (audio/photos may write to a local decoy)."
-  exit 0
+log_error "cp_1 repair failed — will not bind Docker to a writable /Volumes/cp_1 decoy."
+
+# Fail-closed only when explicitly required.
+if [ "${CHAD_REQUIRE_CP1:-}" = "1" ]; then
+  log_error "CHAD_REQUIRE_CP1=1 — aborting (fail-closed)."
+  write_cp1_mode "required-failed"
+  exit 1
 fi
-exit 1
+
+# Default LOCAL + explicit allow: degraded (Story 123).
+write_cp1_mode "degraded"
+log_warn "Entering cp_1 DEGRADED mode — Dashboard may start; file-storage writes blocked."
+log_warn "  (Set CHAD_REQUIRE_CP1=1 to keep the old fail-closed behaviour.)"
+if [ "${CHAD_ALLOW_WITHOUT_CP1:-}" = "1" ]; then
+  log_warn "CHAD_ALLOW_WITHOUT_CP1=1 respected (compat)."
+fi
+exit 0

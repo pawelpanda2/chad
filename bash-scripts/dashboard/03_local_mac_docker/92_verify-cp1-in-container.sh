@@ -21,6 +21,14 @@ if [ "$(uname -s)" != "Darwin" ]; then
   exit 0
 fi
 
+# Story 123 — degraded mode: stub binds are intentional; do not fail verify.
+MODE_FILE="$REPO_ROOT/.runtime/cp1-repair/mode"
+if [ "${CHAD_CP1_MODE:-}" = "degraded" ] || [ "${CHAD_ALLOW_WITHOUT_CP1:-}" = "1" ] || \
+   { [ -f "$MODE_FILE" ] && [ "$(tr -d '[:space:]' <"$MODE_FILE")" = "degraded" ]; }; then
+  log_warn "92_verify-cp1-in-container.sh: cp_1 degraded — skipping bind probes."
+  exit 0
+fi
+
 if ! docker inspect -f '{{.State.Running}}' "$CONTAINER" 2>/dev/null | grep -q true; then
   log_error "Container $CONTAINER is not running — cannot verify cp_1 bind."
   exit 1

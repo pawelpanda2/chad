@@ -20,6 +20,7 @@ import { FILE_STORAGE_FEATURES } from "./file-storage/features.js";
 import {
   isCp1StorageFailure,
   maybeRequestCp1Repair,
+  isCp1DegradedMode,
 } from "./file-storage/cp1-storage-failure.js";
 import { resolveFeatureStorage } from "./file-storage/path-policy.js";
 
@@ -326,6 +327,12 @@ function buildAutoRecordingDisplayName(recordedDate: string, existingDisplayName
 export async function saveAudioRecording(
   input: SaveAudioRecordingInput,
 ): Promise<SaveAudioRecordingResult> {
+  if (isCp1DegradedMode()) {
+    throw new AudioRecordingError(
+      "STORAGE_UNAVAILABLE",
+      "cp_1 file storage is unavailable (degraded mode) — writes are blocked.",
+    );
+  }
   const mimeType = input.mimeType.trim().toLowerCase();
   const ext = resolveAudioExtension(mimeType);
   if (!ext) {

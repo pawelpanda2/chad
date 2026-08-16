@@ -71,7 +71,11 @@ cooldown_active() {
 }
 
 host_cp1_healthy() {
-  bash "$SCRIPT_DIR/91_ensure-cp1-mounted.sh" >/dev/null 2>&1
+  # 91 exits 0 for both healthy and degraded — require mode=healthy.
+  bash "$SCRIPT_DIR/91_ensure-cp1-mounted.sh" >/dev/null 2>&1 || return 1
+  local mode
+  mode="$(tr -d '[:space:]' <"$RUNTIME_DIR/mode" 2>/dev/null || true)"
+  [ "$mode" = "healthy" ]
 }
 
 # Classify without remounting: use 91's classify by sourcing a dry check.

@@ -17,7 +17,7 @@ import {
   postgresReferencedFileStore,
   type ReferencedFileMetadataStore,
 } from "./metadata-store.js";
-import { maybeRequestCp1Repair, isCp1StorageFailure } from "./cp1-storage-failure.js";
+import { maybeRequestCp1Repair, isCp1StorageFailure, isCp1DegradedMode } from "./cp1-storage-failure.js";
 import {
   buildReadableFileName,
   buildRelativeStoragePath,
@@ -55,6 +55,16 @@ function throwMappedFsError(error: unknown, fallbackMessage: string): never {
   throw new FileStorageError("WRITE_FAILED", fallbackMessage);
 }
 
+/** Story 123 — LOCAL degraded cp_1: block writes even if a stub bind exists. */
+function assertCp1Writable(): void {
+  if (isCp1DegradedMode()) {
+    throw new FileStorageError(
+      "STORAGE_UNAVAILABLE",
+      "cp_1 file storage is unavailable (degraded mode) — writes are blocked.",
+    );
+  }
+}
+
 function mapPathError(error: unknown): never {
   if (error instanceof FileStoragePathError) {
     if (error.code === "NOT_CONFIGURED") {
@@ -86,6 +96,7 @@ export function createFilesystemFileStorage(options?: {
 
   return {
     async putFile(input: PutFileInput): Promise<ReferencedFileMetadata> {
+      assertCp1Writable();
       if (!input.bytes || input.bytes.byteLength === 0) {
         throw new FileStorageError("EMPTY", "File is empty");
       }
@@ -227,6 +238,7 @@ export function createFilesystemFileStorage(options?: {
     },
 
     async deleteFile(id, repoGuid, options): Promise<void> {
+      assertCp1Writable();
       const meta = await store.getById(repoGuid, id);
       if (!meta) throw new FileStorageError("NOT_FOUND", "File not found");
       try {

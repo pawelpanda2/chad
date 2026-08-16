@@ -64,6 +64,11 @@ export function requestLocalCp1Repair(reason: string): void {
   }
 }
 
+export function isCp1DegradedMode(): boolean {
+  const mode = (process.env.CHAD_CP1_MODE || "healthy").trim().toLowerCase();
+  return mode === "degraded" || mode === "unavailable";
+}
+
 /** If `error` looks like storage failure on local Mac, signal host repair. */
 export function maybeRequestCp1Repair(error: unknown, context: string): void {
   if (process.env.CHAD_ENVIRONMENT !== "local") return;

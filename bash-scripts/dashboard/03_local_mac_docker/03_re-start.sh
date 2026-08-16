@@ -26,26 +26,48 @@ cd "$REPO_ROOT"
 # No `:latest` fallback — refuses to start without a recorded release tag.
 require_image_tag "$(dashboard_image_tag_file)" "chad-dashboard" || exit 1
 
-# Story 118 — host cp_1 preflight BEFORE port kill / compose up so a dead
+# Story 118/123 — host cp_1 preflight BEFORE port kill / compose up so a dead
 # SMB share never becomes a local decoy directory via create_host_path.
 log_info "Preflight: ensure/repair QNAP SMB cp_1 on host (/Volumes/cp_1)..."
 bash "$SCRIPT_DIR/91_ensure-cp1-mounted.sh" || exit 1
-if ! /usr/bin/perl -e '
-  use strict; use warnings;
-  my ($path, $timeout) = @ARGV;
-  eval {
-    local $SIG{ALRM} = sub { die "timeout\n" };
-    alarm $timeout;
-    opendir(my $dh, $path) or die $!;
-    readdir($dh); closedir($dh);
-    alarm 0;
-  };
-  exit($@ ? 1 : 0);
-' "/Volumes/cp_1/chad-data/02_files_refrenced" "${CP1_FS_TIMEOUT_SEC:-5}"; then
-  log_error "Host read of /Volumes/cp_1/chad-data/02_files_refrenced failed after ensure."
-  exit 1
+
+CP1_MODE_FILE="$REPO_ROOT/.runtime/cp1-repair/mode"
+CP1_MODE="healthy"
+if [ -f "$CP1_MODE_FILE" ]; then
+  CP1_MODE="$(tr -d '[:space:]' <"$CP1_MODE_FILE" || true)"
 fi
-log_ok "Host cp_1 read verified."
+# Compat: explicit allow without a mode file still means degraded.
+if [ "${CHAD_ALLOW_WITHOUT_CP1:-}" = "1" ] && [ "$CP1_MODE" != "healthy" ]; then
+  CP1_MODE="degraded"
+fi
+
+CP1_DEGRADED=0
+if [ "$CP1_MODE" = "degraded" ]; then
+  CP1_DEGRADED=1
+  # shellcheck disable=SC1091
+  source "$SCRIPT_DIR/97_prepare-cp1-degraded-binds.sh"
+  log_warn "cp_1 DEGRADED — skipping host/container healthy-mount checks."
+else
+  if ! /usr/bin/perl -e '
+    use strict; use warnings;
+    my ($path, $timeout) = @ARGV;
+    eval {
+      local $SIG{ALRM} = sub { die "timeout\n" };
+      alarm $timeout;
+      opendir(my $dh, $path) or die $!;
+      readdir($dh); closedir($dh);
+      alarm 0;
+    };
+    exit($@ ? 1 : 0);
+  ' "/Volumes/cp_1/chad-data/02_files_refrenced" "${CP1_FS_TIMEOUT_SEC:-5}"; then
+    log_error "Host read of /Volumes/cp_1/chad-data/02_files_refrenced failed after ensure."
+    exit 1
+  fi
+  log_ok "Host cp_1 read verified."
+  # Ensure compose uses real share paths (clear any stale degraded exports).
+  unset CHAD_CONTACT_PHOTOS_HOST_PATH CHAD_AUDIO_RECORDINGS_HOST_PATH CHAD_CP1_MODE || true
+  printf '%s\n' "healthy" >"$CP1_MODE_FILE" 2>/dev/null || true
+fi
 
 if docker compose -p "$COMPOSE_PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps --format json 2>/dev/null | grep -q '"State":"running"'; then
   log_warn "chad-local stack is already running — stopping it first, then starting fresh."
@@ -75,10 +97,14 @@ done
 
 docker compose -p "$COMPOSE_PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d
 
-# Story 118 — virtiofs may keep a stale bind after host remount; probe from
-# inside the dashboard container (not only docker inspect).
-log_info "Verifying cp_1 binds from inside dashboard container..."
-bash "$SCRIPT_DIR/92_verify-cp1-in-container.sh" || exit 1
+# Story 118/123 — virtiofs may keep a stale bind after host remount; probe from
+# inside the dashboard container (not only docker inspect). Skip in degraded.
+if [ "$CP1_DEGRADED" = "1" ]; then
+  log_warn "Skipping 92_verify-cp1-in-container.sh (cp_1 degraded)."
+else
+  log_info "Verifying cp_1 binds from inside dashboard container..."
+  bash "$SCRIPT_DIR/92_verify-cp1-in-container.sh" || exit 1
+fi
 
 # Keep the local Postgres volume as a mirror of QNAP (Story 89) so login
 # (chad_admin/users-list) and Dev Panel reads use real data.
