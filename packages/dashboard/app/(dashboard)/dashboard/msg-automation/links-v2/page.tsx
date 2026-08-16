@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type RefObject } from "react";
+import Link from "next/link";
 import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,6 +17,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { getLeadDetailsHref } from "@/lib/lead-links";
 import { Loader2, RefreshCw, X } from "lucide-react";
 import { startColumnResize, type ResizeSide } from "./_lib/resize";
 
@@ -67,7 +69,6 @@ interface SyncReport {
 }
 
 type MainTab = "leads" | "conv" | "google";
-type LeadsInnerTab = "links" | "conv";
 
 type DragPayload =
   | { kind: "beeper-contact"; chatId: string; network: string }
@@ -145,8 +146,36 @@ function SearchInput({ value, onChange }: { value: string; onChange: (v: string)
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder="Search"
-      className="h-7 text-xs"
+      className="h-7 w-full text-xs"
     />
+  );
+}
+
+/**
+ * Search (wide) + group filter (compact) in a single row — shared by the
+ * Leads tab's right panel and the Conv tab's left panel (both list the same
+ * Beeper conversations against the same `beeperGroupFilter` state), instead
+ * of two copies that previously stacked the group filter above the search
+ * field as two separate rows.
+ */
+function SearchAndGroupRow({
+  searchValue,
+  onSearchChange,
+  groupValue,
+  onGroupChange,
+}: {
+  searchValue: string;
+  onSearchChange: (v: string) => void;
+  groupValue: string | undefined;
+  onGroupChange: (v: string | undefined) => void;
+}) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <div className="min-w-0 flex-1">
+        <SearchInput value={searchValue} onChange={onSearchChange} />
+      </div>
+      <BeeperGroupFilter value={groupValue} onChange={onGroupChange} className="h-7 shrink-0 px-1.5 text-xs" />
+    </div>
   );
 }
 
@@ -196,9 +225,28 @@ function LeadRow({
       draggable={draggable}
       onDragStart={onDragStart}
       onClick={onClick}
+      data-lead-loca={lead.loca}
     >
       <div className="min-w-0 flex-1 truncate text-xs font-medium">
-        {lead.leadName}
+        {/*
+          Only the name is a link — the row itself keeps its own
+          click-to-select and drag-to-assign behavior. `stopPropagation`
+          keeps a name click from also firing the row's onClick (selection);
+          `draggable={false}` keeps the browser's native "drag this link"
+          gesture from hijacking a drag that started on the name text,
+          so the row's own draggable ancestor still initiates the intended
+          lead-drag from there.
+        */}
+        <Link
+          href={getLeadDetailsHref(lead.leadName, lead.loca)}
+          target="_blank"
+          rel="noopener noreferrer"
+          draggable={false}
+          onClick={(e) => e.stopPropagation()}
+          className="hover:underline"
+        >
+          {lead.leadName}
+        </Link>
         {lead.draft && (
           <span className="ml-1.5 rounded bg-amber-500/20 px-1 py-0.5 text-[9px] font-semibold uppercase text-amber-500">
             Draft
@@ -223,6 +271,7 @@ function BeeperRow({
   onDrop,
   showUnlink,
   onUnlinkClick,
+  pending,
 }: {
   chatId: string;
   name: string;
@@ -236,27 +285,49 @@ function BeeperRow({
   onDrop?: (e: DragEvent) => void;
   showUnlink?: boolean;
   onUnlinkClick?: () => void;
+  /** Optimistic entry still waiting on the link/unlink POST — shows a spinner, not yet draggable (nothing to unlink/re-link until it's confirmed). */
+  pending?: boolean;
 }) {
   return (
     <div
-      className={cn(ROW_CLASS, onClick && "cursor-pointer", draggable && "cursor-grab active:cursor-grabbing", selected && "bg-accent")}
-      draggable={draggable}
+      className={cn(
+        ROW_CLASS,
+        onClick && "cursor-pointer",
+        draggable && !pending && "cursor-grab active:cursor-grabbing",
+        selected && "bg-accent",
+        pending && "opacity-70"
+      )}
+      draggable={draggable && !pending}
       onDragStart={onDragStart}
       onClick={onClick}
       onDragOver={onDrop ? (e) => e.preventDefault() : undefined}
       onDrop={onDrop}
       data-chat-id={chatId}
+      data-pending={pending || undefined}
     >
       <BeeperPlatformIcon network={network} size="sm" />
       <div className="min-w-0 flex-1">
-        <div className="truncate text-xs font-medium">{name}</div>
+        <div className="truncate text-xs font-medium">
+          {/* Same link-carve-out as LeadRow's name — see its comment. */}
+          <Link
+            href={`/dashboard/beeper?contact=${encodeURIComponent(chatId)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            draggable={false}
+            onClick={(e) => e.stopPropagation()}
+            className="hover:underline"
+          >
+            {name}
+          </Link>
+        </div>
         {assignedLeadName ? (
           <div className="truncate text-[10px] text-muted-foreground">{assignedLeadName}</div>
         ) : preview ? (
           <div className="truncate text-[10px] text-muted-foreground">{preview}</div>
         ) : null}
       </div>
-      {showUnlink && (
+      {pending && <Loader2 className="h-3 w-3 shrink-0 animate-spin text-muted-foreground" aria-label="Linking…" />}
+      {showUnlink && !pending && (
         <button
           type="button"
           aria-label="Unlink lead from this conversation"
@@ -380,6 +451,29 @@ export default function LinksV2Page() {
 
   const [confirmState, setConfirmState] = useState<ConfirmState | null>(null);
 
+  // Optimistic pending state for Beeper conversation <-> Lead linking: the
+  // conversation must show up in the target list the instant it's dropped,
+  // with a spinner, instead of only after the link POST + a full leads
+  // refetch both resolve (previously nothing appeared until that whole
+  // round trip finished — the actual few-second "lag"). `status: "error"`
+  // is set only transiently right before the entry is dropped, so a
+  // consumer could show a brief failure indicator if ever needed; today the
+  // entry is just removed (rollback) and the failure surfaces through the
+  // existing `actionError` banner, per the current CHAD error-reporting
+  // convention (see `runAction` below).
+  interface PendingBeeperLink {
+    chatId: string;
+    leadLoca: string;
+    leadName: string;
+    network: string;
+    status: "pending" | "error";
+  }
+  const [pendingBeeperLinks, setPendingBeeperLinks] = useState<PendingBeeperLink[]>([]);
+  const pendingChatIds = useMemo(
+    () => new Set(pendingBeeperLinks.filter((p) => p.status === "pending").map((p) => p.chatId)),
+    [pendingBeeperLinks]
+  );
+
   // Shared Beeper contact-group filter (Leads tab's right panel and Conv tab's
   // left panel both list the same Beeper conversations) — defaults to the
   // user's default group from Beeper → Groups (same convention as the Beeper
@@ -399,8 +493,15 @@ export default function LinksV2Page() {
 
   // Leads tab
   const [leadsSelectedLoca, setLeadsSelectedLoca] = useState<string | null>(null);
-  const [leadsInnerTab, setLeadsInnerTab] = useState<LeadsInnerTab>("links");
-  const [leadsConvVisible, setLeadsConvVisible] = useState(false);
+  // Links (pinned left) and Conv (pinned right) are two independent
+  // toggle panels, not a mutually-exclusive tab pair: Links only exists
+  // once a lead is selected on the left, Conv only exists once a
+  // conversation is selected (either from the linked list or the right
+  // panel) — both can be open at once. Each starts open the moment its
+  // selection appears (matching the prior single-click behavior for Conv),
+  // and its own label toggles it shut/open afterward.
+  const [leadsLinksOpen, setLeadsLinksOpen] = useState(false);
+  const [leadsConvOpen, setLeadsConvOpen] = useState(false);
   const [leadsSelectedChatId, setLeadsSelectedChatId] = useState<string | null>(null);
   const [leadsSearchLeft, setLeadsSearchLeft] = useState("");
   const [leadsSearchRight, setLeadsSearchRight] = useState("");
@@ -486,7 +587,32 @@ export default function LinksV2Page() {
   );
 
   const selectedLead = leadsSelectedLoca ? leadsByLoca.get(leadsSelectedLoca) ?? null : null;
-  const linkedBeeperForSelected = selectedLead?.links.beeper ?? [];
+  // Persisted links for the selected lead, plus any still-pending optimistic
+  // entries for that same lead (deduped against a persisted entry that just
+  // landed via `loadLeads()`, in case that resolves before the pending
+  // entry is cleared).
+  const linkedBeeperForSelected = useMemo(() => {
+    const persisted = selectedLead?.links.beeper ?? [];
+    const persistedIds = new Set(persisted.map((e) => e.chatId));
+    const pendingForLead = pendingBeeperLinks.filter(
+      (p) => p.leadLoca === leadsSelectedLoca && p.status === "pending" && !persistedIds.has(p.chatId)
+    );
+    return [
+      ...persisted.map((e) => ({ chatId: e.chatId, type: e.type, pending: false })),
+      ...pendingForLead.map((p) => ({ chatId: p.chatId, type: p.network, pending: true })),
+    ];
+  }, [selectedLead, pendingBeeperLinks, leadsSelectedLoca]);
+  // Same idea for the Conv tab's "assigned lead" display: a pending link
+  // must show its target lead + spinner immediately too, not only after
+  // the backend confirms it.
+  const effectiveOwnerByChatId = useMemo(() => {
+    const map = new Map<string, { loca: string; leadName: string; pending: boolean }>();
+    for (const [chatId, owner] of beeperChatIdToLead) map.set(chatId, { ...owner, pending: false });
+    for (const p of pendingBeeperLinks) {
+      if (p.status === "pending") map.set(p.chatId, { loca: p.leadLoca, leadName: p.leadName, pending: true });
+    }
+    return map;
+  }, [beeperChatIdToLead, pendingBeeperLinks]);
   const googleSelectedLead = googleSelectedLoca ? leadsByLoca.get(googleSelectedLoca) ?? null : null;
   const linkedGoogleForSelected = googleSelectedLead?.links.googleContacts ?? [];
 
@@ -523,8 +649,12 @@ export default function LinksV2Page() {
 
   // ── Leads-tab conversation selection / reset on lead change ──
   useEffect(() => {
-    setLeadsInnerTab("links");
-    setLeadsConvVisible(false);
+    // A newly selected lead immediately opens its own Links panel (no
+    // extra click needed, same as picking a conversation already does for
+    // Conv) and closes any previously open Conv panel — a different lead
+    // means a different conversation context.
+    setLeadsLinksOpen(true);
+    setLeadsConvOpen(false);
     setLeadsSelectedChatId(null);
     setConvState({ status: "idle" });
   }, [leadsSelectedLoca]);
@@ -553,8 +683,7 @@ export default function LinksV2Page() {
 
   function selectLeadsConversation(chatId: string) {
     setLeadsSelectedChatId(chatId);
-    setLeadsConvVisible(true);
-    setLeadsInnerTab("conv");
+    setLeadsConvOpen(true);
   }
 
   // ── Mutations ──
@@ -571,28 +700,47 @@ export default function LinksV2Page() {
   }
 
   async function assignBeeperToLead(targetLoca: string, chatId: string, network: string) {
+    // Already linking this exact conversation somewhere — block a second,
+    // overlapping link attempt until the first one resolves.
+    if (pendingChatIds.has(chatId)) return;
     const owner = beeperChatIdToLead.get(chatId);
     const targetLead = leadsByLoca.get(targetLoca);
     const contactName = beeperContactsById.get(chatId)?.displayName ?? chatId;
+    const targetLeadName = targetLead?.leadName ?? targetLoca;
+
+    async function doLink(unlinkFirst?: { loca: string }) {
+      // Optimistic entry appears instantly (before either network call),
+      // with a spinner, and is removed in `finally` regardless of outcome
+      // — on success `loadLeads()` has already brought in the real,
+      // persisted entry by then; on failure the entry just disappears
+      // (rollback) and `runAction`'s catch surfaces the error via the
+      // existing `actionError` banner.
+      setPendingBeeperLinks((prev) => [
+        ...prev,
+        { chatId, leadLoca: targetLoca, leadName: targetLeadName, network, status: "pending" },
+      ]);
+      try {
+        if (unlinkFirst) {
+          await postJson("/api/msg-automation/links-v2/beeper-unlink", { leadLoca: unlinkFirst.loca, chatId });
+        }
+        await postJson("/api/msg-automation/links-v2/beeper-link", { leadLoca: targetLoca, chatId, network });
+        await loadLeads();
+      } finally {
+        setPendingBeeperLinks((prev) => prev.filter((p) => p.chatId !== chatId));
+      }
+    }
+
     if (owner && owner.loca !== targetLoca) {
       confirm({
         title: "Replace linked lead?",
-        description: `"${contactName}" is already linked to ${owner.leadName}. Replace with ${targetLead?.leadName ?? targetLoca}?`,
+        description: `"${contactName}" is already linked to ${owner.leadName}. Replace with ${targetLeadName}?`,
         confirmLabel: "Replace",
         destructive: true,
-        onConfirm: () =>
-          runAction(async () => {
-            await postJson("/api/msg-automation/links-v2/beeper-unlink", { leadLoca: owner.loca, chatId });
-            await postJson("/api/msg-automation/links-v2/beeper-link", { leadLoca: targetLoca, chatId, network });
-            await loadLeads();
-          }),
+        onConfirm: () => runAction(() => doLink({ loca: owner.loca })),
       });
       return;
     }
-    await runAction(async () => {
-      await postJson("/api/msg-automation/links-v2/beeper-link", { leadLoca: targetLoca, chatId, network });
-      await loadLeads();
-    });
+    await runAction(() => doLink());
   }
 
   function handleAssignBeeperDrop(e: DragEvent) {
@@ -708,6 +856,7 @@ export default function LinksV2Page() {
   const leadsMode = (
     <div
       ref={leadsGridRef}
+      data-testid="leads-grid"
       className="grid h-full min-h-0 w-full"
       style={{ gridTemplateColumns: "300px 14px minmax(100px,1fr) 14px 360px" }}
     >
@@ -728,67 +877,84 @@ export default function LinksV2Page() {
         </div>
       </div>
       <Resizer containerRef={leadsGridRef} side="left" min={SIDE_MIN} centerMin={CENTER_MIN} />
-      <div className="flex min-h-0 min-w-0 flex-col">
-        <div className="shrink-0 border-b">
-          <div className="flex px-2 pt-1">
+      {/*
+        Links (pinned left) and Conv (pinned right) are independent panels,
+        not a mutually-exclusive tab pair — each only exists once its own
+        selection exists (a lead for Links, a conversation for Conv), each
+        can be open or closed on its own, and both can show at once, split
+        evenly across the center column.
+      */}
+      <div className="flex min-h-0 min-w-0 flex-1">
+        {leadsSelectedLoca && (
+          <div className={cn("flex min-h-0 min-w-0 flex-1 flex-col", leadsSelectedChatId && "border-r")}>
             <button
               type="button"
-              onClick={() => setLeadsInnerTab("links")}
-              className={cn(INNER_TAB_CLASS, leadsInnerTab === "links" && INNER_TAB_ON_CLASS)}
+              onClick={() => setLeadsLinksOpen((v) => !v)}
+              className={cn(INNER_TAB_CLASS, "shrink-0 self-start", leadsLinksOpen && INNER_TAB_ON_CLASS)}
             >
               Links
             </button>
-            {leadsConvVisible && (
-              <button
-                type="button"
-                onClick={() => setLeadsInnerTab("conv")}
-                className={cn(INNER_TAB_CLASS, leadsInnerTab === "conv" && INNER_TAB_ON_CLASS)}
-              >
-                Conv
-              </button>
+            {leadsLinksOpen && (
+              <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-2">
+                <div
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={handleAssignBeeperDrop}
+                  className="min-h-full"
+                  data-testid="links-assign-drop-zone"
+                >
+                  <RemoveDropZone onDrop={handleRemoveBeeperDrop} />
+                  <div className="space-y-0.5">
+                    {linkedBeeperForSelected.map((entry) => {
+                      const contact = beeperContactsById.get(entry.chatId);
+                      return (
+                        <BeeperRow
+                          key={entry.chatId}
+                          chatId={entry.chatId}
+                          name={contact?.displayName || entry.chatId}
+                          network={contact?.platformNetwork ?? entry.type}
+                          selected={entry.chatId === leadsSelectedChatId}
+                          draggable
+                          onDragStart={(e) => setDragPayload(e, { kind: "beeper-linked", chatId: entry.chatId })}
+                          onClick={() => selectLeadsConversation(entry.chatId)}
+                          pending={entry.pending}
+                        />
+                      );
+                    })}
+                    {selectedLead && linkedBeeperForSelected.length === 0 && (
+                      <div className="px-1 py-2 text-[11px] text-muted-foreground">—</div>
+                    )}
+                  </div>
+                </div>
+              </div>
             )}
           </div>
-          <div className="truncate px-2 py-1.5 text-xs font-semibold">
-            {leadsInnerTab === "conv" && leadsSelectedChatId
-              ? beeperContactsById.get(leadsSelectedChatId)?.displayName ?? leadsSelectedChatId
-              : selectedLead?.leadName ?? ""}
-          </div>
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-2">
-          {leadsInnerTab === "links" ? (
-            <div onDragOver={(e) => e.preventDefault()} onDrop={handleAssignBeeperDrop} className="min-h-full">
-              <RemoveDropZone onDrop={handleRemoveBeeperDrop} />
-              <div className="space-y-0.5">
-                {linkedBeeperForSelected.map((entry) => {
-                  const contact = beeperContactsById.get(entry.chatId);
-                  return (
-                    <BeeperRow
-                      key={entry.chatId}
-                      chatId={entry.chatId}
-                      name={contact?.displayName || entry.chatId}
-                      network={contact?.platformNetwork ?? entry.type}
-                      selected={entry.chatId === leadsSelectedChatId}
-                      draggable
-                      onDragStart={(e) => setDragPayload(e, { kind: "beeper-linked", chatId: entry.chatId })}
-                      onClick={() => selectLeadsConversation(entry.chatId)}
-                    />
-                  );
-                })}
-                {selectedLead && linkedBeeperForSelected.length === 0 && (
-                  <div className="px-1 py-2 text-[11px] text-muted-foreground">—</div>
-                )}
+        )}
+        {leadsSelectedChatId && (
+          <div className="ml-auto flex min-h-0 min-w-0 flex-1 flex-col">
+            <button
+              type="button"
+              onClick={() => setLeadsConvOpen((v) => !v)}
+              className={cn(INNER_TAB_CLASS, "shrink-0 self-end", leadsConvOpen && INNER_TAB_ON_CLASS)}
+            >
+              Conv
+            </button>
+            {leadsConvOpen && (
+              <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-2">
+                <ConvView state={convState} />
               </div>
-            </div>
-          ) : (
-            <ConvView state={convState} />
-          )}
-        </div>
+            )}
+          </div>
+        )}
       </div>
       <Resizer containerRef={leadsGridRef} side="right" min={SIDE_MIN} centerMin={CENTER_MIN} />
       <div className="flex min-h-0 min-w-0 flex-col border-l bg-muted/5">
-        <div className="shrink-0 space-y-1.5 p-1.5 [&>select]:w-full">
-          <BeeperGroupFilter value={beeperGroupFilter} onChange={setBeeperGroupFilter} />
-          <SearchInput value={leadsSearchRight} onChange={setLeadsSearchRight} />
+        <div className="shrink-0 p-1.5">
+          <SearchAndGroupRow
+            searchValue={leadsSearchRight}
+            onSearchChange={setLeadsSearchRight}
+            groupValue={beeperGroupFilter}
+            onGroupChange={setBeeperGroupFilter}
+          />
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-1 pb-1">
           {filteredBeeperRight.map((c) => (
@@ -818,13 +984,17 @@ export default function LinksV2Page() {
       style={{ gridTemplateColumns: "minmax(200px,1fr) 14px minmax(200px,1fr)" }}
     >
       <div className="flex min-h-0 min-w-0 flex-col border-r bg-muted/5">
-        <div className="shrink-0 space-y-1.5 p-1.5 [&>select]:w-full">
-          <BeeperGroupFilter value={beeperGroupFilter} onChange={setBeeperGroupFilter} />
-          <SearchInput value={convSearchLeft} onChange={setConvSearchLeft} />
+        <div className="shrink-0 p-1.5">
+          <SearchAndGroupRow
+            searchValue={convSearchLeft}
+            onSearchChange={setConvSearchLeft}
+            groupValue={beeperGroupFilter}
+            onGroupChange={setBeeperGroupFilter}
+          />
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-1 pb-1">
           {filteredBeeperConvLeft.map((c) => {
-            const owner = beeperChatIdToLead.get(c._id);
+            const owner = effectiveOwnerByChatId.get(c._id);
             return (
               <BeeperRow
                 key={c._id}
@@ -832,9 +1002,10 @@ export default function LinksV2Page() {
                 name={c.displayName}
                 network={c.platformNetwork}
                 assignedLeadName={owner?.leadName}
-                showUnlink={Boolean(owner)}
+                showUnlink={Boolean(owner) && !owner?.pending}
                 onUnlinkClick={() => handleConvUnlinkClick(c._id)}
                 onDrop={(e) => handleConvRowDrop(e, c)}
+                pending={owner?.pending}
               />
             );
           })}

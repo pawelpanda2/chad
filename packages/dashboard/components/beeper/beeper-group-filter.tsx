@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { cn } from "@/lib/utils";
 
 export interface BeeperGroupOption {
   _id: string;
@@ -12,6 +13,8 @@ export interface BeeperGroupFilterProps {
   onChange: (groupId: string | undefined) => void;
   /** Bumped by the Groups tab after creating/renaming a group, so this list stays fresh without a full page reload. */
   refreshKey?: number;
+  /** Merged onto the base classes (e.g. a caller matching a shorter search input's height) — base styling is unaffected when omitted. */
+  className?: string;
 }
 
 /**
@@ -20,7 +23,7 @@ export interface BeeperGroupFilterProps {
  * (Conversations / Permissions / Msg workout all read the same `?group=`
  * query param). "All groups" clears the filter.
  */
-export function BeeperGroupFilter({ value, onChange, refreshKey }: BeeperGroupFilterProps) {
+export function BeeperGroupFilter({ value, onChange, refreshKey, className }: BeeperGroupFilterProps) {
   const [groups, setGroups] = useState<BeeperGroupOption[]>([]);
 
   useEffect(() => {
@@ -40,7 +43,7 @@ export function BeeperGroupFilter({ value, onChange, refreshKey }: BeeperGroupFi
 
   return (
     <select
-      className="h-10 rounded-[9px] border border-border bg-background px-2 text-sm"
+      className={cn("h-10 rounded-[9px] border border-border bg-background px-2 text-sm", className)}
       value={value ?? ""}
       onChange={(e) => onChange(e.target.value || undefined)}
       aria-label="Filter by contact group"

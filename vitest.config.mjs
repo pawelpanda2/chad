@@ -160,6 +160,10 @@ export default defineConfig({
       "packages/dba/src/links-v2/scheduler.test.ts",
       // Story 104 GUI redesign — manual link/unlink drag & drop contracts.
       "packages/dba/src/links-v2/manual-links.test.ts",
+      // Links V2 GUI — optimistic drag/drop pending state, Search+Group
+      // single-row layout, lead/conversation name links, Links(left)/
+      // Conv(right) center-panel selection states.
+      "packages/dashboard/app/(dashboard)/dashboard/msg-automation/links-v2/page.test.tsx",
       // Story 99 — msg workout ↔ Beeper message matching engine (pure) and
       // config.links.beeper / proposal-tree CP write paths (Postgres,
       // throwaway repoGuids — same local test Postgres as leads-postgres.test.ts).
