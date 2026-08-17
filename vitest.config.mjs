@@ -168,6 +168,10 @@ export default defineConfig({
       // and the Lead Details "Groups" card (derived lead↔group resolution +
       // Full View link).
       "packages/dashboard/app/(dashboard)/dashboard/msg-automation/groups/page.test.tsx",
+      // Default-group-on-mount regression for Msg Auto → Msg Workout (had
+      // the BeeperGroupFilter combobox but was missing the "apply default
+      // group once on mount" effect MultiView/Links V2 already have).
+      "packages/dashboard/app/(dashboard)/dashboard/msg-automation/msg-workout/page.test.tsx",
       "packages/dashboard/app/(dashboard)/dashboard/leads/details/page.test.tsx",
       // Story 125 — Msg Creator composer (real renderer at
       // /dashboard/leads/message-creator): you/advice x dash/ver. comboboxes,

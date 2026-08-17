@@ -903,7 +903,20 @@ function MessageCreatorPageContent() {
                       <option value="ver">ver.</option>
                     </select>
                   </div>
-                  <div className="grid grid-cols-[1fr_auto] gap-2">
+                  <div className="grid grid-cols-[auto_1fr] gap-2">
+                    <Button
+                      className="h-auto bg-foreground px-4 text-[13px] font-semibold leading-tight text-background hover:bg-foreground/90"
+                      disabled={
+                        composerSaving ||
+                        composerDisabled ||
+                        !(composerMode === "dash" ? composerDashText : composerVerText).trim()
+                      }
+                      onClick={() => void saveComposerEntry()}
+                    >
+                      Save
+                      <br />
+                      msg
+                    </Button>
                     {composerMode === "dash" ? (
                       <input
                         type="text"
@@ -930,19 +943,6 @@ function MessageCreatorPageContent() {
                         className="min-h-[58px] resize-none text-[13px]"
                       />
                     )}
-                    <Button
-                      className="h-auto bg-foreground px-4 text-[13px] font-semibold leading-tight text-background hover:bg-foreground/90"
-                      disabled={
-                        composerSaving ||
-                        composerDisabled ||
-                        !(composerMode === "dash" ? composerDashText : composerVerText).trim()
-                      }
-                      onClick={() => void saveComposerEntry()}
-                    >
-                      Save
-                      <br />
-                      msg
-                    </Button>
                   </div>
                 </div>
               </div>

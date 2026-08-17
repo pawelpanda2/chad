@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Search } from "lucide-react";
 import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
@@ -22,6 +22,7 @@ function MsgAutoMsgWorkoutPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [searchQuery, setSearchQuery] = useState("");
+  const appliedDefaultGroupRef = useRef(false);
 
   const contactParam = searchParams.get("contact") ?? undefined;
   const groupParam = searchParams.get("group") ?? undefined;
@@ -37,6 +38,23 @@ function MsgAutoMsgWorkoutPageInner() {
     },
     [router]
   );
+
+  // Same "apply the user's default group once on first mount" pattern as
+  // MultiView / Links V2 — this page had the BeeperGroupFilter combobox but
+  // was missing this effect, so it always started on "All groups" instead
+  // of the configured default.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (appliedDefaultGroupRef.current) return;
+    appliedDefaultGroupRef.current = true;
+    if (searchParams.get("group")) return;
+    fetch("/api/beeper-crm/groups/default")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?._id) updateUrl(contactParam, data._id);
+      })
+      .catch(() => {});
+  }, []);
 
   const handleSelectContact = useCallback(
     (id: string | null) => updateUrl(id ?? undefined, groupParam),
