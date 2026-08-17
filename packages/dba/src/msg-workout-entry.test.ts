@@ -39,18 +39,45 @@ describe("appendMsgWorkoutEntry — dash", () => {
 });
 
 describe("appendMsgWorkoutEntry — ver", () => {
-  it("appends a new //ver block preserving internal formatting", () => {
+  it("appends a new //v1 block preserving internal formatting (first version)", () => {
     expect(appendMsgWorkoutEntry("//you\n- draft", { type: "ver", text: "Line one\n  indented\nLine two" })).toBe(
-      "//you\n- draft\n\n//ver\nLine one\n  indented\nLine two"
+      "//you\n- draft\n\n//v1\nLine one\n  indented\nLine two"
     );
   });
 
   it("works on an empty body", () => {
-    expect(appendMsgWorkoutEntry("", { type: "ver", text: "Full text" })).toBe("//ver\nFull text");
+    expect(appendMsgWorkoutEntry("", { type: "ver", text: "Full text" })).toBe("//v1\nFull text");
   });
 
   it("ignores an all-whitespace submission", () => {
     expect(appendMsgWorkoutEntry("//you\n- draft", { type: "ver", text: "   \n  " })).toBe("//you\n- draft");
+  });
+
+  it("increments to //v2 when a //v1 block already exists", () => {
+    const body = "//v1\nFirst version";
+    expect(appendMsgWorkoutEntry(body, { type: "ver", text: "Second version" })).toBe(
+      "//v1\nFirst version\n\n//v2\nSecond version"
+    );
+  });
+
+  it("increments to //v3 based on the highest existing //vN, not the count", () => {
+    const body = "//v1\nfirst\n\n//v3\nthird";
+    expect(appendMsgWorkoutEntry(body, { type: "ver", text: "fourth" })).toBe(
+      "//v1\nfirst\n\n//v3\nthird\n\n//v4\nfourth"
+    );
+  });
+
+  it("never overwrites a previous version — both blocks remain intact after two saves", () => {
+    let body = appendMsgWorkoutEntry("", { type: "ver", text: "v1 text" });
+    body = appendMsgWorkoutEntry(body, { type: "ver", text: "v2 text" });
+    expect(body).toBe("//v1\nv1 text\n\n//v2\nv2 text");
+  });
+
+  it("treats a legacy un-numbered //ver header as an existing v1", () => {
+    const body = "//ver\nLegacy version";
+    expect(appendMsgWorkoutEntry(body, { type: "ver", text: "New version" })).toBe(
+      "//ver\nLegacy version\n\n//v2\nNew version"
+    );
   });
 });
 

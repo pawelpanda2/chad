@@ -169,6 +169,10 @@ export default defineConfig({
       // Full View link).
       "packages/dashboard/app/(dashboard)/dashboard/msg-automation/groups/page.test.tsx",
       "packages/dashboard/app/(dashboard)/dashboard/leads/details/page.test.tsx",
+      // Story 125 — Msg Creator composer (real renderer at
+      // /dashboard/leads/message-creator): you/advice x dash/ver. comboboxes,
+      // old placeholder removed, disabled state, save wiring.
+      "packages/dashboard/app/(dashboard)/dashboard/leads/message-creator/page.test.tsx",
       // Story 99 — msg workout ↔ Beeper message matching engine (pure) and
       // config.links.beeper / proposal-tree CP write paths (Postgres,
       // throwaway repoGuids — same local test Postgres as leads-postgres.test.ts).
@@ -178,6 +182,10 @@ export default defineConfig({
       // v11 — structured entry composer (dash/ver/advice) for the shared
       // Msg Workout editor (Beeper → Msg workout, Msg Auto → Msg Workout).
       "packages/dba/src/msg-workout-entry.test.ts",
+      // Story 125 — Msg Creator: find/create the Msg Workout for a lead's
+      // last Beeper message (Links V2 resolution, YY-MM-DD; HH:mm:ss naming,
+      // config["msg-workout"]/links.beeper, idempotent find-or-create).
+      "packages/dba/src/msg-workout-for-message.test.ts",
       // Story 94 — Beeper Conversations split-view pure logic (filter,
       // handle icon/aria-label, empty-state gate).
       "packages/dashboard/components/beeper/beeper-conversations-logic.test.ts",

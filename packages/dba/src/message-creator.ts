@@ -38,6 +38,10 @@ import {
   type ParsedWhatsAppMessage,
   type PromptVersionOption,
 } from "./whatsapp-messages.js";
+import {
+  findMsgWorkoutForLastBeeperMessage,
+  type MsgWorkoutForMessageLookup,
+} from "./msg-workout-for-message.js";
 
 export {
   analysisContextMessageIds,
@@ -217,6 +221,15 @@ export interface MessageCreatorBootstrap {
    * triggers). `null` means genuinely unconfigured — never invented.
    */
   resolvedPrompt: { id: string; slug: string; name: string; publishedVersion?: number } | null;
+  /**
+   * Story 125 — read-only lookup of the Msg Workout tied to this lead's
+   * LAST Beeper message (Links V2 conversation, stable Mongo message id —
+   * see `msg-workout-for-message.ts`). Never creates anything here; the
+   * composer's actual find-or-create happens lazily on first Save, same
+   * "never write on GET" convention `approachContext`/`proposals` already
+   * follow on this same bootstrap.
+   */
+  msgWorkout: MsgWorkoutForMessageLookup;
 }
 
 export interface SaveAnalysisRunInput {
@@ -938,12 +951,13 @@ export async function getMessageCreatorBootstrap(
   const promptVersions = listMessageCreatorPromptVersions();
   const models = listMessageCreatorModels();
 
-  const [approach, proposals, reports, conversation, workoutsResult] = await Promise.all([
+  const [approach, proposals, reports, conversation, workoutsResult, msgWorkout] = await Promise.all([
     getApproachContext(leadLoca),
     getMyProposals(leadLoca),
     listLeadReportsForCreator(leadName),
     getLeadConversationForCreator(leadName, leadLoca),
     getLeadMsgWorkoutsByLoca(leadLoca).catch(() => ({ workouts: [], error: null, notFound: true })),
+    findMsgWorkoutForLastBeeperMessage(leadLoca),
   ]);
 
   const messages = conversation.body ? parseWhatsAppMessages(conversation.body) : [];
@@ -987,6 +1001,7 @@ export async function getMessageCreatorBootstrap(
     allRuns,
     messageRunCounts,
     resolvedPrompt,
+    msgWorkout,
     relatedWorkouts: (workoutsResult.workouts ?? [])
       .filter((w) => {
         if (w.logicalName === "my proposals") return false;

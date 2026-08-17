@@ -12,11 +12,19 @@
  * prompt asked to merge into an existing section. `ver`/`advice` are
  * point-in-time additions (a full message version / a person's advice),
  * so each submission appends its own new header block instead.
+ *
+ * `ver` numbering (Story 125): each save gets its own `//v<N>` header, N
+ * computed from the body's own real content — never overwrites a previous
+ * version. A legacy bare `//ver` header (this module's original,
+ * un-numbered format) counts as an existing v1 for numbering purposes, so
+ * old bodies keep incrementing correctly instead of colliding on `//v1`.
  */
 import { getMsgWorkoutForEdit, saveMsgWorkout } from "./leads.js";
 
 const HEADER_RE = /^\/\/[a-z]/i;
 const YOU_HEADER_RE = /^\/\/you\b/i;
+const VER_NUMBERED_RE = /^\/\/v(\d+)\b/i;
+const VER_LEGACY_RE = /^\/\/ver\b/i;
 
 export const DEFAULT_ADVICE_AUTHOR = "Kamil_S";
 
@@ -44,6 +52,23 @@ function findYouInsertIndex(lines: string[]): number {
   return end;
 }
 
+/** Highest existing `//v<N>` (or legacy bare `//ver`, counted as v1) found in `body`. 0 if none. */
+function highestVersionNumber(body: string): number {
+  let max = 0;
+  for (const rawLine of body.split("\n")) {
+    const line = rawLine.trim();
+    const numbered = line.match(VER_NUMBERED_RE);
+    if (numbered) {
+      max = Math.max(max, parseInt(numbered[1], 10));
+      continue;
+    }
+    if (VER_LEGACY_RE.test(line)) {
+      max = Math.max(max, 1);
+    }
+  }
+  return max;
+}
+
 /** Pure: computes the new body text for one appended entry. No I/O. */
 export function appendMsgWorkoutEntry(body: string, entry: MsgWorkoutEntryInput): string {
   const current = (body ?? "").replace(/\r\n/g, "\n");
@@ -63,7 +88,10 @@ export function appendMsgWorkoutEntry(body: string, entry: MsgWorkoutEntryInput)
 
   const text = entry.text.replace(/^\n+|\n+$/g, "");
   if (!text.trim()) return current;
-  const header = entry.type === "ver" ? "//ver" : `//advice ${entry.author.trim() || DEFAULT_ADVICE_AUTHOR}`;
+  const header =
+    entry.type === "ver"
+      ? `//v${highestVersionNumber(current) + 1}`
+      : `//advice ${entry.author.trim() || DEFAULT_ADVICE_AUTHOR}`;
   const prefix = current.trim().length > 0 ? `${current.replace(/\s+$/, "")}\n\n` : "";
   return `${prefix}${header}\n${text}`;
 }

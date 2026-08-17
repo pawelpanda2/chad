@@ -83,7 +83,19 @@ interface Bootstrap {
   messageRunCounts: Record<string, Record<string, number>>;
   /** Story 88 — the published AI Prompts registry entry "Send new" will actually run, or null. */
   resolvedPrompt: { id: string; slug: string; name: string; publishedVersion?: number } | null;
+  /** Story 125 — read-only lookup of the Msg Workout tied to this lead's last Beeper message. */
+  msgWorkout: MsgWorkoutLookup;
 }
+
+/** Mirrors dba's MsgWorkoutForMessageLookup (msg-workout-for-message.ts). */
+type MsgWorkoutLookup =
+  | { status: "no-conversation" }
+  | { status: "no-messages" }
+  | { status: "exists"; workout: { loca: string; name: string; body: string } }
+  | { status: "missing"; plannedName: string };
+
+type ComposerWho = "you" | "advice";
+type ComposerMode = "dash" | "ver";
 
 interface PromptOption {
   value: string;
@@ -187,13 +199,6 @@ function payloadMistakes(
       return null;
     })
     .filter((x): x is { title: string; body: string } => Boolean(x && x.body));
-}
-
-function splitYouProposals(text: string): string[] {
-  return text
-    .split(/\n{2,}|\n/)
-    .map((s) => s.trim())
-    .filter(Boolean);
 }
 
 function MessageCreatorLeadPicker() {
@@ -317,10 +322,16 @@ function MessageCreatorPageContent() {
   const [aiBusy, setAiBusy] = useState(false);
   const [aiMessage, setAiMessage] = useState<string | null>(null);
 
-  const [proposalsText, setProposalsText] = useState("");
-  const [draftProposal, setDraftProposal] = useState("");
   const [proposalsOpen, setProposalsOpen] = useState(false);
-  const [proposalsSaving, setProposalsSaving] = useState(false);
+
+  // Story 125 — Msg Creator composer (find/create Msg Workout for the
+  // lead's last Beeper message; you/advice x dash/ver.).
+  const [msgWorkout, setMsgWorkout] = useState<MsgWorkoutLookup | null>(null);
+  const [composerWho, setComposerWho] = useState<ComposerWho>("you");
+  const [composerMode, setComposerMode] = useState<ComposerMode>("dash");
+  const [composerDashText, setComposerDashText] = useState("");
+  const [composerVerText, setComposerVerText] = useState("");
+  const [composerSaving, setComposerSaving] = useState(false);
 
   const [approachOpen, setApproachOpen] = useState(false);
   const [approachText, setApproachText] = useState("");
@@ -352,7 +363,7 @@ function MessageCreatorPageContent() {
       const data = json.data as Bootstrap;
       setBootstrap(data);
       setApproachText(data.approachContext ?? "");
-      setProposalsText(data.proposals ?? "");
+      setMsgWorkout(data.msgWorkout ?? null);
       if (!selectedModelId && data.models[0]) {
         setSelectedModelId(data.models[0].id);
       }
@@ -505,26 +516,35 @@ function MessageCreatorPageContent() {
     }
   }
 
-  async function saveDraftProposal() {
-    if (!leadLoca || !draftProposal.trim()) return;
-    setProposalsSaving(true);
+  const composerDisabled =
+    !msgWorkout || msgWorkout.status === "no-conversation" || msgWorkout.status === "no-messages";
+  const composerDisabledReason =
+    msgWorkout?.status === "no-conversation"
+      ? "No linked Beeper conversation for this lead"
+      : msgWorkout?.status === "no-messages"
+        ? "Linked Beeper conversation has no messages yet"
+        : undefined;
+
+  async function saveComposerEntry() {
+    if (!leadLoca || composerDisabled || composerSaving) return;
+    const text = composerMode === "dash" ? composerDashText.trim() : composerVerText.trim();
+    if (!text) return;
+    setComposerSaving(true);
     try {
-      const next = proposalsText.trim()
-        ? `${proposalsText.trim()}\n\n${draftProposal.trim()}`
-        : draftProposal.trim();
-      const res = await fetch("/api/leads/message-creator", {
-        method: "PUT",
+      const res = await fetch("/api/leads/message-creator/entry", {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kind: "proposals", leadLoca, text: next }),
+        body: JSON.stringify({ leadLoca, who: composerWho, mode: composerMode, text }),
       });
       const json = await res.json();
       if (!res.ok || !json.success) throw new Error(json.error || "Save failed");
-      setProposalsText(next);
-      setDraftProposal("");
+      setMsgWorkout({ status: "exists", workout: json.workout });
+      if (composerMode === "dash") setComposerDashText("");
+      else setComposerVerText("");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
-      setProposalsSaving(false);
+      setComposerSaving(false);
     }
   }
 
@@ -597,11 +617,8 @@ function MessageCreatorPageContent() {
     };
   }, []);
 
-  const youProposals = useMemo(() => splitYouProposals(proposalsText), [proposalsText]);
-  const proposalGroups = useMemo(() => {
-    const groups: Array<{ title: string; items: string[] }> = [
-      { title: "You", items: youProposals },
-    ];
+  const aiProposalGroups = useMemo(() => {
+    const groups: Array<{ title: string; items: string[] }> = [];
     if (!bootstrap) return groups;
     const byVersion = new Map<string, string[]>();
     for (const run of bootstrap.allRuns) {
@@ -615,7 +632,7 @@ function MessageCreatorPageContent() {
       if (items?.length) groups.push({ title: v.displayName, items });
     }
     return groups;
-  }, [bootstrap, youProposals, promptVersions]);
+  }, [bootstrap, promptVersions]);
 
   if (!leadName || !leadLoca) {
     return <MessageCreatorLeadPicker />;
@@ -829,53 +846,109 @@ function MessageCreatorPageContent() {
                 </button>
                 {proposalsOpen && (
                   <div className="max-h-48 space-y-3 overflow-y-auto border-b bg-muted/40 px-3.5 py-2.5">
-                    {proposalGroups.map((g) =>
-                      g.items.length === 0 && g.title !== "You" ? null : (
-                        <div key={g.title}>
-                          <div className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
-                            {g.title}
-                          </div>
-                          {g.items.length === 0 ? (
-                            <p className="text-xs text-muted-foreground">No proposals yet</p>
-                          ) : (
-                            g.items.map((text, i) => (
-                              <div
-                                key={`${g.title}-${i}`}
-                                className="mb-1.5 grid grid-cols-[auto_1fr] items-center gap-2.5 rounded-lg border bg-background px-2.5 py-2 text-xs"
-                              >
-                                <Button
-                                  size="sm"
-                                  className="h-7 bg-foreground px-2 text-[11px] font-semibold text-background hover:bg-foreground/90"
-                                  disabled
-                                  title="Not configured"
-                                >
-                                  Send
-                                </Button>
-                                <span>{text}</span>
-                              </div>
-                            ))
-                          )}
+                    <div>
+                      <div className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
+                        Msg workout
+                      </div>
+                      {msgWorkout?.status === "exists" && msgWorkout.workout.body.trim() ? (
+                        <pre className="whitespace-pre-wrap break-words rounded-lg border bg-background px-2.5 py-2 font-sans text-xs">
+                          {msgWorkout.workout.body}
+                        </pre>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">No proposals yet</p>
+                      )}
+                    </div>
+                    {aiProposalGroups.map((g) => (
+                      <div key={g.title}>
+                        <div className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
+                          {g.title}
                         </div>
-                      )
-                    )}
+                        {g.items.map((text, i) => (
+                          <div
+                            key={`${g.title}-${i}`}
+                            className="mb-1.5 grid grid-cols-[auto_1fr] items-center gap-2.5 rounded-lg border bg-background px-2.5 py-2 text-xs"
+                          >
+                            <Button
+                              size="sm"
+                              className="h-7 bg-foreground px-2 text-[11px] font-semibold text-background hover:bg-foreground/90"
+                              disabled
+                              title="Not configured"
+                            >
+                              Send
+                            </Button>
+                            <span>{text}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ))}
                   </div>
                 )}
-                <div className="grid grid-cols-[1fr_auto] gap-2 px-3.5 py-2.5">
-                  <Textarea
-                    value={draftProposal}
-                    onChange={(e) => setDraftProposal(e.target.value)}
-                    placeholder="Write or paste your own message proposal..."
-                    className="min-h-[58px] resize-none text-[13px]"
-                  />
-                  <Button
-                    className="h-auto bg-foreground px-4 text-[13px] font-semibold leading-tight text-background hover:bg-foreground/90"
-                    disabled={proposalsSaving || !draftProposal.trim()}
-                    onClick={saveDraftProposal}
-                  >
-                    Save
-                    <br />
-                    msg
-                  </Button>
+                <div className="space-y-1.5 px-3.5 py-2.5">
+                  <div className="flex gap-1.5">
+                    <select
+                      className="h-7 rounded-md border bg-background px-1.5 text-xs"
+                      value={composerWho}
+                      onChange={(e) => setComposerWho(e.target.value as ComposerWho)}
+                      disabled={composerDisabled}
+                      aria-label="Composer author type"
+                      title={composerDisabledReason}
+                    >
+                      <option value="you">you</option>
+                      <option value="advice">advice</option>
+                    </select>
+                    <select
+                      className="h-7 rounded-md border bg-background px-1.5 text-xs"
+                      value={composerMode}
+                      onChange={(e) => setComposerMode(e.target.value as ComposerMode)}
+                      disabled={composerDisabled}
+                      aria-label="Composer entry mode"
+                      title={composerDisabledReason}
+                    >
+                      <option value="dash">dash</option>
+                      <option value="ver">ver.</option>
+                    </select>
+                  </div>
+                  <div className="grid grid-cols-[1fr_auto] gap-2">
+                    {composerMode === "dash" ? (
+                      <input
+                        type="text"
+                        value={composerDashText}
+                        onChange={(e) => setComposerDashText(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            void saveComposerEntry();
+                          }
+                        }}
+                        disabled={composerDisabled}
+                        aria-label="New entry"
+                        title={composerDisabledReason}
+                        className="h-9 rounded-md border bg-background px-2 text-[13px] disabled:opacity-50"
+                      />
+                    ) : (
+                      <Textarea
+                        value={composerVerText}
+                        onChange={(e) => setComposerVerText(e.target.value)}
+                        disabled={composerDisabled}
+                        aria-label="New entry"
+                        title={composerDisabledReason}
+                        className="min-h-[58px] resize-none text-[13px]"
+                      />
+                    )}
+                    <Button
+                      className="h-auto bg-foreground px-4 text-[13px] font-semibold leading-tight text-background hover:bg-foreground/90"
+                      disabled={
+                        composerSaving ||
+                        composerDisabled ||
+                        !(composerMode === "dash" ? composerDashText : composerVerText).trim()
+                      }
+                      onClick={() => void saveComposerEntry()}
+                    >
+                      Save
+                      <br />
+                      msg
+                    </Button>
+                  </div>
                 </div>
               </div>
             </>
