@@ -19,7 +19,6 @@ const settingsTabs: Array<{ href: string; title: string }> = [
 	{ title: "Users", href: "/dashboard/settings/users" },
 	{ title: "Password", href: "/dashboard/settings/password" },
 	{ title: "Appearance", href: "/dashboard/settings/appearance" },
-	{ title: "Display", href: "/dashboard/settings/display" },
 	{ title: "Folders", href: "/dashboard/settings/read-only-folders" },
 ];
 

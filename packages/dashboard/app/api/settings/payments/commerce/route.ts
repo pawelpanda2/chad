@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import {
   LicenseCommerceError,
+  LICENSE_UNIT_PRICE_MINOR,
+  LICENSE_USER_COUNT_MAX,
+  LICENSE_USER_COUNT_MIN,
+  buildLicensePlanForUserCount,
   declarationText,
   getCurrentLicenseAgreement,
   getLicenseeProfileForCurrentUser,
@@ -9,7 +13,8 @@ import {
   getTestPaymentsForUser,
   isBusinessProfileComplete,
   isStripeLiveConfigured,
-  listActiveLicensePlans,
+  licensePlanIdForUserCount,
+  normalizeLicenseUserCount,
   resolveAccountEmailForCurrentUser,
   runWithRepoContext,
 } from "dba";
@@ -17,7 +22,7 @@ import { getCurrentUserFromCookies } from "@/lib/session";
 
 /**
  * GET /api/settings/payments/commerce
- * Session-scoped: plans, business profile, agreement, verification, histories.
+ * Session-scoped: license quote, business profile, agreement, verification, histories.
  */
 export async function GET(request: Request) {
   const user = await getCurrentUserFromCookies();
@@ -26,25 +31,32 @@ export async function GET(request: Request) {
   }
 
   const url = new URL(request.url);
-  const planId = url.searchParams.get("planId") ?? undefined;
+  let userCount = LICENSE_USER_COUNT_MIN;
+  try {
+    const raw = url.searchParams.get("userCount");
+    if (raw !== null && raw !== "") {
+      userCount = normalizeLicenseUserCount(raw);
+    }
+  } catch (error) {
+    if (error instanceof LicenseCommerceError) {
+      return NextResponse.json({ success: false, error: error.message, code: error.code }, { status: 400 });
+    }
+    throw error;
+  }
 
   try {
     const payload = await runWithRepoContext(user, async () => {
-      const [plans, profile, agreement, payments, testPayments, accountEmail] = await Promise.all([
-        listActiveLicensePlans(),
+      const [profile, agreement, payments, testPayments, accountEmail] = await Promise.all([
         getLicenseeProfileForCurrentUser(),
         getCurrentLicenseAgreement(),
         getPaymentsForUser(20),
         getTestPaymentsForUser(20),
         resolveAccountEmailForCurrentUser().catch(() => null),
       ]);
-      const selectedPlanId = planId || plans[0]?.id || "";
-      const verification = selectedPlanId
-        ? await getPurchaseVerificationForPlan(selectedPlanId)
-        : null;
-      const selectedPlan = plans.find((p) => p.id === selectedPlanId) ?? plans[0];
+      const selectedPlan = buildLicensePlanForUserCount(userCount);
+      const verification = await getPurchaseVerificationForPlan(selectedPlan.id);
       const declarationPreview =
-        profile && isBusinessProfileComplete(profile) && selectedPlan
+        profile && isBusinessProfileComplete(profile)
           ? declarationText({
               legalBusinessName: profile.legalBusinessName,
               agreementVersion: agreement.version,
@@ -55,7 +67,12 @@ export async function GET(request: Request) {
             })
           : null;
       return {
-        plans,
+        userCount,
+        unitPriceMinor: LICENSE_UNIT_PRICE_MINOR,
+        userCountMin: LICENSE_USER_COUNT_MIN,
+        userCountMax: LICENSE_USER_COUNT_MAX,
+        planId: licensePlanIdForUserCount(userCount),
+        selectedPlan,
         profile,
         agreement,
         payments,

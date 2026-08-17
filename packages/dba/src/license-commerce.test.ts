@@ -22,6 +22,7 @@ import { TEST3_REPO_GUID, TEST3_USERNAME } from "./testing/test3-guard.js";
 import { getPaymentsForUser, getTestPaymentsForUser } from "./payments.js";
 import {
   LicenseCommerceError,
+  buildLicensePlanForUserCount,
   confirmPurchaseEmailOtp,
   createLicenseAcceptance,
   declarationText,
@@ -29,7 +30,7 @@ import {
   getLicenseeProfileForCurrentUser,
   getPurchaseVerificationForPlan,
   isBusinessProfileComplete,
-  listActiveLicensePlans,
+  LICENSE_UNIT_PRICE_MINOR,
   requestPurchaseEmailOtp,
   saveLicenseeProfile,
   sha256Hex,
@@ -121,7 +122,7 @@ describe("declarationText", () => {
       agreementVersion: "1.0-DRAFT",
       productName: "CHAD Dashboard",
       userCount: 1,
-      amountMinor: 80000,
+      amountMinor: 79000,
       currency: "PLN",
     });
     expect(one).toContain("1 user");
@@ -133,7 +134,7 @@ describe("declarationText", () => {
       agreementVersion: "1.0-DRAFT",
       productName: "CHAD Dashboard",
       userCount: 2,
-      amountMinor: 160000,
+      amountMinor: 158000,
       currency: "PLN",
     });
     expect(two).toContain("2 users");
@@ -142,13 +143,18 @@ describe("declarationText", () => {
 });
 
 describe("license commerce (real Postgres, test2/test3)", () => {
-  it("lists configurable plans with server-side prices and 1 month period", async () => {
-    const plans = await listActiveLicensePlans();
-    expect(plans.length).toBeGreaterThanOrEqual(3);
-    const two = plans.find((p) => p.userCount === 2);
-    expect(two?.amountMinor).toBe(160000);
-    expect(two?.licensePeriod).toBe("1 month");
-    expect(two?.licensePeriodMonths).toBe(1);
+  it("builds server-side quotes for 1–99 users at 790 PLN per user", () => {
+    const one = buildLicensePlanForUserCount(1);
+    expect(one.amountMinor).toBe(LICENSE_UNIT_PRICE_MINOR);
+    expect(one.licensePeriod).toBe("1 month");
+    expect(one.licensePeriodMonths).toBe(1);
+
+    const twelve = buildLicensePlanForUserCount(12);
+    expect(twelve.amountMinor).toBe(12 * LICENSE_UNIT_PRICE_MINOR);
+    expect(twelve.id).toBe("chad-dashboard-12u");
+
+    expect(() => buildLicensePlanForUserCount(0)).toThrow(LicenseCommerceError);
+    expect(() => buildLicensePlanForUserCount(100)).toThrow(LicenseCommerceError);
   });
 
   it("verifies account email via purchase OTP", async () => {
@@ -171,7 +177,7 @@ describe("license commerce (real Postgres, test2/test3)", () => {
       createLicenseAcceptance({ planId: PLAN_1U, paymentMethod: "stripe" }),
     );
     createdAcceptanceIds.push(acceptance.id);
-    expect(acceptance.snapshot.amountMinor).toBe(80000);
+    expect(acceptance.snapshot.amountMinor).toBe(79000);
     expect(acceptance.snapshot.userCount).toBe(1);
     expect(acceptance.snapshot.licensePeriodMonths).toBe(1);
     expect(acceptance.snapshotSha256).toBe(sha256Hex(JSON.stringify(acceptance.snapshot)));

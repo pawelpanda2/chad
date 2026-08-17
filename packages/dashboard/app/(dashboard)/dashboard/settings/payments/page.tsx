@@ -56,13 +56,17 @@ function formatAmount(amountMinor: number, currency: string): string {
 	return `${(amountMinor / 100).toFixed(2)} ${currency}`;
 }
 
-function planLabel(plan: LicensePlan): string {
-	return plan.userCount === 1 ? "1 user" : `${plan.userCount} users`;
+function clampUserCount(value: number, min: number, max: number): number {
+	if (!Number.isFinite(value)) return min;
+	return Math.min(max, Math.max(min, Math.trunc(value)));
 }
 
 export default function PaymentsSettingsPage() {
-	const [plans, setPlans] = useState<LicensePlan[]>([]);
-	const [planId, setPlanId] = useState("");
+	const [userCount, setUserCount] = useState(1);
+	const [userCountMin, setUserCountMin] = useState(1);
+	const [userCountMax, setUserCountMax] = useState(99);
+	const [unitPriceMinor, setUnitPriceMinor] = useState(79000);
+	const [planId, setPlanId] = useState("chad-dashboard-1u");
 	const [_profile, setProfile] = useState<BusinessProfile | null>(null);
 	const [agreement, setAgreement] = useState<Agreement | null>(null);
 	const [verification, setVerification] = useState<Verification | null>(null);
@@ -82,20 +86,35 @@ export default function PaymentsSettingsPage() {
 	const [error, setError] = useState("");
 	const [details, setDetails] = useState("");
 
-	const selectedPlan = useMemo(() => plans.find((p) => p.id === planId), [plans, planId]);
+	const selectedPlan = useMemo<LicensePlan | null>(() => {
+		const count = clampUserCount(userCount, userCountMin, userCountMax);
+		return {
+			id: planId,
+			productName: "CHAD Dashboard",
+			userCount: count,
+			amountMinor: count * unitPriceMinor,
+			currency: "PLN",
+			licensePeriod: "1 month",
+		};
+	}, [userCount, userCountMin, userCountMax, unitPriceMinor, planId]);
+
 	const emailVerified = Boolean(verification?.verifiedAt);
 	const showAgreement = emailVerified && businessComplete;
 
-	const loadCommerce = useCallback(async (nextPlanId?: string) => {
-		const query = nextPlanId ? `?planId=${encodeURIComponent(nextPlanId)}` : "";
-		const res = await fetch(`/api/settings/payments/commerce${query}`);
+	const loadCommerce = useCallback(async (nextUserCount?: number) => {
+		const count = clampUserCount(nextUserCount ?? userCount, userCountMin, userCountMax);
+		const res = await fetch(`/api/settings/payments/commerce?userCount=${encodeURIComponent(String(count))}`);
 		const data = await res.json();
 		if (!data.success) {
 			setError(data.error || "Failed to load payments");
 			return;
 		}
-		setPlans(data.plans);
-		setPlanId((current) => nextPlanId || current || data.plans[0]?.id || "");
+		const loadedCount = clampUserCount(data.userCount ?? count, data.userCountMin ?? 1, data.userCountMax ?? 99);
+		setUserCountMin(data.userCountMin ?? 1);
+		setUserCountMax(data.userCountMax ?? 99);
+		setUnitPriceMinor(data.unitPriceMinor ?? 79000);
+		setUserCount(loadedCount);
+		setPlanId(data.planId ?? `chad-dashboard-${loadedCount}u`);
 		setProfile(data.profile);
 		setAgreement(data.agreement);
 		setVerification(data.verification);
@@ -107,19 +126,30 @@ export default function PaymentsSettingsPage() {
 		setLiveConfigured(Boolean(data.liveConfigured));
 		setAccepted(false);
 		setAcceptanceId(null);
+	}, [userCount, userCountMin, userCountMax]);
+
+	useEffect(() => {
+		void loadCommerce(1)
+			.catch((err) => setError(err instanceof Error ? err.message : "Failed to load"))
+			.finally(() => setLoading(false));
+		// eslint-disable-next-line react-hooks/exhaustive-deps -- initial load only
 	}, []);
 
 	useEffect(() => {
-		void loadCommerce()
-			.catch((err) => setError(err instanceof Error ? err.message : "Failed to load"))
-			.finally(() => setLoading(false));
-	}, [loadCommerce]);
-
-	useEffect(() => {
-		if (planId) {
-			void loadCommerce(planId);
+		if (!loading) {
+			void loadCommerce(userCount);
 		}
-	}, [planId, loadCommerce]);
+	}, [userCount, loading, loadCommerce]);
+
+	const handleUserCountChange = (raw: string) => {
+		if (raw === "") {
+			setUserCount(userCountMin);
+			return;
+		}
+		const parsed = Number(raw);
+		if (!Number.isFinite(parsed)) return;
+		setUserCount(clampUserCount(parsed, userCountMin, userCountMax));
+	};
 
 	const handleVerify = async () => {
 		setError("");
@@ -195,7 +225,7 @@ export default function PaymentsSettingsPage() {
 			return;
 		}
 		if (provider === "stripe" && !liveConfigured) {
-			setError("LIVE Stripe is not configured — payment is unavailable.");
+			setError("Stripe payment is not configured in this environment.");
 			return;
 		}
 		setSubmitting(true);
@@ -259,19 +289,17 @@ export default function PaymentsSettingsPage() {
 						</div>
 
 						<div className="grid gap-2 sm:grid-cols-[140px_1fr] sm:items-center">
-							<Label>License Type</Label>
-							<Select value={planId} onValueChange={setPlanId}>
-								<SelectTrigger className="max-w-xs">
-									<SelectValue />
-								</SelectTrigger>
-								<SelectContent>
-									{plans.map((plan) => (
-										<SelectItem key={plan.id} value={plan.id}>
-											{planLabel(plan)}
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
+							<Label htmlFor="license-user-count">Users</Label>
+							<Input
+								id="license-user-count"
+								type="number"
+								min={userCountMin}
+								max={userCountMax}
+								step={1}
+								className="max-w-xs"
+								value={userCount}
+								onChange={(e) => handleUserCountChange(e.target.value)}
+							/>
 						</div>
 
 						<div className="grid gap-2 sm:grid-cols-[140px_1fr] sm:items-center">
@@ -282,7 +310,10 @@ export default function PaymentsSettingsPage() {
 										<span className="font-medium">
 											{formatAmount(selectedPlan.amountMinor, selectedPlan.currency)}
 										</span>
-										<span className="text-muted-foreground"> for 1 month</span>
+										<span className="text-muted-foreground">
+											{" "}
+											({formatAmount(unitPriceMinor, selectedPlan.currency)} per user) for 1 month
+										</span>
 									</>
 								) : (
 									<span className="text-muted-foreground">—</span>
@@ -295,7 +326,7 @@ export default function PaymentsSettingsPage() {
 						{!businessComplete ? (
 							<div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm dark:border-amber-900 dark:bg-amber-950/30">
 								<p>Complete business details before purchase.</p>
-								<Link href="/dashboard/settings" className="underline underline-offset-4">
+								<Link href="/dashboard/settings?tab=business" className="underline underline-offset-4">
 									Account → Business
 								</Link>
 							</div>
@@ -377,9 +408,6 @@ export default function PaymentsSettingsPage() {
 						>
 							{submitting ? "Starting checkout..." : "Pay"}
 						</Button>
-						{provider === "stripe" && !liveConfigured ? (
-							<p className="text-xs text-muted-foreground">LIVE Stripe is not configured in this environment.</p>
-						) : null}
 					</>
 				)}
 			</div>
@@ -389,12 +417,11 @@ export default function PaymentsSettingsPage() {
 				{loading ? (
 					<p className="text-sm text-muted-foreground">Loading...</p>
 				) : payments.length === 0 ? (
-					<p className="text-sm text-muted-foreground">No LIVE payments yet.</p>
+					<p className="text-sm text-muted-foreground">No payments yet.</p>
 				) : (
 					<ul className="divide-y rounded-md border text-sm">
 						{payments.map((row) => (
 							<li key={row.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
-								<Badge>LIVE</Badge>
 								<span className="text-muted-foreground">
 									{new Date(row.createdAt).toLocaleString("en-US", {
 										year: "numeric",

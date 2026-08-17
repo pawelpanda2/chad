@@ -10,18 +10,21 @@ afterEach(() => {
 
 const commerce = {
   success: true,
-  plans: [
-    {
-      id: "chad-dashboard-2u",
-      productName: "CHAD Dashboard",
-      productVersion: "1",
-      userCount: 2,
-      amountMinor: 160000,
-      currency: "PLN",
-      licensePeriod: "12 months",
-      territory: "Poland",
-    },
-  ],
+  userCount: 2,
+  unitPriceMinor: 79000,
+  userCountMin: 1,
+  userCountMax: 99,
+  planId: "chad-dashboard-2u",
+  selectedPlan: {
+    id: "chad-dashboard-2u",
+    productName: "CHAD Dashboard",
+    productVersion: "1",
+    userCount: 2,
+    amountMinor: 158000,
+    currency: "PLN",
+    licensePeriod: "1 month",
+    territory: "Poland",
+  },
   profile: null,
   agreement: {
     version: "1.0-DRAFT",
@@ -31,6 +34,9 @@ const commerce = {
   },
   payments: [],
   testPayments: [],
+  businessComplete: false,
+  liveConfigured: false,
+  verification: null,
 };
 
 describe("Settings → Payments", () => {
@@ -49,11 +55,17 @@ describe("Settings → Payments", () => {
 
   it("does not offer a free-amount fake payment field", async () => {
     render(<PaymentsSettingsPage />);
-    await waitFor(() => expect(screen.getByText("Payment")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("Payment history")).toBeTruthy());
     expect(screen.queryByPlaceholderText("500.00")).toBeNull();
     expect(screen.queryByRole("button", { name: /pay with card/i })).toBeNull();
-    expect(screen.getByRole("button", { name: /accept license & continue to payment/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^pay$/i })).toBeTruthy();
     expect(screen.getByText("Stripe")).toBeTruthy();
+    expect(screen.getByLabelText("Users")).toBeTruthy();
+  });
+
+  it("shows empty payment history without LIVE wording", async () => {
+    render(<PaymentsSettingsPage />);
+    await waitFor(() => expect(screen.getByText("No payments yet.")).toBeTruthy());
   });
 
   it("hides Test payments when the user has none", async () => {

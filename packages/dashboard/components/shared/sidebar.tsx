@@ -18,7 +18,6 @@ import {
 	Table,
 	History,
 	BookOpen,
-	FlaskConical,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -74,23 +73,13 @@ const sidebarGroups: Array<{ title: string; items: SidebarItem[] }> = [
 		items: [
 			{ title: "History", href: "/dashboard/history", icon: History, badge: null },
 			{ title: "Folders", href: "/dashboard/folders", icon: FolderKanban, badge: null },
-			{
-				title: "Examples",
-				href: "/dashboard/examples",
-				icon: FlaskConical,
-				badge: null,
-				// GUI-only demo hub (frozen reference snapshots); same hub+subpage
-				// shape as "Msg Auto" / "Knowledge" above.
-				activePrefixes: ["/dashboard/examples"],
-			},
 			{ title: "Settings", href: "/dashboard/settings", icon: Settings, badge: null },
 			{
 				title: "Admin",
 				href: "/dashboard/admin",
 				icon: Users,
 				badge: null,
-				// Hub page (button grid, same pattern as Msg Auto) linking to
-				// Users/Payments — single sidebar entry, same shape as Msg Auto/Knowledge.
+				// Hub page (button grid) linking to Users/Payments/Licenses/Examples.
 				activePrefixes: ["/dashboard/admin"],
 			},
 		],
@@ -116,15 +105,17 @@ export function Sidebar({ onMobileClose, mobile = false }: SidebarProps) {
 	// normally happen here since this renders inside the authenticated
 	// dashboard layout).
 	const [brandLabel, setBrandLabel] = useState("Dashboard");
+	const [isAdmin, setIsAdmin] = useState(false);
 	useEffect(() => {
 		let cancelled = false;
 		fetch("/api/auth/session")
 			.then((res) => res.json())
-			.then((data: { user?: { username?: string; displayName?: string | null } | null }) => {
+			.then((data: { user?: { username?: string; displayName?: string | null; isAdmin?: boolean } | null }) => {
 				if (cancelled) return;
 				const user = data.user;
 				const label = user?.displayName || user?.username;
 				if (label) setBrandLabel(label);
+				setIsAdmin(Boolean(user?.isAdmin));
 			})
 			.catch(() => {
 				/* keep the "Dashboard" fallback on error */
@@ -203,7 +194,9 @@ export function Sidebar({ onMobileClose, mobile = false }: SidebarProps) {
 
 						{/* Group Items */}
 						<div className="space-y-2">
-							{group.items.map((item) => {
+							{group.items
+								.filter((item) => item.href !== "/dashboard/admin" || isAdmin)
+								.map((item) => {
 								const isActive = item.activePrefixes
 									? item.activePrefixes.some(
 											(prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),

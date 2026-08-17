@@ -6,7 +6,7 @@ import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
 /**
  * Admin hub — same button-grid pattern as Msg Auto/Knowledge: a single
  * sidebar entry (under "Others"), this page is just the entry point to
- * Users/Payments, which keep their own routes/pages.
+ * Users/Payments/Licenses/Examples, which keep their own routes/pages.
  */
 export default function AdminHubPage() {
 	const router = useRouter();
@@ -34,6 +34,13 @@ export default function AdminHubPage() {
 					className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
 				>
 					<span className="font-semibold text-sm">LICENSES</span>
+				</button>
+				<button
+					type="button"
+					onClick={() => router.push("/dashboard/admin/examples")}
+					className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
+				>
+					<span className="font-semibold text-sm">EXAMPLES</span>
 				</button>
 			</div>
 		</DashboardPageShell>

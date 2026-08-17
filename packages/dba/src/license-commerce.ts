@@ -120,6 +120,54 @@ export function sha256Hex(value: string): string {
   return createHash("sha256").update(value, "utf8").digest("hex");
 }
 
+/** Per-user monthly license price in minor units (790.00 PLN). */
+export const LICENSE_UNIT_PRICE_MINOR = 79000;
+export const LICENSE_USER_COUNT_MIN = 1;
+export const LICENSE_USER_COUNT_MAX = 99;
+
+export function licensePlanIdForUserCount(userCount: number): string {
+  return `chad-dashboard-${userCount}u`;
+}
+
+export function parseUserCountFromPlanId(planId: string): number | null {
+  const match = /^chad-dashboard-(\d{1,2})u$/.exec(planId.trim());
+  if (!match) return null;
+  const count = Number(match[1]);
+  if (!Number.isInteger(count) || count < LICENSE_USER_COUNT_MIN || count > LICENSE_USER_COUNT_MAX) {
+    return null;
+  }
+  return count;
+}
+
+export function normalizeLicenseUserCount(input: unknown): number {
+  const count =
+    typeof input === "number"
+      ? input
+      : typeof input === "string" && input.trim()
+        ? Number(input.trim())
+        : NaN;
+  if (!Number.isInteger(count) || count < LICENSE_USER_COUNT_MIN || count > LICENSE_USER_COUNT_MAX) {
+    throw new LicenseCommerceError("plan_not_found", "Enter a user count between 1 and 99.");
+  }
+  return count;
+}
+
+export function buildLicensePlanForUserCount(userCount: number): LicensePlan {
+  const count = normalizeLicenseUserCount(userCount);
+  return {
+    id: licensePlanIdForUserCount(count),
+    productName: "CHAD Dashboard",
+    productVersion: "1",
+    userCount: count,
+    amountMinor: count * LICENSE_UNIT_PRICE_MINOR,
+    currency: "PLN",
+    licensePeriod: "1 month",
+    licensePeriodMonths: 1,
+    territory: "Poland",
+    active: true,
+  };
+}
+
 export function formatUserCountLabel(userCount: number): string {
   return userCount === 1 ? "1 user" : `${userCount} users`;
 }
@@ -228,6 +276,10 @@ export async function listActiveLicensePlans(): Promise<LicensePlan[]> {
 }
 
 export async function getLicensePlan(planId: string): Promise<LicensePlan> {
+  const fromUserCount = parseUserCountFromPlanId(planId);
+  if (fromUserCount !== null) {
+    return buildLicensePlanForUserCount(fromUserCount);
+  }
   return withPostgresClient(async (client) => {
     const { rows } = await client.query<{
       id: string;

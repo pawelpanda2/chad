@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -11,20 +12,18 @@ import { Button } from "@/components/ui/button";
 import {
 	Form,
 	FormControl,
-	FormDescription,
 	FormField,
 	FormItem,
 	FormLabel,
 	FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Camera } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ErrorBox } from "@/components/shared/error-box";
+import { SAVE_FRAME_PADDING_CLASS } from "@/components/shared/layout-tokens";
+import { cn } from "@/lib/utils";
 
 const profileFormSchema = z.object({
 	username: z.string().min(2).max(30),
@@ -50,7 +49,23 @@ const defaultValues: Partial<ProfileFormValues> = {
 	bio: "I own a computer.",
 };
 
+function FieldTableRow({
+	label,
+	children,
+}: {
+	label: string;
+	children: React.ReactNode;
+}) {
+	return (
+		<tr>
+			<td className="w-px whitespace-nowrap border bg-muted/60 px-3 py-2 align-top font-semibold">{label}</td>
+			<td className="border bg-amber-50 px-2 py-1.5 dark:bg-amber-950/30">{children}</td>
+		</tr>
+	);
+}
+
 export default function SettingsPage() {
+	const searchParams = useSearchParams();
 	const [tab, setTab] = useState("personal");
 	const [businessError, setBusinessError] = useState("");
 	const [businessLoading, setBusinessLoading] = useState(true);
@@ -73,6 +88,13 @@ export default function SettingsPage() {
 			businessEmail: "",
 		},
 	});
+
+	useEffect(() => {
+		const requestedTab = searchParams.get("tab");
+		if (requestedTab === "business" || requestedTab === "personal") {
+			setTab(requestedTab);
+		}
+	}, [searchParams]);
 
 	useEffect(() => {
 		fetch("/api/settings/account/business")
@@ -120,12 +142,6 @@ export default function SettingsPage() {
 
 	return (
 		<div className="space-y-6">
-			<div>
-				<h3 className="text-lg font-medium">Account</h3>
-				<p className="text-sm text-muted-foreground">
-					Personal profile and business details used for license purchases.
-				</p>
-			</div>
 			<Tabs value={tab} onValueChange={setTab}>
 				<TabsList aria-label="Account sections">
 					<TabsTrigger value="personal">Personal</TabsTrigger>
@@ -133,79 +149,93 @@ export default function SettingsPage() {
 				</TabsList>
 				<TabsContent value="personal" className="space-y-6">
 					<Separator />
-					<Form {...form}>
-						<form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
-							<div className="flex items-center gap-6">
-								<Avatar className="h-20 w-20">
-									<AvatarImage src="/avatars/01.png" alt="@username" />
-									<AvatarFallback>JD</AvatarFallback>
-								</Avatar>
-								<div className="space-y-2">
-									<Label htmlFor="picture">Profile Picture</Label>
-									<Button variant="outline" size="sm" className="w-fit" type="button">
-										<Camera className="mr-2 h-4 w-4" />
-										Change Picture
-									</Button>
-								</div>
-							</div>
-							<div className="grid gap-6 md:grid-cols-2">
-								<FormField
-									control={form.control}
-									name="username"
-									render={({ field }) => (
-										<FormItem>
-											<FormLabel>Username</FormLabel>
-											<FormControl>
-												<Input placeholder="username" {...field} />
-											</FormControl>
-											<FormMessage />
-										</FormItem>
-									)}
-								/>
-								<FormField
-									control={form.control}
-									name="name"
-									render={({ field }) => (
-										<FormItem>
-											<FormLabel>Name</FormLabel>
-											<FormControl>
-												<Input placeholder="John Doe" {...field} />
-											</FormControl>
-											<FormMessage />
-										</FormItem>
-									)}
-								/>
-							</div>
-							<FormField
-								control={form.control}
-								name="email"
-								render={({ field }) => (
-									<FormItem>
-										<FormLabel>Email</FormLabel>
-										<FormControl>
-											<Input placeholder="john.doe@example.com" {...field} />
-										</FormControl>
-										<FormDescription>Login and purchase verification email (read from account).</FormDescription>
-										<FormMessage />
-									</FormItem>
-								)}
-							/>
-							<FormField
-								control={form.control}
-								name="bio"
-								render={({ field }) => (
-									<FormItem>
-										<FormLabel>Bio</FormLabel>
-										<FormControl>
-											<Textarea placeholder="Tell us a little bit about yourself" className="resize-none" {...field} />
-										</FormControl>
-										<FormMessage />
-									</FormItem>
-								)}
-							/>
-							<Button type="submit">Update profile</Button>
-						</form>
-					</Form>
+					<div className="max-w-[460px] rounded-lg border bg-muted/10">
+						<div className={cn("flex w-fit flex-nowrap items-center gap-3 border-b", SAVE_FRAME_PADDING_CLASS)}>
+							<Button type="submit" form="personal-profile-form">
+								Save
+							</Button>
+						</div>
+						<Form {...form}>
+							<form id="personal-profile-form" onSubmit={form.handleSubmit(onSubmit)} className="p-2">
+								<table className="w-full border-collapse text-sm">
+									<tbody>
+										<FormField
+											control={form.control}
+											name="username"
+											render={({ field }) => (
+												<FieldTableRow label="Username">
+													<FormItem className="space-y-0">
+														<FormControl>
+															<Input
+																placeholder="username"
+																className="h-8 border-0 bg-transparent shadow-none focus-visible:ring-1"
+																{...field}
+															/>
+														</FormControl>
+														<FormMessage />
+													</FormItem>
+												</FieldTableRow>
+											)}
+										/>
+										<FormField
+											control={form.control}
+											name="name"
+											render={({ field }) => (
+												<FieldTableRow label="Name">
+													<FormItem className="space-y-0">
+														<FormControl>
+															<Input
+																placeholder="John Doe"
+																className="h-8 border-0 bg-transparent shadow-none focus-visible:ring-1"
+																{...field}
+															/>
+														</FormControl>
+														<FormMessage />
+													</FormItem>
+												</FieldTableRow>
+											)}
+										/>
+										<FormField
+											control={form.control}
+											name="email"
+											render={({ field }) => (
+												<FieldTableRow label="Email">
+													<FormItem className="space-y-0">
+														<FormControl>
+															<Input
+																placeholder="john.doe@example.com"
+																className="h-8 border-0 bg-transparent shadow-none focus-visible:ring-1"
+																{...field}
+															/>
+														</FormControl>
+														<FormMessage />
+													</FormItem>
+												</FieldTableRow>
+											)}
+										/>
+										<FormField
+											control={form.control}
+											name="bio"
+											render={({ field }) => (
+												<FieldTableRow label="Bio">
+													<FormItem className="space-y-0">
+														<FormControl>
+															<Textarea
+																placeholder="Tell us a little bit about yourself"
+																className="min-h-[72px] resize-none border-0 bg-transparent shadow-none focus-visible:ring-1"
+																{...field}
+															/>
+														</FormControl>
+														<FormMessage />
+													</FormItem>
+												</FieldTableRow>
+											)}
+										/>
+									</tbody>
+								</table>
+							</form>
+						</Form>
+					</div>
 				</TabsContent>
 				<TabsContent value="business" className="space-y-4">
 					<p className="text-sm text-muted-foreground">

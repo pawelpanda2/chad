@@ -232,7 +232,7 @@ export default defineConfig({
       "packages/dba/src/license-agreement-pdf.test.ts",
       "packages/dba/src/license-admin.test.ts",
       "packages/dashboard/lib/payments-public-origin.test.ts",
-      "packages/dashboard/app/(dashboard)/dashboard/settings/display/page.test.tsx",
+      "packages/dashboard/app/(dashboard)/dashboard/settings/appearance/page.test.tsx",
       "packages/dashboard/app/(dashboard)/dashboard/settings/layout.test.tsx",
       "packages/dashboard/app/(dashboard)/dashboard/settings/payments/page.test.tsx",
       "packages/dashboard/app/(dashboard)/dashboard/admin/payments/page.test.tsx",

@@ -58,11 +58,12 @@ describe("Settings layout — navigation", () => {
     );
   });
 
-  it("keeps Password, Appearance, Display, Folders", () => {
+  it("keeps Password, Appearance, Folders (Display removed)", () => {
     renderLayout();
-    for (const name of ["Password", "Appearance", "Display", "Folders"]) {
+    for (const name of ["Password", "Appearance", "Folders"]) {
       expect(screen.getByRole("link", { name })).toBeTruthy();
     }
+    expect(screen.queryByRole("link", { name: "Display" })).toBeNull();
   });
 
   it("does not render a global Theme selector above the Settings subpages", () => {
