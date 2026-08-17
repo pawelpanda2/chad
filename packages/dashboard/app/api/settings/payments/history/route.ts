@@ -1,12 +1,11 @@
 import { NextResponse } from "next/server";
-import { getPaymentsForUser, runWithRepoContext } from "dba";
+import { getPaymentsForUser, getTestPaymentsForUser, runWithRepoContext } from "dba";
 import { getCurrentUserFromCookies } from "@/lib/session";
 
 /**
  * GET /api/settings/payments/history
- * The current user's own previously successful payments only — never
- * another user's (scoped server-side via repo context, same as
- * /api/settings/payments/status).
+ * Real completed payments for the current session user only.
+ * Test records are a separate array and must never mix into `payments`.
  */
 export async function GET() {
   const user = await getCurrentUserFromCookies();
@@ -15,10 +14,16 @@ export async function GET() {
   }
 
   try {
-    const payments = await runWithRepoContext(user, () => getPaymentsForUser(20));
-    return NextResponse.json({ success: true, payments });
+    const { payments, testPayments } = await runWithRepoContext(user, async () => ({
+      payments: await getPaymentsForUser(20),
+      testPayments: await getTestPaymentsForUser(20),
+    }));
+    return NextResponse.json({ success: true, payments, testPayments });
   } catch (error) {
     console.error("[settings/payments/history]", error instanceof Error ? error.message : error);
-    return NextResponse.json({ success: false, error: "Failed to load payment history", payments: [] }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: "Failed to load payment history", payments: [], testPayments: [] },
+      { status: 500 },
+    );
   }
 }

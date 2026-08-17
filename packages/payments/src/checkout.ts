@@ -18,6 +18,7 @@ export interface CreateCheckoutSessionInput {
   /** Opaque caller identifier (CHAD repoGuid) — never trusted back from the client, only echoed by Stripe. */
   clientReferenceId: string;
   metadata: Record<string, string>;
+  productName?: string;
 }
 
 export interface CreatedCheckoutSession {
@@ -48,7 +49,7 @@ export async function createCheckoutSession(
             currency: input.amount.currency.toLowerCase(),
             unit_amount: input.amount.minorUnits,
             product_data: {
-              name: "CHAD payment",
+              name: input.productName || "CHAD Dashboard license",
             },
           },
         },

@@ -24,6 +24,7 @@
  * Stripe payloads) and NEVER allowed to break the real payment flow — a
  * logging failure is caught and reported to stderr, never rethrown.
  */
+import { randomUUID } from "node:crypto";
 import {
   parseAmountToMinorUnits,
   createCheckoutSession as createStripeCheckoutSession,
@@ -32,12 +33,26 @@ import {
   PaymentsNotConfiguredError,
   InvalidAmountError,
   InvalidWebhookSignatureError,
+  LiveStripeKeyForbiddenError,
   type Stripe,
 } from "payments";
 import { withPostgresClient } from "./postgres.js";
 import { getCurrentRepoGuid, getCurrentUsername } from "./repo-context.js";
+import {
+  LicenseCommerceError,
+  getLicenseAcceptanceForCurrentUser,
+  getLicensePlan,
+  resolveUsernameByRepoGuid,
+  sha256Hex,
+} from "./license-commerce.js";
 
-export { PaymentsError, PaymentsNotConfiguredError, InvalidAmountError, InvalidWebhookSignatureError };
+export {
+  PaymentsError,
+  PaymentsNotConfiguredError,
+  InvalidAmountError,
+  InvalidWebhookSignatureError,
+  LiveStripeKeyForbiddenError,
+};
 
 function chadEnvironment(): string {
   return process.env.CHAD_ENVIRONMENT || "local";
@@ -118,13 +133,14 @@ function buildSuccessCancelUrls(originUrl: string): { successUrl: string; cancel
 }
 
 /**
- * Validates the amount, creates the Stripe Checkout Session, and persists a
- * `pending` row synchronously (before returning the redirect URL) so the
- * webhook always has a row to complete against.
+ * Creates a real Stripe Checkout Session for an already-accepted license.
+ * Amount/plan come from the immutable acceptance snapshot — never from the
+ * client. `provider` other than stripe is rejected (Revolut is not a
+ * verifiable integration in this repo).
  */
 export async function createPaymentCheckoutSession(
-  rawAmount: unknown,
   originUrl: string,
+  input: { acceptanceId: unknown; provider: unknown },
 ): Promise<CreatePaymentCheckoutSessionResult> {
   const repoGuid = getCurrentRepoGuid();
   const username = getCurrentUsername();
@@ -133,22 +149,40 @@ export async function createPaymentCheckoutSession(
     stage: "checkout_create_requested",
     repoGuid,
     username,
-    message: typeof rawAmount === "string" || typeof rawAmount === "number" ? `requested amount=${rawAmount}` : "requested",
+    message: "real license checkout requested",
   });
 
-  let amount: ReturnType<typeof parseAmountToMinorUnits>;
-  try {
-    amount = parseAmountToMinorUnits(rawAmount);
-  } catch (error) {
-    await recordPaymentEvent({
-      stage: "checkout_create_failed",
-      repoGuid,
-      username,
-      message: error instanceof Error ? error.message : "invalid amount",
-    });
-    throw error;
+  const provider = typeof input.provider === "string" ? input.provider.trim() : "";
+  if (provider === "revolut") {
+    throw new LicenseCommerceError(
+      "provider_unavailable",
+      "Revolut Pro is not available — no verifiable merchant payment API is configured.",
+    );
+  }
+  if (provider !== "stripe") {
+    throw new LicenseCommerceError("provider_unavailable", "Unsupported payment provider.");
+  }
+  if (typeof input.acceptanceId !== "string" || !input.acceptanceId.trim()) {
+    throw new LicenseCommerceError("acceptance_not_found", "License acceptance is required before payment.");
   }
 
+  const acceptance = await getLicenseAcceptanceForCurrentUser(input.acceptanceId.trim());
+  const snapshotHash = sha256Hex(JSON.stringify(acceptance.snapshot));
+  if (snapshotHash !== acceptance.snapshotSha256) {
+    throw new LicenseCommerceError("acceptance_mismatch", "License acceptance snapshot is not intact.");
+  }
+  const plan = await getLicensePlan(acceptance.planId);
+  if (!plan.active) {
+    throw new LicenseCommerceError("plan_inactive", "That license plan is not active.");
+  }
+  if (plan.amountMinor !== acceptance.snapshot.amountMinor || plan.currency !== acceptance.snapshot.currency) {
+    throw new LicenseCommerceError(
+      "acceptance_mismatch",
+      "Plan price no longer matches the accepted snapshot — accept the current license again.",
+    );
+  }
+
+  const amount = parseAmountToMinorUnits((acceptance.snapshot.amountMinor / 100).toFixed(2));
   const { successUrl, cancelUrl } = buildSuccessCancelUrls(originUrl);
 
   let session: Awaited<ReturnType<typeof createStripeCheckoutSession>>;
@@ -158,7 +192,16 @@ export async function createPaymentCheckoutSession(
       successUrl,
       cancelUrl,
       clientReferenceId: repoGuid,
-      metadata: { repoGuid, username },
+      productName: `${acceptance.snapshot.productName} (${acceptance.snapshot.userCount} users)`,
+      metadata: {
+        repoGuid,
+        username,
+        kind: "real",
+        provider: "stripe",
+        acceptanceId: acceptance.id,
+        planId: acceptance.planId,
+        agreementVersion: acceptance.agreementVersion,
+      },
     });
   } catch (error) {
     await recordPaymentEvent({
@@ -174,9 +217,24 @@ export async function createPaymentCheckoutSession(
 
   await withPostgresClient((client) =>
     client.query(
-      `INSERT INTO cp_stripe_payments (id, repo_guid, username, amount_minor, currency, status, livemode, chad_environment)
-       VALUES ($1, $2, $3, $4, $5, 'pending', $6, $7)`,
-      [session.id, repoGuid, username, amount.minorUnits, amount.currency, session.livemode, chadEnvironment()],
+      `INSERT INTO cp_stripe_payments (
+         id, repo_guid, username, amount_minor, currency, status, livemode, chad_environment,
+         kind, provider, license_acceptance_id, plan_id, license_user_count, license_period, license_territory
+       ) VALUES ($1,$2,$3,$4,$5,'pending',$6,$7,'real','stripe',$8,$9,$10,$11,$12)`,
+      [
+        session.id,
+        repoGuid,
+        username,
+        amount.minorUnits,
+        amount.currency,
+        session.livemode,
+        chadEnvironment(),
+        acceptance.id,
+        acceptance.planId,
+        acceptance.snapshot.userCount,
+        acceptance.snapshot.licensePeriod,
+        acceptance.snapshot.territory,
+      ],
     ),
   );
 
@@ -221,37 +279,92 @@ export interface UserPaymentRow {
   amountMinor: number;
   currency: string;
   createdAt: string;
+  kind: "real" | "test";
+  provider: string;
+  status: string;
+  planId: string | null;
+  licenseUserCount: number | null;
+  licensePeriod: string | null;
+  licenseTerritory: string | null;
+  licenseActivatedAt: string | null;
+  agreementVersion: string | null;
 }
+
+function mapUserPaymentRow(r: {
+  id: string;
+  amount_minor: string;
+  currency: string;
+  created_at: string;
+  kind: string;
+  provider: string;
+  status: string;
+  plan_id: string | null;
+  license_user_count: number | null;
+  license_period: string | null;
+  license_territory: string | null;
+  license_activated_at: string | null;
+  agreement_version: string | null;
+}): UserPaymentRow {
+  return {
+    id: r.id,
+    amountMinor: Number(r.amount_minor),
+    currency: r.currency,
+    createdAt: r.created_at,
+    kind: r.kind === "test" ? "test" : "real",
+    provider: r.provider,
+    status: r.status,
+    planId: r.plan_id,
+    licenseUserCount: r.license_user_count === null ? null : Number(r.license_user_count),
+    licensePeriod: r.license_period,
+    licenseTerritory: r.license_territory,
+    licenseActivatedAt: r.license_activated_at,
+    agreementVersion: r.agreement_version,
+  };
+}
+
+const USER_PAYMENT_SELECT = `p.id, p.amount_minor, p.currency, p.created_at, p.kind, p.provider, p.status,
+              p.plan_id, p.license_user_count, p.license_period, p.license_territory, p.license_activated_at,
+              a.agreement_version`;
 
 /**
  * Settings → Payments — the current user's own previously successful
- * payments (never another user's — scoped to repo_guid from the request
- * context, same isolation as getPaymentStatus). Completed only, most
- * recent first.
+ * REAL payments only (never another user's, never TEST records).
  */
 export async function getPaymentsForUser(limit = 20): Promise<UserPaymentRow[]> {
-  const repoGuid = getCurrentRepoGuid();
+  return listUserPayments("real", limit);
+}
 
+export async function getTestPaymentsForUser(limit = 20): Promise<UserPaymentRow[]> {
+  return listUserPayments("test", limit);
+}
+
+async function listUserPayments(kind: "real" | "test", limit: number): Promise<UserPaymentRow[]> {
+  const repoGuid = getCurrentRepoGuid();
   return withPostgresClient(async (client) => {
     const { rows } = await client.query<{
       id: string;
       amount_minor: string;
       currency: string;
       created_at: string;
+      kind: string;
+      provider: string;
+      status: string;
+      plan_id: string | null;
+      license_user_count: number | null;
+      license_period: string | null;
+      license_territory: string | null;
+      license_activated_at: string | null;
+      agreement_version: string | null;
     }>(
-      `SELECT id, amount_minor, currency, created_at
-       FROM cp_stripe_payments
-       WHERE repo_guid = $1 AND status = 'completed'
-       ORDER BY created_at DESC
-       LIMIT $2`,
-      [repoGuid, limit],
+      `SELECT ${USER_PAYMENT_SELECT}
+       FROM cp_stripe_payments p
+       LEFT JOIN cp_license_acceptances a ON a.id = p.license_acceptance_id
+       WHERE p.repo_guid = $1 AND p.kind = $2 AND p.status = 'completed'
+       ORDER BY p.created_at DESC
+       LIMIT $3`,
+      [repoGuid, kind, limit],
     );
-    return rows.map((r) => ({
-      id: r.id,
-      amountMinor: Number(r.amount_minor),
-      currency: r.currency,
-      createdAt: r.created_at,
-    }));
+    return rows.map(mapUserPaymentRow);
   });
 }
 
@@ -309,6 +422,23 @@ export async function handleStripeWebhookEvent(
     message: `event type=${event.type}`,
   });
 
+  if (event.type === "checkout.session.expired" || event.type === "checkout.session.async_payment_failed") {
+    const expired = event.data.object as Stripe.Checkout.Session;
+    await withPostgresClient((client) =>
+      client.query(
+        `UPDATE cp_stripe_payments
+         SET status = CASE
+               WHEN $2 = 'checkout.session.expired' THEN 'canceled'
+               ELSE 'failed'
+             END,
+             updated_at = now()
+         WHERE id = $1 AND status = 'pending' AND kind = 'real'`,
+        [expired.id, event.type],
+      ),
+    );
+    return { handled: true, type: event.type };
+  }
+
   if (event.type !== "checkout.session.completed") {
     return { handled: false, type: event.type };
   }
@@ -323,23 +453,37 @@ export async function handleStripeWebhookEvent(
     await withPostgresClient(async (client) => {
       const updateResult = await client.query(
         `UPDATE cp_stripe_payments
-         SET status = 'completed', stripe_payment_intent_id = $2, stripe_event_id = $3, updated_at = now()
-         WHERE id = $1 AND (stripe_event_id IS NULL OR stripe_event_id <> $3)`,
+         SET status = 'completed',
+             stripe_payment_intent_id = $2,
+             stripe_event_id = $3,
+             updated_at = now(),
+             license_activated_at = CASE
+               WHEN kind = 'real' THEN COALESCE(license_activated_at, now())
+               ELSE NULL
+             END
+         WHERE id = $1
+           AND kind = 'real'
+           AND (stripe_event_id IS NULL OR stripe_event_id <> $3)`,
         [session.id, paymentIntentId, event.id],
       );
 
       if (updateResult.rowCount === 0) {
         const metadata = session.metadata ?? {};
         await client.query(
-          `INSERT INTO cp_stripe_payments (id, repo_guid, username, amount_minor, currency, status, stripe_payment_intent_id, stripe_event_id, livemode, chad_environment)
-           VALUES ($1, $2, $3, $4, $5, 'completed', $6, $7, $8, $9)
+          `INSERT INTO cp_stripe_payments (id, repo_guid, username, amount_minor, currency, status, stripe_payment_intent_id, stripe_event_id, livemode, chad_environment, kind, provider, license_acceptance_id, plan_id, license_activated_at)
+           VALUES ($1, $2, $3, $4, $5, 'completed', $6, $7, $8, $9, 'real', 'stripe', $10, $11, now())
            ON CONFLICT (id) DO UPDATE SET
              status = 'completed',
              stripe_payment_intent_id = EXCLUDED.stripe_payment_intent_id,
              stripe_event_id = EXCLUDED.stripe_event_id,
+             license_activated_at = CASE
+               WHEN cp_stripe_payments.kind = 'real' THEN COALESCE(cp_stripe_payments.license_activated_at, now())
+               ELSE NULL
+             END,
              updated_at = now()
-           WHERE cp_stripe_payments.stripe_event_id IS NULL
-              OR cp_stripe_payments.stripe_event_id <> EXCLUDED.stripe_event_id`,
+           WHERE cp_stripe_payments.kind = 'real'
+             AND (cp_stripe_payments.stripe_event_id IS NULL
+              OR cp_stripe_payments.stripe_event_id <> EXCLUDED.stripe_event_id)`,
           [
             session.id,
             metadata.repoGuid ?? session.client_reference_id ?? "unknown",
@@ -350,6 +494,8 @@ export async function handleStripeWebhookEvent(
             event.id,
             event.livemode,
             chadEnvironment(),
+            metadata.acceptanceId || null,
+            metadata.planId || null,
           ],
         );
       }
@@ -457,6 +603,10 @@ export interface AdminPaymentRow {
   paymentIntentId: string | null;
   createdAt: string;
   updatedAt: string;
+  kind: "real" | "test";
+  provider: string;
+  planId: string | null;
+  licenseActivatedAt: string | null;
 }
 
 /**
@@ -483,16 +633,22 @@ export async function getPaymentsForAdmin(
       stripe_payment_intent_id: string | null;
       created_at: string;
       updated_at: string;
+      kind: string;
+      provider: string;
+      plan_id: string | null;
+      license_activated_at: string | null;
     }>(
       repoGuid
         ? `SELECT id, repo_guid, username, amount_minor, currency, status, livemode,
-                  chad_environment, stripe_payment_intent_id, created_at, updated_at
+                  chad_environment, stripe_payment_intent_id, created_at, updated_at,
+                  kind, provider, plan_id, license_activated_at
            FROM cp_stripe_payments
            WHERE repo_guid = $1
            ORDER BY created_at DESC
            LIMIT $2`
         : `SELECT id, repo_guid, username, amount_minor, currency, status, livemode,
-                  chad_environment, stripe_payment_intent_id, created_at, updated_at
+                  chad_environment, stripe_payment_intent_id, created_at, updated_at,
+                  kind, provider, plan_id, license_activated_at
            FROM cp_stripe_payments
            ORDER BY created_at DESC
            LIMIT $1`,
@@ -510,6 +666,82 @@ export async function getPaymentsForAdmin(
       paymentIntentId: r.stripe_payment_intent_id,
       createdAt: r.created_at,
       updatedAt: r.updated_at,
+      kind: r.kind === "test" ? "test" : "real",
+      provider: r.provider,
+      planId: r.plan_id,
+      licenseActivatedAt: r.license_activated_at,
     }));
   });
+}
+
+/**
+ * Admin → Payments / Test — persist a TEST payment for a selected user.
+ * Never calls Stripe or Revolut. Never activates a real license.
+ */
+export async function createAdminTestPayment(input: {
+  targetRepoGuid: unknown;
+  planId: unknown;
+}): Promise<UserPaymentRow> {
+  const adminUsername = getCurrentUsername();
+  if (typeof input.targetRepoGuid !== "string" || !input.targetRepoGuid.trim()) {
+    throw new LicenseCommerceError("user_not_found", "Select a user.");
+  }
+  if (typeof input.planId !== "string" || !input.planId.trim()) {
+    throw new LicenseCommerceError("plan_not_found", "Select a license plan.");
+  }
+  const targetRepoGuid = input.targetRepoGuid.trim();
+  const username = await resolveUsernameByRepoGuid(targetRepoGuid);
+  const plan = await getLicensePlan(input.planId.trim());
+  const id = `test_${randomUUID()}`;
+
+  await withPostgresClient((client) =>
+    client.query(
+      `INSERT INTO cp_stripe_payments (
+         id, repo_guid, username, amount_minor, currency, status, livemode, chad_environment,
+         kind, provider, plan_id, license_user_count, license_period, license_territory,
+         created_by_admin_username
+       ) VALUES ($1,$2,$3,$4,$5,'completed', false, $6, 'test', 'admin_test', $7,$8,$9,$10,$11)`,
+      [
+        id,
+        targetRepoGuid,
+        username,
+        plan.amountMinor,
+        plan.currency,
+        chadEnvironment(),
+        plan.id,
+        plan.userCount,
+        plan.licensePeriod,
+        plan.territory,
+        adminUsername,
+      ],
+    ),
+  );
+
+  await recordPaymentEvent({
+    stage: "checkout_created",
+    stripeMode: "test",
+    checkoutSessionId: id,
+    repoGuid: targetRepoGuid,
+    username,
+    amountMinor: plan.amountMinor,
+    currency: plan.currency,
+    status: "completed",
+    message: `admin test payment by ${adminUsername} (no charge)`,
+  });
+
+  return {
+    id,
+    amountMinor: plan.amountMinor,
+    currency: plan.currency,
+    createdAt: new Date().toISOString(),
+    kind: "test",
+    provider: "admin_test",
+    status: "completed",
+    planId: plan.id,
+    licenseUserCount: plan.userCount,
+    licensePeriod: plan.licensePeriod,
+    licenseTerritory: plan.territory,
+    licenseActivatedAt: null,
+    agreementVersion: null,
+  };
 }

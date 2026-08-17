@@ -56,9 +56,9 @@ import {
   handleStripeWebhookEvent,
   getRecentPaymentEvents,
   getPaymentsForAdmin,
-  PaymentsNotConfiguredError,
 } from "./payments.js";
-import { InvalidWebhookSignatureError, InvalidAmountError } from "payments";
+import { LicenseCommerceError } from "./license-commerce.js";
+import { InvalidWebhookSignatureError } from "payments";
 
 // Same precedence as dev-db-override.ts's requirePostgresCredentials(true).
 const pgUser = process.env.POSTGRES_USER || "chad";
@@ -133,6 +133,7 @@ async function ensureSchema(): Promise<void> {
   await withPostgresClient(async (client) => {
     await applyMigrationIfMissing(client, "cp_stripe_payments", "0005_stripe_payments.sql");
     await applyMigrationIfMissing(client, "cp_stripe_payment_events", "0006_stripe_payment_diagnostics.sql");
+    await applyMigrationIfMissing(client, "cp_license_plans", "0007_license_payments.sql");
   });
 }
 
@@ -297,25 +298,41 @@ describe("payments.ts — webhook + status (real Postgres, real test2/test3)", (
     delete process.env.STRIPE_SECRET_KEY;
     await expect(
       runWithRepoContext({ repoGuid: test2RepoGuid, username: TEST2_USERNAME }, () =>
-        createPaymentCheckoutSession("500", "http://localhost:12020"),
+        createPaymentCheckoutSession("http://localhost:12020", {
+          acceptanceId: "00000000-0000-0000-0000-000000000000",
+          provider: "stripe",
+        }),
       ),
-    ).rejects.toThrow(PaymentsNotConfiguredError);
+    ).rejects.toThrow(LicenseCommerceError);
   });
 
-  it("createPaymentCheckoutSession logs a sanitized checkout_create_failed event for an invalid amount", async () => {
+  it("createPaymentCheckoutSession rejects Revolut without calling Stripe", async () => {
     await expect(
       runWithRepoContext({ repoGuid: test2RepoGuid, username: TEST2_USERNAME }, () =>
-        createPaymentCheckoutSession("-10", "http://localhost:12020"),
+        createPaymentCheckoutSession("http://localhost:12020", {
+          acceptanceId: "00000000-0000-0000-0000-000000000000",
+          provider: "revolut",
+        }),
       ),
-    ).rejects.toThrow(InvalidAmountError);
+    ).rejects.toMatchObject({ code: "provider_unavailable" });
+  });
+
+  it("createPaymentCheckoutSession logs a sanitized checkout_create_failed event when acceptance is missing", async () => {
+    await expect(
+      runWithRepoContext({ repoGuid: test2RepoGuid, username: TEST2_USERNAME }, () =>
+        createPaymentCheckoutSession("http://localhost:12020", {
+          acceptanceId: "00000000-0000-0000-0000-000000000000",
+          provider: "stripe",
+        }),
+      ),
+    ).rejects.toThrow(LicenseCommerceError);
 
     const events = await getRecentPaymentEvents(20);
-    const failedEvent = events.find(
-      (e) => e.stage === "checkout_create_failed" && e.repoGuid === test2RepoGuid && e.checkoutSessionId === null,
+    const requested = events.find(
+      (e) => e.stage === "checkout_create_requested" && e.repoGuid === test2RepoGuid && e.checkoutSessionId === null,
     );
-    expect(failedEvent).toBeTruthy();
-    // Sanitized: a short human message, never a stack trace/secret/card data.
-    expect(failedEvent?.message).toContain("Amount must be");
+    expect(requested).toBeTruthy();
+    expect(requested?.message).toContain("real license checkout");
   });
 
   it("logs webhook_received/webhook_verified/payment_completed with test-mode livemode, and getRecentPaymentEvents surfaces them", async () => {
@@ -376,5 +393,48 @@ describe("payments.ts — webhook + status (real Postgres, real test2/test3)", (
     expect(row).toBeTruthy();
     expect(row?.stripeMode).toBe("test");
     expect(row?.chadEnvironment).toBe("local");
+  });
+
+  it("webhook completion activates a real license and never activates a TEST row", async () => {
+    await withPostgresClient((client) =>
+      client.query(
+        `INSERT INTO cp_stripe_payments (id, repo_guid, username, amount_minor, currency, status, kind, provider)
+         VALUES
+           ('story116_test_existing', $1, $2, 5000, 'PLN', 'pending', 'real', 'stripe'),
+           ('story116_test_isolation', $1, $2, 1000, 'PLN', 'pending', 'test', 'admin_test')
+         ON CONFLICT (id) DO UPDATE SET status = 'pending', kind = EXCLUDED.kind, provider = EXCLUDED.provider, license_activated_at = NULL, stripe_event_id = NULL`,
+        [test2RepoGuid, TEST2_USERNAME],
+      ),
+    );
+    const { rawBody, signature } = signedCheckoutCompletedEvent({
+      id: "story116_test_existing",
+      payment_intent: "pi_test_license",
+      metadata: { repoGuid: test2RepoGuid, username: TEST2_USERNAME, kind: "real" },
+      amount_total: 5000,
+      currency: "pln",
+    });
+    await handleStripeWebhookEvent(rawBody, signature);
+    const { rawBody: testBody, signature: testSig } = signedCheckoutCompletedEvent({
+      id: "story116_test_isolation",
+      payment_intent: "pi_should_not_apply",
+      metadata: { repoGuid: test2RepoGuid, username: TEST2_USERNAME, kind: "test" },
+      amount_total: 1000,
+      currency: "pln",
+    });
+    await handleStripeWebhookEvent(testBody, testSig);
+
+    const { rows } = await withPostgresClient((client) =>
+      client.query<{ id: string; status: string; license_activated_at: string | null; kind: string }>(
+        `SELECT id, status, license_activated_at, kind FROM cp_stripe_payments WHERE id = ANY($1::text[])`,
+        [["story116_test_existing", "story116_test_isolation"]],
+      ),
+    );
+    const real = rows.find((r) => r.id === "story116_test_existing");
+    const testRow = rows.find((r) => r.id === "story116_test_isolation");
+    expect(real?.status).toBe("completed");
+    expect(real?.license_activated_at).toBeTruthy();
+    expect(testRow?.kind).toBe("test");
+    expect(testRow?.status).toBe("pending");
+    expect(testRow?.license_activated_at).toBeNull();
   });
 });

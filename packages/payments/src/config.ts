@@ -6,13 +6,23 @@
  * import, only the specific operation that needed it — surfaced as a typed
  * PaymentsNotConfiguredError, never an unhandled exception.
  */
-import { PaymentsNotConfiguredError } from "./errors.js";
+import { LiveStripeKeyForbiddenError, PaymentsNotConfiguredError } from "./errors.js";
+
+function chadEnvironment(): string {
+  return process.env.CHAD_ENVIRONMENT || "local";
+}
 
 export function requireStripeSecretKey(): string {
   const value = process.env.STRIPE_SECRET_KEY;
   if (!value) {
     throw new PaymentsNotConfiguredError(
       "STRIPE_SECRET_KEY is not configured — Stripe Checkout is unavailable.",
+    );
+  }
+  const env = chadEnvironment();
+  if (value.startsWith("sk_live_") && env !== "prod") {
+    throw new LiveStripeKeyForbiddenError(
+      `LIVE Stripe keys are not allowed when CHAD_ENVIRONMENT=${env}.`,
     );
   }
   return value;

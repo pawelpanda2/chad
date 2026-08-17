@@ -35,3 +35,11 @@ export class InvalidWebhookSignatureError extends PaymentsError {
     this.name = "InvalidWebhookSignatureError";
   }
 }
+
+/** LIVE Stripe secret used in a non-prod CHAD environment. */
+export class LiveStripeKeyForbiddenError extends PaymentsError {
+  constructor(message: string) {
+    super("live_key_forbidden", message);
+    this.name = "LiveStripeKeyForbiddenError";
+  }
+}

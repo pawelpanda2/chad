@@ -216,9 +216,12 @@ export default defineConfig({
       "packages/dba/src/payments-amount.test.ts",
       "packages/dba/src/payments-webhook.test.ts",
       "packages/dba/src/payments.test.ts",
+      "packages/dba/src/license-commerce.test.ts",
       "packages/dashboard/lib/payments-public-origin.test.ts",
       "packages/dashboard/app/(dashboard)/dashboard/settings/display/page.test.tsx",
       "packages/dashboard/app/(dashboard)/dashboard/settings/layout.test.tsx",
+      "packages/dashboard/app/(dashboard)/dashboard/settings/payments/page.test.tsx",
+      "packages/dashboard/app/(dashboard)/dashboard/admin/payments/page.test.tsx",
       // Story 116 continuation — success-page polling must reach a terminal
       // state instead of spinning forever (the actual reported bug).
       "packages/dashboard/app/(dashboard)/dashboard/settings/payments/success/page.test.tsx",

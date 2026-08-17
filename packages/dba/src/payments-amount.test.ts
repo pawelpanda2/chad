@@ -11,7 +11,7 @@
  * change to production code. See backlog/stories/116/06_others_from_report.md.
  */
 import { describe, it, expect, afterEach } from "vitest";
-import { parseAmountToMinorUnits, PAYMENTS_CURRENCY, InvalidAmountError } from "payments";
+import { parseAmountToMinorUnits, PAYMENTS_CURRENCY, InvalidAmountError, requireStripeSecretKey, LiveStripeKeyForbiddenError } from "payments";
 
 afterEach(() => {
   delete process.env.PAYMENTS_MAX_AMOUNT_MAJOR_PLN;
@@ -107,5 +107,23 @@ describe("parseAmountToMinorUnits", () => {
     // which is how "the client can't swap the currency" is enforced.
     const result = parseAmountToMinorUnits("500");
     expect(result.currency).toBe("PLN");
+  });
+});
+
+describe("requireStripeSecretKey — live keys forbidden outside prod", () => {
+  const originalEnv = process.env.CHAD_ENVIRONMENT;
+  const originalKey = process.env.STRIPE_SECRET_KEY;
+
+  afterEach(() => {
+    if (originalEnv === undefined) delete process.env.CHAD_ENVIRONMENT;
+    else process.env.CHAD_ENVIRONMENT = originalEnv;
+    if (originalKey === undefined) delete process.env.STRIPE_SECRET_KEY;
+    else process.env.STRIPE_SECRET_KEY = originalKey;
+  });
+
+  it("rejects sk_live_ when CHAD_ENVIRONMENT=local", () => {
+    process.env.CHAD_ENVIRONMENT = "local";
+    process.env.STRIPE_SECRET_KEY = "sk_live_dummy_must_not_be_used";
+    expect(() => requireStripeSecretKey()).toThrow(LiveStripeKeyForbiddenError);
   });
 });

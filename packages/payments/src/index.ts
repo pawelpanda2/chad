@@ -3,6 +3,7 @@ export {
   PaymentsNotConfiguredError,
   InvalidAmountError,
   InvalidWebhookSignatureError,
+  LiveStripeKeyForbiddenError,
 } from "./errors.js";
 export { requireStripeSecretKey, requireStripeWebhookSecret, getMaxAmountMajor } from "./config.js";
 export { parseAmountToMinorUnits, PAYMENTS_CURRENCY } from "./amount.js";

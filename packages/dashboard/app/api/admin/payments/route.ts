@@ -1,5 +1,11 @@
 import { NextResponse } from "next/server";
-import { getPaymentsForAdmin } from "dba";
+import {
+  createAdminTestPayment,
+  getPaymentsForAdmin,
+  LicenseCommerceError,
+  listActiveLicensePlans,
+  runWithRepoContext,
+} from "dba";
 import { getCurrentUserFromCookies } from "@/lib/session";
 
 /**
@@ -17,12 +23,54 @@ export async function GET(request: Request) {
   const repoGuid = url.searchParams.get("repoGuid");
 
   try {
-    const payments = await getPaymentsForAdmin(200, {
-      repoGuid: repoGuid && repoGuid !== "all" ? repoGuid : null,
+    const [payments, plans] = await Promise.all([
+      getPaymentsForAdmin(200, {
+        repoGuid: repoGuid && repoGuid !== "all" ? repoGuid : null,
+      }),
+      listActiveLicensePlans(),
+    ]);
+    return NextResponse.json({
+      success: true,
+      payments,
+      plans,
+      currentUser: { repoGuid: currentUser.repoGuid, username: currentUser.username },
     });
-    return NextResponse.json({ success: true, payments });
   } catch (error) {
     console.error("[admin/payments]", error instanceof Error ? error.message : error);
     return NextResponse.json({ success: false, error: "Failed to load payments", payments: [] }, { status: 500 });
+  }
+}
+
+/**
+ * POST /api/admin/payments
+ * Body: { targetRepoGuid, planId } — creates a TEST payment without charging.
+ */
+export async function POST(request: Request) {
+  const currentUser = await getCurrentUserFromCookies();
+  if (!currentUser || !currentUser.isAdmin) {
+    return NextResponse.json({ error: "NOT_AUTHORIZED" }, { status: 403 });
+  }
+
+  let body: { targetRepoGuid?: unknown; planId?: unknown };
+  try {
+    body = (await request.json()) as { targetRepoGuid?: unknown; planId?: unknown };
+  } catch {
+    return NextResponse.json({ success: false, error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  try {
+    const payment = await runWithRepoContext(currentUser, () =>
+      createAdminTestPayment({
+        targetRepoGuid: body.targetRepoGuid,
+        planId: body.planId,
+      }),
+    );
+    return NextResponse.json({ success: true, payment });
+  } catch (error) {
+    if (error instanceof LicenseCommerceError) {
+      return NextResponse.json({ success: false, error: error.message, code: error.code }, { status: 400 });
+    }
+    console.error("[admin/payments POST]", error instanceof Error ? error.message : error);
+    return NextResponse.json({ success: false, error: "Failed to create test payment" }, { status: 500 });
   }
 }
