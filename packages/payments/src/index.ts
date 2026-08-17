@@ -5,7 +5,15 @@ export {
   InvalidWebhookSignatureError,
   LiveStripeKeyForbiddenError,
 } from "./errors.js";
-export { requireStripeSecretKey, requireStripeWebhookSecret, getMaxAmountMajor } from "./config.js";
+export {
+  requireStripeSecretKey,
+  requireStripeTestSecretKey,
+  requireStripeLiveSecretKey,
+  requireStripeTestWebhookSecret,
+  requireStripeLiveWebhookSecret,
+  isStripeLiveConfigured,
+  getMaxAmountMajor,
+} from "./config.js";
 export { parseAmountToMinorUnits, PAYMENTS_CURRENCY } from "./amount.js";
 export type { ParsedAmount, PaymentsCurrency } from "./amount.js";
 export { createCheckoutSession } from "./checkout.js";

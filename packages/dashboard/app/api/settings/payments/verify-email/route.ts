@@ -1,15 +1,22 @@
 import { NextResponse } from "next/server";
-import { LicenseCommerceError, requestRepresentativeOtp, runWithRepoContext } from "dba";
+import { LicenseCommerceError, requestPurchaseEmailOtp, runWithRepoContext } from "dba";
 import { getCurrentUserFromCookies } from "@/lib/session";
 
-export async function POST() {
+export async function POST(request: Request) {
   const user = await getCurrentUserFromCookies();
   if (!user) {
     return NextResponse.json({ success: false, error: "NOT_AUTHENTICATED" }, { status: 401 });
   }
 
+  let body: { planId?: unknown };
   try {
-    const result = await runWithRepoContext(user, () => requestRepresentativeOtp());
+    body = (await request.json()) as { planId?: unknown };
+  } catch {
+    return NextResponse.json({ success: false, error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  try {
+    const result = await runWithRepoContext(user, () => requestPurchaseEmailOtp(body.planId));
     return NextResponse.json({ success: true, ...result });
   } catch (error) {
     if (error instanceof LicenseCommerceError) {

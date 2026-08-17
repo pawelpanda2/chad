@@ -1,18 +1,12 @@
 import { NextResponse } from "next/server";
 import {
-  createAdminTestPayment,
+  createAdminTestCheckoutSession,
   getPaymentsForAdmin,
   LicenseCommerceError,
-  listActiveLicensePlans,
   runWithRepoContext,
 } from "dba";
 import { getCurrentUserFromCookies } from "@/lib/session";
 
-/**
- * GET /api/admin/payments?repoGuid=...
- * Admin → Payments — read-only transaction list. Optional `repoGuid` filters
- * in DBA/Postgres. Same admin-only gate as /api/admin/users.
- */
 export async function GET(request: Request) {
   const currentUser = await getCurrentUserFromCookies();
   if (!currentUser || !currentUser.isAdmin) {
@@ -23,16 +17,12 @@ export async function GET(request: Request) {
   const repoGuid = url.searchParams.get("repoGuid");
 
   try {
-    const [payments, plans] = await Promise.all([
-      getPaymentsForAdmin(200, {
-        repoGuid: repoGuid && repoGuid !== "all" ? repoGuid : null,
-      }),
-      listActiveLicensePlans(),
-    ]);
+    const payments = await getPaymentsForAdmin(200, {
+      repoGuid: repoGuid && repoGuid !== "all" ? repoGuid : null,
+    });
     return NextResponse.json({
       success: true,
       payments,
-      plans,
       currentUser: { repoGuid: currentUser.repoGuid, username: currentUser.username },
     });
   } catch (error) {
@@ -41,36 +31,34 @@ export async function GET(request: Request) {
   }
 }
 
-/**
- * POST /api/admin/payments
- * Body: { targetRepoGuid, planId } — creates a TEST payment without charging.
- */
 export async function POST(request: Request) {
   const currentUser = await getCurrentUserFromCookies();
   if (!currentUser || !currentUser.isAdmin) {
     return NextResponse.json({ error: "NOT_AUTHORIZED" }, { status: 403 });
   }
 
-  let body: { targetRepoGuid?: unknown; planId?: unknown };
+  let body: { targetRepoGuid?: unknown; amountMajor?: unknown };
   try {
-    body = (await request.json()) as { targetRepoGuid?: unknown; planId?: unknown };
+    body = (await request.json()) as { targetRepoGuid?: unknown; amountMajor?: unknown };
   } catch {
     return NextResponse.json({ success: false, error: "Invalid JSON body" }, { status: 400 });
   }
 
+  const originUrl = new URL(request.url).origin;
+
   try {
-    const payment = await runWithRepoContext(currentUser, () =>
-      createAdminTestPayment({
-        targetRepoGuid: body.targetRepoGuid,
-        planId: body.planId,
+    const result = await runWithRepoContext(currentUser, () =>
+      createAdminTestCheckoutSession(originUrl, {
+        targetRepoGuid: body.targetRepoGuid ?? currentUser.repoGuid,
+        amountMajor: body.amountMajor ?? "30.00",
       }),
     );
-    return NextResponse.json({ success: true, payment });
+    return NextResponse.json({ success: true, url: result.url });
   } catch (error) {
     if (error instanceof LicenseCommerceError) {
       return NextResponse.json({ success: false, error: error.message, code: error.code }, { status: 400 });
     }
     console.error("[admin/payments POST]", error instanceof Error ? error.message : error);
-    return NextResponse.json({ success: false, error: "Failed to create test payment" }, { status: 500 });
+    return NextResponse.json({ success: false, error: "Failed to start test payment" }, { status: 500 });
   }
 }

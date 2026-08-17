@@ -129,11 +129,32 @@ async function applyMigrationIfMissing(client: PoolClient, regclass: string, fil
   await client.query(sql);
 }
 
+async function applyMigration0008IfMissing(client: import("pg").PoolClient): Promise<void> {
+  const { rows } = await client.query("SELECT to_regclass('cp_purchase_email_verifications') AS reg");
+  if (rows[0].reg) return;
+  const sqlPath = path.join(REPO_ROOT, "packages", "dba", "sql", "migrations", "0008_payments_phase2.sql");
+  const sql = await readFile(sqlPath, "utf8");
+  await client.query(sql);
+}
+
+async function applyMigration0009IfMissing(client: import("pg").PoolClient): Promise<void> {
+  const { rows } = await client.query(
+    `SELECT column_default FROM information_schema.columns
+     WHERE table_name = 'cp_stripe_payments' AND column_name = 'kind'`,
+  );
+  if (rows[0]?.column_default?.includes("user_payment")) return;
+  const sqlPath = path.join(REPO_ROOT, "packages", "dba", "sql", "migrations", "0009_payments_kind_default.sql");
+  const sql = await readFile(sqlPath, "utf8");
+  await client.query(sql);
+}
+
 async function ensureSchema(): Promise<void> {
   await withPostgresClient(async (client) => {
     await applyMigrationIfMissing(client, "cp_stripe_payments", "0005_stripe_payments.sql");
     await applyMigrationIfMissing(client, "cp_stripe_payment_events", "0006_stripe_payment_diagnostics.sql");
     await applyMigrationIfMissing(client, "cp_license_plans", "0007_license_payments.sql");
+    await applyMigration0008IfMissing(client);
+    await applyMigration0009IfMissing(client);
   });
 }
 
@@ -400,8 +421,8 @@ describe("payments.ts — webhook + status (real Postgres, real test2/test3)", (
       client.query(
         `INSERT INTO cp_stripe_payments (id, repo_guid, username, amount_minor, currency, status, kind, provider)
          VALUES
-           ('story116_test_existing', $1, $2, 5000, 'PLN', 'pending', 'real', 'stripe'),
-           ('story116_test_isolation', $1, $2, 1000, 'PLN', 'pending', 'test', 'admin_test')
+           ('story116_test_existing', $1, $2, 5000, 'PLN', 'pending', 'user_payment', 'stripe'),
+           ('story116_test_isolation', $1, $2, 1000, 'PLN', 'pending', 'admin_test', 'admin_test')
          ON CONFLICT (id) DO UPDATE SET status = 'pending', kind = EXCLUDED.kind, provider = EXCLUDED.provider, license_activated_at = NULL, stripe_event_id = NULL`,
         [test2RepoGuid, TEST2_USERNAME],
       ),
@@ -409,7 +430,7 @@ describe("payments.ts — webhook + status (real Postgres, real test2/test3)", (
     const { rawBody, signature } = signedCheckoutCompletedEvent({
       id: "story116_test_existing",
       payment_intent: "pi_test_license",
-      metadata: { repoGuid: test2RepoGuid, username: TEST2_USERNAME, kind: "real" },
+      metadata: { repoGuid: test2RepoGuid, username: TEST2_USERNAME, kind: "user_payment" },
       amount_total: 5000,
       currency: "pln",
     });
@@ -417,7 +438,7 @@ describe("payments.ts — webhook + status (real Postgres, real test2/test3)", (
     const { rawBody: testBody, signature: testSig } = signedCheckoutCompletedEvent({
       id: "story116_test_isolation",
       payment_intent: "pi_should_not_apply",
-      metadata: { repoGuid: test2RepoGuid, username: TEST2_USERNAME, kind: "test" },
+      metadata: { repoGuid: test2RepoGuid, username: TEST2_USERNAME, kind: "admin_test" },
       amount_total: 1000,
       currency: "pln",
     });
@@ -433,8 +454,8 @@ describe("payments.ts — webhook + status (real Postgres, real test2/test3)", (
     const testRow = rows.find((r) => r.id === "story116_test_isolation");
     expect(real?.status).toBe("completed");
     expect(real?.license_activated_at).toBeTruthy();
-    expect(testRow?.kind).toBe("test");
-    expect(testRow?.status).toBe("pending");
+    expect(testRow?.kind).toBe("admin_test");
+    expect(testRow?.status).toBe("completed");
     expect(testRow?.license_activated_at).toBeNull();
   });
 });

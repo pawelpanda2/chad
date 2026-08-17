@@ -1,15 +1,19 @@
 /**
- * Webhook signature verification (§1.7). Wraps stripe.webhooks.constructEvent
- * — the raw, unparsed request body plus the `Stripe-Signature` header are
- * required; a parsed/re-serialized body will not verify even if genuine
- * (per Stripe's own docs). The caller (packages/dba) is responsible for
- * getting the raw body from the Next.js route handler (`await request.text()`
- * in the App Router already yields the raw body, unlike the Pages Router
- * which needed `bodyParser: false`).
+ * Webhook signature verification — tries LIVE then test webhook secrets so
+ * one endpoint can serve both modes.
  */
 import Stripe from "stripe";
-import { requireStripeWebhookSecret, requireStripeSecretKey } from "./config.js";
+import {
+  requireStripeLiveWebhookSecret,
+  requireStripeTestWebhookSecret,
+  requireStripeLiveSecretKey,
+  requireStripeTestSecretKey,
+} from "./config.js";
 import { InvalidWebhookSignatureError } from "./errors.js";
+
+function stripeForWebhookMode(mode: "live" | "test"): Stripe {
+  return new Stripe(mode === "live" ? requireStripeLiveSecretKey() : requireStripeTestSecretKey());
+}
 
 export function constructWebhookEvent(
   rawBody: string | Buffer,
@@ -19,13 +23,32 @@ export function constructWebhookEvent(
     throw new InvalidWebhookSignatureError("Missing Stripe-Signature header.");
   }
 
-  const stripe = new Stripe(requireStripeSecretKey());
-  const webhookSecret = requireStripeWebhookSecret();
-
+  const attempts: Array<{ mode: "live" | "test"; secret: string }> = [];
   try {
-    return stripe.webhooks.constructEvent(rawBody, signature, webhookSecret);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown signature verification error";
-    throw new InvalidWebhookSignatureError(message);
+    attempts.push({ mode: "live", secret: requireStripeLiveWebhookSecret() });
+  } catch {
+    /* LIVE webhook not configured — skip */
   }
+  try {
+    attempts.push({ mode: "test", secret: requireStripeTestWebhookSecret() });
+  } catch {
+    /* test webhook not configured — skip */
+  }
+  if (attempts.length === 0) {
+    throw new InvalidWebhookSignatureError("No Stripe webhook secrets are configured.");
+  }
+
+  let lastError: unknown;
+  for (const attempt of attempts) {
+    const stripe = stripeForWebhookMode(attempt.mode);
+    try {
+      return stripe.webhooks.constructEvent(rawBody, signature, attempt.secret);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  const message =
+    lastError instanceof Error ? lastError.message : "Unknown signature verification error";
+  throw new InvalidWebhookSignatureError(message);
 }

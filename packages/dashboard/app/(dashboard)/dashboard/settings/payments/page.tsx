@@ -1,12 +1,7 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-	Card,
-	CardContent,
-	CardHeader,
-	CardTitle,
-} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ErrorBox } from "@/components/shared/error-box";
@@ -18,29 +13,23 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
 
 const CHECKOUT_REQUEST_TIMEOUT_MS = 15_000;
 
 interface LicensePlan {
 	id: string;
 	productName: string;
-	productVersion: string;
 	userCount: number;
 	amountMinor: number;
 	currency: string;
 	licensePeriod: string;
-	territory: string;
 }
 
-interface LicenseeProfile {
+interface BusinessProfile {
 	legalBusinessName: string;
 	country: string;
-	state: string | null;
-	filingId: string | null;
-	businessAddress: string | null;
-	representativeFullName: string;
-	representativeEmail: string;
-	verifiedAt: string | null;
 }
 
 interface Agreement {
@@ -50,117 +39,96 @@ interface Agreement {
 	draft: boolean;
 }
 
+interface Verification {
+	accountEmail: string;
+	verifiedAt: string | null;
+}
+
 interface UserPaymentRow {
 	id: string;
 	amountMinor: number;
 	currency: string;
 	createdAt: string;
-	kind: "real" | "test";
-	provider: string;
 	status: string;
-	planId: string | null;
-	licenseUserCount: number | null;
-	licensePeriod: string | null;
-	licenseTerritory: string | null;
-	agreementVersion: string | null;
 }
 
 function formatAmount(amountMinor: number, currency: string): string {
 	return `${(amountMinor / 100).toFixed(2)} ${currency}`;
 }
 
-function declarationFor(plan: LicensePlan | undefined, company: string, agreementVersion: string): string {
-	if (!plan) return "";
-	return `I declare that I am authorized to act on behalf of ${company || "[COMPANY]"} and, on its behalf, accept License Agreement ${agreementVersion} for ${plan.productName}, covering ${plan.userCount} users for ${plan.licensePeriod}, for a license fee of ${(plan.amountMinor / 100).toFixed(2)} ${plan.currency}.`;
+function planLabel(plan: LicensePlan): string {
+	return plan.userCount === 1 ? "1 user" : `${plan.userCount} users`;
 }
 
 export default function PaymentsSettingsPage() {
 	const [plans, setPlans] = useState<LicensePlan[]>([]);
 	const [planId, setPlanId] = useState("");
-	const [profile, setProfile] = useState<LicenseeProfile | null>(null);
+	const [_profile, setProfile] = useState<BusinessProfile | null>(null);
 	const [agreement, setAgreement] = useState<Agreement | null>(null);
+	const [verification, setVerification] = useState<Verification | null>(null);
+	const [accountEmail, setAccountEmail] = useState<string | null>(null);
 	const [payments, setPayments] = useState<UserPaymentRow[]>([]);
 	const [testPayments, setTestPayments] = useState<UserPaymentRow[]>([]);
-	const [legalBusinessName, setLegalBusinessName] = useState("");
-	const [country, setCountry] = useState("Poland");
-	const [state, setState] = useState("");
-	const [filingId, setFilingId] = useState("");
-	const [businessAddress, setBusinessAddress] = useState("");
-	const [representativeFullName, setRepresentativeFullName] = useState("");
-	const [representativeEmail, setRepresentativeEmail] = useState("");
+	const [declarationPreview, setDeclarationPreview] = useState<string | null>(null);
+	const [businessComplete, setBusinessComplete] = useState(false);
+	const [liveConfigured, setLiveConfigured] = useState(false);
 	const [otpCode, setOtpCode] = useState("");
 	const [localDevCode, setLocalDevCode] = useState("");
 	const [provider, setProvider] = useState("stripe");
 	const [accepted, setAccepted] = useState(false);
+	const [acceptanceId, setAcceptanceId] = useState<string | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [submitting, setSubmitting] = useState(false);
 	const [error, setError] = useState("");
 	const [details, setDetails] = useState("");
 
 	const selectedPlan = useMemo(() => plans.find((p) => p.id === planId), [plans, planId]);
-	const verified = Boolean(profile?.verifiedAt);
-	const declaration = declarationFor(selectedPlan, legalBusinessName, agreement?.version ?? "");
+	const emailVerified = Boolean(verification?.verifiedAt);
+	const showAgreement = emailVerified && businessComplete;
 
-	const applyProfile = useCallback((next: LicenseeProfile | null) => {
-		setProfile(next);
-		if (!next) return;
-		setLegalBusinessName(next.legalBusinessName);
-		setCountry(next.country);
-		setState(next.state ?? "");
-		setFilingId(next.filingId ?? "");
-		setBusinessAddress(next.businessAddress ?? "");
-		setRepresentativeFullName(next.representativeFullName);
-		setRepresentativeEmail(next.representativeEmail);
+	const loadCommerce = useCallback(async (nextPlanId?: string) => {
+		const query = nextPlanId ? `?planId=${encodeURIComponent(nextPlanId)}` : "";
+		const res = await fetch(`/api/settings/payments/commerce${query}`);
+		const data = await res.json();
+		if (!data.success) {
+			setError(data.error || "Failed to load payments");
+			return;
+		}
+		setPlans(data.plans);
+		setPlanId((current) => nextPlanId || current || data.plans[0]?.id || "");
+		setProfile(data.profile);
+		setAgreement(data.agreement);
+		setVerification(data.verification);
+		setAccountEmail(data.accountEmail);
+		setPayments(data.payments);
+		setTestPayments(data.testPayments);
+		setDeclarationPreview(data.declarationPreview);
+		setBusinessComplete(Boolean(data.businessComplete));
+		setLiveConfigured(Boolean(data.liveConfigured));
+		setAccepted(false);
+		setAcceptanceId(null);
 	}, []);
 
 	useEffect(() => {
-		fetch("/api/settings/payments/commerce")
-			.then((res) => res.json())
-			.then((data) => {
-				if (!data.success) {
-					setError(data.error || "Failed to load payments");
-					return;
-				}
-				setPlans(data.plans);
-				if (data.plans[0]) setPlanId(data.plans[0].id);
-				setAgreement(data.agreement);
-				setPayments(data.payments);
-				setTestPayments(data.testPayments);
-				applyProfile(data.profile);
-			})
-			.catch((err) => setError(err instanceof Error ? err.message : "Failed to load payments"))
+		void loadCommerce()
+			.catch((err) => setError(err instanceof Error ? err.message : "Failed to load"))
 			.finally(() => setLoading(false));
-	}, [applyProfile]);
+	}, [loadCommerce]);
 
-	const saveProfile = async (): Promise<LicenseeProfile | null> => {
-		const res = await fetch("/api/settings/payments/licensee", {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({
-				legalBusinessName,
-				country,
-				state,
-				filingId,
-				businessAddress,
-				representativeFullName,
-				representativeEmail,
-			}),
-		});
-		const data = await res.json();
-		if (!res.ok || !data.success) {
-			setError(data.error || "Could not save licensee.");
-			return null;
+	useEffect(() => {
+		if (planId) {
+			void loadCommerce(planId);
 		}
-		applyProfile(data.profile);
-		return data.profile as LicenseeProfile;
-	};
+	}, [planId, loadCommerce]);
 
 	const handleVerify = async () => {
 		setError("");
 		setDetails("");
-		const saved = await saveProfile();
-		if (!saved) return;
-		const res = await fetch("/api/settings/payments/verify-email", { method: "POST" });
+		const res = await fetch("/api/settings/payments/verify-email", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ planId }),
+		});
 		const data = await res.json();
 		if (!res.ok || !data.success) {
 			setError(data.error || "Could not start verification.");
@@ -174,48 +142,66 @@ export default function PaymentsSettingsPage() {
 		const res = await fetch("/api/settings/payments/confirm-email", {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ code: otpCode.trim() }),
+			body: JSON.stringify({ planId, code: otpCode.trim() }),
 		});
 		const data = await res.json();
 		if (!res.ok || !data.success) {
 			setError(data.error || "Verification failed.");
 			return;
 		}
-		applyProfile(data.profile);
+		setVerification(data.verification);
 		setOtpCode("");
 		setLocalDevCode("");
+	};
+
+  const handleAcceptAgreement = async (): Promise<string | null> => {
+		setError("");
+		if (!accepted || !selectedPlan) return null;
+		const res = await fetch("/api/settings/payments/accept", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ planId: selectedPlan.id, paymentMethod: provider }),
+		});
+		const data = await res.json();
+		if (!res.ok || !data.success) {
+			setError(data.error || "Could not record license acceptance.");
+			return null;
+		}
+		setAcceptanceId(data.acceptanceId);
+		return data.acceptanceId as string;
 	};
 
 	const handlePay = async () => {
 		setError("");
 		setDetails("");
 		if (!selectedPlan) {
-			setError("Select a license plan.");
+			setError("Select a license type.");
+			return;
+		}
+		if (!businessComplete) {
+			setError("Complete business details before payment.");
+			return;
+		}
+		if (!emailVerified) {
+			setError("Verify your account email before payment.");
 			return;
 		}
 		if (!accepted) {
 			setError("Accept the License Agreement before payment.");
 			return;
 		}
-		if (provider !== "stripe") {
-			setError("Revolut Pro is not available — no verifiable merchant payment API is configured.");
+		if (provider === "revolut") {
+			setError("Revolut is not available — integration is not configured.");
+			return;
+		}
+		if (provider === "stripe" && !liveConfigured) {
+			setError("LIVE Stripe is not configured — payment is unavailable.");
 			return;
 		}
 		setSubmitting(true);
 		try {
-			const saved = await saveProfile();
-			if (!saved) {
-				setSubmitting(false);
-				return;
-			}
-			const acceptRes = await fetch("/api/settings/payments/accept", {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ planId: selectedPlan.id }),
-			});
-			const acceptData = await acceptRes.json();
-			if (!acceptRes.ok || !acceptData.success) {
-				setError(acceptData.error || "Could not record license acceptance.");
+			const id = acceptanceId || (await handleAcceptAgreement());
+			if (!id) {
 				setSubmitting(false);
 				return;
 			}
@@ -225,7 +211,7 @@ export default function PaymentsSettingsPage() {
 				const res = await fetch("/api/settings/payments/checkout", {
 					method: "POST",
 					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({ acceptanceId: acceptData.acceptanceId, provider }),
+					body: JSON.stringify({ acceptanceId: id, provider }),
 					signal: controller.signal,
 				});
 				const data = await res.json();
@@ -252,158 +238,202 @@ export default function PaymentsSettingsPage() {
 
 	return (
 		<div className="space-y-6">
-			<Card>
-				<CardHeader>
-					<CardTitle>Payment</CardTitle>
-				</CardHeader>
-				<CardContent className="space-y-3">
-					{loading ? (
-						<p className="text-sm text-muted-foreground">Loading...</p>
-					) : (
-						<>
-							<Select value={planId} onValueChange={setPlanId}>
-								<SelectTrigger className="max-w-md">
-									<SelectValue />
-								</SelectTrigger>
-								<SelectContent>
-									{plans.map((plan) => (
-										<SelectItem key={plan.id} value={plan.id}>
-											{plan.userCount} users · {formatAmount(plan.amountMinor, plan.currency)} · {plan.licensePeriod}
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
-							{selectedPlan && (
-								<p className="text-sm text-muted-foreground">
-									{selectedPlan.productName} · {selectedPlan.territory} · {selectedPlan.currency}
-								</p>
-							)}
-
-							<Input placeholder="Legal business name" value={legalBusinessName} onChange={(e) => setLegalBusinessName(e.target.value)} />
-							<Input placeholder="Country" value={country} onChange={(e) => setCountry(e.target.value)} />
-							<Input placeholder="State / filing region" value={state} onChange={(e) => setState(e.target.value)} />
-							<Input placeholder="Company registration / filing ID" value={filingId} onChange={(e) => setFilingId(e.target.value)} />
-							<Input placeholder="Business address" value={businessAddress} onChange={(e) => setBusinessAddress(e.target.value)} />
-							<Input placeholder="Authorized representative" value={representativeFullName} onChange={(e) => setRepresentativeFullName(e.target.value)} />
-							<Input placeholder="Representative email" value={representativeEmail} onChange={(e) => setRepresentativeEmail(e.target.value)} />
-
-							{verified ? (
-								<Badge variant="secondary">Verified {profile?.verifiedAt ? new Date(profile.verifiedAt).toLocaleDateString() : ""}</Badge>
-							) : (
-								<div className="flex flex-wrap items-center gap-2">
-									<Button type="button" variant="outline" onClick={() => void handleVerify()} disabled={submitting}>
-										Verify email
-									</Button>
-									<Input className="w-32" placeholder="Code" value={otpCode} onChange={(e) => setOtpCode(e.target.value)} />
-									<Button type="button" variant="outline" onClick={() => void handleConfirmOtp()} disabled={submitting || !otpCode}>
-										Confirm
-									</Button>
-									{localDevCode ? <span className="font-mono text-xs text-muted-foreground">{localDevCode}</span> : null}
-								</div>
-							)}
-
+			<div className="space-y-4 rounded-lg border bg-background p-4">
+				{loading ? (
+					<p className="text-sm text-muted-foreground">Loading...</p>
+				) : (
+					<>
+						<div className="grid gap-2 sm:grid-cols-[140px_1fr] sm:items-center">
+							<Label>Payment method</Label>
 							<Select value={provider} onValueChange={setProvider}>
-								<SelectTrigger className="w-[180px]">
+								<SelectTrigger className="max-w-xs">
 									<SelectValue />
 								</SelectTrigger>
 								<SelectContent>
 									<SelectItem value="stripe">Stripe</SelectItem>
 									<SelectItem value="revolut" disabled>
-										Revolut Pro
+										Revolut (not configured)
 									</SelectItem>
 								</SelectContent>
 							</Select>
+						</div>
 
-							{agreement ? (
-								<details className="rounded-md border p-3 text-sm">
-									<summary className="cursor-pointer">
-										{agreement.title}
-										{agreement.draft ? " (draft)" : ""}
-									</summary>
-									<pre className="mt-2 whitespace-pre-wrap font-sans text-xs text-muted-foreground">{agreement.body}</pre>
-								</details>
+						<div className="grid gap-2 sm:grid-cols-[140px_1fr] sm:items-center">
+							<Label>License Type</Label>
+							<Select value={planId} onValueChange={setPlanId}>
+								<SelectTrigger className="max-w-xs">
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									{plans.map((plan) => (
+										<SelectItem key={plan.id} value={plan.id}>
+											{planLabel(plan)}
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
+						</div>
+
+						<div className="grid gap-2 sm:grid-cols-[140px_1fr] sm:items-center">
+							<Label>Price</Label>
+							<p className="text-sm">
+								{selectedPlan ? (
+									<>
+										<span className="font-medium">
+											{formatAmount(selectedPlan.amountMinor, selectedPlan.currency)}
+										</span>
+										<span className="text-muted-foreground"> for 1 month</span>
+									</>
+								) : (
+									<span className="text-muted-foreground">—</span>
+								)}
+							</p>
+						</div>
+
+						<Separator />
+
+						{!businessComplete ? (
+							<div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm dark:border-amber-900 dark:bg-amber-950/30">
+								<p>Complete business details before purchase.</p>
+								<Link href="/dashboard/settings" className="underline underline-offset-4">
+									Account → Business
+								</Link>
+							</div>
+						) : null}
+
+						<div className="space-y-2">
+							<p className="text-sm font-medium">Email verification</p>
+							<p className="text-sm text-muted-foreground">
+								Confirm your identity with a one-time code sent to your account email
+								{accountEmail ? ` (${accountEmail})` : ""}.
+							</p>
+							{emailVerified ? (
+								<Badge variant="secondary">
+									Verified {verification?.verifiedAt ? new Date(verification.verifiedAt).toLocaleString() : ""}
+								</Badge>
+							) : businessComplete ? (
+								<div className="flex flex-wrap items-center gap-2">
+									<Button type="button" variant="outline" onClick={() => void handleVerify()} disabled={submitting}>
+										Send verification code
+									</Button>
+									<Input
+										className="w-32"
+										placeholder="6-digit code"
+										value={otpCode}
+										onChange={(e) => setOtpCode(e.target.value)}
+									/>
+									<Button
+										type="button"
+										variant="outline"
+										onClick={() => void handleConfirmOtp()}
+										disabled={submitting || !otpCode}
+									>
+										Confirm
+									</Button>
+									{localDevCode ? (
+										<span className="font-mono text-xs text-muted-foreground">{localDevCode}</span>
+									) : null}
+								</div>
 							) : null}
+						</div>
 
-							<label className="flex items-start gap-2 text-sm">
-								<input
-									type="checkbox"
-									className="mt-1"
-									checked={accepted}
-									onChange={(e) => setAccepted(e.target.checked)}
-								/>
-								<span>{declaration}</span>
-							</label>
-
-							<ErrorBox message={error || null} details={details || null} />
-
-							<Button onClick={() => void handlePay()} disabled={submitting || !accepted || !verified}>
-								{submitting ? "Starting checkout..." : "Accept License & Continue to Payment"}
-							</Button>
-						</>
-					)}
-				</CardContent>
-			</Card>
-
-			<Card>
-				<CardHeader>
-					<CardTitle>Payment history</CardTitle>
-				</CardHeader>
-				<CardContent>
-					{loading ? (
-						<p className="text-sm text-muted-foreground">Loading...</p>
-					) : payments.length === 0 ? (
-						<p className="text-sm text-muted-foreground">No successful payments yet.</p>
-					) : (
-						<ul className="divide-y">
-							{payments.map((row) => (
-								<li key={row.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
-									<span className="text-muted-foreground">
-										{new Date(row.createdAt).toLocaleString("en-US", {
-											year: "numeric",
-											month: "short",
-											day: "numeric",
-											hour: "2-digit",
-											minute: "2-digit",
-										})}
+						{showAgreement && agreement ? (
+							<div className="space-y-2">
+								<p className="text-sm font-medium">
+									{agreement.title}
+									{agreement.draft ? " (draft)" : ""}
+								</p>
+								<div className="max-h-64 overflow-y-auto rounded-md border p-3 text-xs whitespace-pre-wrap text-muted-foreground">
+									{agreement.body}
+								</div>
+								{declarationPreview ? (
+									<p className="text-sm">{declarationPreview}</p>
+								) : null}
+								<label className="flex items-start gap-2 text-sm">
+									<input
+										type="checkbox"
+										className="mt-1"
+										checked={accepted}
+										onChange={(e) => setAccepted(e.target.checked)}
+									/>
+									<span>
+										I accept License Agreement {agreement.version} and confirm the declaration above.
 									</span>
-									<span>{row.provider}</span>
-									<span>{row.status}</span>
-									{row.licenseUserCount ? <span>{row.licenseUserCount} users</span> : null}
-									{row.licensePeriod ? <span>{row.licensePeriod}</span> : null}
-									{row.agreementVersion ? <span>{row.agreementVersion}</span> : null}
-									<span className="font-medium">{formatAmount(row.amountMinor, row.currency)}</span>
-								</li>
-							))}
-						</ul>
-					)}
-				</CardContent>
-			</Card>
+								</label>
+							</div>
+						) : null}
+
+						<ErrorBox message={error || null} details={details || null} />
+
+						<Button
+							onClick={() => void handlePay()}
+							disabled={
+								submitting ||
+								!accepted ||
+								!emailVerified ||
+								!businessComplete ||
+								(provider === "stripe" && !liveConfigured)
+							}
+						>
+							{submitting ? "Starting checkout..." : "Pay"}
+						</Button>
+						{provider === "stripe" && !liveConfigured ? (
+							<p className="text-xs text-muted-foreground">LIVE Stripe is not configured in this environment.</p>
+						) : null}
+					</>
+				)}
+			</div>
+
+			<div className="space-y-2">
+				<h3 className="text-sm font-medium">Payment history</h3>
+				{loading ? (
+					<p className="text-sm text-muted-foreground">Loading...</p>
+				) : payments.length === 0 ? (
+					<p className="text-sm text-muted-foreground">No LIVE payments yet.</p>
+				) : (
+					<ul className="divide-y rounded-md border text-sm">
+						{payments.map((row) => (
+							<li key={row.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
+								<Badge>LIVE</Badge>
+								<span className="text-muted-foreground">
+									{new Date(row.createdAt).toLocaleString("en-US", {
+										year: "numeric",
+										month: "short",
+										day: "numeric",
+										hour: "2-digit",
+										minute: "2-digit",
+									})}
+								</span>
+								<span>{row.status}</span>
+								<span className="font-medium">{formatAmount(row.amountMinor, row.currency)}</span>
+							</li>
+						))}
+					</ul>
+				)}
+			</div>
 
 			{testPayments.length > 0 ? (
-				<Card>
-					<CardHeader>
-						<CardTitle>Test payments</CardTitle>
-					</CardHeader>
-					<CardContent>
-						<ul className="divide-y">
-							{testPayments.map((row) => (
-								<li key={row.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
-									<Badge variant="secondary">TEST</Badge>
-									<span className="text-muted-foreground">
-										{new Date(row.createdAt).toLocaleString("en-US", {
-											year: "numeric",
-											month: "short",
-											day: "numeric",
-											hour: "2-digit",
-											minute: "2-digit",
-										})}
-									</span>
-									<span className="font-medium">{formatAmount(row.amountMinor, row.currency)}</span>
-								</li>
-							))}
-						</ul>
-					</CardContent>
-				</Card>
+				<div className="space-y-2">
+					<h3 className="text-sm font-medium">Test payments</h3>
+					<ul className="divide-y rounded-md border text-sm">
+						{testPayments.map((row) => (
+							<li key={row.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
+								<Badge variant="secondary">TEST</Badge>
+								<span className="text-muted-foreground">
+									{new Date(row.createdAt).toLocaleString("en-US", {
+										year: "numeric",
+										month: "short",
+										day: "numeric",
+										hour: "2-digit",
+										minute: "2-digit",
+									})}
+								</span>
+								<span>{row.status}</span>
+								<span className="font-medium">{formatAmount(row.amountMinor, row.currency)}</span>
+							</li>
+						))}
+					</ul>
+				</div>
 			) : null}
 		</div>
 	);

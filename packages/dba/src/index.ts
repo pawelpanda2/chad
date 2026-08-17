@@ -18,6 +18,7 @@ export * from './date-reports.js';
 export * from './google-contacts-tokens.js';
 export * from './payments.js';
 export * from './license-commerce.js';
+export * from './license-admin.js';
 export * from './beeper.js';
 export * from './mongo.js';
 export * from './postgres.js';

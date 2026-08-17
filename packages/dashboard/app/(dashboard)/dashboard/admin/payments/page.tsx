@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { ErrorBox } from "@/components/shared/error-box";
 import {
 	Select,
@@ -35,11 +36,8 @@ interface AdminPaymentRow {
 	chadEnvironment: string | null;
 	paymentIntentId: string | null;
 	createdAt: string;
-	updatedAt: string;
-	kind: "real" | "test";
+	kind: "user_payment" | "admin_test";
 	provider: string;
-	planId: string | null;
-	licenseActivatedAt: string | null;
 }
 
 interface UserOption {
@@ -47,30 +45,26 @@ interface UserOption {
 	username: string;
 }
 
-interface LicensePlan {
-	id: string;
-	userCount: number;
-	amountMinor: number;
-	currency: string;
-	licensePeriod: string;
-}
-
 function formatAmount(amountMinor: number, currency: string): string {
 	return `${(amountMinor / 100).toFixed(2)} ${currency}`;
+}
+
+function kindLabel(kind: string): string {
+	if (kind === "admin_test") return "admin_test";
+	if (kind === "user_payment") return "user_payment";
+	return kind;
 }
 
 export default function AdminPaymentsPage() {
 	const [tab, setTab] = useState("history");
 	const [payments, setPayments] = useState<AdminPaymentRow[]>([]);
 	const [users, setUsers] = useState<UserOption[]>([]);
-	const [plans, setPlans] = useState<LicensePlan[]>([]);
 	const [filterUser, setFilterUser] = useState<string>("all");
 	const [testUser, setTestUser] = useState<string>("");
-	const [testPlan, setTestPlan] = useState<string>("");
+	const [testAmount, setTestAmount] = useState("30.00");
 	const [loading, setLoading] = useState(true);
 	const [creating, setCreating] = useState(false);
 	const [error, setError] = useState("");
-	const [testMessage, setTestMessage] = useState("");
 
 	useEffect(() => {
 		fetch("/api/admin/users")
@@ -85,7 +79,7 @@ export default function AdminPaymentsPage() {
 				);
 			})
 			.catch(() => {
-				/* filter options are best-effort; payments still load */
+				/* filter options are best-effort */
 			});
 	}, []);
 
@@ -102,10 +96,6 @@ export default function AdminPaymentsPage() {
 				return;
 			}
 			setPayments(data.payments);
-			if (Array.isArray(data.plans)) {
-				setPlans(data.plans);
-				setTestPlan((current) => current || data.plans[0]?.id || "");
-			}
 			if (data.currentUser?.repoGuid) {
 				setTestUser((current) => current || data.currentUser.repoGuid);
 			}
@@ -122,23 +112,23 @@ export default function AdminPaymentsPage() {
 
 	const handleCreateTest = async () => {
 		setError("");
-		setTestMessage("");
 		setCreating(true);
 		try {
 			const res = await fetch("/api/admin/payments", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ targetRepoGuid: testUser, planId: testPlan }),
+				body: JSON.stringify({ targetRepoGuid: testUser, amountMajor: testAmount }),
 			});
 			const data = await res.json();
 			if (!res.ok || !data.success) {
-				setError(data.error || "Failed to create test payment");
+				setError(data.error || "Failed to start test payment");
 				return;
 			}
-			setTestMessage("TEST payment recorded. No card was charged.");
-			await loadPayments(filterUser);
+			if (data.url) {
+				window.location.href = data.url;
+			}
 		} catch (err) {
-			setError(err instanceof Error ? err.message : "Failed to create test payment");
+			setError(err instanceof Error ? err.message : "Failed to start test payment");
 		} finally {
 			setCreating(false);
 		}
@@ -188,8 +178,6 @@ export default function AdminPaymentsPage() {
 											<TableHead>Provider</TableHead>
 											<TableHead>Mode</TableHead>
 											<TableHead>Environment</TableHead>
-											<TableHead>Checkout Session</TableHead>
-											<TableHead>PaymentIntent</TableHead>
 											<TableHead>Status</TableHead>
 										</TableRow>
 									</TableHeader>
@@ -208,8 +196,8 @@ export default function AdminPaymentsPage() {
 												<TableCell>{p.username}</TableCell>
 												<TableCell>{formatAmount(p.amountMinor, p.currency)}</TableCell>
 												<TableCell>
-													<Badge variant={p.kind === "test" ? "secondary" : "default"}>
-														{p.kind === "test" ? "TEST" : "real"}
+													<Badge variant={p.kind === "admin_test" ? "secondary" : "default"}>
+														{kindLabel(p.kind)}
 													</Badge>
 												</TableCell>
 												<TableCell>{p.provider}</TableCell>
@@ -217,10 +205,6 @@ export default function AdminPaymentsPage() {
 													<Badge variant="secondary">{p.stripeMode ?? "—"}</Badge>
 												</TableCell>
 												<TableCell>{p.chadEnvironment ?? "—"}</TableCell>
-												<TableCell className="font-mono text-xs">{p.id}</TableCell>
-												<TableCell className="font-mono text-xs">
-													{p.paymentIntentId ?? "—"}
-												</TableCell>
 												<TableCell>
 													<Badge variant={p.status === "completed" ? "default" : "secondary"}>
 														{p.status}
@@ -236,7 +220,7 @@ export default function AdminPaymentsPage() {
 				</TabsContent>
 				<TabsContent value="test" className="space-y-3">
 					<p className="text-sm text-muted-foreground">
-						This creates a TEST payment record. It does not charge a card or call Stripe/Revolut.
+						Stripe Sandbox checkout for a selected user. Records payment_kind=admin_test, stripe_mode=test.
 					</p>
 					<div className="flex flex-wrap items-center gap-2">
 						<Select value={testUser} onValueChange={setTestUser}>
@@ -251,24 +235,18 @@ export default function AdminPaymentsPage() {
 								))}
 							</SelectContent>
 						</Select>
-						<Select value={testPlan} onValueChange={setTestPlan}>
-							<SelectTrigger className="w-[280px]">
-								<SelectValue placeholder="Plan" />
-							</SelectTrigger>
-							<SelectContent>
-								{plans.map((plan) => (
-									<SelectItem key={plan.id} value={plan.id}>
-										{plan.userCount} users · {formatAmount(plan.amountMinor, plan.currency)} · {plan.licensePeriod}
-									</SelectItem>
-								))}
-							</SelectContent>
-						</Select>
-						<Button onClick={() => void handleCreateTest()} disabled={creating || !testUser || !testPlan}>
-							{creating ? "Creating..." : "Create test payment"}
+						<Input
+							className="w-[120px]"
+							value={testAmount}
+							onChange={(e) => setTestAmount(e.target.value)}
+							aria-label="Amount PLN"
+						/>
+						<span className="text-sm text-muted-foreground">PLN</span>
+						<Button onClick={() => void handleCreateTest()} disabled={creating || !testUser}>
+							{creating ? "Starting..." : "Start test payment"}
 						</Button>
 					</div>
 					<ErrorBox message={error || null} />
-					{testMessage ? <p className="text-sm">{testMessage}</p> : null}
 				</TabsContent>
 			</Tabs>
 		</DashboardPageShell>

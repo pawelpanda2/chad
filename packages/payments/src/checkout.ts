@@ -1,13 +1,8 @@
 /**
- * Stripe Checkout Session creation — one-off card payment (`mode: "payment"`),
- * dynamic price via `line_items[].price_data` (no persistent Stripe `Price`
- * object, no `STRIPE_PRICE_ID` — §1.4). A fresh `Stripe` client is
- * constructed per call rather than cached as a module singleton: Checkout
- * Session creation is not a hot path, and this avoids ever caching a stale
- * client from before STRIPE_SECRET_KEY was configured.
+ * Stripe Checkout Session creation — one-off card payment (`mode: "payment"`).
  */
 import Stripe from "stripe";
-import { requireStripeSecretKey } from "./config.js";
+import { requireStripeLiveSecretKey, requireStripeTestSecretKey } from "./config.js";
 import { InvalidAmountError } from "./errors.js";
 import type { ParsedAmount } from "./amount.js";
 
@@ -15,23 +10,25 @@ export interface CreateCheckoutSessionInput {
   amount: ParsedAmount;
   successUrl: string;
   cancelUrl: string;
-  /** Opaque caller identifier (CHAD repoGuid) — never trusted back from the client, only echoed by Stripe. */
   clientReferenceId: string;
   metadata: Record<string, string>;
   productName?: string;
+  /** LIVE for user payments; test for admin Sandbox test checkout. */
+  stripeMode: "live" | "test";
 }
 
 export interface CreatedCheckoutSession {
   id: string;
   url: string;
-  /** Stripe's own flag — Sandbox/Test vs a real charge. Never inferred from key naming. */
   livemode: boolean;
 }
 
 export async function createCheckoutSession(
   input: CreateCheckoutSessionInput,
 ): Promise<CreatedCheckoutSession> {
-  const stripe = new Stripe(requireStripeSecretKey());
+  const secretKey =
+    input.stripeMode === "live" ? requireStripeLiveSecretKey() : requireStripeTestSecretKey();
+  const stripe = new Stripe(secretKey);
 
   let session: Stripe.Checkout.Session;
   try {
@@ -45,7 +42,6 @@ export async function createCheckoutSession(
         {
           quantity: 1,
           price_data: {
-            // Stripe currency codes are lowercase ISO-4217.
             currency: input.amount.currency.toLowerCase(),
             unit_amount: input.amount.minorUnits,
             product_data: {
@@ -56,9 +52,6 @@ export async function createCheckoutSession(
       ],
     });
   } catch (error) {
-    // Stripe enforces its own per-currency minimum charge (e.g. ~2.00 PLN)
-    // independently of our own §1.5 validation — surfaced as a controlled
-    // 400 (the amount, not the server, is the problem), not a raw 500.
     if (
       error instanceof Stripe.errors.StripeInvalidRequestError &&
       (error.code === "amount_too_small" || error.param === "line_items[0][price_data][unit_amount]")

@@ -8,9 +8,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: false, error: "NOT_AUTHENTICATED" }, { status: 401 });
   }
 
-  let body: { planId?: unknown };
+  let body: { planId?: unknown; paymentMethod?: unknown };
   try {
-    body = (await request.json()) as { planId?: unknown };
+    body = (await request.json()) as { planId?: unknown; paymentMethod?: unknown };
   } catch {
     return NextResponse.json({ success: false, error: "Invalid JSON body" }, { status: 400 });
   }
@@ -21,7 +21,12 @@ export async function POST(request: Request) {
 
   try {
     const result = await runWithRepoContext(user, () =>
-      createLicenseAcceptance({ planId: body.planId, ip, userAgent }),
+      createLicenseAcceptance({
+        planId: body.planId,
+        paymentMethod: body.paymentMethod,
+        ip,
+        userAgent,
+      }),
     );
     return NextResponse.json({
       success: true,

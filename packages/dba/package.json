@@ -29,7 +29,11 @@
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run build"
   },
-  "keywords": ["content-provider", "database", "api-client"],
+  "keywords": [
+    "content-provider",
+    "database",
+    "api-client"
+  ],
   "license": "MIT",
   "dependencies": {
     "cp-core": "workspace:*",
@@ -41,6 +45,7 @@
     "mongodb": "^7.1.1",
     "openai": "^6.43.0",
     "payments": "workspace:*",
+    "pdf-lib": "^1.17.1",
     "pg": "^8.13.1"
   },
   "devDependencies": {

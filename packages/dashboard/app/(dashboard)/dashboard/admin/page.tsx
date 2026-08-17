@@ -28,6 +28,13 @@ export default function AdminHubPage() {
 				>
 					<span className="font-semibold text-sm">PAYMENTS</span>
 				</button>
+				<button
+					type="button"
+					onClick={() => router.push("/dashboard/admin/licenses")}
+					className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
+				>
+					<span className="font-semibold text-sm">LICENSES</span>
+				</button>
 			</div>
 		</DashboardPageShell>
 	);

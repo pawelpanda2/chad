@@ -1,8 +1,33 @@
 import { NextResponse } from "next/server";
-import { LicenseCommerceError, runWithRepoContext, saveLicenseeProfile } from "dba";
+import {
+  LicenseCommerceError,
+  getLicenseeProfileForCurrentUser,
+  runWithRepoContext,
+  saveLicenseeProfile,
+} from "dba";
 import { getCurrentUserFromCookies } from "@/lib/session";
 
-/** @deprecated Use /api/settings/account/business */
+/**
+ * GET /api/settings/account/business — business profile for purchase/agreement.
+ */
+export async function GET() {
+  const user = await getCurrentUserFromCookies();
+  if (!user) {
+    return NextResponse.json({ success: false, error: "NOT_AUTHENTICATED" }, { status: 401 });
+  }
+
+  try {
+    const profile = await runWithRepoContext(user, () => getLicenseeProfileForCurrentUser());
+    return NextResponse.json({ success: true, profile });
+  } catch (error) {
+    console.error("[settings/account/business GET]", error instanceof Error ? error.message : error);
+    return NextResponse.json({ success: false, error: "Failed to load business profile" }, { status: 500 });
+  }
+}
+
+/**
+ * POST /api/settings/account/business — save Account → Business details.
+ */
 export async function POST(request: Request) {
   const user = await getCurrentUserFromCookies();
   if (!user) {
@@ -34,7 +59,7 @@ export async function POST(request: Request) {
     if (error instanceof LicenseCommerceError) {
       return NextResponse.json({ success: false, error: error.message, code: error.code }, { status: 400 });
     }
-    console.error("[settings/payments/licensee]", error instanceof Error ? error.message : error);
+    console.error("[settings/account/business POST]", error instanceof Error ? error.message : error);
     return NextResponse.json({ success: false, error: "Failed to save business profile" }, { status: 500 });
   }
 }

@@ -1,6 +1,6 @@
 /**
- * Story 124 — license plans, licensee profile, one-time representative
- * verification, and immutable License Agreement acceptances.
+ * Story 124 — license plans, Account → Business profile, purchase email
+ * verification (account identity), and immutable License Agreement acceptances.
  *
  * Payments themselves stay in payments.ts. This module never talks to Stripe.
  */
@@ -10,19 +10,25 @@ import { getCurrentRepoGuid, getCurrentUsername } from "./repo-context.js";
 import { getUsersListBody } from "./admin-users.js";
 import yaml from "js-yaml";
 
+const OTP_TTL_MS = 10 * 60 * 1000;
+const OTP_RESEND_MIN_MS = 60 * 1000;
+const OTP_MAX_ATTEMPTS = 5;
+
 export class LicenseCommerceError extends Error {
   constructor(
     public readonly code:
       | "plan_not_found"
       | "plan_inactive"
       | "profile_required"
+      | "business_incomplete"
       | "not_verified"
       | "otp_invalid"
       | "otp_expired"
       | "acceptance_not_found"
       | "acceptance_mismatch"
       | "user_not_found"
-      | "provider_unavailable",
+      | "provider_unavailable"
+      | "email_not_configured",
     message: string,
   ) {
     super(message);
@@ -38,6 +44,7 @@ export interface LicensePlan {
   amountMinor: number;
   currency: string;
   licensePeriod: string;
+  licensePeriodMonths: number;
   territory: string;
   active: boolean;
 }
@@ -49,9 +56,15 @@ export interface LicenseeProfile {
   state: string | null;
   filingId: string | null;
   businessAddress: string | null;
-  representativeFullName: string;
-  representativeEmail: string;
+  city: string | null;
+  postalCode: string | null;
+  businessEmail: string | null;
+}
+
+export interface PurchaseEmailVerification {
+  accountEmail: string;
   verifiedAt: string | null;
+  contextHash: string | null;
 }
 
 export interface LicenseAgreementVersion {
@@ -84,17 +97,21 @@ export interface LicenseAcceptanceSnapshot {
   planId: string;
   userCount: number;
   licensePeriod: string;
+  licensePeriodMonths: number;
   territory: string;
   amountMinor: number;
   currency: string;
+  paymentMethod: string;
   legalBusinessName: string;
   country: string;
   state: string | null;
   filingId: string | null;
   businessAddress: string | null;
-  representativeFullName: string;
-  representativeEmail: string;
-  verifiedAt: string;
+  city: string | null;
+  postalCode: string | null;
+  businessEmail: string | null;
+  verifiedEmail: string;
+  emailVerifiedAt: string;
   accountUsername: string;
   accountRepoGuid: string;
 }
@@ -103,13 +120,88 @@ export function sha256Hex(value: string): string {
   return createHash("sha256").update(value, "utf8").digest("hex");
 }
 
-export function declarationText(snapshot: Pick<
-  LicenseAcceptanceSnapshot,
-  "legalBusinessName" | "agreementVersion" | "productName" | "userCount" | "licensePeriod" | "amountMinor" | "currency"
->): string {
-  const price = (snapshot.amountMinor / 100).toFixed(2);
-  return `I declare that I am authorized to act on behalf of ${snapshot.legalBusinessName} and, on its behalf, accept License Agreement ${snapshot.agreementVersion} for ${snapshot.productName}, covering ${snapshot.userCount} users for ${snapshot.licensePeriod}, for a license fee of ${price} ${snapshot.currency}.`;
+export function formatUserCountLabel(userCount: number): string {
+  return userCount === 1 ? "1 user" : `${userCount} users`;
 }
+
+export function declarationText(
+  snapshot: Pick<
+    LicenseAcceptanceSnapshot,
+    "legalBusinessName" | "agreementVersion" | "productName" | "userCount" | "amountMinor" | "currency"
+  >,
+): string {
+  const price = (snapshot.amountMinor / 100).toFixed(2);
+  const users = formatUserCountLabel(snapshot.userCount);
+  return `I declare that I am authorized to act on behalf of ${snapshot.legalBusinessName} and, on its behalf, accept License Agreement ${snapshot.agreementVersion} for ${snapshot.productName}, covering ${users} for 1 month, for a license fee of ${price} ${snapshot.currency}.`;
+}
+
+export function isBusinessProfileComplete(profile: LicenseeProfile | null): profile is LicenseeProfile {
+  if (!profile) return false;
+  return profile.legalBusinessName.trim().length > 0 && profile.country.trim().length > 0;
+}
+
+export function buildPurchaseContextHash(planId: string, profile: LicenseeProfile): string {
+  return sha256Hex(
+    JSON.stringify({
+      planId,
+      legalBusinessName: profile.legalBusinessName,
+      country: profile.country,
+      state: profile.state,
+      filingId: profile.filingId,
+      businessAddress: profile.businessAddress,
+      city: profile.city,
+      postalCode: profile.postalCode,
+      businessEmail: profile.businessEmail,
+    }),
+  );
+}
+
+export async function resolveAccountEmailForRepoGuid(repoGuid: string): Promise<string> {
+  const body = await getUsersListBody();
+  if (!body) {
+    throw new LicenseCommerceError("user_not_found", "users-list not found.");
+  }
+  const parsed = yaml.load(body) as {
+    users?: Array<{ repoGuid?: string; email?: string }>;
+  };
+  const match = parsed.users?.find((u) => u.repoGuid === repoGuid);
+  const email = match?.email?.trim().toLowerCase();
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new LicenseCommerceError("user_not_found", "Account email not found for this user.");
+  }
+  return email;
+}
+
+async function invalidatePurchaseVerification(client: import("pg").PoolClient, repoGuid: string): Promise<void> {
+  await client.query(`DELETE FROM cp_purchase_email_verifications WHERE repo_guid = $1`, [repoGuid]);
+}
+
+function mapProfileRow(r: {
+  repo_guid: string;
+  legal_business_name: string;
+  country: string;
+  state: string | null;
+  filing_id: string | null;
+  business_address: string | null;
+  city: string | null;
+  postal_code: string | null;
+  business_email: string | null;
+}): LicenseeProfile {
+  return {
+    repoGuid: r.repo_guid,
+    legalBusinessName: r.legal_business_name,
+    country: r.country,
+    state: r.state,
+    filingId: r.filing_id,
+    businessAddress: r.business_address,
+    city: r.city,
+    postalCode: r.postal_code,
+    businessEmail: r.business_email,
+  };
+}
+
+const PROFILE_SELECT = `repo_guid, legal_business_name, country, state, filing_id, business_address,
+                        city, postal_code, business_email`;
 
 export async function listActiveLicensePlans(): Promise<LicensePlan[]> {
   return withPostgresClient(async (client) => {
@@ -121,11 +213,12 @@ export async function listActiveLicensePlans(): Promise<LicensePlan[]> {
       amount_minor: string;
       currency: string;
       license_period: string;
+      license_period_months: number;
       territory: string;
       active: boolean;
     }>(
       `SELECT id, product_name, product_version, user_count, amount_minor, currency,
-              license_period, territory, active
+              license_period, license_period_months, territory, active
        FROM cp_license_plans
        WHERE active = true
        ORDER BY user_count ASC`,
@@ -144,11 +237,12 @@ export async function getLicensePlan(planId: string): Promise<LicensePlan> {
       amount_minor: string;
       currency: string;
       license_period: string;
+      license_period_months: number;
       territory: string;
       active: boolean;
     }>(
       `SELECT id, product_name, product_version, user_count, amount_minor, currency,
-              license_period, territory, active
+              license_period, license_period_months, territory, active
        FROM cp_license_plans
        WHERE id = $1
        LIMIT 1`,
@@ -169,6 +263,7 @@ function mapPlan(r: {
   amount_minor: string;
   currency: string;
   license_period: string;
+  license_period_months: number;
   territory: string;
   active: boolean;
 }): LicensePlan {
@@ -180,6 +275,7 @@ function mapPlan(r: {
     amountMinor: Number(r.amount_minor),
     currency: r.currency,
     licensePeriod: r.license_period,
+    licensePeriodMonths: Number(r.license_period_months ?? 1),
     territory: r.territory,
     active: r.active,
   };
@@ -214,8 +310,7 @@ export async function getCurrentLicenseAgreement(): Promise<LicenseAgreementVers
 }
 
 export async function getLicenseeProfileForCurrentUser(): Promise<LicenseeProfile | null> {
-  const repoGuid = getCurrentRepoGuid();
-  return getLicenseeProfileByRepoGuid(repoGuid);
+  return getLicenseeProfileByRepoGuid(getCurrentRepoGuid());
 }
 
 export async function getLicenseeProfileByRepoGuid(repoGuid: string): Promise<LicenseeProfile | null> {
@@ -227,30 +322,18 @@ export async function getLicenseeProfileByRepoGuid(repoGuid: string): Promise<Li
       state: string | null;
       filing_id: string | null;
       business_address: string | null;
-      representative_full_name: string;
-      representative_email: string;
-      verified_at: string | null;
+      city: string | null;
+      postal_code: string | null;
+      business_email: string | null;
     }>(
-      `SELECT repo_guid, legal_business_name, country, state, filing_id, business_address,
-              representative_full_name, representative_email, verified_at
+      `SELECT ${PROFILE_SELECT}
        FROM cp_licensee_profiles
        WHERE repo_guid = $1
        LIMIT 1`,
       [repoGuid],
     );
     if (rows.length === 0) return null;
-    const r = rows[0];
-    return {
-      repoGuid: r.repo_guid,
-      legalBusinessName: r.legal_business_name,
-      country: r.country,
-      state: r.state,
-      filingId: r.filing_id,
-      businessAddress: r.business_address,
-      representativeFullName: r.representative_full_name,
-      representativeEmail: r.representative_email,
-      verifiedAt: r.verified_at,
-    };
+    return mapProfileRow(rows[0]);
   });
 }
 
@@ -260,8 +343,9 @@ export interface SaveLicenseeProfileInput {
   state?: string | null;
   filingId?: string | null;
   businessAddress?: string | null;
-  representativeFullName: string;
-  representativeEmail: string;
+  city?: string | null;
+  postalCode?: string | null;
+  businessEmail?: string | null;
 }
 
 function requireNonEmpty(value: unknown, label: string): string {
@@ -271,24 +355,17 @@ function requireNonEmpty(value: unknown, label: string): string {
   return value.trim();
 }
 
-function normalizeEmail(value: string): string {
-  return value.trim().toLowerCase();
-}
-
 export async function saveLicenseeProfile(input: SaveLicenseeProfileInput): Promise<LicenseeProfile> {
   const repoGuid = getCurrentRepoGuid();
-  const legalBusinessName = requireNonEmpty(input.legalBusinessName, "Legal business name");
+  const legalBusinessName = requireNonEmpty(input.legalBusinessName, "Company / legal name");
   const country = requireNonEmpty(input.country, "Country");
-  const representativeFullName = requireNonEmpty(input.representativeFullName, "Representative name");
-  const representativeEmail = normalizeEmail(requireNonEmpty(input.representativeEmail, "Representative email"));
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(representativeEmail)) {
-    throw new LicenseCommerceError("profile_required", "Representative email is invalid.");
+  const businessEmail = input.businessEmail?.trim() || null;
+  if (businessEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(businessEmail)) {
+    throw new LicenseCommerceError("profile_required", "Business email is invalid.");
   }
 
-  const existing = await getLicenseeProfileByRepoGuid(repoGuid);
-  const emailChanged = !existing || existing.representativeEmail.toLowerCase() !== representativeEmail;
-
   return withPostgresClient(async (client) => {
+    await invalidatePurchaseVerification(client, repoGuid);
     const { rows } = await client.query<{
       repo_guid: string;
       legal_business_name: string;
@@ -296,26 +373,25 @@ export async function saveLicenseeProfile(input: SaveLicenseeProfileInput): Prom
       state: string | null;
       filing_id: string | null;
       business_address: string | null;
-      representative_full_name: string;
-      representative_email: string;
-      verified_at: string | null;
+      city: string | null;
+      postal_code: string | null;
+      business_email: string | null;
     }>(
       `INSERT INTO cp_licensee_profiles (
          repo_guid, legal_business_name, country, state, filing_id, business_address,
-         representative_full_name, representative_email, verified_at, updated_at
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8, CASE WHEN $9 THEN NULL ELSE $10::timestamptz END, now())
+         city, postal_code, business_email, updated_at
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, now())
        ON CONFLICT (repo_guid) DO UPDATE SET
          legal_business_name = EXCLUDED.legal_business_name,
          country = EXCLUDED.country,
          state = EXCLUDED.state,
          filing_id = EXCLUDED.filing_id,
          business_address = EXCLUDED.business_address,
-         representative_full_name = EXCLUDED.representative_full_name,
-         representative_email = EXCLUDED.representative_email,
-         verified_at = CASE WHEN $9 THEN NULL ELSE cp_licensee_profiles.verified_at END,
+         city = EXCLUDED.city,
+         postal_code = EXCLUDED.postal_code,
+         business_email = EXCLUDED.business_email,
          updated_at = now()
-       RETURNING repo_guid, legal_business_name, country, state, filing_id, business_address,
-                 representative_full_name, representative_email, verified_at`,
+       RETURNING ${PROFILE_SELECT}`,
       [
         repoGuid,
         legalBusinessName,
@@ -323,87 +399,161 @@ export async function saveLicenseeProfile(input: SaveLicenseeProfileInput): Prom
         input.state?.trim() || null,
         input.filingId?.trim() || null,
         input.businessAddress?.trim() || null,
-        representativeFullName,
-        representativeEmail,
-        emailChanged,
-        existing?.verifiedAt ?? null,
+        input.city?.trim() || null,
+        input.postalCode?.trim() || null,
+        businessEmail,
       ],
     );
-    const r = rows[0];
+    return mapProfileRow(rows[0]);
+  });
+}
+
+export async function getPurchaseVerificationForPlan(planId: string): Promise<PurchaseEmailVerification | null> {
+  const repoGuid = getCurrentRepoGuid();
+  const profile = await getLicenseeProfileByRepoGuid(repoGuid);
+  if (!profile || !isBusinessProfileComplete(profile)) {
+    return null;
+  }
+  const contextHash = buildPurchaseContextHash(planId, profile);
+  const accountEmail = await resolveAccountEmailForRepoGuid(repoGuid);
+
+  return withPostgresClient(async (client) => {
+    const { rows } = await client.query<{
+      account_email: string;
+      context_hash: string;
+      verified_at: string | null;
+    }>(
+      `SELECT account_email, context_hash, verified_at
+       FROM cp_purchase_email_verifications
+       WHERE repo_guid = $1
+       LIMIT 1`,
+      [repoGuid],
+    );
+    if (rows.length === 0) {
+      return { accountEmail, verifiedAt: null, contextHash: null };
+    }
+    const row = rows[0];
+    if (row.context_hash !== contextHash || row.account_email !== accountEmail) {
+      return { accountEmail, verifiedAt: null, contextHash: null };
+    }
     return {
-      repoGuid: r.repo_guid,
-      legalBusinessName: r.legal_business_name,
-      country: r.country,
-      state: r.state,
-      filingId: r.filing_id,
-      businessAddress: r.business_address,
-      representativeFullName: r.representative_full_name,
-      representativeEmail: r.representative_email,
-      verifiedAt: r.verified_at,
+      accountEmail: row.account_email,
+      verifiedAt: row.verified_at,
+      contextHash: row.context_hash,
     };
   });
 }
 
-export interface RequestRepresentativeOtpResult {
+export interface RequestPurchaseEmailOtpResult {
   email: string;
   expiresAt: string;
   /** Present only in local CHAD — no mailer exists in this repo. */
   localDevCode?: string;
+  emailConfigured: boolean;
 }
 
-export async function requestRepresentativeOtp(): Promise<RequestRepresentativeOtpResult> {
+export async function requestPurchaseEmailOtp(planId: unknown): Promise<RequestPurchaseEmailOtpResult> {
   const repoGuid = getCurrentRepoGuid();
-  const profile = await getLicenseeProfileByRepoGuid(repoGuid);
-  if (!profile) {
-    throw new LicenseCommerceError("profile_required", "Save company and representative details first.");
+  if (typeof planId !== "string" || !planId.trim()) {
+    throw new LicenseCommerceError("plan_not_found", "Select a license plan.");
   }
+  await getLicensePlan(planId.trim());
+  const profile = await getLicenseeProfileByRepoGuid(repoGuid);
+  if (!isBusinessProfileComplete(profile)) {
+    throw new LicenseCommerceError(
+      "business_incomplete",
+      "Complete business details in Account → Business before verification.",
+    );
+  }
+  const accountEmail = await resolveAccountEmailForRepoGuid(repoGuid);
+  const contextHash = buildPurchaseContextHash(planId.trim(), profile);
+  const chadEnv = process.env.CHAD_ENVIRONMENT || "local";
+  const emailConfigured = chadEnv === "local";
+  if (!emailConfigured) {
+    throw new LicenseCommerceError(
+      "email_not_configured",
+      "Email verification is not configured — no mail provider is available in this environment.",
+    );
+  }
+
   const code = String(randomInt(100000, 1000000));
   const codeHash = sha256Hex(code);
-  const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+  const expiresAt = new Date(Date.now() + OTP_TTL_MS).toISOString();
 
-  await withPostgresClient((client) =>
-    client.query(
-      `INSERT INTO cp_licensee_email_otp (repo_guid, email, code_hash, expires_at, attempts)
-       VALUES ($1, $2, $3, $4, 0)
+  await withPostgresClient(async (client) => {
+    const { rows } = await client.query<{ last_sent_at: string | null }>(
+      `SELECT last_sent_at FROM cp_purchase_email_verifications WHERE repo_guid = $1 LIMIT 1`,
+      [repoGuid],
+    );
+    if (rows[0]?.last_sent_at) {
+      const elapsed = Date.now() - new Date(rows[0].last_sent_at).getTime();
+      if (elapsed < OTP_RESEND_MIN_MS) {
+        throw new LicenseCommerceError("otp_invalid", "Wait before requesting another code.");
+      }
+    }
+
+    await client.query(
+      `INSERT INTO cp_purchase_email_verifications (
+         repo_guid, account_email, context_hash, code_hash, expires_at, attempts,
+         verified_at, last_sent_at, updated_at
+       ) VALUES ($1,$2,$3,$4,$5,0,NULL, now(), now())
        ON CONFLICT (repo_guid) DO UPDATE SET
-         email = EXCLUDED.email,
+         account_email = EXCLUDED.account_email,
+         context_hash = EXCLUDED.context_hash,
          code_hash = EXCLUDED.code_hash,
          expires_at = EXCLUDED.expires_at,
          attempts = 0,
-         created_at = now()`,
-      [repoGuid, profile.representativeEmail, codeHash, expiresAt],
-    ),
-  );
+         verified_at = NULL,
+         last_sent_at = now(),
+         updated_at = now()`,
+      [repoGuid, accountEmail, contextHash, codeHash, expiresAt],
+    );
+  });
 
-  const result: RequestRepresentativeOtpResult = {
-    email: profile.representativeEmail,
+  const result: RequestPurchaseEmailOtpResult = {
+    email: accountEmail,
     expiresAt,
+    emailConfigured,
   };
-  if ((process.env.CHAD_ENVIRONMENT || "local") === "local") {
+  if (chadEnv === "local") {
     result.localDevCode = code;
   }
   return result;
 }
 
-export async function confirmRepresentativeOtp(code: unknown): Promise<LicenseeProfile> {
+/** @deprecated Use requestPurchaseEmailOtp */
+export async function requestRepresentativeOtp(planId?: unknown): Promise<RequestPurchaseEmailOtpResult> {
+  return requestPurchaseEmailOtp(typeof planId === "string" ? planId : "");
+}
+
+export async function confirmPurchaseEmailOtp(
+  planId: unknown,
+  code: unknown,
+): Promise<PurchaseEmailVerification> {
   const repoGuid = getCurrentRepoGuid();
+  if (typeof planId !== "string" || !planId.trim()) {
+    throw new LicenseCommerceError("plan_not_found", "Select a license plan.");
+  }
   if (typeof code !== "string" || !/^\d{6}$/.test(code.trim())) {
     throw new LicenseCommerceError("otp_invalid", "Enter the 6-digit verification code.");
   }
   const profile = await getLicenseeProfileByRepoGuid(repoGuid);
-  if (!profile) {
-    throw new LicenseCommerceError("profile_required", "Save company and representative details first.");
+  if (!isBusinessProfileComplete(profile)) {
+    throw new LicenseCommerceError("business_incomplete", "Complete business details first.");
   }
+  const accountEmail = await resolveAccountEmailForRepoGuid(repoGuid);
+  const contextHash = buildPurchaseContextHash(planId.trim(), profile);
 
   return withPostgresClient(async (client) => {
     const { rows } = await client.query<{
-      email: string;
-      code_hash: string;
-      expires_at: string;
+      account_email: string;
+      context_hash: string;
+      code_hash: string | null;
+      expires_at: string | null;
       attempts: number;
     }>(
-      `SELECT email, code_hash, expires_at, attempts
-       FROM cp_licensee_email_otp
+      `SELECT account_email, context_hash, code_hash, expires_at, attempts
+       FROM cp_purchase_email_verifications
        WHERE repo_guid = $1
        LIMIT 1`,
       [repoGuid],
@@ -412,59 +562,50 @@ export async function confirmRepresentativeOtp(code: unknown): Promise<LicenseeP
       throw new LicenseCommerceError("otp_invalid", "No verification code is pending.");
     }
     const otp = rows[0];
-    if (otp.attempts >= 5) {
+    const expiresAt = otp.expires_at;
+    if (!otp.code_hash || !expiresAt) {
+      throw new LicenseCommerceError("otp_invalid", "No verification code is pending.");
+    }
+    if (otp.attempts >= OTP_MAX_ATTEMPTS) {
       throw new LicenseCommerceError("otp_invalid", "Too many attempts — request a new code.");
     }
-    if (new Date(otp.expires_at).getTime() < Date.now()) {
+    if (new Date(expiresAt).getTime() < Date.now()) {
       throw new LicenseCommerceError("otp_expired", "Verification code expired — request a new one.");
     }
-    if (otp.email !== profile.representativeEmail) {
-      throw new LicenseCommerceError("otp_invalid", "Email changed — request a new code.");
+    if (otp.account_email !== accountEmail || otp.context_hash !== contextHash) {
+      throw new LicenseCommerceError("otp_invalid", "Business or account context changed — request a new code.");
     }
     if (otp.code_hash !== sha256Hex(code.trim())) {
       await client.query(
-        `UPDATE cp_licensee_email_otp SET attempts = attempts + 1 WHERE repo_guid = $1`,
+        `UPDATE cp_purchase_email_verifications SET attempts = attempts + 1, updated_at = now() WHERE repo_guid = $1`,
         [repoGuid],
       );
       throw new LicenseCommerceError("otp_invalid", "Verification code is incorrect.");
     }
 
-    const { rows: updated } = await client.query<{
-      repo_guid: string;
-      legal_business_name: string;
-      country: string;
-      state: string | null;
-      filing_id: string | null;
-      business_address: string | null;
-      representative_full_name: string;
-      representative_email: string;
-      verified_at: string | null;
-    }>(
-      `UPDATE cp_licensee_profiles
-       SET verified_at = now(), updated_at = now()
+    const { rows: updated } = await client.query<{ verified_at: string }>(
+      `UPDATE cp_purchase_email_verifications
+       SET verified_at = now(), code_hash = NULL, expires_at = NULL, updated_at = now()
        WHERE repo_guid = $1
-       RETURNING repo_guid, legal_business_name, country, state, filing_id, business_address,
-                 representative_full_name, representative_email, verified_at`,
+       RETURNING verified_at`,
       [repoGuid],
     );
-    await client.query(`DELETE FROM cp_licensee_email_otp WHERE repo_guid = $1`, [repoGuid]);
-    const r = updated[0];
     return {
-      repoGuid: r.repo_guid,
-      legalBusinessName: r.legal_business_name,
-      country: r.country,
-      state: r.state,
-      filingId: r.filing_id,
-      businessAddress: r.business_address,
-      representativeFullName: r.representative_full_name,
-      representativeEmail: r.representative_email,
-      verifiedAt: r.verified_at,
+      accountEmail,
+      verifiedAt: updated[0].verified_at,
+      contextHash,
     };
   });
 }
 
+/** @deprecated Use confirmPurchaseEmailOtp */
+export async function confirmRepresentativeOtp(code: unknown): Promise<PurchaseEmailVerification> {
+  return confirmPurchaseEmailOtp("", code);
+}
+
 export async function createLicenseAcceptance(input: {
   planId: unknown;
+  paymentMethod?: unknown;
   ip?: string | null;
   userAgent?: string | null;
 }): Promise<{ acceptance: LicenseAcceptance; declaration: string }> {
@@ -478,17 +619,26 @@ export async function createLicenseAcceptance(input: {
     throw new LicenseCommerceError("plan_inactive", "That license plan is not active.");
   }
   const profile = await getLicenseeProfileByRepoGuid(repoGuid);
-  if (!profile) {
-    throw new LicenseCommerceError("profile_required", "Save company and representative details first.");
+  if (!isBusinessProfileComplete(profile)) {
+    throw new LicenseCommerceError(
+      "business_incomplete",
+      "Complete business details in Account → Business before accepting the license.",
+    );
   }
-  if (!profile.verifiedAt) {
-    throw new LicenseCommerceError("not_verified", "Verify the representative email before accepting the license.");
+  const verification = await getPurchaseVerificationForPlan(plan.id);
+  if (!verification?.verifiedAt) {
+    throw new LicenseCommerceError("not_verified", "Verify your account email before accepting the license.");
   }
   const agreement = await getCurrentLicenseAgreement();
   const liveHash = sha256Hex(agreement.body);
   if (liveHash !== agreement.bodySha256) {
     throw new LicenseCommerceError("acceptance_mismatch", "License Agreement hash does not match stored body.");
   }
+
+  const paymentMethod =
+    typeof input.paymentMethod === "string" && input.paymentMethod.trim()
+      ? input.paymentMethod.trim()
+      : "stripe";
 
   const snapshot: LicenseAcceptanceSnapshot = {
     agreementVersion: agreement.version,
@@ -500,17 +650,21 @@ export async function createLicenseAcceptance(input: {
     planId: plan.id,
     userCount: plan.userCount,
     licensePeriod: plan.licensePeriod,
+    licensePeriodMonths: plan.licensePeriodMonths,
     territory: plan.territory,
     amountMinor: plan.amountMinor,
     currency: plan.currency,
+    paymentMethod,
     legalBusinessName: profile.legalBusinessName,
     country: profile.country,
     state: profile.state,
     filingId: profile.filingId,
     businessAddress: profile.businessAddress,
-    representativeFullName: profile.representativeFullName,
-    representativeEmail: profile.representativeEmail,
-    verifiedAt: profile.verifiedAt,
+    city: profile.city,
+    postalCode: profile.postalCode,
+    businessEmail: profile.businessEmail,
+    verifiedEmail: verification.accountEmail,
+    emailVerifiedAt: verification.verifiedAt,
     accountUsername: username,
     accountRepoGuid: repoGuid,
   };
@@ -603,4 +757,8 @@ export async function resolveUsernameByRepoGuid(repoGuid: string): Promise<strin
     throw new LicenseCommerceError("user_not_found", "User not found.");
   }
   return match.username;
+}
+
+export async function resolveAccountEmailForCurrentUser(): Promise<string> {
+  return resolveAccountEmailForRepoGuid(getCurrentRepoGuid());
 }
