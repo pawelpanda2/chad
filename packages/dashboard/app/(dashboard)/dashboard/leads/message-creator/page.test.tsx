@@ -10,10 +10,11 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { DashboardHistoryProvider } from "@/components/shared/dashboard-history-provider";
 import MessageCreatorPageImpl from "./page.js";
 
+let searchParamsValue = "leadName=Lead+A&leadLoca=01";
 vi.mock("next/navigation", () => ({
   usePathname: () => "/dashboard/leads/message-creator",
   useRouter: () => ({ push: vi.fn(), back: vi.fn(), forward: vi.fn() }),
-  useSearchParams: () => new URLSearchParams("leadName=Lead+A&leadLoca=01"),
+  useSearchParams: () => new URLSearchParams(searchParamsValue),
 }));
 
 function MessageCreatorPage() {
@@ -26,6 +27,7 @@ function MessageCreatorPage() {
 
 afterEach(() => {
   cleanup();
+  searchParamsValue = "leadName=Lead+A&leadLoca=01";
 });
 
 const BASE_BOOTSTRAP = {
@@ -136,5 +138,39 @@ describe("Msg Creator composer — real renderer", () => {
 
     const textarea = screen.getByLabelText("New entry");
     expect(textarea.tagName).toBe("TEXTAREA");
+  });
+});
+
+describe("Msg Creator lead picker — no per-lead labels, content-width list", () => {
+  it("lists lead names with no 'Has contacts'/'Open →' label and a content-width, capped list", async () => {
+    searchParamsValue = "";
+    const leads = [
+      { leadKey: "01", leadName: "26-08-17_pn_Short", loca: "01", hasContacts: true },
+      { leadKey: "02", leadName: "26-08-17_pn_NoContacts", loca: "02", hasContacts: false },
+    ];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(async (url: string) => {
+        if (typeof url === "string" && url.startsWith("/api/leads-dashboard")) {
+          return { ok: true, json: async () => leads };
+        }
+        return { ok: false, json: async () => ({ error: "unhandled in test" }) };
+      })
+    );
+
+    await act(async () => {
+      render(<MessageCreatorPage />);
+    });
+
+    await waitFor(() => expect(screen.getByText("26-08-17_pn_Short")).toBeTruthy());
+    expect(screen.getByText("26-08-17_pn_NoContacts")).toBeTruthy();
+    expect(screen.queryByText("Has contacts")).toBeNull();
+    expect(screen.queryByText("Open →")).toBeNull();
+
+    const list = screen.getByText("26-08-17_pn_Short").closest("ul")!;
+    expect(list.className).toContain("w-fit");
+    expect(list.className).toContain("max-w-[400px]");
+
+    vi.unstubAllGlobals();
   });
 });
