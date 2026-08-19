@@ -64,13 +64,26 @@ function BeeperContactsPageInner() {
 	const hasOpenConversation = !isGroups && Boolean(contactParam);
 
 	const updateUrl = useCallback(
-		(nextView: ViewTab, nextContact?: string, nextGroup?: string) => {
+		(nextView: ViewTab, nextContact?: string, nextGroup?: string, options?: { replace?: boolean }) => {
 			const params = new URLSearchParams();
 			if (nextView !== "conversations") params.set("tab", nextView);
 			if (nextContact) params.set("contact", nextContact);
 			if (nextGroup) params.set("group", nextGroup);
 			const qs = params.toString();
-			router.replace(`/dashboard/msg-automation/multiview${qs ? `?${qs}` : ""}`, { scroll: false });
+			const href = `/dashboard/msg-automation/multiview${qs ? `?${qs}` : ""}`;
+			// Story 127: tab changes and conversation selection are real
+			// conceptual navigation steps (Input 1.4 lists both explicitly) —
+			// `push` so `DashboardHistoryProvider`'s `↶`/`↷` (which delegate to
+			// real `router.back()`/`forward()`) actually have a browser
+			// session-history entry to land on. `replace` stays the default
+			// for non-step updates (the one-time default-group effect below,
+			// and group-filter changes — a refinement of the current view, not
+			// a new place, per the same Input 1.4 distinction).
+			if (options?.replace) {
+				router.replace(href, { scroll: false });
+			} else {
+				router.push(href, { scroll: false });
+			}
 		},
 		[router],
 	);
@@ -98,14 +111,14 @@ function BeeperContactsPageInner() {
 		fetch("/api/beeper-crm/groups/default")
 			.then((res) => (res.ok ? res.json() : null))
 			.then((data) => {
-				if (data?._id) updateUrl(view, contactParam, data._id);
+				if (data?._id) updateUrl(view, contactParam, data._id, { replace: true });
 			})
 			.catch(() => {});
 	}, []);
 
 	const handleGroupChange = useCallback(
 		(groupId: string | undefined) => {
-			updateUrl(view, undefined, groupId);
+			updateUrl(view, undefined, groupId, { replace: true });
 		},
 		[updateUrl, view],
 	);

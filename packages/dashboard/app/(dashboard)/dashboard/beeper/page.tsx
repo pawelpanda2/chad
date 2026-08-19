@@ -58,7 +58,15 @@ function BeeperPageInner() {
 			if (nextContact) params.set("contact", nextContact);
 			if (nextGroup) params.set("group", nextGroup);
 			const qs = params.toString();
-			router.replace(`/dashboard/beeper${qs ? `?${qs}` : ""}`, { scroll: false });
+			// Story 127: both call sites below are real conceptual navigation
+			// steps (tab change, conversation selection) — `push`, not
+			// `replace`, so each becomes a real browser session-history entry
+			// `DashboardHistoryProvider`'s `↶`/`↷` (which delegate to real
+			// `router.back()`/`forward()`) can actually land on. Same fix,
+			// same root cause, as `msg-automation/multiview/page.tsx`'s
+			// `updateUrl` — this page renders the identical
+			// `BeeperConversationsView` and had the identical bug.
+			router.push(`/dashboard/beeper${qs ? `?${qs}` : ""}`, { scroll: false });
 		},
 		[router],
 	);

@@ -2,6 +2,9 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import { useDebugSettings } from '@/lib/dev-panel/use-debug-settings';
+import { useIsLocalRuntime } from '@/lib/dev-panel/use-is-local-runtime';
+import { formatNavigationHistorySnapshot } from '@/lib/dev-panel/format-navigation-history';
+import { getActiveNavigationHistorySnapshot, clearActiveNavigationHistory } from '@/components/shared/dashboard-history-provider';
 
 type ChadPostgresOption = 'Server PostgreSQL' | 'Offline backup — read only';
 type BeeperMongoOption = 'Server Mongo' | 'Local Mongo';
@@ -176,26 +179,76 @@ export function DevPanelDataSourceTab() {
   );
 }
 
-/** `Debug` sub-tab — one toggle so far: LOCAL-only navigation-history combobox visibility. */
+/**
+ * `Debug` sub-tab — Story 126's combobox-visibility toggle, plus Story 127's
+ * Copy (clipboard snapshot of the exact stack `↶`/`↷`/the combobox use) and
+ * Clear (resets that stack to just the current page — never touches `←`,
+ * which is a separate stateless resolver, see `lib/dashboard-hierarchy.ts`).
+ * Copy/Clear read the live stack via `dashboard-history-provider.tsx`'s
+ * module bridge (Dev Panel mounts outside `DashboardHistoryProvider`'s own
+ * tree, so it can't use the `useDashboardHistory()` hook directly).
+ */
 function DevPanelDebugTab() {
   const [settings, setSettings] = useDebugSettings();
+  const isLocal = useIsLocalRuntime();
+  const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
+
+  const handleCopy = useCallback(async () => {
+    const snapshot = getActiveNavigationHistorySnapshot();
+    if (!snapshot) {
+      setCopyFeedback('No active page');
+    } else {
+      try {
+        await navigator.clipboard.writeText(formatNavigationHistorySnapshot(snapshot));
+        setCopyFeedback('Copied!');
+      } catch {
+        setCopyFeedback('Copy failed');
+      }
+    }
+    setTimeout(() => setCopyFeedback(null), 1500);
+  }, []);
+
+  const handleClear = useCallback(() => {
+    clearActiveNavigationHistory();
+  }, []);
 
   return (
     <div className="dev-tab-section">
       <div className="dev-section-title">🐞 Settings — debug</div>
-      <label
-        className="dev-radio-row"
-        style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 4px', cursor: 'pointer', fontSize: '12px' }}
-      >
-        <input
-          type="checkbox"
-          checked={settings.navigationHistoryVisible}
-          onChange={(e) => setSettings({ ...settings, navigationHistoryVisible: e.target.checked })}
-          data-testid="dev-panel-debug-nav-history-toggle"
-          style={{ cursor: 'pointer', accentColor: '#007acc' }}
-        />
-        <span>Show navigation history debug combobox</span>
-      </label>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+        <label
+          className="dev-radio-row"
+          style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 4px', cursor: 'pointer', fontSize: '12px' }}
+        >
+          <input
+            type="checkbox"
+            checked={settings.navigationHistoryVisible}
+            onChange={(e) => setSettings({ ...settings, navigationHistoryVisible: e.target.checked })}
+            data-testid="dev-panel-debug-nav-history-toggle"
+            style={{ cursor: 'pointer', accentColor: '#007acc' }}
+          />
+          <span>Show navigation history debug combobox</span>
+        </label>
+        <button
+          type="button"
+          className="dev-btn"
+          onClick={handleCopy}
+          title="Copy the exact ↶/↷ navigation history to clipboard"
+          data-testid="dev-panel-debug-nav-history-copy"
+        >
+          {copyFeedback ?? 'Copy'}
+        </button>
+        <button
+          type="button"
+          className="dev-btn"
+          onClick={handleClear}
+          disabled={!isLocal}
+          title={isLocal ? 'Reset ↶/↷ navigation history to just the current page' : 'LOCAL only'}
+          data-testid="dev-panel-debug-nav-history-clear"
+        >
+          Clear
+        </button>
+      </div>
     </div>
   );
 }

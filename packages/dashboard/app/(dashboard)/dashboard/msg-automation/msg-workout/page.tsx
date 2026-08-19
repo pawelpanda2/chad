@@ -29,12 +29,25 @@ function MsgAutoMsgWorkoutPageInner() {
   const hasOpenConversation = Boolean(contactParam);
 
   const updateUrl = useCallback(
-    (nextContact?: string, nextGroup?: string) => {
+    (nextContact?: string, nextGroup?: string, options?: { replace?: boolean }) => {
       const params = new URLSearchParams();
       if (nextContact) params.set("contact", nextContact);
       if (nextGroup) params.set("group", nextGroup);
       const qs = params.toString();
-      router.replace(`/dashboard/msg-automation/msg-workout${qs ? `?${qs}` : ""}`, { scroll: false });
+      const href = `/dashboard/msg-automation/msg-workout${qs ? `?${qs}` : ""}`;
+      // Story 127: conversation selection is a real conceptual navigation
+      // step — `push`, not `replace`, so `DashboardHistoryProvider`'s
+      // `↶`/`↷` (real `router.back()`/`forward()`) have a browser
+      // session-history entry to land on. Same fix, same root cause, as
+      // `msg-automation/multiview/page.tsx` and `beeper/page.tsx` — this
+      // page renders the same `MsgWorkoutReviewView`/conversation-select
+      // shape. `replace` stays default for non-step updates (the one-time
+      // default-group effect below, and group-filter changes).
+      if (options?.replace) {
+        router.replace(href, { scroll: false });
+      } else {
+        router.push(href, { scroll: false });
+      }
     },
     [router]
   );
@@ -51,7 +64,7 @@ function MsgAutoMsgWorkoutPageInner() {
     fetch("/api/beeper-crm/groups/default")
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        if (data?._id) updateUrl(contactParam, data._id);
+        if (data?._id) updateUrl(contactParam, data._id, { replace: true });
       })
       .catch(() => {});
   }, []);
@@ -62,7 +75,7 @@ function MsgAutoMsgWorkoutPageInner() {
   );
 
   const handleGroupChange = useCallback(
-    (groupId: string | undefined) => updateUrl(undefined, groupId),
+    (groupId: string | undefined) => updateUrl(undefined, groupId, { replace: true }),
     [updateUrl]
   );
 

@@ -238,10 +238,16 @@ function foldersParent(pathname: string): HierarchyParent {
 	const parts = cpRouteSlugToParts(slug);
 	if (!parts) return { href: "/dashboard/folders" };
 	const segments = parts.loca.split("/").filter(Boolean);
-	if (segments.length === 0) return { href: "/dashboard/folders" };
+	// The canonical repo-root item (no loca segments) is Folders' own top —
+	// its parent is Dashboards directly, NOT the bare `/dashboard/folders`
+	// route. That bare route is never a real, stable screen: it always
+	// resolves via `router.replace` to a canonical item URL (Story 127 —
+	// landing `←` there made hierarchy-back appear stuck, since every visit
+	// immediately redirects back to a canonical slug instead of staying put).
+	if (segments.length === 0) return { href: DASHBOARDS_ROOT };
 	const parentLoca = segments.slice(0, -1).join("/");
 	const parentAddress = parentLoca ? `${parts.repoGuid}/${parentLoca}` : parts.repoGuid;
-	return { href: cpAddressToFoldersHref(parentAddress) ?? "/dashboard/folders" };
+	return { href: cpAddressToFoldersHref(parentAddress) ?? DASHBOARDS_ROOT };
 }
 
 // ---------------------------------------------------------------------------

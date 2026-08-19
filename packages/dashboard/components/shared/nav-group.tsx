@@ -105,7 +105,7 @@ function HistoryDebugCombobox({ entries, index }: { entries: string[]; index: nu
 			onChange={() => snapBack((n) => n + 1)}
 			title="Navigation history debug (LOCAL only)"
 			aria-label="Navigation history debug"
-			className="h-7 shrink-0 rounded-md border bg-background px-1.5 text-xs text-muted-foreground"
+			className="h-7 w-[75px] shrink-0 truncate rounded-md border bg-background px-1.5 text-xs text-muted-foreground"
 		>
 			{entries.map((entry, i) => (
 				<option key={`${i}-${entry}`} value={i}>

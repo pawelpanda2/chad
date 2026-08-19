@@ -135,6 +135,8 @@ export default defineConfig({
       // params -> structural parent), replacing ~28 scattered per-page
       // `upLevel` props.
       "packages/dashboard/lib/dashboard-hierarchy.test.ts",
+      // Story 127 — Dev Panel Debug's Copy snapshot formatter (pure).
+      "packages/dashboard/lib/dev-panel/format-navigation-history.test.ts",
       // Msg Auto AI Prompts — kind labels / Category mapping (mockup v4).
       "packages/dashboard/components/msg-automation/ai-prompt-kind.test.ts",
       // AI Prompts editor workspace (manage/leads/auto/base tabs + persistent

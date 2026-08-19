@@ -98,6 +98,28 @@ describe("dynamic-segment prefix rules", () => {
   });
 });
 
+describe("Folders canonical GUID URLs (Story 127 regression — was stuck one hop short of Dashboards)", () => {
+  const REPO_GUID = "21d11bdc-f1f4-44d1-b61a-3fa6b039c641";
+
+  it("the exact reported canonical repo-root URL resolves straight to Dashboards, not the bare /dashboard/folders route", () => {
+    expect(parent(`/dashboard/folders/${REPO_GUID}`)).toBe("/dashboard");
+  });
+
+  it("a deeper Folders item strips one loca segment at a time", () => {
+    expect(parent(`/dashboard/folders/${REPO_GUID}-14-13`)).toBe(`/dashboard/folders/${REPO_GUID}-14`);
+  });
+
+  it("one loca segment left resolves to the canonical repo root, which itself resolves to Dashboards", () => {
+    const oneLevelUp = parent(`/dashboard/folders/${REPO_GUID}-14`);
+    expect(oneLevelUp).toBe(`/dashboard/folders/${REPO_GUID}`);
+    expect(parent(oneLevelUp!)).toBe("/dashboard");
+  });
+
+  it("the bare /dashboard/folders route (never a real screen) also goes straight to Dashboards", () => {
+    expect(parent("/dashboard/folders")).toBe("/dashboard");
+  });
+});
+
 describe("unmodeled routes fall back to Dashboards, never stay stuck disabled", () => {
   it("an unknown pathname still resolves to a working parent", () => {
     expect(parent("/dashboard/some-future-page")).toBe("/dashboard");

@@ -33,11 +33,14 @@ interface DashboardHistoryValue {
    * un-Back-able step in the shared history. See
    * `dashboard-history-reducer.ts`'s own doc comment for why this is an
    * explicit opt-in (Next gives no way to distinguish push from replace
-   * just by observing the resulting URL) — deliberately narrow: only this
-   * Story's Folders base-route canonicalization uses it, so every
+   * just by observing the resulting URL) — deliberately narrow: only
+   * Folders' base-route canonicalization uses it, so every other
    * pre-existing `router.replace` call site elsewhere in the dashboard
-   * (Beeper/multiview/msg-workout/ai-prompts pages) keeps behaving exactly
-   * as it did before, unaffected.
+   * (Beeper/msg-workout/ai-prompts pages, and Multiview's own
+   * non-step updates — its default-group effect and group-filter change,
+   * since Story 127 switched Multiview's actual navigation steps —
+   * tab change and conversation selection — to `router.push` instead) keeps
+   * behaving exactly as it did before, unaffected.
    */
   notifyReplace: () => void;
   /**
@@ -51,6 +54,15 @@ interface DashboardHistoryValue {
     index: number;
     currentEntry: string;
   };
+  /**
+   * Resets the tracked stack to `{ entries: [currentUrl], index: 0 }` —
+   * Story 127, Dev Panel Debug's "Clear". The current page/state stays on
+   * screen (this never navigates); only the `↶`/`↷` stack forgets prior
+   * steps, both immediately disabled since there's nothing to go back/
+   * forward to until new navigation happens. Does not touch `←` (hierarchy
+   * is a separate, stateless resolver — see `lib/dashboard-hierarchy.ts`).
+   */
+  clearHistory: () => void;
 }
 
 const DashboardHistoryContext = createContext<DashboardHistoryValue | null>(null);
@@ -76,6 +88,30 @@ const DashboardHistoryContext = createContext<DashboardHistoryValue | null>(null
  * for restoring across a fresh visit — that's a different, narrower
  * mechanism, not this stack.
  */
+/**
+ * Story 127 — Dev Panel (mounted at the ROOT layout, `app/layout.tsx`, as a
+ * sibling in the tree to `(dashboard)/layout.tsx` where this provider
+ * actually lives) needs to read/clear the SAME stack for its Debug tab's
+ * Copy/Clear buttons, but can't call `useDashboardHistory()` — it has no
+ * `DashboardHistoryProvider` ancestor. Since exactly one instance of this
+ * provider is ever mounted (it wraps the whole dashboard), a plain module
+ * singleton — kept in sync by the provider itself on every render — is
+ * simpler and safer here than restructuring the mount tree just to thread
+ * React Context across an unrelated boundary.
+ */
+let activeHistoryBridge: { entries: string[]; index: number; clearHistory: () => void } | null = null;
+
+/** Read-only snapshot for Dev Panel Debug's Copy button. `null` if no dashboard page is mounted. */
+export function getActiveNavigationHistorySnapshot(): { entries: string[]; index: number } | null {
+  if (!activeHistoryBridge) return null;
+  return { entries: activeHistoryBridge.entries, index: activeHistoryBridge.index };
+}
+
+/** For Dev Panel Debug's Clear button. No-op if no dashboard page is mounted. */
+export function clearActiveNavigationHistory(): void {
+  activeHistoryBridge?.clearHistory();
+}
+
 export function DashboardHistoryProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -154,6 +190,10 @@ export function DashboardHistoryProvider({ children }: { children: React.ReactNo
         index: s.index,
         currentEntry: s.entries[s.index],
       },
+      clearHistory: () => {
+        stateRef.current = initialHistoryStackState(url);
+        setTick((t) => t + 1);
+      },
     };
     // Re-derived whenever the URL changes OR the effect above finishes
     // mutating `stateRef` for that same URL (the `tick` bump — Story 126
@@ -165,6 +205,13 @@ export function DashboardHistoryProvider({ children }: { children: React.ReactNo
     // behind their real value).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [url, router, tick]);
+
+  useEffect(() => {
+    activeHistoryBridge = { entries: value.debug.entries, index: value.debug.index, clearHistory: value.clearHistory };
+    return () => {
+      activeHistoryBridge = null;
+    };
+  }, [value]);
 
   return <DashboardHistoryContext.Provider value={value}>{children}</DashboardHistoryContext.Provider>;
 }
