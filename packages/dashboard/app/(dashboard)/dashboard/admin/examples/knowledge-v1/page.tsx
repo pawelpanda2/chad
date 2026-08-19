@@ -62,7 +62,6 @@ export default function KnowledgeV1ExamplePage() {
   return (
     <DashboardPageShell
       title="Knowledge v1"
-      upLevel={{ href: "/dashboard/admin/examples", label: "Examples" }}
       contentClassName={FRAME_SECTION_GAP_CLASS}
     >
       <div className={`grid grid-cols-1 md:grid-cols-2 ${FRAME_SECTION_GAP_CLASS}`}>

@@ -169,7 +169,7 @@ function MsgWorkoutDetailsPageContent() {
       {/* Compact Header with back button and label. pl-14 reserves the
           top-left slot for the fixed menu handle. */}
       <div className="flex shrink-0 items-center gap-2 pl-14">
-        <NavGroup upLevel={{ onClick: handleBack, label: "Back to lead" }} />
+        <NavGroup />
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <FileText className="h-4 w-4 text-muted-foreground flex-shrink-0" />
           <span className="shrink-0 font-semibold">Msg Workout</span>

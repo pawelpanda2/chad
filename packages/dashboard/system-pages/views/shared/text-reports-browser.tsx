@@ -77,10 +77,6 @@ export function TextReportsBrowser({
       scroll={!selectedReport}
       padded={!selectedReport}
       contentClassName={!selectedReport ? FRAME_SECTION_GAP_CLASS : undefined}
-      upLevel={{
-        onClick: selectedReport ? onBackToList : onBackToMenu,
-        label: selectedReport ? "Back to reports list" : "Back to Views menu",
-      }}
       title={selectedReport ? selectedReport.name : title}
     >
       {selectedReport ? (

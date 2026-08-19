@@ -372,7 +372,7 @@ export function AiPromptManagedForm({ promptId }: AiPromptManagedFormProps) {
   return (
     <EditorPageShell>
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b px-2 py-1.5 pl-14">
-        <NavGroup upLevel={{ href: "/dashboard/msg-automation/ai-prompts", label: "AI Prompts" }} />
+        <NavGroup />
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-sm font-semibold">{name || "New prompt"}</h1>
         </div>

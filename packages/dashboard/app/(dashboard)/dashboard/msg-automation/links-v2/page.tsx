@@ -1180,7 +1180,6 @@ export default function LinksV2Page() {
   return (
     <DashboardPageShell
       title="Links V2"
-      upLevel={{ href: "/dashboard/msg-automation", label: "Msg Auto" }}
       scroll={false}
       padded={false}
       toolbarSecondRow={

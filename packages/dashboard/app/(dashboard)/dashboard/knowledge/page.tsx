@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { RefreshCw } from "lucide-react";
 import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
+import { HubGrid, HubTile } from "@/components/shared/hub-grid";
 import { ErrorBox } from "@/components/shared/error-box";
 import { cpAddressToKnowledgeHref } from "@/lib/cp-address/route-codec";
 
@@ -121,11 +122,11 @@ function CategoryGrid({
 }) {
   if (categories.length === 0) return null;
   return (
-    <div className="grid grid-cols-4 gap-2">
+    <HubGrid>
       {categories.map((category) => (
-        <button
+        <HubTile
           key={category.slug}
-          type="button"
+          label={category.name.toUpperCase()}
           onClick={() => {
             // Only the address-based href is ever navigated to — no
             // name-slug fallback (per live feedback, name-slug Knowledge
@@ -133,11 +134,8 @@ function CategoryGrid({
             const href = cpAddressToKnowledgeHref(category.address);
             if (href) router.push(href);
           }}
-          className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
-        >
-          <span className="font-semibold text-sm uppercase">{category.name}</span>
-        </button>
+        />
       ))}
-    </div>
+    </HubGrid>
   );
 }

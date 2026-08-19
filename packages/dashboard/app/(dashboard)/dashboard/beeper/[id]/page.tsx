@@ -235,7 +235,7 @@ export default function BeeperContactDetailPage({ params }: { params: Promise<{ 
 
 	if (loading) {
 		return (
-			<DashboardPageShell upLevel={{ href: "/dashboard/beeper" }} title="Beeper">
+			<DashboardPageShell title="Beeper">
 				<div className="flex items-center justify-center py-24 text-muted-foreground gap-2">
 					<RefreshCw className="h-4 w-4 animate-spin" /> Loading contact...
 				</div>
@@ -244,7 +244,7 @@ export default function BeeperContactDetailPage({ params }: { params: Promise<{ 
 	}
 	if (!detail) {
 		return (
-			<DashboardPageShell upLevel={{ href: "/dashboard/beeper" }} title="Beeper">
+			<DashboardPageShell title="Beeper">
 				<div className="py-24 text-center text-muted-foreground">Contact not found.</div>
 			</DashboardPageShell>
 		);
@@ -266,7 +266,7 @@ export default function BeeperContactDetailPage({ params }: { params: Promise<{ 
 		// Default scroll={true}: ONE scrollbar on the outer DashboardPageShell
 		// frame (Story 62 Task 31 / responsive-layout-standard). Do NOT put
 		// overflow-y-auto on inner Cards — that traps conversation scroll.
-		<DashboardPageShell upLevel={{ href: "/dashboard/beeper" }} title="Beeper">
+		<DashboardPageShell title="Beeper">
 			{/* Second row inside the outer frame — see backlog/stories/60. Contact
 			    name shown here since the shell's own title stays page-level. */}
 			<div className="flex flex-wrap items-center gap-2 border-b pb-3 mb-3">

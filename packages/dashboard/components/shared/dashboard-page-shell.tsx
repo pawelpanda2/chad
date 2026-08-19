@@ -1,5 +1,5 @@
 import { ReactNode, type Ref } from "react";
-import { NavGroup, type NavGroupUpLevel } from "@/components/shared/nav-group";
+import { NavGroup } from "@/components/shared/nav-group";
 import { cn } from "@/lib/utils";
 
 interface DashboardPageShellProps {
@@ -38,12 +38,6 @@ interface DashboardPageShellProps {
    * short title on row one instead of competing for space with filters.
    */
   toolbarSecondRow?: ReactNode;
-  /**
-   * This page's own "go up one level" control, forwarded to the shared
-   * NavGroup's `\` button (see nav-group.tsx). Omit on pages with no
-   * hierarchy above them — `\` simply renders disabled.
-   */
-  upLevel?: NavGroupUpLevel;
   /**
    * When true (default) the frame owns the vertical scroll of its content.
    * Set to false when the child manages its own internal scroll (e.g. a
@@ -92,7 +86,6 @@ export function DashboardPageShell({
   toolbarLeading,
   toolbar,
   toolbarSecondRow,
-  upLevel,
   scroll = true,
   padded = true,
   className,
@@ -104,10 +97,9 @@ export function DashboardPageShell({
     <div className={cn("flex h-full min-h-0 w-full flex-col gap-0.5", className)}>
       {/*
         Row 1: optional `toolbarLeading` (e.g. Beeper collapse), then
-        `NavGroup` (Back/Forw), then the short `title`, then any remaining
-        `toolbar` content — left-aligned, wraps to a second line if it
-        doesn't fit. Without `toolbarLeading`, order stays
-        `Back, Forw, TITLE` (Story 62). Page-specific controls belong in
+        `NavGroup` (`← ↶ ↷` — hierarchy/history, Story 126), then the short
+        `title`, then any remaining `toolbar` content — left-aligned, wraps
+        to a second line if it doesn't fit. Page-specific controls belong in
         `toolbarSecondRow`, not here.
 
         The row is ALWAYS rendered (even without a title/toolbar) and
@@ -117,7 +109,7 @@ export function DashboardPageShell({
       */}
       <div className="flex min-h-9 shrink-0 flex-wrap items-center gap-x-3 gap-y-1 pl-14">
         {toolbarLeading}
-        <NavGroup upLevel={upLevel} />
+        <NavGroup />
         {title && <h2 className="text-sm font-bold tracking-wide">{title}</h2>}
         {toolbar}
       </div>

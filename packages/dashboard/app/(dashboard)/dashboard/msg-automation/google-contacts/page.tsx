@@ -284,7 +284,6 @@ function GoogleContactsPageContent() {
   return (
     <DashboardPageShell
       title="Google Contacts"
-      upLevel={{ href: "/dashboard/msg-automation", label: "Msg Auto" }}
       scroll={false}
       contentClassName={FRAME_SECTION_GAP_CLASS}
     >

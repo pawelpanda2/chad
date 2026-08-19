@@ -80,7 +80,6 @@ function BeeperPageInner() {
 	return (
 		<DashboardPageShell
 			title="Beeper"
-			upLevel={{ href: "/dashboard/msg-automation" }}
 			scroll={false}
 		>
 			{pluginBanner && isPluginSynchErrorStatus(pluginBanner) ? (

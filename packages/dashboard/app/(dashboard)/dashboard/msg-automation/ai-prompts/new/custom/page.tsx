@@ -11,7 +11,7 @@ export default function NewCustomPromptRedirect() {
     router.replace("/dashboard/msg-automation/ai-prompts/new");
   }, [router]);
   return (
-    <DashboardPageShell title="Add Prompt" upLevel={{ href: "/dashboard/msg-automation/ai-prompts" }}>
+    <DashboardPageShell title="Add Prompt">
       <p className="text-sm text-muted-foreground">Redirecting…</p>
     </DashboardPageShell>
   );

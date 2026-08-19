@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
+import { HubGrid, HubTile } from "@/components/shared/hub-grid";
 import { FRAME_SECTION_GAP_CLASS, FRAME_SECTION_SPACE_Y_CLASS, SAVE_FRAME_PADDING_CLASS } from "@/components/shared/layout-tokens";
 import { cn } from "@/lib/utils";
 import { TextEditorWithToolbar } from "@/components/shared/text-editor-with-toolbar";
@@ -908,57 +909,15 @@ function FormsPageContent() {
           cells blank (like a table slot with no button) instead of stretching
           the remaining buttons across the row.
         */}
-        <div className="grid grid-cols-4 gap-2">
-          <button
-            type="button"
-            onClick={() => handleFormSelect("add_action")}
-            className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
-          >
-            <span className="font-semibold text-sm">ADD DAILY ENTRY</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => handleFormSelect("date_entry")}
-            className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
-          >
-            <span className="font-semibold text-sm">ADD DATE</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => handleFormSelect("lead")}
-            className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
-          >
-            <span className="font-semibold text-sm">ADD LEAD</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => handleFormSelect("action")}
-            className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
-          >
-            <span className="font-semibold text-sm">ADD ACTION</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => handleFormSelect("reports")}
-            className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
-          >
-            <span className="font-semibold text-sm">ADD REPORT</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => handleFormSelect("add_prompt")}
-            className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
-          >
-            <span className="font-semibold text-sm">ADD PROMPT</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => handleFormSelect("add_recording")}
-            className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
-          >
-            <span className="font-semibold text-sm">ADD RECORDING</span>
-          </button>
-        </div>
+        <HubGrid>
+          <HubTile label="ADD DAILY ENTRY" onClick={() => handleFormSelect("add_action")} />
+          <HubTile label="ADD DATE" onClick={() => handleFormSelect("date_entry")} />
+          <HubTile label="ADD LEAD" onClick={() => handleFormSelect("lead")} />
+          <HubTile label="ADD ACTION" onClick={() => handleFormSelect("action")} />
+          <HubTile label="ADD REPORT" onClick={() => handleFormSelect("reports")} />
+          <HubTile label="ADD PROMPT" onClick={() => handleFormSelect("add_prompt")} />
+          <HubTile label="ADD RECORDING" onClick={() => handleFormSelect("add_recording")} />
+        </HubGrid>
       </DashboardPageShell>
     );
   }
@@ -973,7 +932,6 @@ function FormsPageContent() {
     return (
       <DashboardPageShell
         contentClassName={FRAME_SECTION_GAP_CLASS}
-        upLevel={{ onClick: () => router.push(returnTo) }}
         title="Add Recording"
       >
         <AudioRecordingForm returnTo={returnTo} initialDraftId={draftId} />
@@ -992,9 +950,6 @@ function FormsPageContent() {
     return (
       <DashboardPageShell
         contentClassName={FRAME_SECTION_GAP_CLASS}
-        upLevel={{
-          onClick: () => router.push(promptReturnTo),
-        }}
         title={promptId ? "Edit Prompt" : "Add Prompt"}
       >
         <PromptForm
@@ -1017,7 +972,6 @@ function FormsPageContent() {
       <DashboardPageShell
         scroll={!isReportCreated}
         contentClassName={FRAME_SECTION_GAP_CLASS}
-        upLevel={{ onClick: () => router.push(reportReturnTo) }}
         title="Add Report"
       >
         <ErrorBox message={reportError} className="shrink-0" />
@@ -1166,7 +1120,6 @@ function FormsPageContent() {
     return (
       <DashboardPageShell
         contentClassName={FRAME_SECTION_GAP_CLASS}
-        upLevel={{ onClick: handleFormBack }}
         title="Add Action"
       >
         <form onSubmit={handleActionSubmit} className={FRAME_SECTION_SPACE_Y_CLASS}>
@@ -1346,7 +1299,6 @@ function FormsPageContent() {
       <DashboardPageShell
         contentClassName={FRAME_SECTION_GAP_CLASS}
         scroll={false}
-        upLevel={{ onClick: isEditingEntry ? () => router.push("/dashboard/views?view=tracker") : handleFormBack }}
         title={isEditingEntry ? "Edit Daily Entry" : "Add Daily Entry"}
       >
             {entryLoadFailed && (
@@ -1495,7 +1447,6 @@ function FormsPageContent() {
     return (
       <DashboardPageShell
         contentClassName={FRAME_SECTION_GAP_CLASS}
-        upLevel={{ onClick: isEditingDateEntry ? () => router.push("/dashboard/views?view=dates") : handleFormBack }}
         title={isEditingDateEntry ? "Edit Date" : "Add Date"}
       >
             {dateEntryLoadFailed && (
@@ -1676,10 +1627,6 @@ function FormsPageContent() {
   return (
     <DashboardPageShell
       contentClassName={FRAME_SECTION_GAP_CLASS}
-      upLevel={{
-        onClick: () =>
-          leadReturnTo ? router.push(leadReturnTo) : handleFormBack(),
-      }}
       title="Add Lead"
     >
       <form onSubmit={handleLeadSubmit} className={FRAME_SECTION_SPACE_Y_CLASS}>

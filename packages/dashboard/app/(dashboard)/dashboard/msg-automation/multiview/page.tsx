@@ -133,7 +133,6 @@ function BeeperContactsPageInner() {
 	return (
 		<DashboardPageShell
 			title="MultiView"
-			upLevel={{ href: "/dashboard/msg-automation" }}
 			scroll={false}
 			toolbarLeading={viewToolbarToggle}
 		>

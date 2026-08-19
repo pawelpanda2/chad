@@ -240,7 +240,7 @@ function MessageCreatorLeadPicker() {
   return (
     <EditorPageShell>
       <div className="flex shrink-0 items-center gap-2 border-b px-2 py-1.5 pl-14">
-        <NavGroup upLevel={{ href: "/dashboard/msg-automation", label: "Msg Auto" }} />
+        <NavGroup />
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-sm font-semibold">Message Creator</h1>
           <p className="truncate text-xs text-muted-foreground">Pick a lead to open</p>
@@ -686,15 +686,7 @@ function MessageCreatorPageContent() {
   return (
     <EditorPageShell>
       <div className="flex shrink-0 items-center gap-2 border-b px-2 py-1.5 pl-14">
-        <NavGroup
-          upLevel={{
-            onClick: () =>
-              router.push(
-                `/dashboard/leads/details?leadName=${encodeURIComponent(leadName)}&leadLoca=${encodeURIComponent(leadLoca)}`
-              ),
-            label: "Back to lead",
-          }}
-        />
+        <NavGroup />
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-sm font-semibold">{leadName}</h1>
           <p className="truncate text-xs text-muted-foreground">{conversationStatus}</p>

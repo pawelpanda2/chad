@@ -26,19 +26,12 @@ vi.mock("@/components/shared/dashboard-page-shell", () => ({
   DashboardPageShell: ({
     title,
     children,
-    upLevel,
   }: {
     title: string;
     children: React.ReactNode;
-    upLevel?: { onClick: () => void; label?: string };
   }) => (
     <div>
       <h1>{title}</h1>
-      {upLevel ? (
-        <button type="button" onClick={upLevel.onClick}>
-          {upLevel.label ?? "Up"}
-        </button>
-      ) : null}
       {children}
     </div>
   ),

@@ -156,10 +156,6 @@ interface FolderApiResponseLike {
   error?: string;
 }
 
-function joinAddress(repoGuid: string, loca: string): string {
-  return loca ? `${repoGuid}/${loca}` : repoGuid;
-}
-
 export default function KnowledgeNodePage({
   params,
 }: {
@@ -351,33 +347,10 @@ export default function KnowledgeNodePage({
     }
   }
 
-  // "Up one level": category root -> the Knowledge index; anywhere deeper ->
-  // one path segment shallower (using the resolved breadcrumb's parent name
-  // once loaded, falling back to the category slug before that arrives).
-  // Address mode: strips the last loca segment (same structural rule as
-  // Folders'/Item View's own "up"), landing on the Knowledge index at the
-  // repo root since there's no bare-repoGuid Knowledge tile to return to.
-  const upHref = addressParts
-    ? (() => {
-        const segments = addressParts.loca.split("/").filter(Boolean);
-        if (segments.length === 0) return "/dashboard/knowledge";
-        const parentLoca = segments.slice(0, -1).join("/");
-        return cpAddressToKnowledgeHref(joinAddress(addressParts.repoGuid, parentLoca)) ?? "/dashboard/knowledge";
-      })()
-    : pathSlugs.length === 0
-      ? "/dashboard/knowledge"
-      : knowledgePageHref(categorySlug, pathSlugs.slice(0, -1));
-  const upLabel = addressParts
-    ? "Up one level"
-    : pathSlugs.length === 0
-      ? "Knowledge"
-      : (node?.breadcrumb[node.breadcrumb.length - (node?.kind === "folder" ? 2 : 1)]?.name ?? categorySlug);
-
   if (node?.kind === "document") {
     return (
       <DashboardPageShell
         title={node.name}
-        upLevel={{ href: upHref, label: upLabel }}
         contentClassName="overflow-x-auto"
       >
         <ErrorBox message={saveError} className="mb-0 shrink-0" />
@@ -412,7 +385,6 @@ export default function KnowledgeNodePage({
   return (
     <DashboardPageShell
       title={node?.name ?? "Knowledge"}
-      upLevel={{ href: upHref, label: upLabel }}
       contentClassName={FRAME_SECTION_GAP_CLASS}
     >
       <ErrorBox message={error} className="mb-0" />

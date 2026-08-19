@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
+import { HubGrid, HubTile } from "@/components/shared/hub-grid";
 import { buildLeadDetailsHref, getLeadDetailsHref } from "@/lib/lead-links";
 import { ErrorBox } from "@/components/shared/error-box";
 import { TABLE_ACTION_COLUMN_WIDTH_CLASS, FRAME_SECTION_GAP_CLASS, LIST_ROW_CLASS, LIST_ROW_WRAPPER_CLASS } from "@/components/shared/layout-tokens";
@@ -470,50 +471,15 @@ function ViewsPageContent() {
           the 4th cell stays empty — buttons keep their column width instead of
           stretching to fill the row.
         */}
-        <div className="grid grid-cols-4 gap-2">
-          <button
-            type="button"
-            onClick={() => handleViewSelect("tracker")}
-            className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
-          >
-            <span className="font-semibold text-sm">DAILY TRACKER</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => handleViewSelect("dates")}
-            className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
-          >
-            <span className="font-semibold text-sm">DATES</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => handleViewSelect("leads")}
-            className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
-          >
-            <span className="font-semibold text-sm">LEADS</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => handleViewSelect("reports")}
-            className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
-          >
-            <span className="font-semibold text-sm">REPORTS</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => handleViewSelect("dates-reports")}
-            className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
-          >
-            <span className="font-semibold text-sm">DATES REPORTS</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => handleViewSelect("recordings")}
-            className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
-          >
-            <span className="font-semibold text-sm">RECORDINGS</span>
-          </button>
-        </div>
+        <HubGrid>
+          <HubTile label="DASHBOARDS" onClick={() => router.push("/dashboard")} />
+          <HubTile label="DAILY TRACKER" onClick={() => handleViewSelect("tracker")} />
+          <HubTile label="DATES" onClick={() => handleViewSelect("dates")} />
+          <HubTile label="LEADS" onClick={() => handleViewSelect("leads")} />
+          <HubTile label="REPORTS" onClick={() => handleViewSelect("reports")} />
+          <HubTile label="DATES REPORTS" onClick={() => handleViewSelect("dates-reports")} />
+          <HubTile label="RECORDINGS" onClick={() => handleViewSelect("recordings")} />
+        </HubGrid>
       </DashboardPageShell>
     );
   }
@@ -526,7 +492,6 @@ function ViewsPageContent() {
   if (selectedView === "leads") {
     return (
       <DashboardPageShell
-        upLevel={{ onClick: handleBack }}
         title="Leads"
         scroll={false}
         contentClassName={FRAME_SECTION_GAP_CLASS}
@@ -661,10 +626,6 @@ function ViewsPageContent() {
         scroll={!selectedRecording}
         padded={!selectedRecording}
         contentClassName={!selectedRecording ? FRAME_SECTION_GAP_CLASS : undefined}
-        upLevel={{
-          onClick: selectedRecording ? () => pushViewState({ recording: null }) : handleBack,
-          label: selectedRecording ? "Back to recordings list" : "Back to Views menu",
-        }}
         title="Recordings"
       >
         {selectedRecording ? (
@@ -844,7 +805,6 @@ function ViewsPageContent() {
   return (
     <DashboardPageShell
       contentClassName={cn(FRAME_SECTION_GAP_CLASS, "overscroll-contain overflow-x-auto")}
-      upLevel={{ onClick: handleBack }}
       title={viewTitle}
     >
       {/* Page-specific controls live inside the main frame, not above it

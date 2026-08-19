@@ -13,7 +13,6 @@ function AddPromptFormInner() {
   return (
     <DashboardPageShell
       title={promptId ? "Edit Prompt" : "Add Prompt"}
-      upLevel={{ href: "/dashboard/msg-automation/ai-prompts", label: "AI Prompts" }}
       contentClassName={FRAME_SECTION_GAP_CLASS}
     >
       <PromptForm
@@ -29,7 +28,7 @@ export default function AddPromptPage() {
   return (
     <Suspense
       fallback={
-        <DashboardPageShell title="Add Prompt" upLevel={{ href: "/dashboard/msg-automation/ai-prompts" }}>
+        <DashboardPageShell title="Add Prompt">
           <p className="text-sm text-muted-foreground">Loading…</p>
         </DashboardPageShell>
       }

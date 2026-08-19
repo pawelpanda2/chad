@@ -21,7 +21,7 @@ export default function GroupsPage() {
   const [contactsCount, setContactsCount] = useState<number | null>(null);
 
   return (
-    <DashboardPageShell title="Groups" upLevel={{ href: "/dashboard/msg-automation" }}>
+    <DashboardPageShell title="Groups">
       <div className="mb-1.5 flex w-full shrink-0 flex-col gap-1.5">
         <div className="flex flex-wrap items-center gap-2">
           <Tabs value={subTab} onValueChange={(v) => setSubTab(v as GroupsSubTab)}>

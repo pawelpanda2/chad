@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
+import { HubGrid, HubTile } from "@/components/shared/hub-grid";
 
 /** Labeled horizontal rule — same recipe as Knowledge hub (MY DOCUMENTS). */
 function HubSectionDivider({ label }: { label: string }) {
@@ -30,120 +31,41 @@ export default function MsgAutomationPage() {
         Row 1: primary messaging surfaces. Below the separator: planning/status tools.
         Bottom (OBSOLETE): legacy Links + Manual Messages.
       */}
-      <div className="grid grid-cols-4 gap-2">
-        <button
-          type="button"
-          onClick={() => router.push("/dashboard/msg-automation/multiview")}
-          className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
-        >
-          <span className="font-semibold text-sm">MULTIVIEW</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => router.push("/dashboard/msg-automation/groups")}
-          className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
-        >
-          <span className="font-semibold text-sm">GROUPS</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => router.push("/dashboard/beeper")}
-          className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
-        >
-          <span className="font-semibold text-sm">BEEPER</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => router.push("/dashboard/leads/message-creator")}
-          className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
-        >
-          <span className="font-semibold text-sm">CREATOR</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => router.push("/dashboard/msg-automation/links-v2")}
-          className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
-        >
-          <span className="font-semibold text-sm">LINKS V2</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => router.push("/dashboard/msg-automation/ai-prompts")}
-          className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
-        >
-          <span className="font-semibold text-sm">AI PROMPTS</span>
-        </button>
-        <button
-          type="button"
+      <HubGrid>
+        <HubTile label="MULTIVIEW" onClick={() => router.push("/dashboard/msg-automation/multiview")} />
+        <HubTile label="GROUPS" onClick={() => router.push("/dashboard/msg-automation/groups")} />
+        <HubTile label="BEEPER" onClick={() => router.push("/dashboard/beeper")} />
+        <HubTile label="CREATOR" onClick={() => router.push("/dashboard/leads/message-creator")} />
+        <HubTile label="LINKS V2" onClick={() => router.push("/dashboard/msg-automation/links-v2")} />
+        <HubTile label="AI PROMPTS" onClick={() => router.push("/dashboard/msg-automation/ai-prompts")} />
+        <HubTile
+          label="GOOGLE CONTACTS"
           onClick={() => router.push("/dashboard/msg-automation/google-contacts")}
-          className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
-        >
-          <span className="font-semibold text-sm">GOOGLE CONTACTS</span>
-        </button>
-      </div>
+        />
+      </HubGrid>
 
       <hr className="border-t my-3" />
 
-      <div className="grid grid-cols-4 gap-2">
-        <button
-          type="button"
-          onClick={() => router.push("/dashboard/statuses")}
-          className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
-        >
-          <span className="font-semibold text-sm">STATUSES</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => router.push("/dashboard/todo-msg")}
-          className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
-        >
-          <span className="font-semibold text-sm">MSG TODO</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => router.push("/dashboard/msg-planner")}
-          className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
-        >
-          <span className="font-semibold text-sm">MSG PLANNER</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => router.push("/dashboard/msg-automation/msg-workout")}
-          className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
-        >
-          <span className="font-semibold text-sm">MSG WORKOUT</span>
-        </button>
-        <button
-          type="button"
-          onClick={() =>
-            router.push("/dashboard/msg-automation/msg-workout/manually-added-msg")
-          }
-          className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
-          aria-label="MANUALLY ADDED MSG"
+      <HubGrid>
+        <HubTile label="STATUSES" onClick={() => router.push("/dashboard/statuses")} />
+        <HubTile label="MSG TODO" onClick={() => router.push("/dashboard/todo-msg")} />
+        <HubTile label="MSG PLANNER" onClick={() => router.push("/dashboard/msg-planner")} />
+        <HubTile label="MSG WORKOUT" onClick={() => router.push("/dashboard/msg-automation/msg-workout")} />
+        <HubTile
+          label="MANUALLY ADDED MSG"
+          ariaLabel="MANUALLY ADDED MSG"
           title="MANUALLY ADDED MSG"
-        >
-          <span className="font-semibold text-sm leading-tight">MANUALLY ADDED MSG</span>
-        </button>
-      </div>
+          className="leading-tight"
+          onClick={() => router.push("/dashboard/msg-automation/msg-workout/manually-added-msg")}
+        />
+      </HubGrid>
 
       <HubSectionDivider label="Obsolete" />
 
-      <div className="grid grid-cols-4 gap-2">
-        <button
-          type="button"
-          onClick={() => router.push("/dashboard/msg-automation/links")}
-          className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
-        >
-          <span className="font-semibold text-sm">LINKS</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => router.push("/dashboard/messages")}
-          className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
-        >
-          <span className="font-semibold text-sm">MANUAL MESSAGES</span>
-        </button>
-      </div>
+      <HubGrid>
+        <HubTile label="LINKS" onClick={() => router.push("/dashboard/msg-automation/links")} />
+        <HubTile label="MANUAL MESSAGES" onClick={() => router.push("/dashboard/messages")} />
+      </HubGrid>
     </DashboardPageShell>
   );
 }

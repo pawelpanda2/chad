@@ -67,7 +67,7 @@ function MsgAutoMsgWorkoutPageInner() {
   );
 
   return (
-    <DashboardPageShell title="Msg Workout" upLevel={{ href: "/dashboard/msg-automation" }} scroll={false}>
+    <DashboardPageShell title="Msg Workout" scroll={false}>
       <div className={cn("mb-1.5 w-full shrink-0 flex-wrap items-center gap-2", hasOpenConversation ? "hidden md:flex" : "flex")}>
         <BeeperGroupFilter value={groupParam} onChange={handleGroupChange} />
         <div className="relative">

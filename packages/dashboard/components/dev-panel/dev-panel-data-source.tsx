@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
+import { useDebugSettings } from '@/lib/dev-panel/use-debug-settings';
 
 type ChadPostgresOption = 'Server PostgreSQL' | 'Offline backup — read only';
 type BeeperMongoOption = 'Server Mongo' | 'Local Mongo';
@@ -139,8 +140,68 @@ function RadioOption({
   );
 }
 
-/** Settings tab — ACTIVE / CHANGE OPTIONS with native radio groups. */
+type SettingsSubTab = 'databases' | 'debug';
+
+/**
+ * Dev Panel → Settings — Story 126 split this into `Databases` (everything
+ * below, unchanged behavior/persistence/source-of-truth) and `Debug` (new —
+ * currently just the history-debug-combobox visibility toggle).
+ */
 export function DevPanelDataSourceTab() {
+  const [subTab, setSubTab] = useState<SettingsSubTab>('databases');
+
+  return (
+    <div>
+      <div className="dev-panel-tabs" style={{ marginBottom: '8px' }}>
+        <button
+          type="button"
+          className={`dev-tab ${subTab === 'databases' ? 'active' : ''}`}
+          onClick={() => setSubTab('databases')}
+          data-testid="dev-panel-settings-subtab-databases"
+        >
+          Databases
+        </button>
+        <button
+          type="button"
+          className={`dev-tab ${subTab === 'debug' ? 'active' : ''}`}
+          onClick={() => setSubTab('debug')}
+          data-testid="dev-panel-settings-subtab-debug"
+        >
+          Debug
+        </button>
+      </div>
+      {subTab === 'databases' && <DevPanelDatabasesTab />}
+      {subTab === 'debug' && <DevPanelDebugTab />}
+    </div>
+  );
+}
+
+/** `Debug` sub-tab — one toggle so far: LOCAL-only navigation-history combobox visibility. */
+function DevPanelDebugTab() {
+  const [settings, setSettings] = useDebugSettings();
+
+  return (
+    <div className="dev-tab-section">
+      <div className="dev-section-title">🐞 Settings — debug</div>
+      <label
+        className="dev-radio-row"
+        style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 4px', cursor: 'pointer', fontSize: '12px' }}
+      >
+        <input
+          type="checkbox"
+          checked={settings.navigationHistoryVisible}
+          onChange={(e) => setSettings({ ...settings, navigationHistoryVisible: e.target.checked })}
+          data-testid="dev-panel-debug-nav-history-toggle"
+          style={{ cursor: 'pointer', accentColor: '#007acc' }}
+        />
+        <span>Show navigation history debug combobox</span>
+      </label>
+    </div>
+  );
+}
+
+/** `Databases` sub-tab — ACTIVE / CHANGE OPTIONS with native radio groups (unchanged, Story 126 only relocated this under a sub-tab). */
+function DevPanelDatabasesTab() {
   const [state, setState] = useState<DataSourceState | null>(null);
   const [selectedPostgres, setSelectedPostgres] = useState<ChadPostgresOption>('Server PostgreSQL');
   const [selectedMongo, setSelectedMongo] = useState<BeeperMongoOption>('Server Mongo');

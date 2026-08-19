@@ -105,7 +105,7 @@ export default function MessagesPage() {
 	);
 
 	return (
-		<DashboardPageShell scroll={false} title="Manual Messages" upLevel={{ href: "/dashboard/msg-automation" }}>
+		<DashboardPageShell scroll={false} title="Manual Messages">
 			<div className="grid h-full min-h-0 gap-3 lg:grid-cols-3">
 				<Card className="flex flex-col lg:col-span-1">
 					<CardHeader className="pb-3">

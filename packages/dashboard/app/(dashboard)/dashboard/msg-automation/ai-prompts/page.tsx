@@ -74,7 +74,6 @@ export default function AiPromptsListPage() {
   return (
     <DashboardPageShell
       title="AI Prompts"
-      upLevel={{ href: "/dashboard/msg-automation", label: "Msg Auto" }}
       scroll={false}
       contentClassName={FRAME_SECTION_GAP_CLASS}
     >

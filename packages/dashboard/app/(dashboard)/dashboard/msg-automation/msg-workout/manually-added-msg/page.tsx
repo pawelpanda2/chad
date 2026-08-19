@@ -230,7 +230,6 @@ export default function ManuallyAddedMsgPage() {
   return (
     <DashboardPageShell
       title="manually added msg"
-      upLevel={{ href: "/dashboard/msg-automation" }}
       scroll={false}
     >
       {leadsError ? <ErrorBox message={leadsError} className="mb-2 shrink-0" /> : null}

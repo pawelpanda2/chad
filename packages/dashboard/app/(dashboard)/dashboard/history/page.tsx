@@ -179,7 +179,6 @@ function HistoryMenuPage() {
  * address, not a credential).
  */
 function GoogleSheetsViewContent() {
-  const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<{
@@ -227,8 +226,6 @@ function GoogleSheetsViewContent() {
       .finally(() => setIsLoading(false));
   }, []);
 
-  const handleBack = () => router.push("/dashboard/history");
-
   const openRevealDialog = () => {
     setRevealConfirmWord(REVEAL_CONFIRM_WORDS[Math.floor(Math.random() * REVEAL_CONFIRM_WORDS.length)]);
     setRevealConfirmInput("");
@@ -266,7 +263,7 @@ function GoogleSheetsViewContent() {
   };
 
   return (
-    <DashboardPageShell upLevel={{ onClick: handleBack }} title="Google Sheets" contentClassName="gap-1">
+    <DashboardPageShell title="Google Sheets" contentClassName="gap-1">
       {isLoading && (
         <div className="flex items-center justify-center py-8">
           <RefreshCw className="h-5 w-5 animate-spin text-muted-foreground" />
@@ -553,10 +550,6 @@ function HistoryListContent({
     fetchAllHistory();
   }, [fetchAllHistory]);
 
-  const handleBack = () => {
-    router.push("/dashboard/history");
-  };
-
   const handleRowClick = (id: string) => {
     router.push(`/dashboard/history/entry/${id}`);
   };
@@ -579,7 +572,6 @@ function HistoryListContent({
 
   return (
     <DashboardPageShell
-      upLevel={{ onClick: handleBack }}
       title={title}
       contentClassName={cn(FRAME_SECTION_GAP_CLASS, "overscroll-contain overflow-x-auto")}
     >

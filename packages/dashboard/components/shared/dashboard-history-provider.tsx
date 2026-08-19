@@ -8,6 +8,15 @@ import {
   type HistoryStackState,
 } from "@/lib/dashboard-history-reducer";
 
+/** The small slice of the browser Navigation API this file needs — not yet in TS's DOM lib types. */
+interface NavigateEventLike {
+  navigationType: "push" | "replace" | "reload" | "traverse";
+}
+interface NavigationApiLike {
+  addEventListener(type: "navigate", listener: (event: NavigateEventLike) => void): void;
+  removeEventListener(type: "navigate", listener: (event: NavigateEventLike) => void): void;
+}
+
 interface DashboardHistoryValue {
   canGoBack: boolean;
   canGoForward: boolean;
@@ -31,6 +40,17 @@ interface DashboardHistoryValue {
    * as it did before, unaffected.
    */
   notifyReplace: () => void;
+  /**
+   * Read-only snapshot of the tracked stack, for the LOCAL-only history
+   * debug combobox (Story 126, `nav-group.tsx`) — never a second store, just
+   * a view onto the same `stateRef` the provider already keeps. Never
+   * written to; RAM-only, same lifetime as everything else here.
+   */
+  debug: {
+    entries: string[];
+    index: number;
+    currentEntry: string;
+  };
 }
 
 const DashboardHistoryContext = createContext<DashboardHistoryValue | null>(null);
@@ -65,9 +85,36 @@ export function DashboardHistoryProvider({ children }: { children: React.ReactNo
   const stateRef = useRef<HistoryStackState>(initialHistoryStackState(url));
   const isPopStateRef = useRef(false);
   const pendingReplaceRef = useRef(false);
-  const [, setTick] = useState(0);
+  const [tick, setTick] = useState(0);
 
   useEffect(() => {
+    // Story 126 fix: Next.js's App Router client navigation reacts to the
+    // browser's Navigation API (`window.navigation`, Chromium/Edge/newer
+    // Safari) where available, which fires its `navigate` event — and
+    // Next's own resulting pathname update, which is what actually drives
+    // this component's re-render — measurably BEFORE the legacy `popstate`
+    // event a plain `window.addEventListener("popstate", ...)` observes
+    // (confirmed empirically: the url-change effect below was consistently
+    // running ~1ms before our own popstate handler even fired, meaning
+    // `isPopStateRef.current` was always still `false` — every real
+    // Back/Forward was being misclassified as a fresh push, permanently
+    // breaking Forward after any Back). The Navigation API's
+    // `navigationType` (`"push" | "replace" | "reload" | "traverse"`) is
+    // also a direct, unambiguous signal — `"traverse"` covers both
+    // directions of real session-history navigation — rather than the
+    // popstate-only approach's implicit "an event fired" heuristic.
+    // Falls back to `popstate` on browsers without the Navigation API.
+    const nav = (window as unknown as { navigation?: NavigationApiLike }).navigation;
+    if (nav) {
+      const handleNavigate = (event: NavigateEventLike) => {
+        if (event.navigationType === "traverse") {
+          isPopStateRef.current = true;
+        }
+      };
+      nav.addEventListener("navigate", handleNavigate);
+      return () => nav.removeEventListener("navigate", handleNavigate);
+    }
+
     const handlePopState = () => {
       isPopStateRef.current = true;
     };
@@ -102,11 +149,22 @@ export function DashboardHistoryProvider({ children }: { children: React.ReactNo
       notifyReplace: () => {
         pendingReplaceRef.current = true;
       },
+      debug: {
+        entries: s.entries,
+        index: s.index,
+        currentEntry: s.entries[s.index],
+      },
     };
-    // Re-derived whenever the URL changes (after the effect above updates
-    // stateRef), via the `url` dependency below.
+    // Re-derived whenever the URL changes OR the effect above finishes
+    // mutating `stateRef` for that same URL (the `tick` bump — Story 126
+    // fix: `tick`'s own VALUE is unused inside the factory, only its
+    // presence in this dependency array matters, because without it a
+    // `setTick` on an already-stable `url` re-renders the component but
+    // this memo would keep the STALE closure from the render before the
+    // effect ran, leaving canGoBack/canGoForward/debug one navigation
+    // behind their real value).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [url, router]);
+  }, [url, router, tick]);
 
   return <DashboardHistoryContext.Provider value={value}>{children}</DashboardHistoryContext.Provider>;
 }

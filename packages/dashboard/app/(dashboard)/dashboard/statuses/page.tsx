@@ -597,7 +597,6 @@ function StatusesPageContent() {
     return (
       <DashboardPageShell
         contentClassName={FRAME_SECTION_GAP_CLASS}
-        upLevel={{ onClick: closeEditor, label: "Back to list" }}
         title="Statuses"
       >
             {/* Top frame: Save/Cancel + lead identity, left-aligned (Story 62
@@ -730,7 +729,6 @@ function StatusesPageContent() {
     return (
       <DashboardPageShell
         contentClassName={FRAME_SECTION_GAP_CLASS}
-        upLevel={{ onClick: closeEditor, label: "Back to list" }}
         title="Statuses"
       >
         <div className="flex items-center gap-2 py-4 text-muted-foreground">
@@ -749,7 +747,6 @@ function StatusesPageContent() {
     return (
       <DashboardPageShell
         contentClassName={cn(FRAME_SECTION_GAP_CLASS, "overscroll-contain overflow-x-auto")}
-        upLevel={{ href: "/dashboard/msg-automation" }}
         title="Statuses"
       >
         {/* Page-specific controls now live inside the main frame, not above
@@ -1021,7 +1018,6 @@ function StatusesPageContent() {
   return (
     <DashboardPageShell
       title="Statuses"
-      upLevel={{ href: "/dashboard/msg-automation" }}
       contentClassName={FRAME_SECTION_GAP_CLASS}
     >
       <div className="flex shrink-0 flex-wrap items-center gap-3">

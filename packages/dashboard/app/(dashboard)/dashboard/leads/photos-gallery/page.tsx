@@ -33,14 +33,9 @@ function LeadPhotosGalleryPageContent() {
   const [photosError, setPhotosError] = useState<string | null>(null);
   const photosRef = useRef<PhotosSectionHandle>(null);
 
-  const detailsHref =
-    leadName && loca
-      ? `/dashboard/leads/details?leadName=${encodeURIComponent(leadName)}&leadLoca=${encodeURIComponent(loca)}`
-      : "/dashboard/views?view=leads";
-
   if (!loca) {
     return (
-      <DashboardPageShell title="Photos" upLevel={{ href: "/dashboard/views?view=leads", label: "Leads" }}>
+      <DashboardPageShell title="Photos">
         <ErrorBox message="Missing lead loca in the URL." />
       </DashboardPageShell>
     );
@@ -49,7 +44,6 @@ function LeadPhotosGalleryPageContent() {
   return (
     <DashboardPageShell
       title={leadName ? `${leadName} — Photos` : "Lead Photos"}
-      upLevel={{ href: detailsHref, label: leadName ?? "Lead" }}
       contentClassName={FRAME_SECTION_GAP_CLASS}
     >
       <ErrorBox message={photosError} className="mb-0" />

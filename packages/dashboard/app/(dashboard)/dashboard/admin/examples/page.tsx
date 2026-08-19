@@ -11,7 +11,7 @@ export default function AdminExamplesPage() {
   const router = useRouter();
 
   return (
-    <DashboardPageShell title="Examples" upLevel={{ href: "/dashboard/admin", label: "Admin" }}>
+    <DashboardPageShell title="Examples">
       <div className="grid grid-cols-4 gap-2">
         <button
           type="button"

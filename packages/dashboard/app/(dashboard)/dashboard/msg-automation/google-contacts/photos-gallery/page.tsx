@@ -37,7 +37,6 @@ function GoogleContactPhotosGalleryPageContent() {
     return (
       <DashboardPageShell
         title="Photos"
-        upLevel={{ href: "/dashboard/msg-automation/google-contacts", label: "Google Contacts" }}
       >
         <ErrorBox message="Missing contact resourceName in the URL." />
       </DashboardPageShell>
@@ -47,7 +46,6 @@ function GoogleContactPhotosGalleryPageContent() {
   return (
     <DashboardPageShell
       title={displayName ? `${displayName} — Photos` : "Contact Photos"}
-      upLevel={{ href: "/dashboard/msg-automation/google-contacts", label: "Google Contacts" }}
       contentClassName={FRAME_SECTION_GAP_CLASS}
     >
       <ErrorBox message={photosError} className="mb-0" />

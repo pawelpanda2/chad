@@ -151,7 +151,6 @@ function TodoMsgPageContent() {
   return (
     <DashboardPageShell
       title="Msg Todo"
-      upLevel={{ href: "/dashboard/msg-automation" }}
       contentClassName={FRAME_SECTION_GAP_CLASS}
     >
       <div className="flex shrink-0 flex-wrap items-center gap-3">{toolbar}</div>

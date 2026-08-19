@@ -366,11 +366,9 @@ function LeadDetailsPageContent() {
   // Render
   // ========================================================================
 
-  const upLevel = { onClick: handleBack, label: "Back to leads" };
-
   if (!leadName || !leadLoca) {
     return (
-      <DashboardPageShell upLevel={upLevel}>
+      <DashboardPageShell>
         <div className="flex flex-col items-start gap-2 py-4 text-muted-foreground">
           <div className="flex items-center gap-2">
             <AlertCircle className="h-6 w-6" />
@@ -389,7 +387,7 @@ function LeadDetailsPageContent() {
 
   if (loading) {
     return (
-      <DashboardPageShell upLevel={upLevel}>
+      <DashboardPageShell>
         <div className="flex items-center gap-2 py-4 text-muted-foreground">
           <RefreshCw className="h-4 w-4 animate-spin" />
           <span>Loading lead details...</span>
@@ -400,7 +398,7 @@ function LeadDetailsPageContent() {
 
   if (error || !details) {
     return (
-      <DashboardPageShell upLevel={upLevel}>
+      <DashboardPageShell>
         <div className="flex flex-col items-start gap-2 py-4 text-muted-foreground">
           <div className="flex items-center gap-2">
             <AlertCircle className="h-6 w-6" />
@@ -418,7 +416,7 @@ function LeadDetailsPageContent() {
   }
 
   return (
-    <DashboardPageShell upLevel={upLevel} contentClassName="gap-1">
+    <DashboardPageShell contentClassName="gap-1">
       {/* 400px preferred width — grows only if a card's own content needs more. */}
       <div className="flex w-fit min-w-[400px] max-w-full flex-col gap-1">
       <ErrorBox message={photosError} className="mb-0" />

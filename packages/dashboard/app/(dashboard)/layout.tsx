@@ -1,10 +1,11 @@
 "use client";
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Sidebar, SIDEBAR_EXPANDED_WIDTH_CLASS, SIDEBAR_EXPANDED_LEFT_CLASS } from "@/components/shared/sidebar";
 import { Topbar } from "@/components/shared/topbar";
 import { DashboardHistoryProvider } from "@/components/shared/dashboard-history-provider";
 import { OfflineReadonlyBackupBanner } from "@/components/offline-readonly-backup-banner";
+import { useViewportClass } from "@/lib/use-viewport-class";
 import { cn } from "@/lib/utils";
 
 // The top bar is intentionally hidden on EVERY screen size (desktop + mobile)
@@ -12,33 +13,39 @@ import { cn } from "@/lib/utils";
 // restore the topbar everywhere — no other change needed.
 const SHOW_TOPBAR = false;
 
-// Same breakpoint Tailwind uses for `md`.
-const DESKTOP_QUERY = "(min-width: 768px)";
-
 export default function DashboardLayout({
 	children,
 }: {
 	children: React.ReactNode;
 }) {
-	// Same push-in sidebar on both desktop and mobile, and it is OPEN by default
-	// on both. The ONLY difference is what happens after picking a menu item:
-	//   - desktop: sidebar stays open,
-	//   - mobile:  sidebar closes.
+	// Same push-in sidebar on both desktop and mobile. Default open state
+	// differs (Story 126): desktop and phone-landscape default OPEN (matches
+	// the previous universal default); phone portrait defaults CLOSED so a
+	// fresh visit/refresh on a phone doesn't open with the menu covering the
+	// content. Decided ONCE, from the first real viewport classification
+	// (`hasSetInitialMenuState` ref) — later orientation/resize changes never
+	// fight the user's own manual open/close.
+	const { isDesktop, isPhonePortrait, ready: viewportReady } = useViewportClass();
 	const [menuOpen, setMenuOpen] = useState(true);
-	const [isDesktop, setIsDesktop] = useState(true);
+	const hasSetInitialMenuState = useRef(false);
 
 	useEffect(() => {
-		const mq = window.matchMedia(DESKTOP_QUERY);
-		const apply = () => setIsDesktop(mq.matches);
-		apply();
-		mq.addEventListener("change", apply);
-		return () => mq.removeEventListener("change", apply);
-	}, []);
+		if (!viewportReady || hasSetInitialMenuState.current) return;
+		hasSetInitialMenuState.current = true;
+		setMenuOpen(!isPhonePortrait);
+	}, [viewportReady, isPhonePortrait]);
 
-	// A selected menu item closes the sidebar only on mobile.
+	// A selected menu item closes the sidebar only on mobile (portrait or
+	// landscape) — unchanged from before.
 	const handleNavigate = () => {
 		if (!isDesktop) setMenuOpen(false);
 	};
+
+	// Phone portrait, menu open: main is dimmed and fully non-interactive
+	// (Story 126) — the user must close via the handle or a menu item, not by
+	// tapping the dimmed content. Every other case (desktop, phone landscape,
+	// tablet) keeps the previous push-in, fully-interactive behavior.
+	const isMainBlocked = isPhonePortrait && menuOpen;
 
 	return (
 		<div className="relative flex h-[100dvh] overflow-hidden bg-background">
@@ -56,14 +63,24 @@ export default function DashboardLayout({
 				</div>
 			</div>
 
-			{/* Main column — shifts naturally as the sidebar takes/releases space.
-			    On mobile, clicking the content while the menu is open closes it
-			    (click outside the sidebar); on desktop the menu stays open. */}
+			{/* Main column. Desktop/landscape: shifts naturally as the sidebar
+			    takes/releases space (`flex-1 min-w-0`), clicking content while
+			    open closes the menu on mobile. Phone portrait + menu open: main
+			    keeps its own full viewport width instead of shrinking
+			    (`w-screen shrink-0` — the row overflows and the outer
+			    `overflow-hidden` clips it to sidebar + a sliver of main), is
+			    visually dimmed, and is `inert` (blocks click, focus/tab, and the
+			    a11y tree in one native attribute) plus `pointer-events-none` as a
+			    defensive fallback — no click-through, no click-to-close. */}
 			<div
-				className="flex min-w-0 flex-1 flex-col overflow-hidden"
+				className={cn(
+					"flex flex-col overflow-hidden transition-opacity duration-200",
+					isMainBlocked ? "w-screen shrink-0 pointer-events-none opacity-40" : "min-w-0 flex-1",
+				)}
 				onClick={() => {
-					if (!isDesktop && menuOpen) setMenuOpen(false);
+					if (!isDesktop && !isPhonePortrait && menuOpen) setMenuOpen(false);
 				}}
+				inert={isMainBlocked}
 			>
 				{SHOW_TOPBAR && (
 					<div className="shrink-0">
@@ -78,7 +95,7 @@ export default function DashboardLayout({
 				    empty strip on the right only on wide desktops (≥1280px). At
 				    narrower widths — phone, tablet, or half-screen Mac browser —
 				    the frame uses the full window width. Sidebar open/close still
-				    uses DESKTOP_QUERY (`md`/768px) above. */}
+				    uses the same `md`/768px desktop breakpoint above. */}
 				<main className="min-h-0 flex-1 overflow-y-auto p-0.5 xl:pr-[150px]">
 					<OfflineReadonlyBackupBanner />
 					<Suspense fallback={null}>

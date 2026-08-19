@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
+import { HubGrid, HubTile } from "@/components/shared/hub-grid";
 
 /**
  * Admin hub — same button-grid pattern as Msg Auto/Knowledge: a single
@@ -13,36 +14,12 @@ export default function AdminHubPage() {
 
 	return (
 		<DashboardPageShell title="Admin">
-			<div className="grid grid-cols-4 gap-2">
-				<button
-					type="button"
-					onClick={() => router.push("/dashboard/admin/users")}
-					className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
-				>
-					<span className="font-semibold text-sm">USERS</span>
-				</button>
-				<button
-					type="button"
-					onClick={() => router.push("/dashboard/admin/payments")}
-					className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
-				>
-					<span className="font-semibold text-sm">PAYMENTS</span>
-				</button>
-				<button
-					type="button"
-					onClick={() => router.push("/dashboard/admin/licenses")}
-					className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
-				>
-					<span className="font-semibold text-sm">LICENSES</span>
-				</button>
-				<button
-					type="button"
-					onClick={() => router.push("/dashboard/admin/examples")}
-					className="flex flex-col items-center justify-center p-3 border rounded-lg hover:bg-accent hover:border-primary/50 transition-colors text-center min-h-[60px]"
-				>
-					<span className="font-semibold text-sm">EXAMPLES</span>
-				</button>
-			</div>
+			<HubGrid>
+				<HubTile label="USERS" onClick={() => router.push("/dashboard/admin/users")} />
+				<HubTile label="PAYMENTS" onClick={() => router.push("/dashboard/admin/payments")} />
+				<HubTile label="LICENSES" onClick={() => router.push("/dashboard/admin/licenses")} />
+				<HubTile label="EXAMPLES" onClick={() => router.push("/dashboard/admin/examples")} />
+			</HubGrid>
 		</DashboardPageShell>
 	);
 }

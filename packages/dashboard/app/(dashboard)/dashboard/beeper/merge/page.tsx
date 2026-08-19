@@ -95,7 +95,6 @@ export default function BeeperMergePage() {
 
 	return (
 		<DashboardPageShell
-			upLevel={{ href: "/dashboard/beeper" }}
 			title="Merge Suggestions"
 		>
 			{/* Second row inside the outer frame — see backlog/stories/60. */}

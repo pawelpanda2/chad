@@ -40,7 +40,6 @@ export default function BeeperInboxPage() {
 
 	return (
 		<DashboardPageShell
-			upLevel={{ href: "/dashboard/beeper" }}
 			title="Inbox"
 		>
 			{/* Second row inside the outer frame — see backlog/stories/60. */}

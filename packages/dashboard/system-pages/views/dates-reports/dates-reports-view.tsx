@@ -242,18 +242,6 @@ export function DatesReportsView({
     }
   }, [editLoca, editedContent]);
 
-  const handleUpLevel = () => {
-    if (selectedPartLoca) {
-      onSelectPart(null);
-      return;
-    }
-    if (selectedReportLoca) {
-      onSelectReport(null);
-      return;
-    }
-    onBackToMenu();
-  };
-
   const handleSelectMain = (entry: DateReportEntry) => {
     onSelectPart(null);
     onSelectReport(entry.loca);
@@ -267,12 +255,6 @@ export function DatesReportsView({
     onSelectPart(entry.loca);
   };
 
-  const upLabel = selectedPartLoca
-    ? "Back to folder parts"
-    : selectedReportLoca
-      ? "Back to reports list"
-      : "Back to Views menu";
-
   const pageTitle = selectedPart
     ? selectedPart.itemName
     : selectedReport
@@ -284,7 +266,6 @@ export function DatesReportsView({
       <DashboardPageShell
         scroll={false}
         padded={false}
-        upLevel={{ onClick: handleUpLevel, label: upLabel }}
         title={pageTitle}
       >
         <TextEditorWithToolbar
@@ -307,10 +288,6 @@ export function DatesReportsView({
       scroll={false}
       padded
       contentClassName={FRAME_SECTION_GAP_CLASS}
-      upLevel={{
-        onClick: handleUpLevel,
-        label: selectedReportLoca ? "Back to reports list" : "Back to Views menu",
-      }}
       title={pageTitle}
     >
       <div className="flex shrink-0 flex-wrap items-center gap-3">

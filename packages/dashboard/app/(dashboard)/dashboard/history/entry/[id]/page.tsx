@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
 import { ErrorBox } from "@/components/shared/error-box";
 import { RefreshCw, ExternalLink } from "lucide-react";
@@ -70,7 +70,6 @@ const OPERATION_LABEL: Record<string, string> = {
  */
 export default function HistoryEntryDetailsPage() {
   const params = useParams<{ id: string }>();
-  const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [detail, setDetail] = useState<HistoryDetail | null>(null);
@@ -88,10 +87,8 @@ export default function HistoryEntryDetailsPage() {
       .finally(() => setIsLoading(false));
   }, [params.id]);
 
-  const handleBack = () => router.back();
-
   return (
-    <DashboardPageShell upLevel={{ onClick: handleBack }} title="History Entry" contentClassName="gap-3">
+    <DashboardPageShell title="History Entry" contentClassName="gap-3">
       {isLoading && (
         <div className="flex items-center justify-center py-8">
           <RefreshCw className="h-5 w-5 animate-spin text-muted-foreground" />

@@ -10,7 +10,6 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { DashboardPageShell } from "@/components/shared/dashboard-page-shell";
 import { ErrorBox } from "@/components/shared/error-box";
 import { Button } from "@/components/ui/button";
@@ -104,7 +103,6 @@ function strokeClass(method: LinkMethod): string {
 }
 
 export default function MsgAutoLinksPage() {
-  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [leads, setLeads] = useState<LeadCandidate[]>([]);
@@ -373,7 +371,6 @@ export default function MsgAutoLinksPage() {
 
   return (
     <DashboardPageShell
-      upLevel={{ onClick: () => router.push("/dashboard/msg-automation") }}
       title="Links"
       toolbar={
         <span className="text-xs font-normal text-muted-foreground">

@@ -417,7 +417,7 @@ export function AiPromptCustomEditor({ promptId }: AiPromptCustomEditorProps) {
   return (
     <EditorPageShell>
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b px-2 py-1.5 pl-14">
-        <NavGroup upLevel={{ href: "/dashboard/msg-automation/ai-prompts", label: "AI Prompts" }} />
+        <NavGroup />
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <Input
             value={name}
